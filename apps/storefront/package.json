@@ -1,5 +1,5 @@
 {
-  "name": "@marketplace/storefront",
+  "name": "@tantovale/storefront",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -11,16 +11,16 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@marketplace/server": "workspace:*",
-    "@marketplace/ui": "workspace:*",
+    "@tantovale/server": "workspace:*",
+    "@tantovale/ui": "workspace:*",
     "@tanstack/react-query": "^5.64.2",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@marketplace/eslint-config": "workspace:*",
-    "@marketplace/typescript-config": "workspace:*",
+    "@tantovale/eslint-config": "workspace:*",
+    "@tantovale/typescript-config": "workspace:*",
     "@tanstack/eslint-plugin-query": "^5.64.2",
     "@types/node": "^20",
     "@types/react": "18.3.1",

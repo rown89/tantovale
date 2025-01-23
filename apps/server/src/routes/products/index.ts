@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { productSchema, createProductSchema } from "./schema";
+import { productsSchema, createProductSchema } from "./schema";
 
 const products = [
   {
@@ -20,7 +20,7 @@ const products = [
   },
 ];
 
-export const productRoute = new Hono()
+export const productsRoute = new Hono()
   .get("/", (c) => {
     return c.json({ products });
   })
@@ -40,7 +40,7 @@ export const productRoute = new Hono()
 
     return c.json(data);
   })
-  .put("/", zValidator("json", productSchema), async (c) => {
+  .put("/", zValidator("json", productsSchema), async (c) => {
     const data = await c.req.valid("json");
 
     return c.json(data);

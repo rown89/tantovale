@@ -1,14 +1,14 @@
 import { serve } from "@hono/node-server";
 import app from "./app.js";
 
+const PORT = process.env.SERVER_PORT;
+
 const runServer = () => {
-  console.log(`Server run on, ${process.env.SERVER_PORT}`);
+  console.log(`Server run on, ${PORT}`);
 
   serve({
     fetch: app.fetch,
-    port: process.env.SERVER_PORT
-      ? parseInt(process.env.SERVER_PORT, 10)
-      : 4000,
+    port: PORT ? parseInt(PORT, 10) : 4000,
   });
 };
 

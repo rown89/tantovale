@@ -1,7 +1,7 @@
 import { api } from "../lib/api";
 
 export async function getProduct() {
-  const res = await api.product.$get();
+  const res = await api.products.$get();
   if (!res.ok) {
     throw new Error("Something went wrong");
   }
