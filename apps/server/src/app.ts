@@ -7,7 +7,7 @@ const app = new Hono();
 
 app.use("*", logger());
 
-const apiRoutes = app.basePath("/api").route("/product", productRoute);
+const apiRoutes = app.basePath("/server").route("/product", productRoute);
 
 export const client = hc<typeof apiRoutes>("/");
 

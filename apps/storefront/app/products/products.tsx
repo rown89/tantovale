@@ -1,15 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getProduct } from "./page";
+import { getProduct } from "../../queries/getProducts";
 
 export default function Products() {
-  const { isPending, data, error, isFetching } = useQuery({
+  const { data, error, isFetching } = useQuery({
     queryKey: ["product"],
     queryFn: getProduct,
   });
 
-  if (isPending) <div> Loading </div>;
+  if (isFetching) <div> Loading </div>;
 
   if (error) <div> Error </div>;
 
