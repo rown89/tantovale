@@ -1,0 +1,24 @@
+{
+  "name": "@marketplace/server",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./apiRoutes": "./src/app.ts"
+  },
+  "type": "module",
+  "module": "esnext",
+  "scripts": {
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.2",
+    "hono": "^4.6.17"
+  },
+  "devDependencies": {
+    "@marketplace/eslint-config": "workspace:*",
+    "@marketplace/typescript-config": "workspace:*",
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.1"
+  }
+}

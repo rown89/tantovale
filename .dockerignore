@@ -1,0 +1,37 @@
+# Dependency directories
+node_modules
+
+# Log files
+yarn-error.log
+*.log
+
+# Version control
+.git
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.idea/
+.vscode/
+*.sublime-workspace
+
+# Build outputs
+dist/
+build/
+out/
+.coverage/
+
+# Documentation & Tests
+*.md
+LICENSE
+test/
+tests/
+__tests__/
+
+# Environment configs
+.env*
+!.env.production
+
+.pnpm-store

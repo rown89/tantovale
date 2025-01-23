@@ -1,11 +1,9 @@
 {
-  "name": "@repo/ui",
-  "version": "0.0.0",
+  "name": "@marketplace/ui",
+  "version": "0.1.0",
   "private": true,
   "exports": {
-    "./button": "./src/button.tsx",
-    "./card": "./src/card.tsx",
-    "./code": "./src/code.tsx"
+    "./button": "./src/button.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
@@ -13,8 +11,8 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@repo/eslint-config": "workspace:*",
-    "@repo/typescript-config": "workspace:*",
+    "@marketplace/eslint-config": "workspace:*",
+    "@marketplace/typescript-config": "workspace:*",
     "@turbo/gen": "^1.12.4",
     "@types/node": "^20.11.24",
     "@types/react": "18.3.0",
