@@ -8,7 +8,9 @@
   "type": "module",
   "module": "esnext",
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "build": "cd ../../ && turbo run build:hono --filter=@tantovale/server",
+    "build:hono": "tsx src/index.ts --outDir dist"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

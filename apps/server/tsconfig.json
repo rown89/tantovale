@@ -1,12 +1,15 @@
 {
   "extends": "@tantovale/typescript-config/base.json",
   "compilerOptions": {
-    "target": "ESNext",
+    "outDir": "./dist",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
+    "experimentalDecorators": true,
     "types": ["node"],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
 }

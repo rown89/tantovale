@@ -12,6 +12,11 @@
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
 		},
+		"build:hono": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**"]
+		},
 		"lint": {
 			"dependsOn": ["^lint"]
 		},

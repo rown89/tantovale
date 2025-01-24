@@ -1,5 +1,6 @@
 # Use official Node.js alpine image as base
-FROM node:18-alpine AS base
+FROM node:22-alpine AS base
+
 RUN apk add --no-cache libc6-compat bash curl && \
     curl -fsSL https://get.pnpm.io/v6.16.js | node - add --global pnpm
 
@@ -24,7 +25,7 @@ COPY . .
 RUN pnpm install --offline
 
 # Build the application
-RUN npx turbo run build --filter=@tantovale/storefront
+RUN npx turbo run build:next --filter=@tantovale/storefront
 
 # Production stage
 FROM base AS runner

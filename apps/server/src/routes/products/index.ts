@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { productsSchema, createProductSchema } from "./schema";
+import productsSchema, { createProductSchema } from "./schema";
 
 const products = [
   {
