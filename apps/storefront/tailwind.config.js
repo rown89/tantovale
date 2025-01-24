@@ -16,10 +16,6 @@ export default {
     },
     extend: {
       ...config.theme?.extend,
-      backgroundImage: {
-        "dot-bg":
-          "url('../../../apps/storefront/website/public/svg/dot-bg.svg')",
-      },
     },
   },
 };

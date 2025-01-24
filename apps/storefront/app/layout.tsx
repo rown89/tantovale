@@ -1,6 +1,6 @@
+import "@tantovale/ui/css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import "@tantovale/ui/css";
 import QueryProvider from "./QueryProvider";
 
 const geistSans = localFont({

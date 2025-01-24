@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** @type {import('tailwindcss').Config} */
 const config = {
   content: [
     join(__dirname, "../../apps/storefront/**/*.{js,jsx,ts,tsx}"),
@@ -11,39 +12,6 @@ const config = {
   ],
   theme: {
     extend: {
-      animation: {
-        "spin-slow": "spin 180s linear infinite",
-        fluctuate: "fluctuate 4s ease-in-out infinite",
-      },
-      keyframes: {
-        fluctuate: {
-          "0%": {
-            transform: "translateY(0) rotate(0deg) scale(1)",
-            opacity: "1",
-          },
-          "20%": {
-            transform: "translateY(-4px) rotate(-1.5deg) scale(1.01)",
-            opacity: "0.98",
-          },
-          "40%": {
-            transform: "translateY(-8px) rotate(2deg) scale(1.02)",
-            opacity: "0.96",
-          },
-          "60%": {
-            transform: "translateY(-6px) rotate(-1deg) scale(1.015)",
-            opacity: "0.97",
-          },
-          "80%": {
-            transform: "translateY(-2px) rotate(1.5deg) scale(1.01)",
-            opacity: "0.99",
-          },
-          "100%": {
-            transform: "translateY(0) rotate(0deg) scale(1)",
-            opacity: "1",
-          },
-        },
-      },
-
       colors: {
         grey: {
           50: "#F2F4F7", // grey50

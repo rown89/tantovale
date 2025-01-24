@@ -4,6 +4,8 @@
 	"scripts": {
 		"build": "turbo build",
 		"dev": "doppler run -- turbo dev",
+		"dev-storefront": "pnpm run --filter @tantovale/storefront dev",
+		"dev-server": "pnpm run --workspace=@tantovale/storefront dev",
 		"lint": "turbo lint",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"prepare": "husky"

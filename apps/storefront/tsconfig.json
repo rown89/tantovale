@@ -13,11 +13,11 @@
     "next-env.d.ts",
     "next.config.js",
     ".next/types/**/*.ts",
+    "globals.css",
     "tailwind.config.js",
     "postcss.config.mjs",
     "eslint.config.mjs",
-    "prettier.config.mjs",
-    "envConfig.mjs"
+    "prettier.config.mjs"
   ],
   "exclude": ["node_modules"]
 }
