@@ -1,0 +1,28 @@
+{
+	"name": "@tantovale/database",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"scripts": {
+		"dev": "tsx --watch",
+		"build": "tsx",
+		"db:check": "npm exec drizzle-kit check:pg",
+		"db:generate": "npm exec  drizzle-kit generate:pg",
+		"db:migrate": "ts-node ./migrate.ts",
+		"db:push": "npm exec drizzle-kit push --config=./packages/database/drizzle.config.ts"
+	},
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"dependencies": {
+		"drizzle-orm": "^0.39.0",
+		"pg": "^8.13.1",
+		"postgres": "^3.4.5"
+	},
+	"devDependencies": {
+		"@tantovale/eslint-config": "*",
+		"@tantovale/typescript-config": "*",
+		"drizzle-kit": "^0.30.3"
+	}
+}

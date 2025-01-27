@@ -2,11 +2,11 @@
   "name": "@tantovale/server",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
+  "module": "esnext",
   "exports": {
     "./apiRoutes": "./src/app.ts"
   },
-  "type": "module",
-  "module": "esnext",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "cd ../../ && turbo run build:hono --filter=@tantovale/server",
@@ -18,9 +18,10 @@
     "hono": "^4.6.17"
   },
   "devDependencies": {
-    "@tantovale/eslint-config": "workspace:*",
-    "@tantovale/typescript-config": "workspace:*",
+    "@tantovale/eslint-config": "*",
+    "@tantovale/typescript-config": "*",
     "@types/node": "^20.11.17",
-    "tsx": "^4.7.1"
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.2"
   }
 }

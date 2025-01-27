@@ -1,8 +1,8 @@
 {
   "name": "@tantovale/storefront",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --turbopack --port 3000",
     "build": "cd ../../ && turbo run build:next --filter=@tantovale/storefront",
@@ -12,16 +12,16 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@tantovale/server": "workspace:*",
-    "@tantovale/ui": "workspace:*",
+    "@tantovale/server": "*",
+    "@tantovale/ui": "*",
     "@tanstack/react-query": "^5.64.2",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@tantovale/eslint-config": "workspace:*",
-    "@tantovale/typescript-config": "workspace:*",
+    "@tantovale/eslint-config": "*",
+    "@tantovale/typescript-config": "*",
     "@tanstack/eslint-plugin-query": "^5.64.2",
     "@types/node": "^20",
     "@types/react": "18.3.1",

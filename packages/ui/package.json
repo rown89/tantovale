@@ -17,8 +17,8 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@tantovale/eslint-config": "workspace:*",
-    "@tantovale/typescript-config": "workspace:*",
+    "@tantovale/eslint-config": "*",
+    "@tantovale/typescript-config": "*",
     "@turbo/gen": "^1.12.4",
     "@types/node": "^20.11.24",
     "@types/react": "18.3.0",

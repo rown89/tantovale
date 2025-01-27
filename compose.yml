@@ -1,15 +1,30 @@
 name: tantovale
 services:
+  db:
+    container_name: tv_db
+    image: postgres:17
+    restart: unless-stopped
+    volumes:
+      - tantovale_data:/var/lib/postgresql/data
+    networks:
+      - tantovale_network
+    ports:
+      - 5432:5432
+    env_file:
+      - ./.env
+
   storefront:
     container_name: tv_storefront
     build:
       context: .
       dockerfile: ./apps/storefront/Dockerfile
     restart: unless-stopped
+    networks:
+      - tantovale_network
     ports:
       - 3000:3000
-    networks:
-      - app_network
+    env_file:
+      - ./apps/storefront/.env
 
   server:
     container_name: tv_server
@@ -17,13 +32,19 @@ services:
       context: .
       dockerfile: ./apps/server/Dockerfile
     restart: unless-stopped
+    networks:
+      - tantovale_network
     ports:
       - 4000:4000
-    networks:
-      - app_network
+    env_file:
+      - ./apps/server/.env
 
 networks:
-  app_network:
+  tantovale_network:
     name: tantovale_network
+    driver: bridge
     labels:
       'com.docker.compose.project': 'tantovale'
+
+volumes:
+  tantovale_data:

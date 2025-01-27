@@ -1,0 +1,9 @@
+{
+	"extends": "@tantovale/typescript-config/base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"module": "ESNext",
+		"moduleResolution": "bundler"
+	},
+	"exclude": ["dist", "node_modules"]
+}

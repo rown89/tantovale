@@ -3,12 +3,27 @@
 	"private": true,
 	"scripts": {
 		"build": "turbo build",
-		"dev": "doppler run -- turbo dev",
-		"dev-storefront": "pnpm run --filter @tantovale/storefront dev",
-		"dev-server": "pnpm run --workspace=@tantovale/storefront dev",
+		"dev": "turbo dev",
+		"dev-storefront": "npm run --workspace=@tantovale/storefront dev",
+		"dev-server": "npm run --workspace=@tantovale/server dev",
 		"lint": "turbo lint",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"prepare": "husky"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"packageManager": "npm@10.9.2",
+	"workspaces": {
+		"packages": [
+			"apps/**",
+			"packages/**"
+		]
+	},
+	"dependencies": {
+		"dotenv": "^16.4.7",
+		"prettier-plugin-tailwindcss": "^0.6.10",
+		"zod": "^3.24.1"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^19.6.1",
@@ -17,13 +32,5 @@
 		"prettier": "^3.2.5",
 		"turbo": "^2.3.3",
 		"typescript": "5.5.4"
-	},
-	"packageManager": "pnpm@9.0.0",
-	"engines": {
-		"node": ">=18"
-	},
-	"dependencies": {
-		"prettier-plugin-tailwindcss": "^0.6.10",
-		"zod": "^3.24.1"
 	}
 }
