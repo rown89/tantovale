@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import productsSchema, { createProductSchema } from "./schema";
 
-const products = [
+const items = [
   {
     id: 1,
     title: "Product 1",
@@ -20,14 +20,14 @@ const products = [
   },
 ];
 
-export const productsRoute = new Hono()
+export const itemsRoute = new Hono()
   .get("/", (c) => {
-    return c.json({ products });
+    return c.json({ items });
   })
   .get("/:id{[0-9]+}", (c) => {
     const id = c.req.param("id");
 
-    const product = products.find((p) => p.id === Number(id));
+    const product = items.find((p) => p.id === Number(id));
 
     if (!product) {
       return c.notFound();
@@ -48,13 +48,13 @@ export const productsRoute = new Hono()
   .delete("/:id{[0-9]+}", (c) => {
     const id = c.req.param("id");
 
-    const product = products.find((p) => p.id === Number(id));
+    const product = items.find((p) => p.id === Number(id));
 
     if (!product) {
       return c.notFound();
     }
 
-    const deletedProduct = products.splice(products.indexOf(product), 1);
+    const deletedProduct = items.splice(items.indexOf(product), 1);
 
-    return c.json({ product: deletedProduct });
+    return c.json({ deletedProduct });
   });

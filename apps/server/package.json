@@ -2,15 +2,13 @@
   "name": "@tantovale/server",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "module": "esnext",
   "exports": {
     "./apiRoutes": "./src/app.ts"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "cd ../../ && turbo run build:hono --filter=@tantovale/server",
-    "build:hono": "tsx src/index.ts --outDir dist"
+    "hono:dev": "dotenv -e .env -e ../../packages/database/.env -- tsx watch src/index.ts --turbopack",
+    "hono:build": "dotenv -e .env -e ../../packages/database/.env -- tsx src/index.ts --outDir dist"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

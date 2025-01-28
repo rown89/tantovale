@@ -1,41 +1,41 @@
-import { pgTable, integer, varchar, text, timestamp, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, integer, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-export const users_ = pgTable('users', {
-	id: integer().primaryKey().generatedAlwaysAsIdentity(),
-	firstname: varchar({ length: 255 }).notNull(),
-	lastname: varchar({ length: 255 }).notNull(),
-	email: varchar({ length: 255 }).notNull().unique(),
-	password: varchar({ length: 255 }).notNull(),
+// Define the 'users' table
+export const users = pgTable('users', {
+	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
+	firstName: varchar('firstname', { length: 255 }).notNull(),
+	lastName: varchar('lastname', { length: 255 }).notNull(),
+	email: varchar('email', { length: 255 }).notNull().unique(),
+	password: varchar('password', { length: 255 }).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const usersRelations_ = relations(users_, ({ many }) => ({
-	articles: many(articles_),
+// Define the relations for the 'users' table
+export const usersRelations = relations(users, ({ many }) => ({
+	items: many(items),
 }));
 
-export const articles_ = pgTable(
-	'articles',
+// Define the 'items' table
+export const items = pgTable(
+	'items',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 		title: text('title').notNull(),
 		content: text('content').notNull(),
 		userId: integer('user_id')
 			.notNull()
-			.references(() => users_.id),
+			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		draft: boolean('draft').notNull().default(false),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(articles) => {
-		return {
-			articleIndex: index('name_index').on(articles.id),
-		};
-	},
+	(table) => [table.userId],
 );
 
-export const articlesRelations_ = relations(articles_, ({ one }) => ({
-	takeout: one(users_, {
-		fields: [articles_.userId],
-		references: [users_.id],
+// Define the relations for the 'items' table
+export const itemsRelations = relations(items, ({ one }) => ({
+	author: one(users, {
+		fields: [items.userId],
+		references: [users.id],
 	}),
 }));

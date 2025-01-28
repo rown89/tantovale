@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { setCookie } from "hono/cookie";
 import { sign } from "hono/jwt";
 import { HTTPException } from "hono/http-exception";
-import UserSchema from "../user/schema";
+import UserSchema from "../users/schema";
 import { env } from "hono/adapter";
 
 export const loginRoute = new Hono().post(

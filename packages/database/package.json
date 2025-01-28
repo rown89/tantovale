@@ -3,18 +3,21 @@
 	"private": true,
 	"version": "1.0.0",
 	"type": "module",
-	"main": "dist/index.js",
+	"module": "esnext",
 	"scripts": {
-		"dev": "tsx --watch",
 		"build": "tsx",
-		"db:check": "npm exec drizzle-kit check:pg",
-		"db:generate": "npm exec  drizzle-kit generate:pg",
+		"db:dev": "tsx --watch",
+		"db:check": "npx drizzle-kit check",
+		"db:studio": "npx drizzle-kit studio",
+		"db:generate": "npx drizzle-kit generate",
 		"db:migrate": "ts-node ./migrate.ts",
-		"db:push": "npm exec drizzle-kit push --config=./packages/database/drizzle.config.ts"
+		"db:push": "npx drizzle-kit push",
+		"db:build": "tsx src/index.ts"
 	},
-	"author": "",
-	"license": "ISC",
-	"description": "",
+	"exports": {
+		"./db": "./index.ts",
+		"./schema": "./schema.ts"
+	},
 	"dependencies": {
 		"drizzle-orm": "^0.39.0",
 		"pg": "^8.13.1",

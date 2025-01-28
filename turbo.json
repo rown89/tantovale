@@ -2,39 +2,60 @@
 	"$schema": "https://turbo.build/schema.json",
 	"ui": "tui",
 	"tasks": {
-		"build": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": [".next/**", "!.next/cache/**"]
+		"db:generate": {
+			"cache": false,
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"./packages/database/drizzle.config.ts",
+				"./packages/database/schema.ts"
+			],
+			"outputs": ["./drizzle/**"],
+			"env": ["DATABASE_URL"]
 		},
-		"build:next": {
+		"db:migrate": {
+			"dependsOn": ["db:generate"],
+			"outputs": ["./drizzle/migrations/**"],
+			"cache": false,
+			"env": ["DATABASE_URL"]
+		},
+		"db:push": {
+			"dependsOn": ["db:generate"],
+			"cache": false,
+			"env": ["DATABASE_URL"]
+		},
+		"db:check": {
+			"dependsOn": ["db:generate"],
+			"cache": false,
+			"env": ["DATABASE_URL"]
+		},
+		"build": {
+			"dependsOn": ["^build", "db:generate"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [".next/**", "!.next/cache/**", ".vercel/output/**"]
+		},
+		"hono:dev": {
+			"dependsOn": ["db:push"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**"],
+			"env": ["DATABASE_URL"],
+			"cache": false,
+			"persistent": true
+		},
+		"hono:build": {
+			"dependsOn": ["db:push"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**"]
+		},
+		"next:build": {
 			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
-		},
-		"build:hono": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": ["dist/**"]
 		},
 		"lint": {
 			"dependsOn": ["^lint"]
 		},
 		"check-types": {
 			"dependsOn": ["^check-types"]
-		},
-		"dev": {
-			"cache": false,
-			"persistent": true
-		},
-		"db:check": {
-			"cache": false
-		},
-		"db:generate": {
-			"cache": false
-		},
-		"db:migrate": {
-			"cache": false
 		}
 	}
 }

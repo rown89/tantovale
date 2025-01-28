@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --turbopack --port 3000",
-    "build": "cd ../../ && turbo run build:next --filter=@tantovale/storefront",
-    "build:next": "next build",
+    "next:dev": "next dev --turbopack --port 3000",
+    "next:build": "next build",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
     "check-types": "tsc --noEmit"

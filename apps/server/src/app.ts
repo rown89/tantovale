@@ -1,22 +1,19 @@
 import { Hono } from "hono";
-import type { JwtVariables } from "hono/jwt";
 import { bearerAuth } from "hono/bearer-auth";
 import { hc } from "hono/client";
 import { logger } from "hono/logger";
-import { productsRoute } from "./routes/products";
 import { getCookie } from "hono/cookie";
-import { loginRoute } from "./routes/login";
+import type { JwtVariables } from "hono/jwt";
+
+import { itemsRoute, loginRoute, signupRoute } from "./routes";
+
+import "dotenv/config";
 
 type Variables = JwtVariables;
 
 const app = new Hono<{ Variables: Variables }>();
 
 app.use("*", logger());
-
-const apiRoutes = app
-  .basePath("/server")
-  .route("/products", productsRoute)
-  .route("/login", loginRoute);
 
 app.use(
   "/auth/*",
@@ -26,6 +23,12 @@ app.use(
     },
   }),
 );
+
+const apiRoutes = app
+  .basePath("/server")
+  .route("/login", loginRoute)
+  .route("/signup", signupRoute)
+  .route("/items", itemsRoute);
 
 export const client = hc<typeof apiRoutes>("/");
 
