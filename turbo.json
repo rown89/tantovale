@@ -15,18 +15,15 @@
 		"db:migrate": {
 			"dependsOn": ["db:generate"],
 			"outputs": ["./drizzle/migrations/**"],
-			"cache": false,
-			"env": ["DATABASE_URL"]
+			"cache": false
 		},
 		"db:push": {
 			"dependsOn": ["db:generate"],
-			"cache": false,
-			"env": ["DATABASE_URL"]
+			"cache": false
 		},
 		"db:check": {
 			"dependsOn": ["db:generate"],
-			"cache": false,
-			"env": ["DATABASE_URL"]
+			"cache": false
 		},
 		"build": {
 			"dependsOn": ["^build", "db:generate"],
@@ -37,7 +34,6 @@
 			"dependsOn": ["db:push"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": ["dist/**"],
-			"env": ["DATABASE_URL"],
 			"cache": false,
 			"persistent": true
 		},

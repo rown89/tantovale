@@ -9,6 +9,6 @@ const UserSchema = z.object({
 
 const createUserSchema = UserSchema;
 
-export default UserSchema;
+export { UserSchema };
 
 export { createUserSchema };

@@ -8,6 +8,7 @@ import type { JwtVariables } from "hono/jwt";
 import { itemsRoute, loginRoute, signupRoute } from "./routes";
 
 import "dotenv/config";
+import { HTTPException } from "hono/http-exception";
 
 type Variables = JwtVariables;
 
