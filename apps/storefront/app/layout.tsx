@@ -1,7 +1,8 @@
-import "@tantovale/ui/css";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import QueryProvider from "./QueryProvider";
+
+import "./globals.css";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",

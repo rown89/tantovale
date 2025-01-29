@@ -1,5 +1,2 @@
-import config from "@tantovale/ui/postcss.config";
-
-console.log("postcss loaded", config);
-
+const config = { plugins: { "@tailwindcss/postcss": {}, autoprefixer: {} } };
 export default config;

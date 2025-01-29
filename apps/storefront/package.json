@@ -11,17 +11,26 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@tantovale/server": "*",
-    "@tantovale/ui": "*",
+    "@icons-pack/react-simple-icons": "^11.2.0",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@tailwindcss/postcss": "^4.0.0",
     "@tanstack/react-query": "^5.64.2",
+    "@tantovale/server": "*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.474.0",
     "next": "^15.1.0",
+    "postcss": "^8.5.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^4.0.0",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@tanstack/eslint-plugin-query": "^5.64.2",
     "@tantovale/eslint-config": "*",
     "@tantovale/typescript-config": "*",
-    "@tanstack/eslint-plugin-query": "^5.64.2",
     "@types/node": "^20",
     "@types/react": "18.3.1",
     "@types/react-dom": "18.3.0",
