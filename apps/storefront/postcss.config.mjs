@@ -1,2 +1,1 @@
-const config = { plugins: { "@tailwindcss/postcss": {}, autoprefixer: {} } };
-export default config;
+export { default } from "@tantovale/ui/postcss.config";

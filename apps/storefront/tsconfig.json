@@ -3,7 +3,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@tantovale/ui/*": ["../../packages/ui/src/*"]
     },
     "plugins": [
       {
@@ -17,12 +18,7 @@
     "**/*.tsx",
     "next-env.d.ts",
     "next.config.js",
-    ".next/types/**/*.ts",
-    "globals.css",
-    "tailwind.config.js",
-    "postcss.config.mjs",
-    "eslint.config.mjs",
-    "prettier.config.mjs"
+    ".next/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

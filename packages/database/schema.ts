@@ -1,5 +1,15 @@
-import { pgTable, integer, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, integer, varchar, text, timestamp, boolean, uuid } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+
+export const refreshTokens = pgTable('refresh_tokens', {
+	id: uuid('id')
+		.default(sql`gen_random_uuid()`)
+		.primaryKey(),
+	email: text('email').notNull(),
+	token: text('token').notNull().unique(),
+	expiresAt: timestamp('expires_at').notNull(),
+});
 
 // Define the 'users' table
 export const users = pgTable('users', {

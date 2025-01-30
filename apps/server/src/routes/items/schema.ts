@@ -1,13 +1,13 @@
 import * as z from "zod";
 
-const productsSchema = z.object({
+const itemsSchema = z.object({
   id: z.number().positive().min(1),
   title: z.string().min(10),
   price: z.number().positive(),
 });
 
-const createProductSchema = productsSchema.omit({ id: true });
+const createItemSchema = itemsSchema.omit({ id: true });
 
-export default productsSchema;
+export default itemsSchema;
 
-export { createProductSchema };
+export { createItemSchema };

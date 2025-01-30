@@ -8,7 +8,9 @@ import type { JwtVariables } from "hono/jwt";
 import { itemsRoute, loginRoute, signupRoute } from "./routes";
 
 import "dotenv/config";
-import { HTTPException } from "hono/http-exception";
+import { verifyRoute } from "./routes/verify";
+import { refreshRoute } from "./routes/refresh";
+import { logoutRoute } from "./routes/logout";
 
 type Variables = JwtVariables;
 
@@ -27,8 +29,11 @@ app.use(
 
 const apiRoutes = app
   .basePath("/server")
-  .route("/login", loginRoute)
   .route("/signup", signupRoute)
+  .route("/login", loginRoute)
+  .route("/logout", logoutRoute)
+  .route("/verify", verifyRoute)
+  .route("/refresh", refreshRoute)
   .route("/items", itemsRoute);
 
 export const client = hc<typeof apiRoutes>("/");

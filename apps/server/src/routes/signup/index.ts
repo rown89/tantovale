@@ -6,36 +6,44 @@ import { db } from "@tantovale/database/db";
 import { users } from "@tantovale/database/schema";
 
 import "dotenv/config";
-import {
-  deleteCookie,
-  emailExist,
-  errorWithStatus,
-  generateAndSetToken,
-  hashPassword,
-} from "../../lib/utils";
+import { deleteCookie, checkEmail } from "../../lib/utils";
 import { env } from "hono/adapter";
+import { generateAndSetTokens } from "../../lib/generateTokens";
+import { hashPassword } from "../../lib/password";
 
 export const signupRoute = new Hono().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
-    const { SERVER_SECRET } = env<{ SERVER_SECRET: string }>(c);
+    const {
+      ACCESS_TOKEN_SECRET,
+      REFRESH_TOKEN_SECRET,
+      COOKIE_SECRET,
+      SERVER_HOSTNAME,
+    } = env<{
+      ACCESS_TOKEN_SECRET: string;
+      REFRESH_TOKEN_SECRET: string;
+      COOKIE_SECRET: string;
+      SERVER_HOSTNAME: string;
+    }>(c);
 
     try {
       const values = await c.req.json();
       const { email, password } = values;
 
+      const emailAlreadyExist = await checkEmail(email);
+
       // Check if email already exists
-      if (await emailExist(email)) {
-        throw new HTTPException(409, {
-          message: "Email already exists",
-        });
+      if (emailAlreadyExist) {
+        return c.json({ message: "Email already exists" }, 409);
       }
+
+      const hashedPassword = await hashPassword(password);
 
       // Create new user
       const results = await db
         .insert(users)
-        .values({ ...values, password: await hashPassword(password) })
+        .values({ ...values, password: hashedPassword })
         .returning();
 
       if (!results || results.length === 0) {
@@ -44,24 +52,26 @@ export const signupRoute = new Hono().post(
         });
       }
 
-      const { token, payload } = await generateAndSetToken(
-        c,
-        email,
-        SERVER_SECRET,
-      );
+      const { token, refreshToken, accessTokenPayload, refreshTokenPayload } =
+        await generateAndSetTokens({
+          c,
+          id: results?.[0]?.id!,
+          email,
+          token_secret: ACCESS_TOKEN_SECRET,
+          refresh_token_secret: REFRESH_TOKEN_SECRET,
+          cookie_secret: COOKIE_SECRET,
+          hostname: SERVER_HOSTNAME,
+        });
 
       return c.json({
         message: "Successful Signup",
         token,
-        payload,
+        accessTokenPayload,
       });
     } catch (error) {
+      console.log(error);
       // Clear any existing token on error
       deleteCookie(c, "token");
-
-      if (errorWithStatus(error, 409)) {
-        return c.json({ message: "Email already exists", error }, 409);
-      }
 
       return c.json(
         {

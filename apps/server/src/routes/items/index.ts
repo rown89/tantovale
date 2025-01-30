@@ -1,21 +1,21 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import productsSchema, { createProductSchema } from "./schema";
+import itemSchema, { createItemSchema } from "./schema";
 
 const items = [
   {
     id: 1,
-    title: "Product 1",
+    title: "item 1",
     price: 100,
   },
   {
     id: 2,
-    title: "Product 2",
+    title: "item 2",
     price: 200,
   },
   {
     id: 3,
-    title: "Product 3",
+    title: "item 3",
     price: 300,
   },
 ];
@@ -27,20 +27,20 @@ export const itemsRoute = new Hono()
   .get("/:id{[0-9]+}", (c) => {
     const id = c.req.param("id");
 
-    const product = items.find((p) => p.id === Number(id));
+    const item = items.find((p) => p.id === Number(id));
 
-    if (!product) {
+    if (!item) {
       return c.notFound();
     }
 
-    return c.json({ product });
+    return c.json({ item });
   })
-  .post("/", zValidator("json", createProductSchema), async (c) => {
+  .post("/", zValidator("json", createItemSchema), async (c) => {
     const data = await c.req.valid("json");
 
     return c.json(data);
   })
-  .put("/", zValidator("json", productsSchema), async (c) => {
+  .put("/", zValidator("json", itemSchema), async (c) => {
     const data = await c.req.valid("json");
 
     return c.json(data);
@@ -48,13 +48,13 @@ export const itemsRoute = new Hono()
   .delete("/:id{[0-9]+}", (c) => {
     const id = c.req.param("id");
 
-    const product = items.find((p) => p.id === Number(id));
+    const item = items.find((p) => p.id === Number(id));
 
-    if (!product) {
+    if (!item) {
       return c.notFound();
     }
 
-    const deletedProduct = items.splice(items.indexOf(product), 1);
+    const deletedItem = items.splice(items.indexOf(item), 1);
 
-    return c.json({ deletedProduct });
+    return c.json({ deletedItem });
   });
