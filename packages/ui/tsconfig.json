@@ -1,11 +1,12 @@
 {
-	"extends": "@tantovale/typescript-config/react-library.json",
+	"extends": "@workspace/typescript-config/react-library.json",
 	"compilerOptions": {
-		"module": "ESNext",
-		"moduleResolution": "bundler",
+		"module": "NodeNext",
+		"moduleResolution": "nodenext",
 		"baseUrl": ".",
 		"paths": {
-			"@tantovale/ui/*": ["./src/*"]
+			"@/*": ["./src/*"],
+			"@workspace/ui/*": ["../../packages/ui/src/*"]
 		}
 	},
 	"include": ["src"],

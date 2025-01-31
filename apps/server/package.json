@@ -1,5 +1,5 @@
 {
-  "name": "@tantovale/server",
+  "name": "@workspace/server",
   "version": "1.0.0",
   "private": true,
   "module": "esnext",
@@ -18,8 +18,8 @@
     "hono": "^4.6.17"
   },
   "devDependencies": {
-    "@tantovale/eslint-config": "*",
-    "@tantovale/typescript-config": "*",
+    "@workspace/eslint-config": "*",
+    "@workspace/typescript-config": "*",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.11.17",
     "@types/pg": "^8.11.11",

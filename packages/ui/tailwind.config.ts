@@ -4,13 +4,13 @@ import tailwindAnimate from 'tailwindcss-animate';
 const config = {
 	darkMode: ['class', '[data-theme="dark"]'],
 	content: [
-		'index.html',
 		'src/**/*.{ts,tsx}',
-		'app/**/*.{ts,tsx}',
 		'components/**/*.{ts,tsx}',
+		'components/ui/**/*.{ts,tsx}',
 		'lib/**/*.{ts,tsx}',
 		'../../apps/**/*.{ts,tsx}',
 		'../../packages/ui/src/components/**/*.{ts,tsx}',
+		'../../packages/ui/src/components/ui/**/*.{ts,tsx}',
 		'../../packages/ui/src/lib/**/*.{ts,tsx}',
 	],
 	theme: {
@@ -49,6 +49,28 @@ const config = {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))',
 				},
+			},
+			keyframes: {
+				'accordion-down': {
+					from: {
+						height: '0',
+					},
+					to: {
+						height: 'var(--radix-accordion-content-height)',
+					},
+				},
+				'accordion-up': {
+					from: {
+						height: 'var(--radix-accordion-content-height)',
+					},
+					to: {
+						height: '0',
+					},
+				},
+			},
+			animation: {
+				'accordion-down': 'accordion-down 0.2s ease-out',
+				'accordion-up': 'accordion-up 0.2s ease-out',
 			},
 		},
 	},

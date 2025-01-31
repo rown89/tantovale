@@ -1,11 +1,11 @@
 {
-	"name": "tantovale",
+	"name": "workspace",
 	"private": true,
 	"scripts": {
 		"build": "turbo build",
 		"dev": "turbo dev",
-		"dev-storefront": "npm run --workspace=@tantovale/storefront dev",
-		"dev-server": "npm run --workspace=@tantovale/server dev",
+		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
+		"dev-server": "npm run --workspace=@workspace/server dev",
 		"lint": "turbo lint",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"prepare": "husky"
@@ -16,12 +16,13 @@
 	"packageManager": "npm@10.9.2",
 	"workspaces": {
 		"packages": [
-			"apps/**",
-			"packages/**"
+			"apps/*",
+			"packages/*"
 		]
 	},
 	"dependencies": {
 		"dotenv": "^16.4.7",
+		"drizzle-orm": "^0.39.1",
 		"prettier-plugin-tailwindcss": "^0.6.10",
 		"zod": "^3.24.1"
 	},

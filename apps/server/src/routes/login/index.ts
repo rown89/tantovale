@@ -1,7 +1,7 @@
 // src/routes/login.ts
 import { Hono } from "hono";
-import { db } from "@tantovale/database/db";
-import { users, refreshTokens } from "@tantovale/database/schema";
+import { db } from "@workspace/database/db";
+import { users, refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "../../lib/password";
 import { zValidator } from "@hono/zod-validator";

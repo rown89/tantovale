@@ -1,5 +1,5 @@
 {
-	"name": "@tantovale/eslint-config",
+	"name": "@workspace/eslint-config",
 	"version": "1.0.0",
 	"type": "module",
 	"private": true,

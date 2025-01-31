@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { deleteCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
-import { db } from "@tantovale/database/db";
-import { refreshTokens } from "@tantovale/database/schema";
+import { db } from "@workspace/database/db";
+import { refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 
 export const logoutRoute = new Hono().post("/", async (c) => {

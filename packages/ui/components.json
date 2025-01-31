@@ -7,12 +7,14 @@
 		"config": "tailwind.config.ts",
 		"css": "src/styles/globals.css",
 		"baseColor": "zinc",
-		"cssVariables": true,
-		"prefix": "ui-"
+		"cssVariables": true
 	},
 	"iconLibrary": "lucide",
 	"aliases": {
-		"components": "@tantovale/ui/components",
-		"utils": "@tantovale/ui/lib/utils"
+		"components": "@workspace/ui/components/ui",
+		"utils": "@workspace/ui/lib/utils",
+		"hooks": "@workspace/ui/hooks",
+		"lib": "@workspace/ui/lib",
+		"ui": "@workspace/ui/components/ui"
 	}
 }

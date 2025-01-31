@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { HTTPException } from "hono/http-exception";
 import { UserSchema } from "../users/schema";
-import { db } from "@tantovale/database/db";
-import { users } from "@tantovale/database/schema";
+import { db } from "@workspace/database/db";
+import { users } from "@workspace/database/schema";
 
 import "dotenv/config";
 import { deleteCookie, checkEmail } from "../../lib/utils";

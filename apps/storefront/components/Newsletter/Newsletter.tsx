@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@tantovale/ui/components/button";
-import { Input } from "@tantovale/ui/components/input";
+import { Button } from "@workspace/ui/components/ui/button";
+import { Input } from "@workspace/ui/components/ui/input";
 
 export default function Newsletter() {
   const [email, setEmail] = useState("");

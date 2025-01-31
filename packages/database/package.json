@@ -1,5 +1,5 @@
 {
-	"name": "@tantovale/database",
+	"name": "@workspace/database",
 	"private": true,
 	"version": "1.0.0",
 	"type": "module",
@@ -24,8 +24,8 @@
 		"postgres": "^3.4.5"
 	},
 	"devDependencies": {
-		"@tantovale/eslint-config": "*",
-		"@tantovale/typescript-config": "*",
+		"@workspace/eslint-config": "*",
+		"@workspace/typescript-config": "*",
 		"drizzle-kit": "^0.30.3"
 	}
 }

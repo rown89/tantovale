@@ -22,7 +22,7 @@ RUN npm ci
 
 # Build the application
 COPY . .
-RUN npx turbo run build:next --filter=@tantovale/storefront
+RUN npx turbo run build:next --filter=@workspace/storefront
 
 # Production stage
 FROM base AS runner

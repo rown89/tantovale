@@ -1,5 +1,5 @@
-import { db } from "@tantovale/database/db";
-import { users } from "@tantovale/database/schema";
+import { db } from "@workspace/database/db";
+import { users } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 

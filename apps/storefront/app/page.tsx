@@ -1,5 +1,11 @@
 import Newsletter from "@/components/Newsletter/Newsletter";
-import { Button } from "@tantovale/ui/components/button";
+import { Button } from "@workspace/ui/components/ui/button";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@workspace/ui/components/ui/accordion";
 import {
   CheckCircle2,
   Circle,
@@ -15,7 +21,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@tantovale/ui/components/card";
+} from "@workspace/ui/components/ui/card";
 
 const features = [
   {
@@ -45,6 +51,28 @@ const timelineItems = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-white text-black">
+      <Accordion type="single" collapsible className="w-full">
+        <AccordionItem value="item-1">
+          <AccordionTrigger>Is it accessible?</AccordionTrigger>
+          <AccordionContent>
+            Yes. It adheres to the WAI-ARIA design pattern.
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="item-2">
+          <AccordionTrigger>Is it styled?</AccordionTrigger>
+          <AccordionContent>
+            Yes. It comes with default styles that matches the other
+            components&apos; aesthetic.
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="item-3">
+          <AccordionTrigger>Is it animated?</AccordionTrigger>
+          <AccordionContent>
+            Yes. It's animated by default, but you can disable it if you prefer.
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+
       <section className="py-20 px-4 text-center">
         <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-fade-in-down">
           Open Source Marketplace
@@ -73,27 +101,6 @@ export default function Home() {
           </a>
         </div>
       </section>
-      {/* Features */}
-      <section className="py-20 px-4 bg-gray-100">
-        <h2 className="text-4xl font-bold text-center mb-12">Why Choose Us?</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {features.map((feature, index) => (
-            <Card key={index} className="bg-white border-gray-200">
-              <CardHeader>
-                <CardTitle className="flex items-center text-2xl">
-                  {feature.icon}
-                  <span className="ml-2">{feature.title}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-gray-600">
-                  {feature.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
       {/* Timeline */}
       <section className="py-20 px-4">
         <h2 className="text-4xl font-bold text-center mb-12">Our Roadmap</h2>
@@ -118,6 +125,8 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* Newsletter */}
       <section className="py-20 px-4 bg-gray-100">
         <Newsletter />
       </section>

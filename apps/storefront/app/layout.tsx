@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import QueryProvider from "./QueryProvider";
-
-import "@tantovale/ui/globals.css";
+import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 import { Github, Linkedin } from "lucide-react";
+
+import "@workspace/ui/globals.css";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -27,7 +28,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </QueryProvider>
+
         <footer className="py-8 px-4 border-t border-gray-200">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center">
             <p className="text-sm text-gray-600 mb-4 sm:mb-0">

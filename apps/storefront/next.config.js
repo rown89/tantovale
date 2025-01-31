@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@tantovale/ui"],
+  transpilePackages: ["@workspace/ui"],
   reactStrictMode: true,
   output: "standalone",
   async headers() {

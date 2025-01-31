@@ -22,7 +22,7 @@ RUN npm ci
 
 # Build the Hono.js application
 COPY . .
-RUN npx turbo run build:hono --filter=@tantovale/server
+RUN npx turbo run build:hono --filter=@workspace/server
 
 # Production stage
 FROM base AS runner
