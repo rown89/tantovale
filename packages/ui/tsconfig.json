@@ -1,8 +1,6 @@
 {
 	"extends": "@workspace/typescript-config/react-library.json",
 	"compilerOptions": {
-		"module": "NodeNext",
-		"moduleResolution": "nodenext",
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"],
@@ -10,5 +8,5 @@
 		}
 	},
 	"include": ["src"],
-	"exclude": ["node_modules"]
+	"exclude": ["node_modules", "dist"]
 }

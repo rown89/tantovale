@@ -1,45 +1,7 @@
 import Newsletter from "@/components/Newsletter/Newsletter";
-import { Button } from "@workspace/ui/components/ui/button";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@workspace/ui/components/ui/accordion";
-import {
-  CheckCircle2,
-  Circle,
-  Code,
-  Github,
-  Linkedin,
-  Users,
-  Zap,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/ui/card";
+import { Button } from "@workspace/ui/components/button";
 
-const features = [
-  {
-    icon: <Code className="h-8 w-8 text-black" />,
-    title: "Open Source",
-    description: "Fully transparent and community-driven development process",
-  },
-  {
-    icon: <Users className="h-8 w-8 text-black" />,
-    title: "Community-Powered",
-    description: "Built by developers, for developers",
-  },
-  {
-    icon: <Zap className="h-8 w-8 text-black" />,
-    title: "Lightning Fast",
-    description: "Optimized for performance and scalability",
-  },
-];
+import { CheckCircle2, Circle, Linkedin } from "lucide-react";
 
 const timelineItems = [
   { title: "Project Inception", date: "January 2024", completed: true },
@@ -51,28 +13,6 @@ const timelineItems = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-white text-black">
-      <Accordion type="single" collapsible className="w-full">
-        <AccordionItem value="item-1">
-          <AccordionTrigger>Is it accessible?</AccordionTrigger>
-          <AccordionContent>
-            Yes. It adheres to the WAI-ARIA design pattern.
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="item-2">
-          <AccordionTrigger>Is it styled?</AccordionTrigger>
-          <AccordionContent>
-            Yes. It comes with default styles that matches the other
-            components&apos; aesthetic.
-          </AccordionContent>
-        </AccordionItem>
-        <AccordionItem value="item-3">
-          <AccordionTrigger>Is it animated?</AccordionTrigger>
-          <AccordionContent>
-            Yes. It's animated by default, but you can disable it if you prefer.
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-
       <section className="py-20 px-4 text-center">
         <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-fade-in-down">
           Open Source Marketplace
@@ -86,9 +26,9 @@ export default function Home() {
           </Button>
           <Button
             variant="outline"
-            className="border-black text-black hover:bg-gray-100 hover:cursor-pointer"
+            className="bg-black text-white hover:bg-gray-800 hover:cursor-pointer"
           >
-            <Github className="mr-2 h-4 w-4" /> Star on GitHub
+            Star on GitHub
           </Button>
         </div>
         <div className="mt-12 flex justify-center items-center space-x-4 text-sm">
