@@ -1,6 +1,5 @@
 import { Lato, Geist_Mono } from "next/font/google";
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import QueryProvider from "./QueryProvider";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 import { Github, Linkedin } from "lucide-react";

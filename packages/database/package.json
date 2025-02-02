@@ -3,14 +3,13 @@
 	"private": true,
 	"version": "1.0.0",
 	"type": "module",
-	"module": "esnext",
 	"scripts": {
 		"build": "tsx",
 		"db:dev": "tsx --watch",
 		"db:check": "npx drizzle-kit check",
 		"db:studio": "npx drizzle-kit studio",
 		"db:generate": "npx drizzle-kit generate",
-		"db:migrate": "ts-node ./migrate.ts",
+		"db:migrate": "tsx migrate.ts",
 		"db:push": "npx drizzle-kit push",
 		"db:build": "tsx src/index.ts"
 	},
