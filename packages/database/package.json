@@ -15,7 +15,7 @@
 	},
 	"exports": {
 		"./db": "./index.ts",
-		"./schema": "./schema.ts"
+		"./schema": "./schema/schema.ts"
 	},
 	"dependencies": {
 		"drizzle-orm": "^0.39.0",

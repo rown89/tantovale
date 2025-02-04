@@ -4,6 +4,11 @@
     "outDir": "./dist",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@workspace/mailer/*": ["../../packages/mailer/src/*"]
+    },
     "verbatimModuleSyntax": true,
     "experimentalDecorators": true,
     "types": ["node"],

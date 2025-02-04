@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, integer, text, timestamp, boolean, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, boolean, numeric, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conditionEnum, deliveryMethodEnum, statusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
@@ -25,7 +25,11 @@ export const items = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(table) => [table.userId],
+	(table) => [
+		index('user_id_idx').on(table.userId),
+		index('title_idx').on(table.title),
+		index('subcategory_id_idx').on(table.subcategoryId),
+	],
 );
 
 export const itemsRelations = relations(items, ({ one, many }) => ({

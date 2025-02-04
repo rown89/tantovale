@@ -11,7 +11,7 @@ import { generateAndSetTokens } from "../../lib/generateTokens";
 
 export const loginRoute = new Hono().post(
   "/",
-  zValidator("json", UserSchema.omit({ firstName: true, lastName: true })),
+  zValidator("json", UserSchema),
   async (c) => {
     const {
       ACCESS_TOKEN_SECRET,
@@ -27,16 +27,16 @@ export const loginRoute = new Hono().post(
 
     const { email, password } = await c.req.json();
 
-    // lookup username in database
+    // lookup email in database
     const userFromDb = await db
       .select()
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
 
-    // handle username not found
-    if (userFromDb.length === 0) {
-      return c.json({ message: "invalid username or password" });
+    // handle email not found
+    if (!userFromDb.length) {
+      return c.json({ message: "invalid email or password" });
     }
 
     // handle invalid password
@@ -60,14 +60,17 @@ export const loginRoute = new Hono().post(
     });
 
     // Store refresh token in DB
-    try {
-      await db.insert(refreshTokens).values({
+    const newRefreshToken = await db
+      .insert(refreshTokens)
+      .values({
         email,
         token: refreshToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days expiry
-      });
-    } catch (error) {
-      console.error("Error storing refresh token in DB:", error);
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      })
+      .returning();
+
+    if (!newRefreshToken || !newRefreshToken.length) {
+      console.error("Error storing refresh token in DB:", refreshToken);
       return c.json({ message: "An error occurred during login" }, 500);
     }
 

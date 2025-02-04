@@ -4,13 +4,13 @@ import { hc } from "hono/client";
 import { logger } from "hono/logger";
 import { getCookie } from "hono/cookie";
 import type { JwtVariables } from "hono/jwt";
-
 import { itemsRoute, loginRoute, signupRoute } from "./routes";
 
 import "dotenv/config";
 import { verifyRoute } from "./routes/verify";
 import { refreshRoute } from "./routes/refresh";
 import { logoutRoute } from "./routes/logout";
+import { docRoute } from "./routes/doc";
 
 type Variables = JwtVariables;
 
@@ -29,6 +29,7 @@ app.use(
 
 const apiRoutes = app
   .basePath("/server")
+  .route("/doc", docRoute)
   .route("/signup", signupRoute)
   .route("/login", loginRoute)
   .route("/logout", logoutRoute)

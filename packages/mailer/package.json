@@ -1,0 +1,15 @@
+{
+	"name": "@workspace/mailer",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "dotenv -e .env.local tsx --watch",
+		"staging": "dotenv -e .env.staging tsx --watch"
+	},
+	"exports": {
+		"verify-email": "./verify-email.ts"
+	},
+	"dependencies": {
+		"nodemailer": "^6.10.0"
+	}
+}

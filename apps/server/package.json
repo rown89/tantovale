@@ -7,20 +7,22 @@
     "./apiRoutes": "./src/app.ts"
   },
   "scripts": {
-    "hono:dev": "dotenv -e .env -e ../../packages/database/.env -- tsx watch src/index.ts --turbopack",
-    "hono:build": "dotenv -e .env -e ../../packages/database/.env -- tsx src/index.ts --outDir dist"
+    "hono:dev": "dotenv -e .env.local -e ../../packages/database/.env.local -- tsx watch src/index.ts --turbopack",
+    "hono:staging": "dotenv -e .env.staging -e ../../packages/database/.env.staing -- tsx watch src/index.ts --turbopack",
+    "hono:build": "dotenv -e .env.production -e ../../packages/database/.env.production -- tsx src/index.ts --outDir dist"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@hono/swagger-ui": "^0.5.0",
     "@hono/zod-validator": "^0.4.2",
     "@node-rs/argon2": "^2.0.2",
-    "bcrypt": "^5.1.1",
-    "hono": "^4.6.17"
+    "hono": "^4.6.17",
+    "nodemailer": "^6.10.0"
   },
   "devDependencies": {
     "@workspace/eslint-config": "*",
     "@workspace/typescript-config": "*",
-    "@types/bcrypt": "^5.0.2",
+    "@workspace/mailer": "*",
     "@types/node": "^20.11.17",
     "@types/pg": "^8.11.11",
     "tsx": "^4.19.2"

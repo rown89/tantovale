@@ -1,30 +1,26 @@
 import { Hono } from "hono";
+import { sign } from "hono/jwt";
 import { zValidator } from "@hono/zod-validator";
+import { env } from "hono/adapter";
 import { HTTPException } from "hono/http-exception";
-import { UserSchema } from "../users/schema";
+import { deleteCookie, checkEmail } from "../../lib/utils";
+import { generateToken } from "../../lib/generateTokens";
+import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
+import { UserSchema } from "../users/schema";
 import { users } from "@workspace/database/schema";
+import { sendVerifyEmail } from "@workspace/mailer/verify-email";
 
 import "dotenv/config";
-import { deleteCookie, checkEmail } from "../../lib/utils";
-import { env } from "hono/adapter";
-import { generateAndSetTokens } from "../../lib/generateTokens";
-import { hashPassword } from "../../lib/password";
 
 export const signupRoute = new Hono().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
-    const {
-      ACCESS_TOKEN_SECRET,
-      REFRESH_TOKEN_SECRET,
-      COOKIE_SECRET,
-      SERVER_HOSTNAME,
-    } = env<{
+    const { ACCESS_TOKEN_SECRET, SERVER_HOSTNAME, SERVER_PORT } = env<{
       ACCESS_TOKEN_SECRET: string;
-      REFRESH_TOKEN_SECRET: string;
-      COOKIE_SECRET: string;
       SERVER_HOSTNAME: string;
+      SERVER_PORT: string;
     }>(c);
 
     try {
@@ -46,32 +42,36 @@ export const signupRoute = new Hono().post(
         .values({ ...values, password: hashedPassword })
         .returning();
 
-      if (!results || results.length === 0) {
-        throw new HTTPException(400, {
-          message: "Signup procedure can't add user",
-        });
+      if (!results || !results.length) {
+        return c.json(
+          {
+            message: "Signup procedure can't create user",
+          },
+          500,
+        );
       }
 
-      const { token, refreshToken, accessTokenPayload, refreshTokenPayload } =
-        await generateAndSetTokens({
-          c,
-          id: results?.[0]?.id!,
-          email,
-          token_secret: ACCESS_TOKEN_SECRET,
-          refresh_token_secret: REFRESH_TOKEN_SECRET,
-          cookie_secret: COOKIE_SECRET,
-          hostname: SERVER_HOSTNAME,
-        });
+      // Generate JWT token for email verification
+      const tmp_token_payload = {
+        id: Number(results?.[0]?.id),
+        email,
+        type: "email_verification",
+        expiresIn: new Date(Date.now() + 60 * 60 * 1000), // 60min
+      };
+
+      const token = await sign(tmp_token_payload, ACCESS_TOKEN_SECRET);
+
+      // Send verification email
+      const verificationLink = `https://${SERVER_HOSTNAME}:${SERVER_PORT}/verify/email?token=${token}`;
+      await sendVerifyEmail(email, verificationLink);
 
       return c.json({
         message: "Successful Signup",
-        token,
-        accessTokenPayload,
       });
     } catch (error) {
       console.log(error);
-      // Clear any existing token on error
-      deleteCookie(c, "token");
+
+      deleteCookie(c, "token"); // Clear any existing token on error
 
       return c.json(
         {
