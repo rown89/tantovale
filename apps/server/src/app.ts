@@ -4,16 +4,22 @@ import { hc } from "hono/client";
 import { logger } from "hono/logger";
 import { getCookie } from "hono/cookie";
 import type { JwtVariables } from "hono/jwt";
-import { itemsRoute, loginRoute, signupRoute } from "./routes";
+
+import {
+  itemsRoute,
+  loginRoute,
+  signupRoute,
+  verifyRoute,
+  refreshRoute,
+  logoutRoute,
+  docRoute,
+} from "./routes";
 
 import "dotenv/config";
-import { verifyRoute } from "./routes/verify";
-import { refreshRoute } from "./routes/refresh";
-import { logoutRoute } from "./routes/logout";
-import { docRoute } from "./routes/doc";
 
 type Variables = JwtVariables;
 
+const version = process.env.SERVER_VERSION;
 export const app = new Hono<{ Variables: Variables }>();
 
 app.use("*", logger());
@@ -27,7 +33,7 @@ app.use(
 );
 
 const apiRoutes = app
-  .basePath("/server")
+  .basePath(`/${version}`)
   .route("/doc", docRoute)
   .route("/signup", signupRoute)
   .route("/login", loginRoute)

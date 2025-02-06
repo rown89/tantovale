@@ -53,7 +53,7 @@ const nextConfig = {
     return [
       {
         source: "/server/:path*",
-        destination: `http://localhost:4000/server/:path*`,
+        destination: `http://localhost:4000/v1/:path*`,
       },
     ];
   },

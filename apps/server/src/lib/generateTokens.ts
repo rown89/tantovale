@@ -39,19 +39,7 @@ export async function generateAndSetTokens({
   refresh_token_secret,
   cookie_secret,
   hostname,
-  expiresIn = 60 * 60, // Default to 1 hour
 }: TokenOptions) {
-  const isProduction = process.env.NODE_ENV === "production";
-
-  const MAX_COOKIE_AGE = 30 * 24 * 60 * 60; // 30 days (2592000 seconds)
-
-  const secure = isProduction;
-  const domain = isProduction ? hostname : "localhost";
-  // Refresh token should never last longer than MAX_COOKIE_AGE
-  const maxAge = Math.min(expiresIn * 1000, MAX_COOKIE_AGE * 1000);
-  // Cookie will expire based on maxAge
-  const expires = new Date(Date.now() + maxAge);
-
   const accessTokenPayload = generateToken({
     id,
     email,
@@ -66,6 +54,51 @@ export async function generateAndSetTokens({
   const token = await sign(accessTokenPayload, token_secret);
   const refreshToken = await sign(refreshTokenPayload, refresh_token_secret);
 
+  await setSignedCookies({
+    c,
+    name: "auth_token",
+    token,
+    cookie_secret,
+    hostname,
+  });
+
+  await setSignedCookies({
+    c,
+    name: "refresh_token",
+    token: refreshToken,
+    cookie_secret,
+    hostname,
+  });
+
+  return { token, refreshToken, accessTokenPayload, refreshTokenPayload };
+}
+
+async function setSignedCookies({
+  c,
+  name,
+  token,
+  cookie_secret,
+  hostname,
+  expiresIn = 60 * 60, // Default to 1 hour
+}: {
+  c: Context;
+  name: string;
+  token: string;
+  cookie_secret: string;
+  hostname: string;
+  expiresIn?: number;
+}) {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  const MAX_COOKIE_AGE = 30 * 24 * 60 * 60; // 30 days (2592000 seconds)
+
+  const secure = isProduction;
+  const domain = isProduction ? hostname : "localhost";
+  // Refresh token should never last longer than MAX_COOKIE_AGE
+  const maxAge = Math.min(expiresIn * 1000, MAX_COOKIE_AGE * 1000);
+  // Cookie will expire based on maxAge
+  const expires = new Date(Date.now() + maxAge);
+
   const cookiesOptions: CookieOptions = {
     path: "/",
     secure,
@@ -76,12 +109,7 @@ export async function generateAndSetTokens({
     expires,
   };
 
-  await setSignedCookie(c, "auth_token", token, cookie_secret, {
+  await setSignedCookie(c, name, token, cookie_secret, {
     ...cookiesOptions,
   });
-  await setSignedCookie(c, "refresh_token", refreshToken, cookie_secret, {
-    ...cookiesOptions,
-  });
-
-  return { token, refreshToken, accessTokenPayload, refreshTokenPayload };
 }

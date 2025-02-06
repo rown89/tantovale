@@ -20,8 +20,6 @@ async function main() {
 		console.log('Database connected successfully');
 	} catch (error) {
 		console.error('Database connection error:', error);
-	} finally {
-		await client.end();
 	}
 }
 

@@ -7,10 +7,9 @@
     "./apiRoutes": "./src/app.ts"
   },
   "scripts": {
-    "hono:dev": "dotenv -e .env.local -e ../../packages/database/.env.local -- tsx watch src/index.ts --turbopack",
-    "hono:staging": "dotenv -e .env.staging -e ../../packages/database/.env.staing -- tsx watch src/index.ts --turbopack",
-    "hono:build": "dotenv -e .env.production -e ../../packages/database/.env.production -- tsc",
-    "hono:deploy": "cdk deploy --app 'dotenv -e .env.production -e ../../packages/database/.env.production -- npx tsx cdk-app.ts'"
+    "hono:dev": "NODE_ENV=development dotenv -e .env.local -e ../../packages/database/.env.local -- tsx watch src/index.ts --turbopack",
+    "hono:staging": "NODE_ENV=staging dotenv -e .env.staging -e ../../packages/database/.env.staing -- tsx watch src/index.ts --turbopack",
+    "hono:build": "NODE_ENV=production dotenv -e .env.production -e ../../packages/database/.env.production -- tsc"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

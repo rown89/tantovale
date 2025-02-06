@@ -1,4 +1,4 @@
-import { createMailer } from '.';
+import { createMailer } from '../';
 
 export async function sendVerifyEmail(to: string, verificationLink: string) {
 	const transporter = createMailer();

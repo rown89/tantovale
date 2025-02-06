@@ -2,31 +2,29 @@ import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { zValidator } from "@hono/zod-validator";
 import { env } from "hono/adapter";
-import { HTTPException } from "hono/http-exception";
 import { deleteCookie, checkEmail } from "../../lib/utils";
-import { generateToken } from "../../lib/generateTokens";
 import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
 import { UserSchema } from "../users/schema";
 import { users } from "@workspace/database/schema";
-import { sendVerifyEmail } from "@workspace/mailer/verify-email";
+import { sendVerifyEmail } from "@workspace/mailer/templates/verify-email";
 
 import "dotenv/config";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
   SERVER_HOSTNAME: string;
-  SERVER_PORT: string;
+  SERVER_VERSION: string;
 };
 
 export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET, SERVER_HOSTNAME, SERVER_PORT } = env<{
+    const { ACCESS_TOKEN_SECRET, SERVER_HOSTNAME, SERVER_VERSION } = env<{
       ACCESS_TOKEN_SECRET: string;
       SERVER_HOSTNAME: string;
-      SERVER_PORT: string;
+      SERVER_VERSION: string;
     }>(c);
 
     try {
@@ -68,8 +66,11 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
       const token = await sign(tmp_token_payload, ACCESS_TOKEN_SECRET);
 
       // Send verification email
-      const verificationLink = `https://${SERVER_HOSTNAME}:${SERVER_PORT}/verify/email?token=${token}`;
-      console.log(SERVER_PORT);
+      const verificationLink = `https://${SERVER_HOSTNAME}/${SERVER_VERSION}/verify/email?token=${token}`;
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("verificationLink: ", verificationLink);
+      }
 
       await sendVerifyEmail(email, verificationLink);
 
@@ -77,7 +78,7 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
         message: "Successful Signup",
       });
     } catch (error) {
-      console.log(error);
+      console.error(error);
 
       deleteCookie(c, "token"); // Clear any existing token on error
 

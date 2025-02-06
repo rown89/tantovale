@@ -8,3 +8,4 @@ export * from './subcategories';
 export * from './regions';
 export * from './provinces';
 export * from './municipalities';
+export * from './password_reset_tokens';
