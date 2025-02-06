@@ -13,7 +13,13 @@ import { sendVerifyEmail } from "@workspace/mailer/verify-email";
 
 import "dotenv/config";
 
-export const signupRoute = new Hono().post(
+type Bindings = {
+  ACCESS_TOKEN_SECRET: string;
+  SERVER_HOSTNAME: string;
+  SERVER_PORT: string;
+};
+
+export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
@@ -63,6 +69,8 @@ export const signupRoute = new Hono().post(
 
       // Send verification email
       const verificationLink = `https://${SERVER_HOSTNAME}:${SERVER_PORT}/verify/email?token=${token}`;
+      console.log(SERVER_PORT);
+
       await sendVerifyEmail(email, verificationLink);
 
       return c.json({

@@ -1,5 +1,5 @@
 import * as z from "zod";
-import type productsSchema from "./schema";
+import type itemSchema from "./schema";
 
-type ProductsType = z.infer<typeof productsSchema>;
-export type { ProductsType };
+type ItemssType = z.infer<typeof itemSchema>;
+export type { ItemssType };

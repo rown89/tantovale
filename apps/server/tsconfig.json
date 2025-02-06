@@ -15,6 +15,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["src/**/*", "../../drizzle.config.ts"],
+  "include": ["src/**/*", "../../drizzle.confcdk-stack.ts/cdk-stack.ts"],
   "exclude": ["node_modules"]
 }

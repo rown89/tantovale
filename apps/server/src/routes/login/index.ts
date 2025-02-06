@@ -9,10 +9,19 @@ import { UserSchema } from "../users/schema";
 import { env } from "hono/adapter";
 import { generateAndSetTokens } from "../../lib/generateTokens";
 
-export const loginRoute = new Hono().post(
+type Bindings = {
+  ACCESS_TOKEN_SECRET: string;
+  REFRESH_TOKEN_SECRET: string;
+  COOKIE_SECRET: string;
+  SERVER_HOSTNAME: string;
+};
+
+export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
+    console.log(c.env.SERVER_HOSTNAME);
+
     const {
       ACCESS_TOKEN_SECRET,
       REFRESH_TOKEN_SECRET,

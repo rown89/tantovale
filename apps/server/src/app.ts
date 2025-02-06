@@ -14,10 +14,9 @@ import { docRoute } from "./routes/doc";
 
 type Variables = JwtVariables;
 
-const app = new Hono<{ Variables: Variables }>();
+export const app = new Hono<{ Variables: Variables }>();
 
 app.use("*", logger());
-
 app.use(
   "/auth/*",
   bearerAuth({
@@ -39,5 +38,4 @@ const apiRoutes = app
 
 export const client = hc<typeof apiRoutes>("/");
 
-export default app;
 export type ApiRoutes = typeof apiRoutes;

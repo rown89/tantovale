@@ -7,11 +7,25 @@ import { refreshTokens, users } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { generateAndSetTokens } from "@/lib/generateTokens";
 
-export const verifyRoute = new Hono()
+type Bindings = {
+  ACCESS_TOKEN_SECRET: string;
+  REFRESH_TOKEN_SECRET: string;
+  COOKIE_SECRET: string;
+  SERVER_HOSTNAME: string;
+};
+
+export const verifyRoute = new Hono<{ Bindings: Bindings }>()
   .post("/", async (c) => {
-    const { ACCESS_TOKEN_SECRET, COOKIE_SECRET } = env<{
+    const {
+      ACCESS_TOKEN_SECRET,
+      REFRESH_TOKEN_SECRET,
+      COOKIE_SECRET,
+      SERVER_HOSTNAME,
+    } = env<{
       ACCESS_TOKEN_SECRET: string;
+      REFRESH_TOKEN_SECRET: string;
       COOKIE_SECRET: string;
+      SERVER_HOSTNAME: string;
     }>(c);
 
     try {
