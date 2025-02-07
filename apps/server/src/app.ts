@@ -10,8 +10,6 @@ import { resolver } from "hono-openapi/zod";
 import { apiReference } from "@scalar/hono-api-reference";
 import { z } from "zod";
 
-import type { JwtVariables } from "hono/jwt";
-
 import {
   itemsRoute,
   loginRoute,
@@ -22,6 +20,8 @@ import {
   passwordRoute,
 } from "./routes";
 import { isDevelopmentMode } from "./lib/utils";
+
+import type { JwtVariables } from "hono/jwt";
 
 type Variables = JwtVariables;
 
