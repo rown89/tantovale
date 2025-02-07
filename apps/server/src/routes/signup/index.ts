@@ -1,15 +1,17 @@
-import { Hono } from "hono";
+import "dotenv/config";
+
 import { sign } from "hono/jwt";
-import { zValidator } from "@hono/zod-validator";
+import { validator as zValidator } from "hono-openapi/zod";
 import { env } from "hono/adapter";
-import { deleteCookie, checkEmail } from "../../lib/utils";
+import { deleteCookie, checkEmail, isDevelopmentMode } from "../../lib/utils";
 import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
 import { UserSchema } from "../users/schema";
 import { users } from "@workspace/database/schema";
 import { sendVerifyEmail } from "@workspace/mailer/templates/verify-email";
 
-import "dotenv/config";
+import { describeRoute } from "hono-openapi";
+import { Hono } from "hono";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
@@ -19,6 +21,14 @@ type Bindings = {
 
 export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
+  describeRoute({
+    description: "Create a user",
+    responses: {
+      200: {
+        description: "Successful Signup",
+      },
+    },
+  }),
   zValidator("json", UserSchema),
   async (c) => {
     const { ACCESS_TOKEN_SECRET, SERVER_HOSTNAME, SERVER_VERSION } = env<{
@@ -68,7 +78,7 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
       // Send verification email
       const verificationLink = `https://${SERVER_HOSTNAME}/${SERVER_VERSION}/verify/email?token=${token}`;
 
-      if (process.env.NODE_ENV === "development") {
+      if (isDevelopmentMode) {
         console.log("verificationLink: ", verificationLink);
       }
 

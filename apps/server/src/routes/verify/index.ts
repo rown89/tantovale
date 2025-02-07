@@ -6,6 +6,12 @@ import { db } from "@workspace/database/db";
 import { refreshTokens, users } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { generateAndSetTokens } from "@/lib/generateTokens";
+import { describeRoute } from "hono-openapi";
+import { object, z } from "zod";
+import { resolver } from "hono-openapi/zod";
+import { zValidator } from "@hono/zod-validator";
+import { EmailVerifySchema } from "./schema";
+import { isDevelopmentMode } from "@/lib/utils";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
@@ -15,145 +21,185 @@ type Bindings = {
 };
 
 export const verifyRoute = new Hono<{ Bindings: Bindings }>()
-  .post("/", async (c) => {
-    const {
-      ACCESS_TOKEN_SECRET,
-      REFRESH_TOKEN_SECRET,
-      COOKIE_SECRET,
-      SERVER_HOSTNAME,
-    } = env<{
-      ACCESS_TOKEN_SECRET: string;
-      REFRESH_TOKEN_SECRET: string;
-      COOKIE_SECRET: string;
-      SERVER_HOSTNAME: string;
-    }>(c);
-
-    try {
-      // Get tokens individually
-      const auth_token = await getSignedCookie(c, COOKIE_SECRET, "auth_token");
-      const refresh_token = await getSignedCookie(
-        c,
-        COOKIE_SECRET,
-        "refresh_token",
-      );
-
-      console.log("Verify endpoint received tokens:", {
-        auth_token: auth_token ? "present" : "missing",
-        refresh_token: refresh_token ? "present" : "missing",
-      });
-
-      if (!auth_token || !refresh_token) {
-        return c.json(
-          {
-            valid: false,
-            message: "No token provided",
+  .post(
+    "/",
+    zValidator("json", EmailVerifySchema),
+    describeRoute({
+      description: "Token verifier",
+      responses: {
+        200: {
+          description: "Tokens verified successfully",
+          content: {
+            "application/json": {
+              schema: resolver(EmailVerifySchema),
+            },
           },
-          401,
-        );
-      }
+        },
+        401: {
+          description: "Invalid token or No token provided",
+        },
+        500: {
+          description: "Error processing request",
+        },
+      },
+    }),
+    async (c) => {
+      const {
+        ACCESS_TOKEN_SECRET,
+        REFRESH_TOKEN_SECRET,
+        COOKIE_SECRET,
+        SERVER_HOSTNAME,
+      } = env<{
+        ACCESS_TOKEN_SECRET: string;
+        REFRESH_TOKEN_SECRET: string;
+        COOKIE_SECRET: string;
+        SERVER_HOSTNAME: string;
+      }>(c);
 
       try {
-        const payload = await verify(auth_token, ACCESS_TOKEN_SECRET);
-        console.log("Token verified successfully for user:", payload.email);
-
-        return c.json(
-          {
-            email: payload.email,
-          },
-          200,
+        // Get tokens individually
+        const auth_token = await getSignedCookie(
+          c,
+          COOKIE_SECRET,
+          "auth_token",
         );
+        const refresh_token = await getSignedCookie(
+          c,
+          COOKIE_SECRET,
+          "refresh_token",
+        );
+
+        if (isDevelopmentMode) {
+          console.log("Verify endpoint received tokens:", {
+            auth_token: auth_token ? "present" : "missing",
+            refresh_token: refresh_token ? "present" : "missing",
+          });
+        }
+
+        if (!auth_token || !refresh_token) {
+          return c.json(
+            {
+              valid: false,
+              message: "No token provided",
+            },
+            401,
+          );
+        }
+
+        try {
+          const payload = await verify(auth_token, ACCESS_TOKEN_SECRET);
+          console.log("Token verified successfully for user:", payload.email);
+
+          return c.json(
+            {
+              email: payload.email,
+            },
+            200,
+          );
+        } catch (error) {
+          console.error("Token verification failed:", error);
+          return c.json(
+            {
+              message: "Invalid token",
+            },
+            401,
+          );
+        }
       } catch (error) {
-        console.error("Token verification failed:", error);
+        console.error("Error in verify endpoint:", error);
         return c.json(
           {
-            message: "Invalid token",
+            message: "Error processing request",
           },
-          401,
+          500,
         );
       }
-    } catch (error) {
-      console.error("Error in verify endpoint:", error);
-      return c.json(
-        {
-          message: "Error processing request",
+    },
+  )
+  .get(
+    "/email",
+    describeRoute({
+      description: "Email verifier",
+      responses: {
+        200: {
+          description: "Email verified successfully!",
         },
-        500,
-      );
-    }
-  })
-  .get("/email", async (c) => {
-    const {
-      ACCESS_TOKEN_SECRET,
-      REFRESH_TOKEN_SECRET,
-      COOKIE_SECRET,
-      SERVER_HOSTNAME,
-    } = env<{
-      ACCESS_TOKEN_SECRET: string;
-      REFRESH_TOKEN_SECRET: string;
-      COOKIE_SECRET: string;
-      SERVER_HOSTNAME: string;
-    }>(c);
+      },
+    }),
+    async (c) => {
+      const {
+        ACCESS_TOKEN_SECRET,
+        REFRESH_TOKEN_SECRET,
+        COOKIE_SECRET,
+        SERVER_HOSTNAME,
+      } = env<{
+        ACCESS_TOKEN_SECRET: string;
+        REFRESH_TOKEN_SECRET: string;
+        COOKIE_SECRET: string;
+        SERVER_HOSTNAME: string;
+      }>(c);
 
-    const token = c.req.query("token");
-    if (!token) return c.json({ error: "Token required" }, 409);
+      const token = c.req.query("token");
+      if (!token) return c.json({ error: "Token required" }, 409);
 
-    const { id, type } = await verify(token, ACCESS_TOKEN_SECRET);
+      const { id, type } = await verify(token, ACCESS_TOKEN_SECRET);
 
-    // Get existing user by id
-    const user = await db.query.users.findFirst({
-      where: (tbl) => eq(tbl.id, Number(id)),
-    });
+      // Get existing user by id
+      const user = await db.query.users.findFirst({
+        where: (tbl) => eq(tbl.id, Number(id)),
+      });
 
-    if (!user) {
-      return c.json({ error: "User not found" }, 404);
-    }
-    if (user.email_verified) {
-      return c.json({ message: "User already verified" });
-    }
-    if (type != "email_verification") {
-      return c.json({ message: "Invalid token type" });
-    }
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      if (user.email_verified) {
+        return c.json({ message: "User already verified" });
+      }
+      if (type != "email_verification") {
+        return c.json({ message: "Invalid token type" });
+      }
 
-    await db
-      .update(users)
-      .set({
-        email_verified: true,
-      })
-      .where(eq(users.id, Number(id)));
+      await db
+        .update(users)
+        .set({
+          email_verified: true,
+        })
+        .where(eq(users.id, Number(id)));
 
-    const { token: accessToken, refreshToken } = await generateAndSetTokens({
-      c,
-      id: user.id,
-      email: user.email,
-      token_secret: ACCESS_TOKEN_SECRET,
-      refresh_token_secret: REFRESH_TOKEN_SECRET,
-      cookie_secret: COOKIE_SECRET,
-      hostname: SERVER_HOSTNAME,
-    });
-
-    // Store refresh token in DB
-    const updatedUser = await db
-      .insert(refreshTokens)
-      .values({
+      const { token: accessToken, refreshToken } = await generateAndSetTokens({
+        c,
+        id: user.id,
         email: user.email,
-        token: refreshToken,
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
-      })
-      .returning();
+        token_secret: ACCESS_TOKEN_SECRET,
+        refresh_token_secret: REFRESH_TOKEN_SECRET,
+        cookie_secret: COOKIE_SECRET,
+        hostname: SERVER_HOSTNAME,
+      });
 
-    if (!updatedUser || !updatedUser.length) {
-      return c.json(
-        {
-          message:
-            "An error occurred, can't update the refresh token during login",
-        },
-        500,
-      );
-    }
+      // Store refresh token in DB
+      const updatedUser = await db
+        .insert(refreshTokens)
+        .values({
+          email: user.email,
+          token: refreshToken,
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
+        })
+        .returning();
 
-    return c.json({
-      message: "Email verified successfully!",
-      accessToken,
-      refreshToken,
-    });
-  });
+      if (!updatedUser || !updatedUser.length) {
+        return c.json(
+          {
+            message:
+              "An error occurred, can't update the refresh token during login",
+          },
+          500,
+        );
+      }
+
+      return c.json({
+        message: "Email verified successfully!",
+        accessToken,
+        refreshToken,
+      });
+    },
+  );

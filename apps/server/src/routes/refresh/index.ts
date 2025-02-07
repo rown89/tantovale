@@ -6,6 +6,8 @@ import { env } from "hono/adapter";
 import { db } from "@workspace/database/db";
 import { refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
+import { describeRoute } from "hono-openapi";
+import { isProductionMode } from "@/lib/utils";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
@@ -15,6 +17,14 @@ type Bindings = {
 
 export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
+  describeRoute({
+    description: "Refresh token verifier",
+    responses: {
+      200: {
+        description: "Tokens refreshed successfully",
+      },
+    },
+  }),
   async (c) => {
     const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
       ACCESS_TOKEN_SECRET: string;
@@ -88,7 +98,7 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
       // Set new tokens in cookies
       await setSignedCookie(c, "auth_token", newAccessToken, COOKIE_SECRET, {
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProductionMode,
         httpOnly: true,
         //maxAge: 15 * 60 * 1000, // 15 minutes
         sameSite: "Strict",
@@ -101,7 +111,7 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
         COOKIE_SECRET,
         {
           path: "/",
-          secure: process.env.NODE_ENV === "production",
+          secure: isProductionMode,
           httpOnly: true,
           //maxAge: 24 * 60 * 60 * 1000, // 24 hours
           sameSite: "Strict",

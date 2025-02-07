@@ -6,6 +6,7 @@ import { env } from "hono/adapter";
 import { db } from "@workspace/database/db";
 import { refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
+import { isProductionMode } from "@/lib/utils";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
@@ -42,12 +43,12 @@ export const logoutRoute = new Hono<{ Bindings: Bindings }>().post(
       // Delete cookies
       await deleteCookie(c, "auth_token", {
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProductionMode,
         httpOnly: true,
       });
       await deleteCookie(c, "refresh_token", {
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProductionMode,
         httpOnly: true,
       });
 

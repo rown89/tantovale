@@ -1,8 +1,8 @@
+import "dotenv/config";
+
 import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { showRoutes } from "hono/dev";
-
-import "dotenv/config";
 
 const PORT = process.env.SERVER_PORT || "4000";
 

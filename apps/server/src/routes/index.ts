@@ -5,4 +5,4 @@ export * from "./items";
 export * from "./verify";
 export * from "./refresh";
 export * from "./logout";
-export * from "./doc";
+export * from "./password";

@@ -2,6 +2,7 @@ import { sign } from "hono/jwt";
 import { setSignedCookie } from "hono/cookie";
 import type { Context } from "hono";
 import type { CookieOptions } from "hono/utils/cookie";
+import { isProductionMode } from "./utils";
 
 type TokenOptions = {
   c: Context;
@@ -88,12 +89,10 @@ async function setSignedCookies({
   hostname: string;
   expiresIn?: number;
 }) {
-  const isProduction = process.env.NODE_ENV === "production";
-
   const MAX_COOKIE_AGE = 30 * 24 * 60 * 60; // 30 days (2592000 seconds)
 
-  const secure = isProduction;
-  const domain = isProduction ? hostname : "localhost";
+  const secure = isProductionMode;
+  const domain = isProductionMode ? hostname : "localhost";
   // Refresh token should never last longer than MAX_COOKIE_AGE
   const maxAge = Math.min(expiresIn * 1000, MAX_COOKIE_AGE * 1000);
   // Cookie will expire based on maxAge
