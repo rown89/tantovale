@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "next:dev": "next dev --turbopack --port 3000",
+    "next:dev": "dotenv -e ../../packages/database/.env.local -e ../server/.env.local  next dev --turbopack --port 3000",
     "dev": "next dev",
     "next:build": "next build",
     "start": "next start",
@@ -12,7 +12,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@workspace/ui": "",
+    "@workspace/ui": "*",
+    "@workspace/mailer": "*",
     "@workspace/server": "*",
     "@tanstack/react-query": "^5.64.2",
     "lucide-react": "0.456.0",

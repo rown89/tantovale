@@ -26,9 +26,10 @@ import { isDevelopmentMode } from "./lib/utils";
 type Variables = JwtVariables;
 
 const version = process.env.SERVER_VERSION;
+
 export const app = new Hono<{ Variables: Variables }>();
 
-const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
+export const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
 
 app.use("*", logger());
 app.use(
@@ -97,7 +98,5 @@ const apiRoutes = app
   .route("/refresh", refreshRoute)
   .route("/items", itemsRoute)
   .route("/password", passwordRoute);
-
-export const client = hc<typeof apiRoutes>("/");
 
 export type ApiRoutes = typeof apiRoutes;

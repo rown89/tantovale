@@ -7,9 +7,14 @@
 		"staging": "dotenv -e .env.staging tsx --watch"
 	},
 	"exports": {
-		"verify-email": "./verify-email.ts"
+		"./verify-email": "./src/templates/verify-email.ts",
+		"./forgot-password-email": "./src/templates/forgot-password-email.ts"
 	},
 	"dependencies": {
 		"nodemailer": "^6.10.0"
+	},
+	"devDependencies": {
+		"@workspace/eslint-config": "*",
+		"@workspace/typescript-config": "*"
 	}
 }

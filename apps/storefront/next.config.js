@@ -1,8 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@workspace/ui"],
   reactStrictMode: true,
   output: "standalone",
+  transpilePackages: [
+    "@workspace/ui",
+    "@workspace/mailer",
+    "@workspace/server",
+  ],
+  serverExternalPackages: ["argon2", "@node-rs/argon2"],
   async headers() {
     return [
       {
@@ -48,7 +53,7 @@ const nextConfig = {
       },
     ];
   },
-  // redirect /api/* to the backend
+  // redirect /v1/* to the backend
   async rewrites() {
     return [
       {

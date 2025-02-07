@@ -1,3 +1,4 @@
-import { type ApiRoutes, client } from "@workspace/server/apiRoutes";
+import { type ApiRoutes, serverUrl } from "@workspace/server/apiRoutes";
+import { hc as honoClient } from "hono/client";
 
-export const api = client.server;
+export const client = honoClient<ApiRoutes>(`${serverUrl}/`);

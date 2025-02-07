@@ -8,7 +8,7 @@ import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
 import { UserSchema } from "../users/schema";
 import { users } from "@workspace/database/schema";
-import { sendVerifyEmail } from "@workspace/mailer/templates/verify-email";
+import { sendVerifyEmail } from "@workspace/mailer/verify-email";
 
 import { describeRoute } from "hono-openapi";
 import { Hono } from "hono";

@@ -6,7 +6,7 @@ import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 
 export const isDevelopmentMode = process.env.NODE_ENV === "development";
-export const isStagingMode = process.env.NODE_ENV === "staging";
+export const isStagingMode = (process.env.NODE_ENV as string) === "staging";
 export const isProductionMode = process.env.NODE_ENV === "production";
 
 export const checkEmail = async (email: string) => {
