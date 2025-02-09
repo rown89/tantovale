@@ -9,7 +9,7 @@ import { generateAndSetTokens } from "../../lib/generateTokens";
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { zValidator } from "@hono/zod-validator";
-import { EmailVerifySchema } from "./schema";
+import { EmailVerifySchema } from "../../schema";
 import { isDevelopmentMode } from "../../lib/utils";
 
 type Bindings = {

@@ -5,7 +5,7 @@ import { users, refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "../../lib/password";
 import { zValidator } from "@hono/zod-validator";
-import { UserSchema } from "../users/schema";
+import { UserSchema } from "../../schema/users";
 import { env } from "hono/adapter";
 import { generateAndSetTokens } from "../../lib/generateTokens";
 

@@ -4,7 +4,8 @@
   "private": true,
   "module": "esnext",
   "exports": {
-    "./apiRoutes": "./src/app.ts"
+    "./apiRoutes": "./src/app.ts",
+    "./schema": "./src/schema/index.ts"
   },
   "scripts": {
     "hono:dev": "NODE_ENV=development dotenv -e .env.local -e ../../packages/database/.env.local -- tsx watch src/index.ts --turbopack",

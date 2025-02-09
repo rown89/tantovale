@@ -6,7 +6,7 @@ import { env } from "hono/adapter";
 import { deleteCookie, checkEmail, isDevelopmentMode } from "../../lib/utils";
 import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
-import { UserSchema } from "../users/schema";
+import { UserSchema } from "../../schema";
 import { users } from "@workspace/database/schema";
 import { sendVerifyEmail } from "@workspace/mailer/verify-email";
 

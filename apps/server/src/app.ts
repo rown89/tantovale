@@ -2,7 +2,6 @@ import "dotenv/config";
 
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
-import { hc } from "hono/client";
 import { logger } from "hono/logger";
 import { getCookie } from "hono/cookie";
 import { openAPISpecs } from "hono-openapi";
