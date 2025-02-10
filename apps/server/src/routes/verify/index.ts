@@ -168,7 +168,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       const { token: accessToken, refreshToken } = await generateAndSetTokens({
         c,
         id: user.id,
-        email: user.email,
+        username: user.username,
         token_secret: ACCESS_TOKEN_SECRET,
         refresh_token_secret: REFRESH_TOKEN_SECRET,
         cookie_secret: COOKIE_SECRET,
@@ -179,7 +179,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       const updatedUser = await db
         .insert(refreshTokens)
         .values({
-          email: user.email,
+          username: user.username,
           token: refreshToken,
           expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
         })

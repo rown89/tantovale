@@ -3,7 +3,7 @@ import "dotenv/config";
 import { sign } from "hono/jwt";
 import { validator as zValidator } from "hono-openapi/zod";
 import { env } from "hono/adapter";
-import { deleteCookie, checkEmail, isDevelopmentMode } from "../../lib/utils";
+import { deleteCookie, isDevelopmentMode, checkUser } from "../../lib/utils";
 import { hashPassword } from "../../lib/password";
 import { db } from "@workspace/database/db";
 import { UserSchema } from "../../schema";
@@ -39,11 +39,14 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
 
     try {
       const values = await c.req.json();
-      const { email, password } = values;
+      const { username, email, password } = values;
 
-      const emailAlreadyExist = await checkEmail(email);
+      const userAlreadyExist = await checkUser(username, "username");
+      const emailAlreadyExist = await checkUser(email, "email");
 
-      // Check if email already exists
+      if (userAlreadyExist) {
+        return c.json({ message: "Username already exists" }, 409);
+      }
       if (emailAlreadyExist) {
         return c.json({ message: "Email already exists" }, 409);
       }
@@ -68,7 +71,7 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
       // Generate JWT token for email verification
       const tmp_token_payload = {
         id: Number(results?.[0]?.id),
-        email,
+        username: results?.[0]?.username,
         type: "email_verification",
         expiresIn: new Date(Date.now() + 60 * 60 * 1000), // 60min
       };

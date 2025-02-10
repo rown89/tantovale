@@ -1,4 +1,5 @@
 "use server";
+import { client } from "@/lib/api";
 
 import { UserSchema } from "@workspace/server/schema";
 import { LoginActionResponse, LoginFormData } from "./types";
@@ -18,9 +19,25 @@ export async function submitLogin(
     if (!validateData.success) {
       return {
         success: false,
-        message: "Something is wrong",
+        message: "Check your credentials",
         inputs: rawData,
         errors: validateData.error.flatten().fieldErrors,
+      };
+    }
+
+    const response = await client().v1?.login.$post({
+      json: {
+        email: rawData.email,
+        password: rawData.password,
+      },
+    });
+
+    if (response?.status !== 200) {
+      const errorData = await response?.json();
+
+      return {
+        success: false,
+        message: errorData?.message || "An error occurred",
       };
     }
 
@@ -29,6 +46,7 @@ export async function submitLogin(
       message: "Correctly logged-in",
     };
   } catch (error) {
+    console.log(error);
     return {
       success: false,
       message: "An unexpected error occurred with login form",

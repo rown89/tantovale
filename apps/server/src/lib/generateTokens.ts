@@ -7,7 +7,7 @@ import { isProductionMode } from "./utils";
 type TokenOptions = {
   c: Context;
   id: number;
-  email: string;
+  username: string;
   token_secret: string;
   refresh_token_secret: string;
   cookie_secret: string;
@@ -17,14 +17,14 @@ type TokenOptions = {
 
 export function generateToken({
   id,
-  email,
+  username,
   expiresIn = 60 * 60, // Default to 1 hour
-}: Pick<TokenOptions, "id" | "email" | "expiresIn">) {
+}: Pick<TokenOptions, "id" | "username" | "expiresIn">) {
   const now = Math.floor(Date.now() / 1000);
 
   const tokenPayload = {
     id,
-    email,
+    username,
     tokenOrigin: "/auth/login",
     exp: now + expiresIn,
   };
@@ -35,7 +35,7 @@ export function generateToken({
 export async function generateAndSetTokens({
   c,
   id,
-  email,
+  username,
   token_secret,
   refresh_token_secret,
   cookie_secret,
@@ -43,12 +43,12 @@ export async function generateAndSetTokens({
 }: TokenOptions) {
   const accessTokenPayload = generateToken({
     id,
-    email,
+    username,
   });
 
   const refreshTokenPayload = generateToken({
     id,
-    email,
+    username,
   });
 
   // Generate tokens

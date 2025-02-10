@@ -9,11 +9,14 @@ export const isDevelopmentMode = process.env.NODE_ENV === "development";
 export const isStagingMode = (process.env.NODE_ENV as string) === "staging";
 export const isProductionMode = process.env.NODE_ENV === "production";
 
-export const checkEmail = async (email: string) => {
+export const checkUser = async (
+  identifier: string,
+  type: "email" | "username",
+) => {
   const user = await db
     .select()
     .from(users)
-    .where(eq(users.email, email))
+    .where(eq(users[type], identifier))
     .limit(1);
 
   return user?.[0];

@@ -1,11 +1,11 @@
+import 'dotenv/config';
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { getEnvVariable } from './utils';
 import * as schema from './schema/schema';
 
-import 'dotenv/config';
-
-// Initialize PostgreSQL connection
+// Initialize PostgreSQL
 const client = new Pool({
 	connectionString: getEnvVariable('DATABASE_URL'),
 });

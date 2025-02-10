@@ -20,8 +20,6 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
   zValidator("json", UserSchema),
   async (c) => {
-    console.log(c.env.SERVER_HOSTNAME);
-
     const {
       ACCESS_TOKEN_SECRET,
       REFRESH_TOKEN_SECRET,
@@ -45,7 +43,7 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
 
     // handle email not found
     if (!userFromDb.length) {
-      return c.json({ message: "invalid email or password" });
+      return c.json({ message: "invalid email or password" }, 500);
     }
 
     // handle invalid password
@@ -55,13 +53,13 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
     );
 
     if (!verifyResult) {
-      return c.json({ message: "invalid username or password" });
+      return c.json({ message: "invalid email or password" }, 500);
     }
 
     const { refreshToken } = await generateAndSetTokens({
       c,
       id: userFromDb?.[0]?.id!,
-      email,
+      username: userFromDb?.[0]?.username!,
       token_secret: ACCESS_TOKEN_SECRET,
       refresh_token_secret: REFRESH_TOKEN_SECRET,
       cookie_secret: COOKIE_SECRET,
@@ -72,7 +70,7 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
     const newRefreshToken = await db
       .insert(refreshTokens)
       .values({
-        email,
+        username: userFromDb?.[0]?.username!,
         token: refreshToken,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       })

@@ -9,6 +9,8 @@ import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { submitLogin } from "@/app/login/actions";
 import { LoginActionResponse } from "@/app/login/types";
+import { Alert, AlertDescription } from "@workspace/ui/components/alert";
+import { CheckCircle2 } from "lucide-react";
 
 const initialState: LoginActionResponse = {
   success: false,
@@ -25,6 +27,14 @@ export function LoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden">
         <CardContent className="grid p-0 md:grid-cols-2">
+          <div className="relative hidden bg-muted md:block">
+            <Image
+              fill
+              src="/placeholder.svg"
+              alt="Image"
+              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+            />
+          </div>
           <form action={action} className="p-6 md:p-8">
             <div className="flex flex-col gap-6">
               <div className="flex flex-col items-center text-center">
@@ -77,6 +87,13 @@ export function LoginForm({
                 )}
               </div>
 
+              {!state?.success && state?.message && (
+                <Alert variant={state.success ? "default" : "destructive"}>
+                  {state.success && <CheckCircle2 className="h-4 w-4" />}
+                  <AlertDescription>{state.message}</AlertDescription>
+                </Alert>
+              )}
+
               <Button type="submit" className="w-full">
                 {isPending ? "Entrando..." : "Continua"}
               </Button>
@@ -95,14 +112,6 @@ export function LoginForm({
               </div>
             </div>
           </form>
-          <div className="relative hidden bg-muted md:block">
-            <Image
-              fill
-              src="/placeholder.svg"
-              alt="Image"
-              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-            />
-          </div>
         </CardContent>
       </Card>
       <div className="text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary">

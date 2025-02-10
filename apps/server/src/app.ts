@@ -23,11 +23,9 @@ import { isDevelopmentMode } from "./lib/utils";
 import type { JwtVariables } from "hono/jwt";
 
 type Variables = JwtVariables;
-
 const version = process.env.SERVER_VERSION;
 
 export const app = new Hono<{ Variables: Variables }>();
-
 export const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
 
 app.use("*", logger());
