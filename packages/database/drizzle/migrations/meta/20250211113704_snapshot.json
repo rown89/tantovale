@@ -1,6 +1,6 @@
 {
-	"id": "f682ffe3-d4dc-4377-8ca6-53d6783f825b",
-	"prevId": "7914c8fd-8be0-4958-aa50-96026eb97b8c",
+	"id": "3cc1495e-ac6c-4be0-a8ae-f19a9960ade6",
+	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
@@ -15,8 +15,8 @@
 					"notNull": true,
 					"default": "gen_random_uuid()"
 				},
-				"email": {
-					"name": "email",
+				"username": {
+					"name": "username",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true
@@ -69,6 +69,12 @@
 						"cycle": false
 					}
 				},
+				"username": {
+					"name": "username",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": true
+				},
 				"email": {
 					"name": "email",
 					"type": "varchar(255)",
@@ -100,6 +106,11 @@
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {
+				"users_username_unique": {
+					"name": "users_username_unique",
+					"nullsNotDistinct": false,
+					"columns": ["username"]
+				},
 				"users_email_unique": {
 					"name": "users_email_unique",
 					"nullsNotDistinct": false,
@@ -659,6 +670,71 @@
 					"columnsTo": ["region_code"],
 					"onDelete": "no action",
 					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.password_reset_tokens": {
+			"name": "password_reset_tokens",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"identity": {
+						"type": "always",
+						"name": "password_reset_tokens_id_seq",
+						"schema": "public",
+						"increment": "1",
+						"startWith": "1",
+						"minValue": "1",
+						"maxValue": "2147483647",
+						"cache": "1",
+						"cycle": false
+					}
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"token": {
+					"name": "token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"expires_at": {
+					"name": "expires_at",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": false,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"password_reset_tokens_user_id_users_id_fk": {
+					"name": "password_reset_tokens_user_id_users_id_fk",
+					"tableFrom": "password_reset_tokens",
+					"tableTo": "users",
+					"columnsFrom": ["user_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
 				}
 			},
 			"compositePrimaryKeys": {},
