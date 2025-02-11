@@ -18,15 +18,13 @@ import {
   logoutRoute,
   passwordRoute,
 } from "./routes";
-import { isDevelopmentMode } from "./lib/utils";
 
 import type { JwtVariables } from "hono/jwt";
+import { serverUrl, serverVersion } from "./lib/constants";
 
 type Variables = JwtVariables;
-const version = process.env.SERVER_VERSION;
 
 export const app = new Hono<{ Variables: Variables }>();
-export const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
 
 app.use("*", logger());
 app.use(
@@ -87,7 +85,7 @@ app.get(
 );
 
 const apiRoutes = app
-  .basePath(`/${version}`)
+  .basePath(`/${serverVersion}`)
   .route("/signup", signupRoute)
   .route("/login", loginRoute)
   .route("/logout", logoutRoute)

@@ -1,8 +1,7 @@
-import { type ApiRoutes, serverUrl } from "@workspace/server/apiRoutes";
+import "dotenv/config";
+
+import { type ApiRoutes } from "@workspace/server/apiRoutes";
 import { hc as honoClient } from "hono/client";
+import { serverUrl, serverVersion } from "@workspace/server/lib/constants";
 
-export const client = () => {
-  console.log(serverUrl);
-
-  return honoClient<ApiRoutes>(`${serverUrl}/`);
-};
+export const client = honoClient<ApiRoutes>(`${serverUrl}/`)?.[serverVersion];

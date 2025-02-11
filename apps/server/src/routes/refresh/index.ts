@@ -7,7 +7,7 @@ import { db } from "@workspace/database/db";
 import { refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import { isProductionMode } from "../../lib/utils";
+import { isProductionMode } from "@/lib/constants";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;

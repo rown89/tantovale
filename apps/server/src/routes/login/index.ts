@@ -1,13 +1,12 @@
-// src/routes/login.ts
 import { Hono } from "hono";
+import { eq } from "drizzle-orm";
+import { zValidator } from "@hono/zod-validator";
+import { env } from "hono/adapter";
+import { UserSchema } from "@/schema/users";
+import { generateAndSetTokens } from "@/lib/generateTokens";
+import { verifyPassword } from "@/lib/password";
 import { db } from "@workspace/database/db";
 import { users, refreshTokens } from "@workspace/database/schema";
-import { eq } from "drizzle-orm";
-import { verifyPassword } from "../../lib/password";
-import { zValidator } from "@hono/zod-validator";
-import { UserSchema } from "../../schema/users";
-import { env } from "hono/adapter";
-import { generateAndSetTokens } from "../../lib/generateTokens";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;

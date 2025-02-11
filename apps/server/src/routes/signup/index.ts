@@ -1,17 +1,17 @@
 import "dotenv/config";
 
+import { Hono } from "hono";
 import { sign } from "hono/jwt";
+import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
 import { env } from "hono/adapter";
-import { deleteCookie, isDevelopmentMode, checkUser } from "../../lib/utils";
-import { hashPassword } from "../../lib/password";
+import { deleteCookie, checkUser } from "@/lib/utils";
+import { hashPassword } from "@/lib/password";
+import { UserSchema } from "@/schema";
+import { isDevelopmentMode } from "@/lib/constants";
 import { db } from "@workspace/database/db";
-import { UserSchema } from "../../schema";
 import { users } from "@workspace/database/schema";
 import { sendVerifyEmail } from "@workspace/mailer/verify-email";
-
-import { describeRoute } from "hono-openapi";
-import { Hono } from "hono";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;

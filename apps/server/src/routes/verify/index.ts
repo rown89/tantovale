@@ -2,15 +2,15 @@ import { Hono } from "hono";
 import { env } from "hono/adapter";
 import { getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import { db } from "@workspace/database/db";
-import { refreshTokens, users } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
-import { generateAndSetTokens } from "../../lib/generateTokens";
 import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { zValidator } from "@hono/zod-validator";
-import { EmailVerifySchema } from "../../schema";
-import { isDevelopmentMode } from "../../lib/utils";
+import { EmailVerifySchema } from "@/schema";
+import { generateAndSetTokens } from "@/lib/generateTokens";
+import { isDevelopmentMode } from "@/lib/constants";
+import { db } from "@workspace/database/db";
+import { refreshTokens, users } from "@workspace/database/schema";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
