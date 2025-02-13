@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import Image from "next/image";
 import { cn } from "@workspace/ui/lib/utils";
 import { Button } from "@workspace/ui/components/button";
@@ -30,6 +30,7 @@ export function LoginForm({
           <div className="relative hidden bg-muted md:block">
             <Image
               fill
+              priority
               src="/placeholder.svg"
               alt="Image"
               className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"

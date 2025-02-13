@@ -15,11 +15,11 @@ const runServer = async () => {
       port: PORT ? parseInt(PORT, 10) : 4000,
     });
 
-    console.log("DB: ", process.env.DATABASE_URL);
-    console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`\nNODE_ENV: ${process.env.NODE_ENV}`);
+    console.log("\nDB:", process.env.DATABASE_URL);
 
     if (process.env.NODE_ENV === "development") {
-      console.log("Running in development mode!!!");
+      console.log("\nRunning in development mode!!!\n");
       showRoutes(app);
     }
   } catch (error) {

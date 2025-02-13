@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
 import { env } from "hono/adapter";
 import { UserSchema } from "@/schema/users";
-import { generateAndSetTokens } from "@/lib/generateTokens";
+import { setAuthTokens } from "@/lib/generateTokens";
 import { verifyPassword } from "@/lib/password";
 import { db } from "@workspace/database/db";
 import { users, refreshTokens } from "@workspace/database/schema";
@@ -17,7 +17,7 @@ type Bindings = {
 
 export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
   "/",
-  zValidator("json", UserSchema),
+  zValidator("json", UserSchema.omit({ username: true })),
   async (c) => {
     const {
       ACCESS_TOKEN_SECRET,
@@ -54,15 +54,14 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
     if (!verifyResult) {
       return c.json({ message: "invalid email or password" }, 500);
     }
-
-    const { refreshToken } = await generateAndSetTokens({
+    const { access_token, refresh_token } = await setAuthTokens({
       c,
       id: userFromDb?.[0]?.id!,
       username: userFromDb?.[0]?.username!,
-      token_secret: ACCESS_TOKEN_SECRET,
+      access_token_secret: ACCESS_TOKEN_SECRET,
       refresh_token_secret: REFRESH_TOKEN_SECRET,
       cookie_secret: COOKIE_SECRET,
-      hostname: SERVER_HOSTNAME,
+      domain: SERVER_HOSTNAME,
     });
 
     // Store refresh token in DB
@@ -70,16 +69,22 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
       .insert(refreshTokens)
       .values({
         username: userFromDb?.[0]?.username!,
-        token: refreshToken,
+        token: refresh_token,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       })
       .returning();
 
     if (!newRefreshToken || !newRefreshToken.length) {
-      console.error("Error storing refresh token in DB:", refreshToken);
+      console.error("Error storing refresh token in DB:", refresh_token);
       return c.json({ message: "An error occurred during login" }, 500);
     }
 
-    return c.json({ message: "login successful" });
+    return c.json({
+      message: "login successful",
+      cookies: {
+        access_token,
+        refresh_token,
+      },
+    });
   },
 );

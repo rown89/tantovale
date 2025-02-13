@@ -20,19 +20,25 @@ import {
 } from "./routes";
 
 import type { JwtVariables } from "hono/jwt";
-import { serverUrl, serverVersion } from "./lib/constants";
+import { isProductionMode, serverUrl, serverVersion } from "./lib/constants";
+import { cors } from "hono/cors";
 
 type Variables = JwtVariables;
+export interface Bindings {
+  NODE_ENV: string;
+}
 
-export const app = new Hono<{ Variables: Variables }>();
+export const app = new Hono<{ Variables: Variables; Bindings: Bindings }>();
 
 app.use("*", logger());
 app.use(
-  "/auth/*",
-  bearerAuth({
-    verifyToken(token, c) {
-      return token === getCookie(c, "token");
-    },
+  "*",
+  cors({
+    origin: isProductionMode ? "https://tantovale.it" : "http://localhost:3000",
+    allowMethods: ["*"],
+    allowHeaders: ["Content-Type", "Authorization", "Cookie"], // Allow specific headers
+    maxAge: 86400,
+    credentials: true,
   }),
 );
 
@@ -80,6 +86,15 @@ app.get(
     theme: "saturn",
     spec: {
       url: "/openapi",
+    },
+  }),
+);
+
+app.use(
+  "/auth/*",
+  bearerAuth({
+    verifyToken(token, c) {
+      return token === getCookie(c, "token");
     },
   }),
 );

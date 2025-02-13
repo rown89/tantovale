@@ -7,7 +7,7 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { zValidator } from "@hono/zod-validator";
 import { EmailVerifySchema } from "@/schema";
-import { generateAndSetTokens } from "@/lib/generateTokens";
+import { setAuthTokens } from "@/lib/generateTokens";
 import { isDevelopmentMode } from "@/lib/constants";
 import { db } from "@workspace/database/db";
 import { refreshTokens, users } from "@workspace/database/schema";
@@ -165,14 +165,14 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         })
         .where(eq(users.id, Number(id)));
 
-      const { token: accessToken, refreshToken } = await generateAndSetTokens({
+      const { access_token, refresh_token } = await setAuthTokens({
         c,
         id: user.id,
         username: user.username,
-        token_secret: ACCESS_TOKEN_SECRET,
+        access_token_secret: ACCESS_TOKEN_SECRET,
         refresh_token_secret: REFRESH_TOKEN_SECRET,
         cookie_secret: COOKIE_SECRET,
-        hostname: SERVER_HOSTNAME,
+        domain: SERVER_HOSTNAME,
       });
 
       // Store refresh token in DB
@@ -180,7 +180,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         .insert(refreshTokens)
         .values({
           username: user.username,
-          token: refreshToken,
+          token: refresh_token,
           expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
         })
         .returning();
@@ -197,8 +197,8 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
 
       return c.json({
         message: "Email verified successfully!",
-        accessToken,
-        refreshToken,
+        access_token,
+        refresh_token,
       });
     },
   );

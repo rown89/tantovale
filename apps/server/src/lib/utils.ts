@@ -1,9 +1,8 @@
-import { db } from "@workspace/database/db";
-import { users } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
-
 import { setCookie } from "hono/cookie";
+import { db } from "@workspace/database/db";
+import { users } from "@workspace/database/schema";
 
 export const checkUser = async (
   identifier: string,

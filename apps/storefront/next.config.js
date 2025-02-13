@@ -53,15 +53,16 @@ const nextConfig = {
       },
     ];
   },
+  /*  
   // redirect /v1/* to the backend
   async rewrites() {
     return [
       {
-        source: "/server/:path*",
+        source: "/v1/:path*",
         destination: `http://localhost:4000/v1/:path*`,
       },
     ];
-  },
+  }, */
 };
 
 export default nextConfig;
