@@ -8,5 +8,15 @@ export const isProductionMode = process.env.NODE_ENV === "production";
 export const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
 export const serverVersion = process.env.SERVER_VERSION ?? "v1";
 
-export const DEFAULT_ACCESS_TOKEN_EXPIRES = 60 * 60; // 1 hour (in seconds)
-export const DEFAULT_REFRESH_TOKEN_EXPIRES = 30 * 24 * 60 * 60; // 30 days (in seconds)
+export const DEFAULT_ACCESS_TOKEN_EXPIRES = new Date(
+  Date.now() + 24 * 60 * 60 * 1000,
+); // 24 hours from now
+
+export const DEFAULT_REFRESH_TOKEN_EXPIRES = new Date(
+  Date.now() + 7 * 24 * 60 * 60 * 1000,
+); // 7 days from now
+
+export const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS =
+  Math.floor(Date.now() / 1000) + 24 * 60 * 60; // 24 hours in seconds
+export const DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS =
+  Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days in seconds

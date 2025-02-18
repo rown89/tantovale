@@ -9,7 +9,7 @@ export const profiles = pgTable(
 	{
 		id: integer('id').primaryKey().generatedAlwaysAsIdentity().notNull(),
 		profile_type: profileEnum('profile_type').notNull(),
-		userId: integer('user_id')
+		user_id: integer('user_id')
 			.unique()
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
@@ -18,7 +18,8 @@ export const profiles = pgTable(
 		birthday: date('birthday'),
 		sex: sexEnum('sex'),
 		phone_verified: boolean('phone_verified').default(false),
-		createdAt: timestamp('createdAt', { withTimezone: true }).defaultNow().notNull(),
+		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		check(

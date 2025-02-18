@@ -5,6 +5,7 @@ import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
 import { UserSchema } from "@workspace/server/schema";
 import { getTokenOptions } from "@workspace/server/lib/getTokenOptions";
+import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,
@@ -48,19 +49,13 @@ export async function submitLogin(
     cookieStore.set({
       name: "access_token",
       value: data.cookies?.access_token,
-      ...(getTokenOptions(
-        "access_token",
-        process.env.NEXT_PUBLIC_STOREFRONT_URL!,
-      ) as any),
+      ...(getTokenOptions("access_token") as ResponseCookies),
     });
 
     cookieStore.set({
       name: "refresh_token",
       value: data.cookies?.refresh_token,
-      ...(getTokenOptions(
-        "refresh_token",
-        process.env.NEXT_PUBLIC_STOREFRONT_URL!,
-      ) as any),
+      ...(getTokenOptions("refresh_token") as ResponseCookies),
     });
 
     return {

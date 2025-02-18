@@ -7,10 +7,14 @@ import { db } from "@workspace/database/db";
 import { refreshTokens } from "@workspace/database/schema";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import { isProductionMode } from "@/lib/constants";
+import {
+  DEFAULT_REFRESH_TOKEN_EXPIRES,
+  DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
+} from "@/lib/constants";
+import { generateToken } from "@/lib/generateTokens";
+import { getTokenOptions } from "@/lib/getTokenOptions";
 
 type Bindings = {
-  ACCESS_TOKEN_SECRET: string;
   REFRESH_TOKEN_SECRET: string;
   COOKIE_SECRET: string;
 };
@@ -26,8 +30,7 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
     },
   }),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
+    const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
       REFRESH_TOKEN_SECRET: string;
       COOKIE_SECRET: string;
     }>(c);
@@ -62,63 +65,38 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
         return c.json({ message: "Invalid refresh token" }, 401);
       }
 
-      // Create new access token
-      const newAccessToken = await sign(
-        {
-          id: payload.id,
-          username,
-          tokenOrigin: "/auth/refresh",
-          //exp: Math.floor(Date.now() / 1000) + 900, // 15 minutes
-          exp: Math.floor(Date.now() / 1000) + 5, // 5 seconds
-        },
-        ACCESS_TOKEN_SECRET,
-      );
+      const new_refresh_token_payload = generateToken({
+        id: Number(payload.id),
+        username,
+        exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
+      });
 
-      // Create new refresh token
-      const newRefreshToken = await sign(
-        {
-          id: payload.id,
-          username,
-          tokenOrigin: "/auth/refresh",
-          exp: Math.floor(Date.now() / 1000) + 15 * 24 * 60 * 60, // 15 days
-        },
-        REFRESH_TOKEN_SECRET,
+      const new_refresh_token = await sign(
+        new_refresh_token_payload,
+        c.env.REFRESH_TOKEN_SECRET,
       );
 
       // Store refresh token in DB
       try {
         await db.insert(refreshTokens).values({
           username,
-          token: newRefreshToken,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days expiry
+          token: new_refresh_token,
+          expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES,
         });
+
+        await setSignedCookie(
+          c,
+          "refresh_token",
+          refresh_token,
+          c.env.COOKIE_SECRET,
+          {
+            ...getTokenOptions("refresh_token"),
+          },
+        );
       } catch (error) {
         console.error("Error storing refresh token in DB:", error);
         return c.json({ message: "An error occurred during login" }, 500);
       }
-
-      // Set new tokens in cookies
-      await setSignedCookie(c, "auth_token", newAccessToken, COOKIE_SECRET, {
-        path: "/",
-        secure: isProductionMode,
-        httpOnly: true,
-        //maxAge: 15 * 60 * 1000, // 15 minutes
-        sameSite: "Strict",
-      });
-
-      await setSignedCookie(
-        c,
-        "refresh_token",
-        newRefreshToken,
-        COOKIE_SECRET,
-        {
-          path: "/",
-          secure: isProductionMode,
-          httpOnly: true,
-          //maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          sameSite: "Strict",
-        },
-      );
 
       console.log("Tokens refreshed successfully");
 

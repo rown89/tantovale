@@ -16,7 +16,6 @@ type Bindings = {
   ACCESS_TOKEN_SECRET: string;
   REFRESH_TOKEN_SECRET: string;
   COOKIE_SECRET: string;
-  SERVER_HOSTNAME: string;
 };
 
 export const verifyRoute = new Hono<{ Bindings: Bindings }>()
@@ -43,24 +42,18 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       },
     }),
     async (c) => {
-      const {
-        ACCESS_TOKEN_SECRET,
-        REFRESH_TOKEN_SECRET,
-        COOKIE_SECRET,
-        SERVER_HOSTNAME,
-      } = env<{
+      const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
         ACCESS_TOKEN_SECRET: string;
         REFRESH_TOKEN_SECRET: string;
         COOKIE_SECRET: string;
-        SERVER_HOSTNAME: string;
       }>(c);
 
       try {
         // Get tokens individually
-        const auth_token = await getSignedCookie(
+        const access_token = await getSignedCookie(
           c,
           COOKIE_SECRET,
-          "auth_token",
+          "access_token",
         );
         const refresh_token = await getSignedCookie(
           c,
@@ -70,12 +63,12 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
 
         if (isDevelopmentMode) {
           console.log("Verify endpoint received tokens:", {
-            auth_token: auth_token ? "present" : "missing",
+            access_token: access_token ? "present" : "missing",
             refresh_token: refresh_token ? "present" : "missing",
           });
         }
 
-        if (!auth_token || !refresh_token) {
+        if (!access_token || !refresh_token) {
           return c.json(
             {
               valid: false,
@@ -86,7 +79,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         }
 
         try {
-          const payload = await verify(auth_token, ACCESS_TOKEN_SECRET);
+          const payload = await verify(access_token, ACCESS_TOKEN_SECRET);
           console.log("Token verified successfully for user:", payload.email);
 
           return c.json(
@@ -126,16 +119,10 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       },
     }),
     async (c) => {
-      const {
-        ACCESS_TOKEN_SECRET,
-        REFRESH_TOKEN_SECRET,
-        COOKIE_SECRET,
-        SERVER_HOSTNAME,
-      } = env<{
+      const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
         ACCESS_TOKEN_SECRET: string;
         REFRESH_TOKEN_SECRET: string;
         COOKIE_SECRET: string;
-        SERVER_HOSTNAME: string;
       }>(c);
 
       const token = c.req.query("token");
@@ -172,7 +159,6 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         access_token_secret: ACCESS_TOKEN_SECRET,
         refresh_token_secret: REFRESH_TOKEN_SECRET,
         cookie_secret: COOKIE_SECRET,
-        domain: SERVER_HOSTNAME,
       });
 
       // Store refresh token in DB
@@ -181,7 +167,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         .values({
           username: user.username,
           token: refresh_token,
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
+          expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
         })
         .returning();
 

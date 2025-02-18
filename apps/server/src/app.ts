@@ -19,13 +19,16 @@ import {
   passwordRoute,
 } from "./routes";
 
-import type { JwtVariables } from "hono/jwt";
+import { jwt, type JwtVariables } from "hono/jwt";
 import { isProductionMode, serverUrl, serverVersion } from "./lib/constants";
 import { cors } from "hono/cors";
+import { authMiddleware } from "./middleware/auth";
+import { profileRoute } from "./routes/profile";
 
 type Variables = JwtVariables;
 export interface Bindings {
   NODE_ENV: string;
+  ACCESS_TOKEN_SECRET: string;
 }
 
 export const app = new Hono<{ Variables: Variables; Bindings: Bindings }>();
@@ -34,10 +37,7 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: isProductionMode ? "https://tantovale.it" : "http://localhost:3000",
-    allowMethods: ["*"],
-    allowHeaders: ["Content-Type", "Authorization", "Cookie"], // Allow specific headers
-    maxAge: 86400,
+    origin: isProductionMode ? "https://tantovale.it" : "*",
     credentials: true,
   }),
 );
@@ -90,14 +90,11 @@ app.get(
   }),
 );
 
-app.use(
-  "/auth/*",
-  bearerAuth({
-    verifyToken(token, c) {
-      return token === getCookie(c, "token");
-    },
-  }),
-);
+app.use(`${serverVersion}/auth/*`, (c, next) => {
+  console.log("XXX");
+
+  return authMiddleware(c, next);
+});
 
 const apiRoutes = app
   .basePath(`/${serverVersion}`)
@@ -107,6 +104,7 @@ const apiRoutes = app
   .route("/verify", verifyRoute)
   .route("/refresh", refreshRoute)
   .route("/items", itemsRoute)
-  .route("/password", passwordRoute);
+  .route("/password", passwordRoute)
+  .route("/auth/profile", profileRoute);
 
 export type ApiRoutes = typeof apiRoutes;

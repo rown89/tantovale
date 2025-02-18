@@ -8,8 +8,9 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 	token: text('token').notNull(),
-	expiresAt: timestamp('expires_at').notNull(),
-	createdAt: timestamp('created_at').defaultNow(),
+	expires_at: timestamp('expires_at').notNull(),
+	created_at: timestamp('created_at').defaultNow(),
+	updated_at: timestamp('created_at').defaultNow(),
 });
 
 export const usersRelations = relations(users, ({ many }) => ({

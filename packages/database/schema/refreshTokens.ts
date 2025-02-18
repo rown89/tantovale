@@ -7,5 +7,5 @@ export const refreshTokens = pgTable('refresh_tokens', {
 		.primaryKey(),
 	username: text('username').notNull(),
 	token: text('token').notNull().unique(),
-	expiresAt: timestamp('expires_at').notNull(),
+	expires_at: timestamp('expires_at').notNull(),
 });

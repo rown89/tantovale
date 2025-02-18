@@ -6,7 +6,8 @@ export const categories = pgTable('categories', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 	name: text('name').notNull(),
 	description: text('description'),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updated_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const categoriesRelations = relations(categories, ({ many }) => ({

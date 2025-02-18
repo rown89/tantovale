@@ -9,26 +9,21 @@ import { db } from "@workspace/database/db";
 import { users, refreshTokens } from "@workspace/database/schema";
 
 type Bindings = {
-  ACCESS_TOKEN_SECRET: string;
-  REFRESH_TOKEN_SECRET: string;
-  COOKIE_SECRET: string;
-  SERVER_HOSTNAME: string;
+  Bindings: {
+    ACCESS_TOKEN_SECRET: string;
+    REFRESH_TOKEN_SECRET: string;
+    COOKIE_SECRET: string;
+  };
 };
 
-export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
+export const loginRoute = new Hono<Bindings>().post(
   "/",
   zValidator("json", UserSchema.omit({ username: true })),
   async (c) => {
-    const {
-      ACCESS_TOKEN_SECRET,
-      REFRESH_TOKEN_SECRET,
-      COOKIE_SECRET,
-      SERVER_HOSTNAME,
-    } = env<{
+    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
       ACCESS_TOKEN_SECRET: string;
       REFRESH_TOKEN_SECRET: string;
       COOKIE_SECRET: string;
-      SERVER_HOSTNAME: string;
     }>(c);
 
     const { email, password } = await c.req.json();
@@ -61,7 +56,6 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
       access_token_secret: ACCESS_TOKEN_SECRET,
       refresh_token_secret: REFRESH_TOKEN_SECRET,
       cookie_secret: COOKIE_SECRET,
-      domain: SERVER_HOSTNAME,
     });
 
     // Store refresh token in DB
@@ -70,7 +64,7 @@ export const loginRoute = new Hono<{ Bindings: Bindings }>().post(
       .values({
         username: userFromDb?.[0]?.username!,
         token: refresh_token,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       })
       .returning();
 

@@ -41,7 +41,7 @@ export const passwordRoute = new Hono<{ Bindings: Bindings }>()
     await db.insert(passwordResetTokens).values({
       userId: user.id,
       token: resetToken,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
+      expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
     });
 
     const resetLink = `${SERVER_HOSTNAME}/${SERVER_VERSION}/password/reset-password?token=${resetToken}`;

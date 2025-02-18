@@ -13,32 +13,32 @@ export const items = pgTable(
 		price: numeric('price', { precision: 10, scale: 2 }).notNull().default('0.00'),
 		condition: conditionEnum('condition').notNull().default('used'),
 		status: statusEnum('status').notNull().default('available'),
-		deliveryMethod: deliveryMethodEnum('delivery_method').notNull().default('pickup'),
+		delivery_method: deliveryMethodEnum('delivery_method').notNull().default('pickup'),
 		draft: boolean('draft').notNull().default(false),
 		published: boolean('published').default(false).notNull(),
-		userId: integer('user_id')
+		user_id: integer('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		subcategoryId: integer('subcategory_id')
+		subcategory_id: integer('subcategory_id')
 			.notNull()
 			.references(() => subcategories.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
 	(table) => [
-		index('user_id_idx').on(table.userId),
+		index('user_id_idx').on(table.user_id),
 		index('title_idx').on(table.title),
-		index('subcategory_id_idx').on(table.subcategoryId),
+		index('subcategory_id_idx').on(table.subcategory_id),
 	],
 );
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
 	author: one(users, {
-		fields: [items.userId],
+		fields: [items.user_id],
 		references: [users.id],
 	}),
 	subcategory: one(subcategories, {
-		fields: [items.subcategoryId],
+		fields: [items.subcategory_id],
 		references: [subcategories.id],
 	}),
 }));

@@ -1,4 +1,3 @@
-// src/routes/logout.ts
 import { Hono } from "hono";
 import { deleteCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
@@ -34,14 +33,16 @@ export const logoutRoute = new Hono<{ Bindings: Bindings }>().post(
       if (refreshToken) {
         // Verify the refresh token to get the username
         const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
-        const email = payload.email as string;
+        const username = payload.username as string;
 
         // Remove refresh token
-        await db.delete(refreshTokens).where(eq(refreshTokens.email, email));
+        await db
+          .delete(refreshTokens)
+          .where(eq(refreshTokens.username, username));
       }
 
       // Delete cookies
-      await deleteCookie(c, "auth_token", {
+      await deleteCookie(c, "access_token", {
         path: "/",
         secure: isProductionMode,
         httpOnly: true,
