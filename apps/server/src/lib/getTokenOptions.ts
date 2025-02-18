@@ -3,6 +3,7 @@ import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   isDevelopmentMode,
+  isProductionMode,
 } from "./constants";
 
 export function getTokenOptions(
@@ -27,13 +28,13 @@ export function getTokenOptions(
 
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
-    secure: !isDevelopmentMode, // Use secure cookies only in production
-    httpOnly: !isDevelopmentMode, // Use httpOnly cookies in production for security
+    secure: isProductionMode, // Use secure cookies only in production
+    httpOnly: isProductionMode, // Use httpOnly cookies in production for security
     sameSite: isDevelopmentMode ? "lax" : "strict", // Allow cookies cross-origin in dev
     maxAge,
     expires,
     path: "/",
-    domain,
+    ...(isProductionMode ? { domain } : {}),
   };
 
   return cookiesOptions;

@@ -1,6 +1,7 @@
 import { Lato, Geist_Mono } from "next/font/google";
 import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
+import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 
 import "@workspace/ui/globals.css";
@@ -38,6 +39,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             {children}
+            <Toaster />
           </ThemeProvider>
         </QueryProvider>
       </body>

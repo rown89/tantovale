@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { signupAction } from "@/app/signup/actions";
 import {
   Card,
@@ -15,6 +15,8 @@ import { Label } from "@workspace/ui/components/label";
 import { Button } from "@workspace/ui/components/button";
 import { AlertCircle } from "lucide-react";
 import { SignupActionResponse } from "@/app/signup/types";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 const initialState: SignupActionResponse = {
   success: false,
@@ -22,10 +24,22 @@ const initialState: SignupActionResponse = {
 };
 
 export default function SignupForm() {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(
     signupAction,
     initialState,
   );
+
+  useEffect(() => {
+    if (state.success) {
+      toast(`Ciao, ${state.inputs?.username}`, {
+        description: "Controlla la tua email per attivare l'account",
+        duration: 6000,
+      });
+
+      router.replace("/");
+    }
+  }, [state.inputs?.username, state.success]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -44,6 +58,8 @@ export default function SignupForm() {
                 type="text"
                 placeholder="johndoe"
                 required
+                defaultValue={state.inputs?.username}
+                className={state?.errors?.username ? "border-red-500" : ""}
               />
               {state.errors?.username && (
                 <p className="text-sm text-red-500 flex items-center">
@@ -58,8 +74,11 @@ export default function SignupForm() {
                 id="email"
                 name="email"
                 type="email"
-                placeholder="john@example.com"
                 required
+                aria-describedby="email-error"
+                placeholder="email@example.com"
+                defaultValue={state.inputs?.email}
+                className={state?.errors?.email ? "border-red-500" : ""}
               />
               {state.errors?.email && (
                 <p className="text-sm text-red-500 flex items-center">
@@ -70,7 +89,15 @@ export default function SignupForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" required />
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                required
+                aria-describedby="password-error"
+                defaultValue={state.inputs?.password}
+                className={state?.errors?.password ? "border-red-500" : ""}
+              />
               {state.errors?.password && (
                 <p className="text-sm text-red-500 flex items-center">
                   <AlertCircle className="w-4 h-4 mr-1" />
@@ -83,8 +110,11 @@ export default function SignupForm() {
             <Button type="submit" className="w-full" disabled={isPending}>
               {isPending ? "Registrazione..." : "Registrati"}
             </Button>
-            {state.message && (
-              <p className="mt-4 text-sm text-green-600">{state.message}</p>
+
+            {!state.success && state.message && (
+              <p className={`mt-4 text-sm ${"text-red-500"} `}>
+                {state.message}
+              </p>
             )}
           </CardFooter>
         </form>

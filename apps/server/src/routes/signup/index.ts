@@ -8,12 +8,14 @@ import { env } from "hono/adapter";
 import { deleteCookie, checkUser } from "@/lib/utils";
 import { hashPassword } from "@/lib/password";
 import { UserSchema } from "@/schema";
-import { isDevelopmentMode } from "@/lib/constants";
+import { isDevelopmentMode, isProductionMode } from "@/lib/constants";
 import { db } from "@workspace/database/db";
 import { users } from "@workspace/database/schema";
 import { sendVerifyEmail } from "@workspace/mailer/verify-email";
 
 type Bindings = {
+  NEXT_PUBLIC_STOREFRONT_URL: string;
+  NEXT_PUBLIC_STOREFRONT_PORT: string;
   ACCESS_TOKEN_SECRET: string;
   SERVER_HOSTNAME: string;
   SERVER_VERSION: string;
@@ -31,10 +33,18 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
   }),
   zValidator("json", UserSchema),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET, SERVER_HOSTNAME, SERVER_VERSION } = env<{
+    const {
+      ACCESS_TOKEN_SECRET,
+      SERVER_HOSTNAME,
+      SERVER_VERSION,
+      NEXT_PUBLIC_STOREFRONT_URL,
+      NEXT_PUBLIC_STOREFRONT_PORT,
+    } = env<{
       ACCESS_TOKEN_SECRET: string;
       SERVER_HOSTNAME: string;
       SERVER_VERSION: string;
+      NEXT_PUBLIC_STOREFRONT_URL: string;
+      NEXT_PUBLIC_STOREFRONT_PORT: string;
     }>(c);
 
     try {
@@ -45,7 +55,7 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
       const emailAlreadyExist = await checkUser(email, "email");
 
       if (userAlreadyExist) {
-        return c.json({ message: "Username already exists" }, 409);
+        return c.json({ message: "Username already exists" }, 422);
       }
       if (emailAlreadyExist) {
         return c.json({ message: "Email already exists" }, 409);
@@ -79,17 +89,22 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
       const token = await sign(tmp_token_payload, ACCESS_TOKEN_SECRET);
 
       // Send verification email
-      const verificationLink = `https://${SERVER_HOSTNAME}/${SERVER_VERSION}/verify/email?token=${token}`;
+      const verificationLink = `http${isDevelopmentMode ? "" : "s"}://${NEXT_PUBLIC_STOREFRONT_URL}:${NEXT_PUBLIC_STOREFRONT_PORT}/api/verify/email?token=${token}`;
 
       if (isDevelopmentMode) {
         console.log("verificationLink: ", verificationLink);
       }
 
-      await sendVerifyEmail(email, verificationLink);
+      if (!isDevelopmentMode) {
+        await sendVerifyEmail(email, verificationLink);
+      }
 
-      return c.json({
-        message: "Successful Signup",
-      });
+      return c.json(
+        {
+          message: "Successful Signup",
+        },
+        201,
+      );
     } catch (error) {
       console.error(error);
 
