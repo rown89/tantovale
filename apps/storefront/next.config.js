@@ -4,8 +4,8 @@ const nextConfig = {
   output: "standalone",
   transpilePackages: [
     "@workspace/ui",
-    "@workspace/mailer",
-    "@workspace/server",
+    //  "@workspace/mailer",
+    // "@workspace/server",
   ],
   serverExternalPackages: ["argon2", "@node-rs/argon2"],
   async headers() {
