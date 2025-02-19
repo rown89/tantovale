@@ -17,9 +17,9 @@ export { schema, client };
 async function main() {
 	try {
 		await client.connect();
-		console.log('Database connected successfully');
+		console.log('\nDatabase connected successfully');
 	} catch (error) {
-		console.error('Database connection error:', error);
+		console.error('\nDatabase connection error:', error);
 	}
 }
 

@@ -1,25 +1,26 @@
 import "dotenv/config";
-
 import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { showRoutes } from "hono/dev";
 
+const SERVER_HOSTNAME = process.env.SERVER_HOSTNAME;
 const PORT = process.env.SERVER_PORT || "4000";
 
 const runServer = async () => {
   try {
-    console.log(`Server in running on port: ${PORT}`);
+    console.log(`Server running on: ${SERVER_HOSTNAME}`);
+    console.log(`Port: ${PORT}`);
+    console.log("\nDB:", process.env.DATABASE_URL);
 
     serve({
       fetch: app.fetch,
       port: PORT ? parseInt(PORT, 10) : 4000,
     });
 
-    console.log(`\nNODE_ENV: ${process.env.NODE_ENV}`);
-    console.log("\nDB:", process.env.DATABASE_URL);
-
     if (process.env.NODE_ENV === "development") {
-      console.log("\nRunning in development mode!!!\n");
+      console.log("\nRunning in development mode!!!");
+      console.log(`NODE_ENV: ${process.env.NODE_ENV}\n`);
+
       showRoutes(app);
     }
   } catch (error) {

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
 import { env } from "hono/adapter";
 import { UserSchema } from "@/schema/users";
-import { setAuthTokens } from "@/lib/generateTokens";
+import { setAuthTokens } from "@/lib/tokenPayload";
 import { verifyPassword } from "@/lib/password";
 import { db } from "@workspace/database/db";
 import { users, refreshTokens } from "@workspace/database/schema";
@@ -35,34 +35,35 @@ export const loginRoute = new Hono<Bindings>().post(
       .where(eq(users.email, email))
       .limit(1);
 
+    const user = userFromDb?.[0];
+
     // handle email not found
-    if (!userFromDb.length) {
+    if (!user) {
       return c.json({ message: "invalid email or password" }, 500);
     }
 
     // handle invalid password
-    const verifyResult = await verifyPassword(
-      userFromDb?.[0]?.password,
-      password,
-    );
-
+    const verifyResult = await verifyPassword(user?.password, password);
     if (!verifyResult) {
       return c.json({ message: "invalid email or password" }, 500);
     }
-    const { access_token, refresh_token } = await setAuthTokens({
+
+    const { id, username } = user;
+
+    const authTokensPayload = {
       c,
-      id: userFromDb?.[0]?.id!,
-      username: userFromDb?.[0]?.username!,
-      access_token_secret: ACCESS_TOKEN_SECRET,
-      refresh_token_secret: REFRESH_TOKEN_SECRET,
-      cookie_secret: COOKIE_SECRET,
-    });
+      id,
+      username,
+    };
+
+    const { access_token, refresh_token } =
+      await setAuthTokens(authTokensPayload);
 
     // Store refresh token in DB
     const newRefreshToken = await db
       .insert(refreshTokens)
       .values({
-        username: userFromDb?.[0]?.username!,
+        username: user.username,
         token: refresh_token,
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       })

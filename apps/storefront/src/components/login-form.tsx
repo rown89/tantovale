@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import Image from "next/image";
 import { cn } from "@workspace/ui/lib/utils";
 import { Button } from "@workspace/ui/components/button";
@@ -11,6 +11,8 @@ import { submitLogin } from "@/app/login/actions";
 import { LoginActionResponse } from "@/app/login/types";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { CheckCircle2 } from "lucide-react";
+import { useAuth } from "@/context/AuthProvider";
+import { useRouter } from "next/navigation";
 
 const initialState: LoginActionResponse = {
   success: false,
@@ -21,7 +23,17 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const auth = useAuth();
+  const router = useRouter();
   const [state, action, isPending] = useActionState(submitLogin, initialState);
+
+  useEffect(() => {
+    if (state.success && state?.access_token) {
+      auth.setUser(state?.access_token);
+
+      router.push("/");
+    }
+  }, [state]);
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>

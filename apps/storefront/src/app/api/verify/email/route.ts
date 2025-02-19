@@ -1,7 +1,12 @@
-import { getTokenOptions } from "@workspace/server/lib/getTokenOptions";
-import { isDevelopmentMode } from "@workspace/server/lib/constants";
+import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
+import {
+  DEFAULT_ACCESS_TOKEN_EXPIRES,
+  DEFAULT_REFRESH_TOKEN_EXPIRES,
+  isDevelopmentMode,
+} from "@workspace/server/lib/constants";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
 
 const STOREFRONT_URL = process.env.NEXT_PUBLIC_STOREFRONT_URL;
 const STOREFRONT_PORT = process.env.NEXT_PUBLIC_STOREFRONT_PORT;
@@ -36,19 +41,19 @@ export async function GET(request: NextRequest) {
   cookieStore.set({
     name: "access_token",
     value: access_token,
-    ...(getTokenOptions(
+    ...(getAuthTokenOptions(
       "access_token",
-      process.env.NEXT_PUBLIC_STOREFRONT_URL!,
-    ) as any),
+      DEFAULT_ACCESS_TOKEN_EXPIRES,
+    ) as ResponseCookies),
   });
 
   cookieStore.set({
     name: "refresh_token",
     value: refresh_token,
-    ...(getTokenOptions(
+    ...(getAuthTokenOptions(
       "refresh_token",
-      process.env.NEXT_PUBLIC_STOREFRONT_URL!,
-    ) as any),
+      DEFAULT_REFRESH_TOKEN_EXPIRES,
+    ) as ResponseCookies),
   });
 
   return response;

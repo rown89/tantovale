@@ -7,14 +7,13 @@ import { describeRoute } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { zValidator } from "@hono/zod-validator";
 import { EmailVerifySchema } from "@/schema";
-import { setAuthTokens } from "@/lib/generateTokens";
+import { setAuthTokens } from "@/lib/tokenPayload";
 import { isDevelopmentMode } from "@/lib/constants";
 import { db } from "@workspace/database/db";
 import { refreshTokens, users } from "@workspace/database/schema";
 
 type Bindings = {
   ACCESS_TOKEN_SECRET: string;
-  REFRESH_TOKEN_SECRET: string;
   COOKIE_SECRET: string;
 };
 
@@ -42,9 +41,8 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       },
     }),
     async (c) => {
-      const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
+      const { ACCESS_TOKEN_SECRET, COOKIE_SECRET } = env<{
         ACCESS_TOKEN_SECRET: string;
-        REFRESH_TOKEN_SECRET: string;
         COOKIE_SECRET: string;
       }>(c);
 
@@ -152,14 +150,14 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         })
         .where(eq(users.id, Number(id)));
 
-      const { access_token, refresh_token } = await setAuthTokens({
+      const authTokensPayload = {
         c,
         id: user.id,
         username: user.username,
-        access_token_secret: ACCESS_TOKEN_SECRET,
-        refresh_token_secret: REFRESH_TOKEN_SECRET,
-        cookie_secret: COOKIE_SECRET,
-      });
+      };
+
+      const { access_token, refresh_token } =
+        await setAuthTokens(authTokensPayload);
 
       // Store refresh token in DB
       const updatedUser = await db

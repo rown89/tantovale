@@ -1,9 +1,7 @@
 import "dotenv/config";
 
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
 import { logger } from "hono/logger";
-import { getCookie } from "hono/cookie";
 import { openAPISpecs } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { apiReference } from "@scalar/hono-api-reference";
@@ -16,16 +14,26 @@ import {
   verifyRoute,
   refreshRoute,
   logoutRoute,
-  passwordRoute,
+  passwordForgotRoute,
+  passwordResetRoute,
+  passwordResetVerifyToken,
 } from "./routes";
 
-import { jwt, type JwtVariables } from "hono/jwt";
-import { isProductionMode, serverUrl, serverVersion } from "./lib/constants";
+import {
+  authPath,
+  isProductionMode,
+  serverUrl,
+  serverVersion,
+} from "./lib/constants";
 import { cors } from "hono/cors";
 import { authMiddleware } from "./middleware/auth";
 import { profileRoute } from "./routes/profile";
+import { meRoute } from "./routes/me";
+
+import { type JwtVariables } from "hono/jwt";
 
 type Variables = JwtVariables;
+
 export interface Bindings {
   NODE_ENV: string;
   ACCESS_TOKEN_SECRET: string;
@@ -34,11 +42,14 @@ export interface Bindings {
 export const app = new Hono<{ Variables: Variables; Bindings: Bindings }>();
 
 app.use("*", logger());
+
 app.use(
   "*",
   cors({
-    origin: isProductionMode ? "https://tantovale.it" : "*",
+    origin: isProductionMode ? "https://tantovale.it" : "http://localhost:3000",
     credentials: true,
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
   }),
 );
 
@@ -90,10 +101,8 @@ app.get(
   }),
 );
 
-app.use(`${serverVersion}/auth/*`, (c, next) => {
-  console.log("XXX");
-
-  return authMiddleware(c, next);
+app.use(`${serverVersion}/${authPath}/*`, async (c, next) => {
+  return await authMiddleware(c, next);
 });
 
 const apiRoutes = app
@@ -102,9 +111,13 @@ const apiRoutes = app
   .route("/login", loginRoute)
   .route("/logout", logoutRoute)
   .route("/verify", verifyRoute)
-  .route("/refresh", refreshRoute)
   .route("/items", itemsRoute)
-  .route("/password", passwordRoute)
-  .route("/auth/profile", profileRoute);
+  .route("/password", passwordForgotRoute)
+  .route(`/${authPath}/logout`, logoutRoute)
+  .route(`/${authPath}/me`, meRoute)
+  .route(`/${authPath}/refresh`, refreshRoute)
+  .route(`/${authPath}/password`, passwordResetRoute)
+  .route(`/${authPath}/password`, passwordResetVerifyToken)
+  .route(`/${authPath}/profile`, profileRoute);
 
 export type ApiRoutes = typeof apiRoutes;

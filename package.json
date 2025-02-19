@@ -5,7 +5,7 @@
 		"build": "turbo build",
 		"dev": "turbo dev",
 		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
-		"dev-server": "npm run --workspace=@workspace/server dev",
+		"dev-server": "npm run --workspace=@workspace/server hono:dev",
 		"lint": "turbo lint",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"prepare": "husky"
@@ -24,7 +24,7 @@
 		"dotenv": "^16.4.7",
 		"drizzle-orm": "^0.39.1",
 		"prettier-plugin-tailwindcss": "^0.6.10",
-		"zod": "^3.24.1"
+		"zod": "^3.24.2"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^19.6.1",

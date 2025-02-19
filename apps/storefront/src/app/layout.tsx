@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
+import { AuthProvider } from "@/context/AuthProvider";
 
 import "@workspace/ui/globals.css";
 
@@ -38,7 +39,7 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {children}
+            <AuthProvider>{children}</AuthProvider>
             <Toaster />
           </ThemeProvider>
         </QueryProvider>

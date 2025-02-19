@@ -53,7 +53,7 @@ export const logoutRoute = new Hono<{ Bindings: Bindings }>().post(
         httpOnly: true,
       });
 
-      return c.json({ message: "Logout successful" });
+      return c.json({ message: "Logout successful" }, 200);
     } catch (error) {
       console.error("Error during logout:", error);
       return c.json({ message: "Error during logout" }, 500);

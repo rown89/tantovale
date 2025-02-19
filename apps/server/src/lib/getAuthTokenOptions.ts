@@ -5,11 +5,15 @@ import {
   isProductionMode,
 } from "./constants";
 
-export function getTokenOptions(name: string, expires?: Date): CookieOptions {
-  if (name === "access_token") {
-    expires = DEFAULT_ACCESS_TOKEN_EXPIRES;
-  } else {
-    expires = DEFAULT_REFRESH_TOKEN_EXPIRES;
+export function getAuthTokenOptions(
+  name: string,
+  expires?: Date,
+): CookieOptions {
+  if (!expires) {
+    expires =
+      name === "access_token"
+        ? DEFAULT_ACCESS_TOKEN_EXPIRES
+        : DEFAULT_REFRESH_TOKEN_EXPIRES;
   }
 
   const maxAge = 1000;
@@ -18,12 +22,11 @@ export function getTokenOptions(name: string, expires?: Date): CookieOptions {
   const cookiesOptions: CookieOptions = {
     secure: isProductionMode, // Use secure cookies only in production
     httpOnly: true, // Use httpOnly cookies in production for security
-    sameSite: "strict", // Allow cookies cross-origin in dev
+    sameSite: "Lax", // Allow cookies cross-origin in dev
     maxAge,
     expires,
     path: "/",
-    // TODO : EDIT THIS
-    domain: isProductionMode ? "tantovale.it" : undefined,
+    domain: isProductionMode ? "tantovale.it" : "localhost",
   };
 
   return cookiesOptions;

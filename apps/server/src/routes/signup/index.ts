@@ -8,7 +8,7 @@ import { env } from "hono/adapter";
 import { deleteCookie, checkUser } from "@/lib/utils";
 import { hashPassword } from "@/lib/password";
 import { UserSchema } from "@/schema";
-import { isDevelopmentMode, isProductionMode } from "@/lib/constants";
+import { isDevelopmentMode } from "@/lib/constants";
 import { db } from "@workspace/database/db";
 import { users } from "@workspace/database/schema";
 import { sendVerifyEmail } from "@workspace/mailer/verify-email";

@@ -4,8 +4,11 @@ import { client } from "@/lib/api";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
 import { UserSchema } from "@workspace/server/schema";
-import { getTokenOptions } from "@workspace/server/lib/getTokenOptions";
+import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
 import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
+import { verify } from "hono/jwt";
+import { User } from "@/context/AuthProvider";
+import { JWTPayload } from "hono/utils/jwt/types";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,
@@ -32,7 +35,6 @@ export async function submitLogin(
         email: rawData.email,
         password: rawData.password,
       },
-      credentials: "include",
     });
 
     const data = await response?.json();
@@ -49,18 +51,25 @@ export async function submitLogin(
     cookieStore.set({
       name: "access_token",
       value: data.cookies?.access_token,
-      ...(getTokenOptions("access_token") as ResponseCookies),
+      ...(getAuthTokenOptions("access_token") as ResponseCookies),
     });
 
     cookieStore.set({
       name: "refresh_token",
       value: data.cookies?.refresh_token,
-      ...(getTokenOptions("refresh_token") as ResponseCookies),
+      ...(getAuthTokenOptions("refresh_token") as ResponseCookies),
     });
+
+    // Decode the new access token to update the expiry.
+    const decodedToken = (await verify(
+      data.cookies?.access_token,
+      process.env.ACCESS_TOKEN_SECRET!,
+    )) as unknown as User;
 
     return {
       success: true,
       message: "Correctly logged-in",
+      access_token: decodedToken,
     };
   } catch (error) {
     console.log(error);
