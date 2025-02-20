@@ -1,18 +1,19 @@
 // app/protected/page.tsx (Client Component)
 "use client";
+
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthProvider";
 
 export default function ProtectedPage() {
-  const { user } = useAuth();
+  const { user, loadingUser } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) {
+    if (!loadingUser && !user) {
       router.push("/login");
     }
-  }, [user, router]);
+  }, [user, loadingUser]);
 
   if (!user) return <div>Loading...</div>;
 

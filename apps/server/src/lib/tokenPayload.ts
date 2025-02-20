@@ -1,5 +1,5 @@
 import { sign } from "hono/jwt";
-import { setSignedCookie } from "hono/cookie";
+import { setCookie, setSignedCookie } from "hono/cookie";
 import type { Context } from "hono";
 import { getAuthTokenOptions } from "./getAuthTokenOptions";
 import {
@@ -31,7 +31,7 @@ export function tokenPayload({
 export async function setAuthTokens({ c, id, username }: TokenOptions) {
   const access_token_secret = process.env.ACCESS_TOKEN_SECRET!;
   const refresh_token_secret = process.env.REFRESH_TOKEN_SECRET!;
-  const cookie_secret = process.env.COOKIE_SECRET!;
+  // const cookie_secret = process.env.COOKIE_SECRET!;
 
   const access_token_payload = tokenPayload({
     id,
@@ -45,22 +45,43 @@ export async function setAuthTokens({ c, id, username }: TokenOptions) {
     exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
   });
 
-  // Generate and sign tokens
-  const access_token = await sign(access_token_payload, access_token_secret);
-  const refresh_token = await sign(refresh_token_payload, refresh_token_secret);
+  try {
+    // Generate and sign tokens
+    const access_token = await sign(access_token_payload, access_token_secret);
+    const refresh_token = await sign(
+      refresh_token_payload,
+      refresh_token_secret,
+    );
+    /* 
+      await setSignedCookie(c, "access_token", access_token, cookie_secret, {
+        ...getAuthTokenOptions("access_token"),
+      });
 
-  await setSignedCookie(c, "access_token", access_token, cookie_secret, {
-    ...getAuthTokenOptions("access_token"),
-  });
+      await setSignedCookie(c, "refresh_token", refresh_token, cookie_secret, {
+        ...getAuthTokenOptions("refresh_token"),
+      });
+    */
+    setCookie(c, "access_token", access_token, {
+      ...getAuthTokenOptions("access_token"),
+    });
 
-  await setSignedCookie(c, "refresh_token", refresh_token, cookie_secret, {
-    ...getAuthTokenOptions("refresh_token"),
-  });
+    setCookie(c, "refresh_token", refresh_token, {
+      ...getAuthTokenOptions("refresh_token"),
+    });
 
-  return {
-    access_token,
-    refresh_token,
-    access_token_payload,
-    refresh_token_payload,
-  };
+    return {
+      access_token,
+      refresh_token,
+      access_token_payload,
+      refresh_token_payload,
+    };
+  } catch (error) {
+    console.error("setAuthTokens error: ", error);
+    return {
+      access_token: "",
+      refresh_token: "",
+      access_token_payload,
+      refresh_token_payload,
+    };
+  }
 }

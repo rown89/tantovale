@@ -6,3 +6,5 @@ export * from "./verify";
 export * from "./refresh";
 export * from "./logout";
 export * from "./password";
+export * from "./me";
+export * from "./profile";

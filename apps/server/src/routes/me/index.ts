@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getSignedCookie } from "hono/cookie";
+import { getCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
 
@@ -12,20 +12,18 @@ export const meRoute = new Hono<{ Bindings: Bindings }>().get(
   "/",
   async (c) => {
     const { ACCESS_TOKEN_SECRET, COOKIE_SECRET } = env(c);
+    // TODO: signed cookie doesn't work yet
     // Get the signed access token from cookies
-    const accessToken = await getSignedCookie(c, COOKIE_SECRET, "access_token");
+    const accessToken = getCookie(c, "access_token");
+    // const accessToken = await getSignedCookie(c, COOKIE_SECRET, "access_token");
 
-    if (!accessToken) {
-      return c.json({ message: "No token provided" }, 401);
-    }
+    if (!accessToken) return c.json({ message: "No token provided" }, 401);
 
     try {
       // Verify and decode the token
       const payload = await verify(accessToken, ACCESS_TOKEN_SECRET);
 
-      if (!payload) {
-        return c.json({ message: "Invalid token" }, 401);
-      }
+      if (!payload) return c.json({ message: "Invalid token" }, 401);
 
       return c.json(
         {

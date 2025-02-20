@@ -6,6 +6,8 @@ import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 import { AuthProvider } from "@/context/AuthProvider";
 
 import "@workspace/ui/globals.css";
+import NavBar from "@/components/navbar/navbar";
+import { cookies } from "next/headers";
 
 const fontSans = Lato({
   weight: "400",
@@ -23,11 +25,14 @@ export const metadata: Metadata = {
   description: "open source marketplace",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieReader = await cookies();
+  const accessToken = cookieReader.get("access_token")?.value;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
@@ -39,7 +44,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider access_token={accessToken}>
+              <NavBar />
+              {children}
+            </AuthProvider>
             <Toaster />
           </ThemeProvider>
         </QueryProvider>

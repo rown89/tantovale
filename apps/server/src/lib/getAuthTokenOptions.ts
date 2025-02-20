@@ -20,13 +20,13 @@ export function getAuthTokenOptions(
 
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
-    secure: isProductionMode, // Use secure cookies only in production
-    httpOnly: true, // Use httpOnly cookies in production for security
-    sameSite: "Lax", // Allow cookies cross-origin in dev
+    secure: isProductionMode,
+    httpOnly: true,
+    sameSite: isProductionMode ? "None" : "Lax",
     maxAge,
     expires,
     path: "/",
-    domain: isProductionMode ? "tantovale.it" : "localhost",
+    domain: isProductionMode ? "tantovale.it" : undefined,
   };
 
   return cookiesOptions;

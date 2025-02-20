@@ -3,9 +3,12 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { openAPISpecs } from "hono-openapi";
+import { cors } from "hono/cors";
 import { resolver } from "hono-openapi/zod";
 import { apiReference } from "@scalar/hono-api-reference";
+import { authMiddleware } from "./middleware/auth";
 import { z } from "zod";
+import { authPath, isProductionMode, serverUrl } from "./lib/constants";
 
 import {
   itemsRoute,
@@ -14,32 +17,18 @@ import {
   verifyRoute,
   refreshRoute,
   logoutRoute,
+  meRoute,
+  profileRoute,
   passwordForgotRoute,
   passwordResetRoute,
   passwordResetVerifyToken,
 } from "./routes";
 
-import {
-  authPath,
-  isProductionMode,
-  serverUrl,
-  serverVersion,
-} from "./lib/constants";
-import { cors } from "hono/cors";
-import { authMiddleware } from "./middleware/auth";
-import { profileRoute } from "./routes/profile";
-import { meRoute } from "./routes/me";
-
 import { type JwtVariables } from "hono/jwt";
 
 type Variables = JwtVariables;
 
-export interface Bindings {
-  NODE_ENV: string;
-  ACCESS_TOKEN_SECRET: string;
-}
-
-export const app = new Hono<{ Variables: Variables; Bindings: Bindings }>();
+export const app = new Hono<{ Variables: Variables }>();
 
 app.use("*", logger());
 
@@ -49,7 +38,7 @@ app.use(
     origin: isProductionMode ? "https://tantovale.it" : "http://localhost:3000",
     credentials: true,
     allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+    allowHeaders: ["Content-Type", "X-Requested-With", "Accept"],
   }),
 );
 
@@ -101,12 +90,9 @@ app.get(
   }),
 );
 
-app.use(`${serverVersion}/${authPath}/*`, async (c, next) => {
-  return await authMiddleware(c, next);
-});
+app.use(`/${authPath}/*`, authMiddleware);
 
 const apiRoutes = app
-  .basePath(`/${serverVersion}`)
   .route("/signup", signupRoute)
   .route("/login", loginRoute)
   .route("/logout", logoutRoute)

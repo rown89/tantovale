@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { env } from "hono/adapter";
-import { getSignedCookie } from "hono/cookie";
+import { getCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
@@ -48,6 +48,9 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
 
       try {
         // Get tokens individually
+        const access_token = getCookie(c, "access_token");
+        const refresh_token = getCookie(c, "refresh_token");
+        /*  
         const access_token = await getSignedCookie(
           c,
           COOKIE_SECRET,
@@ -58,6 +61,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
           COOKIE_SECRET,
           "refresh_token",
         );
+        */
 
         if (isDevelopmentMode) {
           console.log("Verify endpoint received tokens:", {

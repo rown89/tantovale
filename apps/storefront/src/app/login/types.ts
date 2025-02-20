@@ -9,7 +9,7 @@ export interface LoginActionResponse {
   success: boolean;
   message: string;
   inputs?: LoginFormData;
-  access_token?: User;
+  user?: User;
   errors?: {
     [K in keyof LoginFormData]?: string[];
   };

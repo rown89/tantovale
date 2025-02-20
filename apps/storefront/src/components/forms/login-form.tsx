@@ -28,8 +28,8 @@ export function LoginForm({
   const [state, action, isPending] = useActionState(submitLogin, initialState);
 
   useEffect(() => {
-    if (state.success && state?.access_token) {
-      auth.setUser(state?.access_token);
+    if (state.success && state?.user) {
+      auth.setUser(state?.user);
 
       router.push("/");
     }

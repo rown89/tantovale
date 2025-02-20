@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { client } from "@/lib/api";
 import { verify } from "hono/jwt";
-import { headers } from "next/headers";
 import { access } from "fs";
 
 export interface User {
@@ -22,6 +21,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
+  loadingUser: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
@@ -30,21 +30,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export const AuthProvider = ({
+  children,
+  access_token,
+}: {
+  children: ReactNode;
+  access_token?: string;
+}) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   async function fetchSession() {
     try {
       const response = await client?.auth.me.$get({
         credentials: "include",
       });
+
+      if (response?.status !== 200) setUser(null);
+
       const data = await response?.json();
 
       if (data && "user" in data) {
         setUser({
-          id: data.user.id ?? 0,
-          username: data.user.username ?? "",
-          exp: data.user.exp ?? 0,
+          id: data?.user?.id ?? 0,
+          username: data?.user.username ?? "",
+          exp: data?.user?.exp ?? 0,
         });
       } else {
         setUser(null);
@@ -52,13 +62,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Error fetching session:", error);
       setUser(null);
+    } finally {
+      setLoadingUser(false); // Ensure loading is set to false after fetching
     }
   }
 
   // On mount, load the session.
   useEffect(() => {
-    fetchSession();
-  }, []);
+    if (access_token) {
+      fetchSession();
+    }
+  }, [access_token]);
 
   // Set up a timer to refresh the token in the background.
   useEffect(() => {
@@ -141,7 +155,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, setUser, login, logout, refreshSession }}
+      value={{ user, loadingUser, setUser, login, logout, refreshSession }}
     >
       {children}
     </AuthContext.Provider>

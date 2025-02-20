@@ -8,7 +8,6 @@ import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
 import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
 import { verify } from "hono/jwt";
 import { User } from "@/context/AuthProvider";
-import { JWTPayload } from "hono/utils/jwt/types";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,
@@ -61,7 +60,7 @@ export async function submitLogin(
     });
 
     // Decode the new access token to update the expiry.
-    const decodedToken = (await verify(
+    const user = (await verify(
       data.cookies?.access_token,
       process.env.ACCESS_TOKEN_SECRET!,
     )) as unknown as User;
@@ -69,7 +68,7 @@ export async function submitLogin(
     return {
       success: true,
       message: "Correctly logged-in",
-      access_token: decodedToken,
+      user,
     };
   } catch (error) {
     console.log(error);

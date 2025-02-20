@@ -1,6 +1,11 @@
 // src/routes/refresh.ts
 import { Hono } from "hono";
-import { getSignedCookie, setSignedCookie } from "hono/cookie";
+import {
+  getCookie,
+  setCookie,
+  getSignedCookie,
+  setSignedCookie,
+} from "hono/cookie";
 import { verify, sign } from "hono/jwt";
 import { env } from "hono/adapter";
 import { db } from "@workspace/database/db";
@@ -15,13 +20,7 @@ import {
 import { tokenPayload } from "@/lib/tokenPayload";
 import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
 
-type Bindings = {
-  ACCESS_TOKEN_SECRET: string;
-  REFRESH_TOKEN_SECRET: string;
-  COOKIE_SECRET: string;
-};
-
-export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
+export const refreshRoute = new Hono().post(
   "/",
   describeRoute({
     description: "Refresh token verifier",
@@ -32,7 +31,7 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
     },
   }),
   async (c) => {
-    const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
+    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
       ACCESS_TOKEN_SECRET: string;
       REFRESH_TOKEN_SECRET: string;
       COOKIE_SECRET: string;
@@ -40,12 +39,14 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
 
     try {
       // Get the refresh token from the cookie
+      const refresh_token = getCookie(c, "refresh_token");
+      /* 
       const refresh_token = await getSignedCookie(
         c,
         COOKIE_SECRET,
         "refresh_token",
       );
-
+      */
       if (!refresh_token) {
         return c.json({ message: "No refresh token provided" }, 401);
       }
@@ -83,12 +84,12 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
 
       const new_access_token = await sign(
         new_access_token_payload,
-        c.env.ACCESS_TOKEN_SECRET,
+        ACCESS_TOKEN_SECRET,
       );
 
       const new_refresh_token = await sign(
         new_refresh_token_payload,
-        c.env.REFRESH_TOKEN_SECRET,
+        REFRESH_TOKEN_SECRET,
       );
 
       // Store new refresh token in DB
@@ -103,11 +104,12 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
         return c.json({ message: "An error occurred during login" }, 500);
       }
 
+      /* 
       await setSignedCookie(
         c,
         "access_token",
         new_access_token,
-        c.env.COOKIE_SECRET,
+        COOKIE_SECRET,
         {
           ...getAuthTokenOptions("access_token"),
         },
@@ -117,9 +119,18 @@ export const refreshRoute = new Hono<{ Bindings: Bindings }>().post(
         c,
         "refresh_token",
         new_refresh_token,
-        c.env.COOKIE_SECRET,
+        COOKIE_SECRET,
         { ...getAuthTokenOptions("refresh_token") },
-      );
+      ); 
+      */
+
+      setCookie(c, "access_token", new_access_token, {
+        ...getAuthTokenOptions("access_token"),
+      });
+
+      setCookie(c, "refresh_token", new_refresh_token, {
+        ...getAuthTokenOptions("refresh_token"),
+      });
 
       console.log("Tokens refreshed successfully");
 

@@ -6,7 +6,6 @@ export const isStagingMode = (process.env.NODE_ENV as string) === "staging";
 export const isProductionMode = process.env.NODE_ENV === "production";
 
 export const serverUrl = `${isDevelopmentMode ? "http" : "https"}://${process.env.SERVER_HOSTNAME}:${process.env.SERVER_PORT}`;
-export const serverVersion = process.env.SERVER_VERSION ?? "v1";
 export const authPath = "auth";
 
 export const DEFAULT_ACCESS_TOKEN_EXPIRES = new Date(
