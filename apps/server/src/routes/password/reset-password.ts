@@ -3,20 +3,14 @@ import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/password";
-import { db } from "@workspace/database/db";
-import { users, passwordResetTokens } from "@workspace/database/schema";
+import { createDb } from "database";
+import { users, passwordResetTokens } from "database/schema/schema";
+import type { AppBindings } from "@/lib/types";
 
-type Bindings = {
-  ACCESS_TOKEN_SECRET: string;
-  SERVER_HOSTNAME: string;
-  SERVER_VERSION: string;
-  RESET_TOKEN_SECRET: string;
-};
-
-export const passwordResetRoute = new Hono<{ Bindings: Bindings }>()
+export const passwordResetRoute = new Hono<AppBindings>()
   // Update Password
   .post("/reset", async (c) => {
-    const { RESET_TOKEN_SECRET } = env<Bindings>(c);
+    const { RESET_TOKEN_SECRET } = env(c);
     const { token, newPassword } = await c.req.json();
 
     if (!token || !newPassword) {
@@ -26,6 +20,7 @@ export const passwordResetRoute = new Hono<{ Bindings: Bindings }>()
     try {
       const payload = await verify(token, RESET_TOKEN_SECRET);
 
+      const { db } = createDb(c.env);
       // Check if token exists in DB
       const storedToken = await db.query.passwordResetTokens.findFirst({
         where: (tbl) => eq(tbl.token, token),

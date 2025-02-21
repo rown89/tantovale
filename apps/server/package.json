@@ -10,23 +10,42 @@
     "./lib/getAuthTokenOptions": "./src/lib/getAuthTokenOptions.ts"
   },
   "scripts": {
-    "hono:dev": "NODE_ENV=development dotenv -e .env.local -e ../../packages/database/.env.local -- tsx watch src/index.ts --turbopack",
-    "hono:staging": "NODE_ENV=staging dotenv -e .env.staging -e ../../packages/database/.env.staging -- tsx watch src/index.ts --turbopack",
-    "hono:build": "NODE_ENV=production dotenv -e .env.production -e ../../packages/database/.env.production -- tsc"
+    "hono:deploy": "wrangler deploy --minify",
+    "hono:dev2": "wrangler dev",
+    "hono:dev": "NODE_ENV=development dotenv -e .env.local -- tsx watch src/index.ts --turbopack",
+    "hono:staging": "NODE_ENV=staging dotenv -e .env.staging -- tsx watch src/index.ts --turbopack",
+    "hono:build": "NODE_ENV=production dotenv -e .env.production -- tsc",
+    "db:build": "tsx src/index.ts",
+    "db:dev": "tsx --watch",
+    "db:check": "npx drizzle-kit check --config=./database/drizzle.config.ts",
+    "db:studio": "npx drizzle-kit studio --config=./database/drizzle.config.ts",
+    "db:generate": "npx drizzle-kit generate --config=./database/drizzle.config.ts",
+    "db:migrate": "tsx ./database/migrate.ts",
+    "db:push": "npx drizzle-kit push --config=./database/drizzle.config.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@hono/swagger-ui": "^0.5.0",
     "@hono/zod-openapi": "^0.18.4",
     "@hono/zod-validator": "^0.4.2",
-    "@node-rs/argon2": "^2.0.2",
     "@scalar/hono-api-reference": "^0.5.172",
+    "argon2-browser": "^1.18.0",
+    "drizzle-orm": "^0.39.3",
     "hono": "^4.7.2",
     "hono-openapi": "^0.4.4",
+    "hono-pino": "^0.7.2",
     "nodemailer": "^6.10.0",
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "postgres": "^3.4.5",
+    "stoker": "^1.4.2",
     "zod-openapi": "^4.2.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "@types/argon2-browser": "^1.18.4",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.11",
@@ -34,6 +53,8 @@
     "@workspace/mailer": "*",
     "@workspace/typescript-config": "*",
     "dotenv-cli": "^8.0.0",
-    "tsx": "^4.19.2"
+    "drizzle-kit": "^0.30.4",
+    "tsx": "^4.19.2",
+    "wrangler": "^3.109.2"
   }
 }

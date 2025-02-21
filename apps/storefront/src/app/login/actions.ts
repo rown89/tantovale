@@ -4,10 +4,6 @@ import { client } from "@/lib/api";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
 import { UserSchema } from "@workspace/server/schema";
-import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
-import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
-import { verify } from "hono/jwt";
-import { User } from "@/context/AuthProvider";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,
@@ -45,30 +41,38 @@ export async function submitLogin(
       };
     }
 
-    const cookieStore = await cookies();
+    const setCookieHeader: string = response.headers.get("Set-Cookie");
 
-    cookieStore.set({
-      name: "access_token",
-      value: data.cookies?.access_token,
-      ...(getAuthTokenOptions("access_token") as ResponseCookies),
+    if (!setCookieHeader) {
+      return {
+        success: false,
+        inputs: rawData,
+        message: "No cookie set",
+      };
+    }
+
+    const cookieReader = await cookies();
+
+    setCookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
+      const [name, ...rest] = cookie.split("=");
+      const trimmedName = name?.trim();
+      const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
+
+      if (trimmedName === "auth_token" || trimmedName === "refresh_token") {
+        console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
+        cookieReader.set(trimmedName, value, { path: "/" });
+      }
     });
-
-    cookieStore.set({
-      name: "refresh_token",
-      value: data.cookies?.refresh_token,
-      ...(getAuthTokenOptions("refresh_token") as ResponseCookies),
-    });
-
-    // Decode the new access token to update the expiry.
-    const user = (await verify(
-      data.cookies?.access_token,
-      process.env.ACCESS_TOKEN_SECRET!,
-    )) as unknown as User;
 
     return {
       success: true,
       message: "Correctly logged-in",
-      user,
+      user: {
+        id: data.user.id,
+        username: data.user.username,
+        email_verified: data.user.email_verified,
+        phone_verified: data.user.phone_verified,
+      },
     };
   } catch (error) {
     console.log(error);

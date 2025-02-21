@@ -1,6 +1,4 @@
 import Image from "next/image";
-import { Button } from "@workspace/ui/components/button";
-import { Github } from "lucide-react";
 
 export default function Home() {
   return (
@@ -19,16 +17,6 @@ export default function Home() {
           Un marketplace per l&apos;acquisto e la vendita di articoli usati,
           open source.
         </p>
-        <div className="flex justify-center space-x-4 animate-fade-in">
-          <form action="https://github.com/rown89/tantovale" method="get">
-            <Button
-              variant="outline"
-              className="bg-black text-white hover:cursor-pointer"
-            >
-              <Github /> GitHub
-            </Button>
-          </form>
-        </div>
       </section>
     </div>
   );

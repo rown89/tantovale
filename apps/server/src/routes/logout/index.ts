@@ -2,11 +2,12 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
-import { db } from "@workspace/database/db";
-import { refreshTokens } from "@workspace/database/schema";
+import { createDb } from "database";
+import { refreshTokens } from "database/schema/schema";
 import { eq } from "drizzle-orm";
+import type { AppBindings } from "@/lib/types";
 
-export const logoutRoute = new Hono().post("/", async (c) => {
+export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
   const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
     ACCESS_TOKEN_SECRET: string;
     REFRESH_TOKEN_SECRET: string;
@@ -32,6 +33,7 @@ export const logoutRoute = new Hono().post("/", async (c) => {
         const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
         const username = payload.username as string;
 
+        const { db } = createDb(c.env);
         // Remove refresh token
         await db
           .delete(refreshTokens)

@@ -5,23 +5,17 @@ import { sign } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
 import { env } from "hono/adapter";
-import { deleteCookie, checkUser } from "@/lib/utils";
+import { checkUser } from "@/lib/utils";
 import { hashPassword } from "@/lib/password";
 import { UserSchema } from "@/schema";
 import { isDevelopmentMode } from "@/lib/constants";
-import { db } from "@workspace/database/db";
-import { users } from "@workspace/database/schema";
+import { createDb } from "database";
+import { users } from "database/schema/schema";
 import { sendVerifyEmail } from "@workspace/mailer/verify-email";
+import { deleteCookie } from "hono/cookie";
+import type { AppBindings } from "@/lib/types";
 
-type Bindings = {
-  NEXT_PUBLIC_STOREFRONT_URL: string;
-  NEXT_PUBLIC_STOREFRONT_PORT: string;
-  ACCESS_TOKEN_SECRET: string;
-  SERVER_HOSTNAME: string;
-  SERVER_VERSION: string;
-};
-
-export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
+export const signupRoute = new Hono<AppBindings>().post(
   "/",
   describeRoute({
     description: "Create a user",
@@ -33,26 +27,19 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
   }),
   zValidator("json", UserSchema),
   async (c) => {
-    const {
-      ACCESS_TOKEN_SECRET,
-      SERVER_HOSTNAME,
-      SERVER_VERSION,
-      NEXT_PUBLIC_STOREFRONT_URL,
-      NEXT_PUBLIC_STOREFRONT_PORT,
-    } = env<{
-      ACCESS_TOKEN_SECRET: string;
-      SERVER_HOSTNAME: string;
-      SERVER_VERSION: string;
-      NEXT_PUBLIC_STOREFRONT_URL: string;
-      NEXT_PUBLIC_STOREFRONT_PORT: string;
-    }>(c);
+    const { EMAIL_VERIFY_TOKEN_SECRET, STOREFRONT_HOSTNAME, STOREFRONT_PORT } =
+      env<{
+        EMAIL_VERIFY_TOKEN_SECRET: string;
+        STOREFRONT_HOSTNAME: string;
+        STOREFRONT_PORT: string;
+      }>(c);
 
     try {
       const values = await c.req.json();
       const { username, email, password } = values;
 
-      const userAlreadyExist = await checkUser(username, "username");
-      const emailAlreadyExist = await checkUser(email, "email");
+      const userAlreadyExist = await checkUser(c, username, "username");
+      const emailAlreadyExist = await checkUser(c, email, "email");
 
       if (userAlreadyExist) {
         return c.json({ message: "Username already exists" }, 422);
@@ -63,6 +50,7 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
 
       const hashedPassword = await hashPassword(password);
 
+      const { db } = createDb(c.env);
       // Create new user
       const results = await db
         .insert(users)
@@ -86,16 +74,14 @@ export const signupRoute = new Hono<{ Bindings: Bindings }>().post(
         expiresIn: new Date(Date.now() + 60 * 60 * 1000), // 60min
       };
 
-      const token = await sign(tmp_token_payload, ACCESS_TOKEN_SECRET);
+      const token = await sign(tmp_token_payload, EMAIL_VERIFY_TOKEN_SECRET);
 
       // Send verification email
-      const verificationLink = `http${isDevelopmentMode ? "" : "s"}://${NEXT_PUBLIC_STOREFRONT_URL}:${NEXT_PUBLIC_STOREFRONT_PORT}/api/verify/email?token=${token}`;
+      const verificationLink = `http${isDevelopmentMode ? "" : "s"}://${STOREFRONT_HOSTNAME}:${STOREFRONT_PORT}/api/verify/email?token=${token}`;
 
       if (isDevelopmentMode) {
-        console.log("verificationLink: ", verificationLink);
-      }
-
-      if (!isDevelopmentMode) {
+        console.log("\nverificationLink: ", verificationLink, "\n");
+      } else {
         await sendVerifyEmail(email, verificationLink);
       }
 

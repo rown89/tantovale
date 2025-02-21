@@ -1,26 +1,17 @@
 // src/routes/refresh.ts
 import { Hono } from "hono";
-import {
-  getCookie,
-  setCookie,
-  getSignedCookie,
-  setSignedCookie,
-} from "hono/cookie";
-import { verify, sign } from "hono/jwt";
+import { getCookie } from "hono/cookie";
+import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
-import { db } from "@workspace/database/db";
-import { refreshTokens } from "@workspace/database/schema";
+import { createDb } from "database";
+import { refreshTokens } from "database/schema/schema";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import {
-  DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
-  DEFAULT_REFRESH_TOKEN_EXPIRES,
-  DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-} from "@/lib/constants";
-import { tokenPayload } from "@/lib/tokenPayload";
-import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
+import { DEFAULT_REFRESH_TOKEN_EXPIRES } from "@/lib/constants";
+import { setAuthTokens } from "@/lib/tokenPayload";
+import type { AppBindings } from "@/lib/types";
 
-export const refreshRoute = new Hono().post(
+export const refreshRoute = new Hono<AppBindings>().post(
   "/",
   describeRoute({
     description: "Refresh token verifier",
@@ -31,15 +22,13 @@ export const refreshRoute = new Hono().post(
     },
   }),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
+    const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
       REFRESH_TOKEN_SECRET: string;
       COOKIE_SECRET: string;
     }>(c);
-
+    const refresh_token = getCookie(c, "refresh_token");
     try {
       // Get the refresh token from the cookie
-      const refresh_token = getCookie(c, "refresh_token");
       /* 
       const refresh_token = await getSignedCookie(
         c,
@@ -55,6 +44,7 @@ export const refreshRoute = new Hono().post(
       const payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
       const username = payload.username as string;
 
+      const { db } = createDb(c.env);
       // Check if the refresh token exists in db
       const storedToken = await db
         .select()
@@ -70,27 +60,18 @@ export const refreshRoute = new Hono().post(
         return c.json({ message: "Invalid refresh token" }, 401);
       }
 
-      const new_access_token_payload = tokenPayload({
+      const authTokensPayload = {
+        c,
         id: Number(payload.id),
-        username,
-        exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
-      });
+        username: username,
+        email_verified: payload.email_verified as boolean,
+        phone_verified: payload.phone_verified as boolean,
+      };
 
-      const new_refresh_token_payload = tokenPayload({
-        id: Number(payload.id),
-        username,
-        exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-      });
-
-      const new_access_token = await sign(
-        new_access_token_payload,
-        ACCESS_TOKEN_SECRET,
-      );
-
-      const new_refresh_token = await sign(
-        new_refresh_token_payload,
-        REFRESH_TOKEN_SECRET,
-      );
+      const {
+        access_token: new_access_token,
+        refresh_token: new_refresh_token,
+      } = await setAuthTokens(authTokensPayload);
 
       // Store new refresh token in DB
       try {
@@ -104,40 +85,13 @@ export const refreshRoute = new Hono().post(
         return c.json({ message: "An error occurred during login" }, 500);
       }
 
-      /* 
-      await setSignedCookie(
-        c,
-        "access_token",
-        new_access_token,
-        COOKIE_SECRET,
-        {
-          ...getAuthTokenOptions("access_token"),
-        },
-      );
-
-      await setSignedCookie(
-        c,
-        "refresh_token",
-        new_refresh_token,
-        COOKIE_SECRET,
-        { ...getAuthTokenOptions("refresh_token") },
-      ); 
-      */
-
-      setCookie(c, "access_token", new_access_token, {
-        ...getAuthTokenOptions("access_token"),
-      });
-
-      setCookie(c, "refresh_token", new_refresh_token, {
-        ...getAuthTokenOptions("refresh_token"),
-      });
-
       console.log("Tokens refreshed successfully");
 
       return c.json(
         {
           message: "Tokens refreshed successfully",
           access_token: new_access_token,
+          refresh_token: new_refresh_token,
         },
         200,
       );

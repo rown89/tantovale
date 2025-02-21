@@ -8,6 +8,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
+      "@/database/db": ["database/index.ts"],
+      "@/database/schema": ["database/schema/schema.ts"],
       "@/lib": ["./src/lib/*"],
       "@workspace/mailer/*": ["../../packages/mailer/src/*"]
     },
@@ -17,6 +19,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["src/**/*", "../../packages/database/drizzle.config.ts"],
+  "include": ["src/**/*", "database/**/*"],
   "exclude": ["node_modules"]
 }

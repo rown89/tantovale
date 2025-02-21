@@ -1,18 +1,9 @@
-import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
-import {
-  DEFAULT_ACCESS_TOKEN_EXPIRES,
-  DEFAULT_REFRESH_TOKEN_EXPIRES,
-  isDevelopmentMode,
-} from "@workspace/server/lib/constants";
 import { NextRequest, NextResponse } from "next/server";
+import { client } from "@/lib/api";
 import { cookies } from "next/headers";
-import { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
 
 const STOREFRONT_URL = process.env.NEXT_PUBLIC_STOREFRONT_URL;
 const STOREFRONT_PORT = process.env.NEXT_PUBLIC_STOREFRONT_PORT;
-const SERVER_HOSTNAME = process.env.SERVER_HOSTNAME;
-const SERVER_PORT = process.env.SERVER_PORT;
-const SERVER_VERSION = process.env.SERVER_VERSION;
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -21,40 +12,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No token provided" });
   }
 
-  const data = await fetch(
-    `http${isDevelopmentMode ? "" : "s"}://${SERVER_HOSTNAME}:${SERVER_PORT}/${SERVER_VERSION}/verify/email?token=${token}`,
-  );
+  const response = await client.verify.email.$get({
+    query: { token },
+  });
 
-  const { access_token, refresh_token } = await data.json();
-
-  if (!access_token || !refresh_token) {
+  if (response.status !== 200) {
     return NextResponse.json({ error: "Invalid token provided" });
   }
 
-  // Create a redirect response and attach cookies directly.
-  const destination = `${STOREFRONT_URL}:${STOREFRONT_PORT}/`;
-  const response = NextResponse.redirect(destination);
+  const setCookieHeader = response.headers.get("Set-Cookie");
 
-  const cookieStore = await cookies();
+  if (!setCookieHeader) {
+    return NextResponse.json({ error: "Invalid token provided" });
+  }
 
-  // Set the cookies on the response
-  cookieStore.set({
-    name: "access_token",
-    value: access_token,
-    ...(getAuthTokenOptions(
-      "access_token",
-      DEFAULT_ACCESS_TOKEN_EXPIRES,
-    ) as ResponseCookies),
+  const cookieReader = await cookies();
+
+  setCookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
+    const [name, ...rest] = cookie.split("=");
+    const trimmedName = name?.trim();
+    const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
+
+    if (trimmedName === "auth_token" || trimmedName === "refresh_token") {
+      console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
+      cookieReader.set(trimmedName, value, { path: "/" });
+    }
   });
 
-  cookieStore.set({
-    name: "refresh_token",
-    value: refresh_token,
-    ...(getAuthTokenOptions(
-      "refresh_token",
-      DEFAULT_REFRESH_TOKEN_EXPIRES,
-    ) as ResponseCookies),
-  });
-
-  return response;
+  return NextResponse.redirect(`${STOREFRONT_URL}:${STOREFRONT_PORT}/`);
 }

@@ -1,5 +1,4 @@
-import { hash, verify } from "@node-rs/argon2";
-import type { Algorithm, Version } from "@node-rs/argon2";
+import { hash, verify } from "argon2-browser";
 
 // Improved defaults for Argon2
 const MEMORY_COST = 65536; // 64 MiB
@@ -12,9 +11,7 @@ interface HashOptions {
   timeCost?: number;
   outputLen?: number;
   parallelism?: number;
-  algorithm?: Algorithm;
-  version?: Version;
-  secret?: Buffer;
+  secret?: string; // Argon2 Browser takes secret as a string
 }
 
 /**
@@ -28,16 +25,19 @@ export async function hashPassword(
   options: HashOptions = {},
 ): Promise<string> {
   const hashOptions = {
-    memoryCost: options.memoryCost ?? MEMORY_COST,
-    timeCost: options.timeCost ?? TIME_COST,
-    outputLen: options.outputLen ?? OUTPUT_LENGTH,
+    pass: password,
+    salt: crypto.getRandomValues(new Uint8Array(16)), // Generate a random salt (use 16-byte salt)
+    memory: options.memoryCost ?? MEMORY_COST,
+    time: options.timeCost ?? TIME_COST,
+    hashLen: options.outputLen ?? OUTPUT_LENGTH,
     parallelism: options.parallelism ?? PARALLELISM,
-    algorithm: options.algorithm,
-    version: options.version,
-    secret: options.secret,
+    secret: options.secret
+      ? new TextEncoder().encode(options.secret)
+      : new Uint8Array(), // Convert secret to Uint8Array
   };
 
-  return hash(password, hashOptions);
+  const { encoded } = await hash(hashOptions);
+  return encoded;
 }
 
 /**
@@ -47,12 +47,13 @@ export async function hashPassword(
  * @returns A promise that resolves to true if the password matches, false otherwise
  */
 export async function verifyPassword(
-  hash: string | undefined,
+  hash: string,
   password: string,
 ): Promise<boolean> {
-  if (hash) {
-    return verify(hash, password);
-  } else {
+  try {
+    const isMatch = await verify({ pass: password, encoded: hash });
+    return isMatch ?? false;
+  } catch (error) {
     return false;
   }
 }

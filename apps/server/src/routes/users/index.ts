@@ -1,6 +1,7 @@
+import type { AppBindings } from "@/lib/types";
 import { Hono } from "hono";
 
-export const usersRoute = new Hono()
+export const usersRoute = new Hono<AppBindings>()
   .get("/", (c) => {
     return c.json({});
   })

@@ -1,11 +1,16 @@
 import { eq } from "drizzle-orm";
-import { db } from "@workspace/database/db";
-import { users } from "@workspace/database/schema";
+import { createDb } from "database";
+import { users } from "database/schema/schema";
+import type { Context } from "hono";
+import type { Env } from "hono-pino";
 
 export const checkUser = async (
+  c: Context,
   identifier: string,
   type: "email" | "username",
 ) => {
+  const { db } = createDb(c.env);
+
   const user = await db
     .select()
     .from(users)

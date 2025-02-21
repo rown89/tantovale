@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 export const isDevelopmentMode =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
 export const isStagingMode = (process.env.NODE_ENV as string) === "staging";

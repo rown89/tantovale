@@ -1,15 +1,14 @@
-import { cookies } from "next/headers";
+"use client";
+
 import Link from "next/link";
 import LogoutButton from "../logout-button";
+import { useAuth } from "@/context/AuthProvider";
 
-export default async function NavBar() {
-  const cookieReader = await cookies();
-  const accessToken = cookieReader.get("access_token")?.value;
-
-  const user = accessToken;
+export default function NavBar() {
+  const { user } = useAuth();
 
   return (
-    <div className="flex p-2 justify-between items-center">
+    <div className="flex px-6 py-3 justify-between items-center">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale
@@ -25,9 +24,14 @@ export default async function NavBar() {
             <LogoutButton />
           </div>
         ) : (
-          <Link href="/login" className="text-muted-foreground">
-            Login
-          </Link>
+          <>
+            <Link href="/signup" className="text-muted-foreground">
+              Signup
+            </Link>
+            <Link href="/login" className="text-muted-foreground">
+              Login
+            </Link>
+          </>
         )}
       </div>
     </div>

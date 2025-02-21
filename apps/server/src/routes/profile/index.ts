@@ -1,9 +1,10 @@
 import { Hono, type Context } from "hono";
-import { db } from "@workspace/database/db";
-import { profiles } from "@workspace/database/schema";
+import { createDb } from "database";
+import { profiles } from "database/schema/schema";
 import { eq } from "drizzle-orm";
 import { updateProfileSchema } from "@/schema/profiles";
 import { z } from "zod";
+import type { AppBindings } from "@/lib/types";
 
 type UserBinding = {
   Variables: {
@@ -14,11 +15,12 @@ type UserBinding = {
   };
 };
 
-export const profileRoute = new Hono<UserBinding>();
+export const profileRoute = new Hono<AppBindings & UserBinding>();
 
 profileRoute.post("/", async (c) => {
   const user = c.var.user;
 
+  const { db } = createDb(c.env);
   const userProfile = await db
     .select()
     .from(profiles)
@@ -39,6 +41,7 @@ profileRoute.put("/", async (c: Context) => {
   try {
     const validatedData = updateProfileSchema.parse(body);
 
+    const { db } = createDb(c.env);
     const updatedProfile = await db
       .update(profiles)
       .set({

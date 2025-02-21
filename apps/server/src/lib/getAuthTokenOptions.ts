@@ -21,12 +21,12 @@ export function getAuthTokenOptions(
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
     secure: isProductionMode,
-    httpOnly: true,
+    httpOnly: isProductionMode ? true : false,
     sameSite: isProductionMode ? "None" : "Lax",
     maxAge,
     expires,
     path: "/",
-    domain: isProductionMode ? "tantovale.it" : undefined,
+    domain: isProductionMode ? ".tantovale.it" : ".localhost",
   };
 
   return cookiesOptions;

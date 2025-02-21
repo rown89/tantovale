@@ -8,16 +8,15 @@ import { resolver } from "hono-openapi/zod";
 import { zValidator } from "@hono/zod-validator";
 import { EmailVerifySchema } from "@/schema";
 import { setAuthTokens } from "@/lib/tokenPayload";
-import { isDevelopmentMode } from "@/lib/constants";
-import { db } from "@workspace/database/db";
-import { refreshTokens, users } from "@workspace/database/schema";
+import {
+  DEFAULT_REFRESH_TOKEN_EXPIRES,
+  isDevelopmentMode,
+} from "@/lib/constants";
+import { createDb } from "database";
+import { refreshTokens, users } from "database/schema/schema";
+import type { AppBindings } from "@/lib/types";
 
-type Bindings = {
-  ACCESS_TOKEN_SECRET: string;
-  COOKIE_SECRET: string;
-};
-
-export const verifyRoute = new Hono<{ Bindings: Bindings }>()
+export const verifyRoute = new Hono<AppBindings>()
   .post(
     "/",
     zValidator("json", EmailVerifySchema),
@@ -121,17 +120,16 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
       },
     }),
     async (c) => {
-      const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
-        ACCESS_TOKEN_SECRET: string;
-        REFRESH_TOKEN_SECRET: string;
-        COOKIE_SECRET: string;
+      const { EMAIL_VERIFY_TOKEN_SECRET } = env<{
+        EMAIL_VERIFY_TOKEN_SECRET: string;
       }>(c);
 
       const token = c.req.query("token");
       if (!token) return c.json({ error: "Token required" }, 409);
 
-      const { id, type } = await verify(token, ACCESS_TOKEN_SECRET);
+      const { id, type } = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
 
+      const { db } = createDb(c.env);
       // Get existing user by id
       const user = await db.query.users.findFirst({
         where: (tbl) => eq(tbl.id, Number(id)),
@@ -152,16 +150,17 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         .set({
           email_verified: true,
         })
-        .where(eq(users.id, Number(id)));
+        .where(eq(users.id, user.id));
 
       const authTokensPayload = {
         c,
         id: user.id,
         username: user.username,
+        email_verified: user.email_verified,
+        phone_verified: user.phone_verified,
       };
 
-      const { access_token, refresh_token } =
-        await setAuthTokens(authTokensPayload);
+      const { refresh_token } = await setAuthTokens(authTokensPayload);
 
       // Store refresh token in DB
       const updatedUser = await db
@@ -169,7 +168,7 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         .values({
           username: user.username,
           token: refresh_token,
-          expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1y
+          expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES,
         })
         .returning();
 
@@ -183,10 +182,11 @@ export const verifyRoute = new Hono<{ Bindings: Bindings }>()
         );
       }
 
-      return c.json({
-        message: "Email verified successfully!",
-        access_token,
-        refresh_token,
-      });
+      return c.json(
+        {
+          message: "Email verified successfully!",
+        },
+        200,
+      );
     },
   );

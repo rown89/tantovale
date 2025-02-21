@@ -1,27 +1,15 @@
 "use client";
 
-import { client } from "@/lib/api";
+import { useAuth } from "@/context/AuthProvider";
 import { Button } from "@workspace/ui/components/button";
 
 export default function LogoutButton() {
+  const { logout } = useAuth();
+
   return (
     <Button
       variant="destructive"
-      onClick={async () => {
-        try {
-          await client.logout.$post();
-
-          await fetch("/api/logout", {
-            method: "GET",
-            credentials: "include", // ✅ Ensures cookies are sent
-          });
-
-          // Redirect to home after logout
-          window.location.href = "/";
-        } catch (error) {
-          console.error("Logout button error: ", error);
-        }
-      }}
+      onClick={async () => await logout()}
       className="text-muted-foreground"
     >
       Logout

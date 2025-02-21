@@ -23,14 +23,13 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  const auth = useAuth();
+  const { setUser } = useAuth();
   const router = useRouter();
   const [state, action, isPending] = useActionState(submitLogin, initialState);
 
   useEffect(() => {
     if (state.success && state?.user) {
-      auth.setUser(state?.user);
-
+      setUser(state?.user);
       router.push("/");
     }
   }, [state]);

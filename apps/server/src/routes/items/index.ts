@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import itemSchema, { createItemSchema } from "@/schema/items";
+import type { AppBindings } from "@/lib/types";
 
 const items = [
   {
@@ -20,7 +21,7 @@ const items = [
   },
 ];
 
-export const itemsRoute = new Hono()
+export const itemsRoute = new Hono<AppBindings>()
   .get("/", (c) => {
     return c.json({ items });
   })
