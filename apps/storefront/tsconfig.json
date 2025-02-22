@@ -2,6 +2,8 @@
   "extends": "@workspace/typescript-config/nextjs.json",
   "compilerOptions": {
     "strict": true,
+    "baseUrl": ".",
+    "composite": true,
     "paths": {
       "@/*": ["./src/*"],
       "@workspace/ui/*": ["../../packages/ui/src/*"]
@@ -12,6 +14,7 @@
       }
     ]
   },
+  "references": [{ "path": "../server" }],
   "include": [
     "**/*.ts",
     "**/*.tsx",

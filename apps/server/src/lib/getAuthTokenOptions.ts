@@ -3,7 +3,7 @@ import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   isProductionMode,
-} from "./constants";
+} from "../utils/constants";
 
 export function getAuthTokenOptions(
   name: string,

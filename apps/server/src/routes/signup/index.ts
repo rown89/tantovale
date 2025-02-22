@@ -8,10 +8,10 @@ import { env } from "hono/adapter";
 import { checkUser } from "@/lib/utils";
 import { hashPassword } from "@/lib/password";
 import { UserSchema } from "@/schema";
-import { isDevelopmentMode } from "@/lib/constants";
-import { createDb } from "database";
-import { users } from "database/schema/schema";
-import { sendVerifyEmail } from "@workspace/mailer/verify-email";
+import { isDevelopmentMode } from "@/utils/constants";
+import { createDb } from "@/database/db";
+import { users } from "@/database/schema";
+import { sendVerifyEmail } from "@/mailer/templates/verify-email";
 import { deleteCookie } from "hono/cookie";
 import type { AppBindings } from "@/lib/types";
 

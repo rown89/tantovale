@@ -11,7 +11,7 @@ export async function getServerAuth() {
   if (!accessToken) return null;
 
   // Forward the access token cookie to backend
-  const response = await client?.auth.me.$get({
+  const response = await client?.auth.verify.$get({
     credentials: "include",
     headers: {
       Cookie: `access_token=${accessToken}`,

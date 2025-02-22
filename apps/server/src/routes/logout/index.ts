@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
-import { createDb } from "database";
-import { refreshTokens } from "database/schema/schema";
+import { createDb } from "@/database/db";
+import { refreshTokens } from "@/database/schema";
 import { eq } from "drizzle-orm";
 import type { AppBindings } from "@/lib/types";
 

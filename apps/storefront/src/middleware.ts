@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { client } from "@/lib/api";
 import { loginUrl } from "./routes";
 import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
@@ -18,7 +18,7 @@ export async function middleware(req: NextRequest, res: NextResponse) {
   const refresh_token = cookieReader.get("refresh_token")?.value;
 
   if (access_token && refresh_token) {
-    const me = await client.auth.me.$get();
+    const me = await client.auth.verify.$get();
     console.log("ME: ", await me.json());
 
     if (pathname === loginUrl) {

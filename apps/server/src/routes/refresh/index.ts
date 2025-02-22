@@ -3,11 +3,11 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { env } from "hono/adapter";
-import { createDb } from "database";
-import { refreshTokens } from "database/schema/schema";
+import { createDb } from "@/database/db";
+import { refreshTokens } from "@/database/schema";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import { DEFAULT_REFRESH_TOKEN_EXPIRES } from "@/lib/constants";
+import { DEFAULT_REFRESH_TOKEN_EXPIRES } from "@/utils/constants";
 import { setAuthTokens } from "@/lib/tokenPayload";
 import type { AppBindings } from "@/lib/types";
 

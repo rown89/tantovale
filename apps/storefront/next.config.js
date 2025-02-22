@@ -2,11 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
-  transpilePackages: [
-    "@workspace/ui",
-    //  "@workspace/mailer",
-    // "@workspace/server",
-  ],
+  transpilePackages: ["@workspace/ui", "@workspace/server"],
   serverExternalPackages: ["argon2", "@node-rs/argon2"],
   async headers() {
     return [

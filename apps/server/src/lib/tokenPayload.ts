@@ -5,7 +5,7 @@ import { getAuthTokenOptions } from "./getAuthTokenOptions";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-} from "./constants";
+} from "../utils/constants";
 
 type TokenOptions = {
   c: Context;

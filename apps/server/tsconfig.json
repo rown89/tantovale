@@ -2,16 +2,19 @@
   "extends": "@workspace/typescript-config/base.json",
   "compilerOptions": {
     "strict": true,
+    "baseUrl": "./",
     "outDir": "./dist",
-    "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
+    "composite": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/database/db": ["database/index.ts"],
-      "@/database/schema": ["database/schema/schema.ts"],
       "@/lib": ["./src/lib/*"],
-      "@workspace/mailer/*": ["../../packages/mailer/src/*"]
+      "@/utils": ["./src/utils/*"],
+      "@/database/*": ["./database/*"],
+      "@/database/db": ["./database/index.ts"],
+      "@/database/schema": ["./database/schema/schema.ts"],
+      "@/mailer/*": ["./mailer/*"],
+      "@/mailer/templates": ["./mailer/templates/*"]
     },
     "verbatimModuleSyntax": true,
     "experimentalDecorators": true,
@@ -19,6 +22,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["src/**/*", "database/**/*"],
+  "include": ["src/**/*", "database/**/*", "mailer/**/*"],
   "exclude": ["node_modules"]
 }

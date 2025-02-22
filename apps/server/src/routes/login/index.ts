@@ -3,14 +3,14 @@ import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
 import { env } from "hono/adapter";
 import { UserSchema } from "@/schema/users";
-import { setAuthTokens, tokenPayload } from "@/lib/tokenPayload";
+import { tokenPayload } from "@/lib/tokenPayload";
 import { verifyPassword } from "@/lib/password";
-import { createDb } from "database";
+import { createDb } from "@/database/db";
 import { users, refreshTokens } from "database/schema/schema";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-} from "@/lib/constants";
+} from "@/utils/constants";
 import { sign } from "hono/jwt";
 import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";

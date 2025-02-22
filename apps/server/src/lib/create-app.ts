@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authPath, isProductionMode } from "./constants";
+import { authPath, isProductionMode } from "../utils/constants";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { pinoLogger } from "../middlewares/pino-loggers";
 import { authMiddleware } from "../middlewares/auth";
@@ -15,7 +15,7 @@ export function createRouter() {
   });
 }
 
-export default function createApp() {
+export function createApp() {
   const app = createRouter();
 
   app.use((c, next) => {
