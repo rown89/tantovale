@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import LogoutButton from "../logout-button";
 import { useAuth } from "@/context/AuthProvider";
+import { Button } from "@workspace/ui/components/button";
 
 export default function NavBar() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex px-6 py-3 justify-between items-center">
@@ -21,7 +21,13 @@ export default function NavBar() {
             <Link href="/profile" className="text-muted-foreground">
               Profile
             </Link>
-            <LogoutButton />
+            <Button
+              variant="destructive"
+              onClick={async () => logout()}
+              className="text-muted-foreground"
+            >
+              Logout
+            </Button>
           </div>
         ) : (
           <>

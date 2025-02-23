@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { deleteCookie, getCookie, getSignedCookie } from "hono/cookie";
+import { deleteCookie, getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { createDb } from "@/database/db";
 import { refreshTokens } from "@/database/schema";
@@ -11,16 +11,7 @@ export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
 
   try {
     // Get the refresh token from the cookie
-    /*
-        const refreshToken = await getSignedCookie(
-          c,
-          "refresh_token",
-          COOKIE_SECRET,
-        );
-    */
-
     const refreshToken = getCookie(c, "refresh_token");
-    console.log("\nrefreshToken: ", refreshToken, "\n");
 
     if (refreshToken) {
       try {

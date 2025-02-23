@@ -20,7 +20,8 @@
     "**/*.tsx",
     "next-env.d.ts",
     "next.config.js",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "../../packages/ui/"
   ],
   "exclude": ["node_modules"]
 }
