@@ -1,16 +1,13 @@
 import type { Context, Next } from "hono";
 import { verify } from "hono/jwt";
 import { getCookie, getSignedCookie } from "hono/cookie";
-import { env } from "hono/adapter";
+import type { AppBindings } from "@/lib/types";
 
-export async function authMiddleware(c: Context, next: Next) {
+export async function authMiddleware(c: Context<AppBindings>, next: Next) {
   const {
     ACCESS_TOKEN_SECRET,
     // COOKIE_SECRET
-  } = env<{
-    ACCESS_TOKEN_SECRET: string;
-    // COOKIE_SECRET: string;
-  }>(c);
+  } = c.env;
 
   try {
     // TODO: signed cookie doesn't work yet
@@ -21,8 +18,6 @@ export async function authMiddleware(c: Context, next: Next) {
     ); */
 
     const access_token = getCookie(c, "access_token");
-    console.log("\nAuth Middleware, access_token :", access_token, "\n");
-    console.log("Incoming Cookie header:", c.req.header());
 
     if (!access_token) {
       return c.json({ message: "Unauthorized - No Token" }, 401);
@@ -31,7 +26,16 @@ export async function authMiddleware(c: Context, next: Next) {
     const payload = await verify(access_token, ACCESS_TOKEN_SECRET);
 
     // Set user in context
-    c.set("user", payload);
+    const user = {
+      id: Number(payload.id),
+      username: String(payload.username),
+      email_verified:
+        payload.email_verified === "true" || payload.email_verified === true,
+      phone_verified:
+        payload.phone_verified === "true" || payload.phone_verified === true,
+    };
+
+    c.set("user", user);
 
     await next();
   } catch (error) {

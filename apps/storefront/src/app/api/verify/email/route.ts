@@ -11,7 +11,6 @@ export async function GET(request: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: "No token provided" });
   }
-
   const response = await client.verify.email.$get({
     query: { token },
   });
@@ -20,21 +19,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid token provided" });
   }
 
-  const setCookieHeader = response.headers.get("Set-Cookie");
+  const cookieHeader = response.headers.get("Set-Cookie");
 
-  if (!setCookieHeader) {
+  if (!cookieHeader) {
     return NextResponse.json({ error: "Invalid token provided" });
   }
 
   const cookieReader = await cookies();
 
-  setCookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
+  cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
     const [name, ...rest] = cookie.split("=");
     const trimmedName = name?.trim();
     const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
 
-    if (trimmedName === "auth_token" || trimmedName === "refresh_token") {
+    if (trimmedName === "access_token" || trimmedName === "refresh_token") {
       console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
+
       cookieReader.set(trimmedName, value, { path: "/" });
     }
   });

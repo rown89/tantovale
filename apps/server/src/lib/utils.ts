@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import { createDb } from "database";
-import { users } from "database/schema/schema";
+import { createDb } from "@/database/db";
+import { users } from "@/database/schema";
 import type { Context } from "hono";
-import type { Env } from "hono-pino";
+import type { AppBindings } from "./types";
 
 export const checkUser = async (
-  c: Context,
+  c: Context<AppBindings>,
   identifier: string,
   type: "email" | "username",
 ) => {

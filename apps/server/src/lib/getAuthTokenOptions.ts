@@ -1,32 +1,23 @@
 import type { CookieOptions } from "hono/utils/cookie";
-import {
-  DEFAULT_ACCESS_TOKEN_EXPIRES,
-  DEFAULT_REFRESH_TOKEN_EXPIRES,
+
+export function getAuthTokenOptions({
   isProductionMode,
-} from "../utils/constants";
-
-export function getAuthTokenOptions(
-  name: string,
-  expires?: Date,
-): CookieOptions {
-  if (!expires) {
-    expires =
-      name === "access_token"
-        ? DEFAULT_ACCESS_TOKEN_EXPIRES
-        : DEFAULT_REFRESH_TOKEN_EXPIRES;
-  }
-
+  expires,
+}: {
+  isProductionMode?: boolean;
+  expires: Date;
+}): CookieOptions {
   const maxAge = 1000;
 
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
-    secure: isProductionMode,
-    httpOnly: isProductionMode ? true : false,
-    sameSite: isProductionMode ? "None" : "Lax",
+    secure: true, // isProductionMode,
+    httpOnly: true, // isProductionMode ? true : false,
+    sameSite: "None", // isProductionMode ? "None" : "Lax",
     maxAge,
     expires,
     path: "/",
-    domain: isProductionMode ? ".tantovale.it" : ".localhost",
+    domain: isProductionMode ? ".tantovale.it" : "localhost",
   };
 
   return cookiesOptions;

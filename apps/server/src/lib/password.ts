@@ -1,47 +1,29 @@
-import { hash, verify } from "argon2-browser";
+import bcrypt from "bcryptjs";
 
-// Improved defaults for Argon2
-const MEMORY_COST = 65536; // 64 MiB
-const TIME_COST = 3;
-const OUTPUT_LENGTH = 32; // 32 bytes
-const PARALLELISM = 2; // Use 2 threads by default
+// Improved defaults for bcrypt
+const SALT_ROUNDS = 10; // Default salt rounds (higher means more secure, but slower)
 
 interface HashOptions {
-  memoryCost?: number;
-  timeCost?: number;
-  outputLen?: number;
-  parallelism?: number;
-  secret?: string; // Argon2 Browser takes secret as a string
+  saltRounds?: number; // Number of salt rounds for bcrypt
 }
 
 /**
- * Hash a password using Argon2
+ * Hash a password using bcrypt
  * @param password The plain text password to hash
- * @param options Optional parameters to customize the hashing process
+ * @param options Optional parameters for customization
  * @returns A promise that resolves to the hashed password
  */
 export async function hashPassword(
   password: string,
   options: HashOptions = {},
 ): Promise<string> {
-  const hashOptions = {
-    pass: password,
-    salt: crypto.getRandomValues(new Uint8Array(16)), // Generate a random salt (use 16-byte salt)
-    memory: options.memoryCost ?? MEMORY_COST,
-    time: options.timeCost ?? TIME_COST,
-    hashLen: options.outputLen ?? OUTPUT_LENGTH,
-    parallelism: options.parallelism ?? PARALLELISM,
-    secret: options.secret
-      ? new TextEncoder().encode(options.secret)
-      : new Uint8Array(), // Convert secret to Uint8Array
-  };
+  const saltRounds = options.saltRounds ?? SALT_ROUNDS;
 
-  const { encoded } = await hash(hashOptions);
-  return encoded;
+  return bcrypt.hash(password, saltRounds);
 }
 
 /**
- * Verify a password against a hash
+ * Verify a password against a bcrypt hash
  * @param hash The stored hash to compare against
  * @param password The plain text password to verify
  * @returns A promise that resolves to true if the password matches, false otherwise
@@ -50,10 +32,5 @@ export async function verifyPassword(
   hash: string,
   password: string,
 ): Promise<boolean> {
-  try {
-    const isMatch = await verify({ pass: password, encoded: hash });
-    return isMatch ?? false;
-  } catch (error) {
-    return false;
-  }
+  return bcrypt.compare(password, hash);
 }

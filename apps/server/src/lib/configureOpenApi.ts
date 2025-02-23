@@ -7,8 +7,10 @@ import { z } from "zod";
 export function configureOpenAPI(app: AppAPI) {
   // Create an endpoint that builds the OpenAPI spec dynamically
   app.get("/openapi", async (c) => {
+    const { hostname, protocol, port } = new URL(c.req.url);
+
     // Get the server URL from the environment
-    const serverUrl = `${c.env.NODE_ENV === "development" ? "http" : "https"}://${c.env.SERVER_HOSTNAME}:${c.env.SERVER_PORT}`;
+    const serverUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
 
     // Create the spec handler with the dynamic URL
     const handler = openAPISpecs(app, {

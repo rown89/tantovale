@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/password";
@@ -10,7 +9,8 @@ import type { AppBindings } from "@/lib/types";
 export const passwordResetRoute = new Hono<AppBindings>()
   // Update Password
   .post("/reset", async (c) => {
-    const { RESET_TOKEN_SECRET } = env(c);
+    const { RESET_TOKEN_SECRET } = c.env;
+
     const { token, newPassword } = await c.req.json();
 
     if (!token || !newPassword) {

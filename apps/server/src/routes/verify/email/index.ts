@@ -1,14 +1,20 @@
 import { Hono } from "hono";
-import { env } from "hono/adapter";
-import { verify } from "hono/jwt";
+import { sign, verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import { setAuthTokens } from "@/lib/tokenPayload";
-import { DEFAULT_REFRESH_TOKEN_EXPIRES } from "@/utils/constants";
-import { createDb } from "database";
+import { tokenPayload } from "@/lib/tokenPayload";
+import {
+  DEFAULT_ACCESS_TOKEN_EXPIRES,
+  DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+  DEFAULT_REFRESH_TOKEN_EXPIRES,
+  DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
+} from "@/utils/constants";
+import { createDb } from "@/database/db";
 import { refreshTokens, users } from "@/database/schema";
 
 import type { AppBindings } from "@/lib/types";
+import { setCookie } from "hono/cookie";
+import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
 
 export const verifyEmailRoute = new Hono<AppBindings>().get(
   "/email",
@@ -21,9 +27,7 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
     },
   }),
   async (c) => {
-    const { EMAIL_VERIFY_TOKEN_SECRET } = env<{
-      EMAIL_VERIFY_TOKEN_SECRET: string;
-    }>(c);
+    const { EMAIL_VERIFY_TOKEN_SECRET } = c.env;
 
     const token = c.req.query("token");
     if (!token) return c.json({ error: "Token required" }, 409);
@@ -39,6 +43,9 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
     if (!user) {
       return c.json({ error: "User not found" }, 404);
     }
+
+    const { id: userId, username, email_verified, phone_verified } = user;
+
     if (user.email_verified) {
       return c.json({ message: "User already verified" });
     }
@@ -53,23 +60,50 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
       })
       .where(eq(users.id, user.id));
 
-    const authTokensPayload = {
-      c,
-      id: user.id,
-      username: user.username,
-      email_verified: user.email_verified,
-      phone_verified: user.phone_verified,
-    };
+    const access_token_payload = tokenPayload({
+      id: userId,
+      username,
+      email_verified,
+      phone_verified,
+      exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
+    });
 
-    const { refresh_token } = await setAuthTokens(authTokensPayload);
+    const refresh_token_payload = tokenPayload({
+      id: userId,
+      username,
+      email_verified,
+      phone_verified,
+      exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),
+    });
+
+    // Generate and sign tokens
+    const new_access_token = await sign(
+      access_token_payload,
+      c.env.ACCESS_TOKEN_SECRET,
+    );
+    const new_refresh_token = await sign(
+      refresh_token_payload,
+      c.env.REFRESH_TOKEN_SECRET,
+    );
+
+    setCookie(c, "access_token", new_access_token, {
+      ...getAuthTokenOptions({
+        expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
+      }),
+    });
+    setCookie(c, "refresh_token", new_refresh_token, {
+      ...getAuthTokenOptions({
+        expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+      }),
+    });
 
     // Store refresh token in DB
     const updatedUser = await db
       .insert(refreshTokens)
       .values({
-        username: user.username,
-        token: refresh_token,
-        expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES,
+        username,
+        token: new_refresh_token,
+        expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
       })
       .returning();
 

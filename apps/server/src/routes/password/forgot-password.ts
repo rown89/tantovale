@@ -1,17 +1,19 @@
-import { Hono } from "hono";
-import { env } from "hono/adapter";
-import { sign } from "hono/jwt";
 import { eq } from "drizzle-orm";
-import { isDevelopmentMode } from "@/utils/constants";
+import { Hono } from "hono";
+import { sign } from "hono/jwt";
+import { getNodeEnvMode } from "@/utils/constants";
 import { sendForgotPasswordEmail } from "@/mailer/templates/forgot-password-email";
-import { createDb } from "database";
-import { passwordResetTokens } from "database/schema/schema";
+import { createDb } from "@/database/db";
+import { passwordResetTokens } from "@/database/schema";
 import type { AppBindings } from "@/lib/types";
 
 export const passwordForgotRoute = new Hono<AppBindings>().post(
   "/forgot-password",
   async (c) => {
-    const { SERVER_HOSTNAME, RESET_TOKEN_SECRET } = env(c);
+    const { hostname, protocol, port } = new URL(c.req.url);
+    // Get the server URL from the environment
+    const { RESET_TOKEN_SECRET, NODE_ENV } = c.env;
+
     const { email } = await c.req.json();
 
     if (!email) {
@@ -38,11 +40,15 @@ export const passwordForgotRoute = new Hono<AppBindings>().post(
       expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
     });
 
-    const resetLink = `${SERVER_HOSTNAME}/password/reset-password?token=${resetToken}`;
+    const serverUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
+    const resetLink = `${serverUrl}/password/reset-password?token=${resetToken}`;
 
-    if (isDevelopmentMode) console.log("resetLink: ", resetLink);
-
-    await sendForgotPasswordEmail(email, resetLink);
+    const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
+    if (isProductionMode || isStagingMode) {
+      await sendForgotPasswordEmail(email, resetLink);
+    } else {
+      console.log("resetLink: ", resetLink);
+    }
 
     return c.json({ message: "If the email exists, a reset link was sent." });
   },

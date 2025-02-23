@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { createDb } from "@/database/db";
 import { profiles } from "@/database/schema";
 import { eq } from "drizzle-orm";
@@ -6,16 +6,7 @@ import { updateProfileSchema } from "@/schema/profiles";
 import { z } from "zod";
 import type { AppBindings } from "@/lib/types";
 
-type UserBinding = {
-  Variables: {
-    user: {
-      id: number;
-      username: string;
-    };
-  };
-};
-
-export const profileRoute = new Hono<AppBindings & UserBinding>();
+export const profileRoute = new Hono<AppBindings>();
 
 profileRoute.post("/", async (c) => {
   const user = c.var.user;
@@ -34,7 +25,7 @@ profileRoute.post("/", async (c) => {
   return c.json(userProfile[0]);
 });
 
-profileRoute.put("/", async (c: Context) => {
+profileRoute.put("/", async (c) => {
   const user = c.var.user;
   const body = await c.req.json();
 
@@ -51,11 +42,13 @@ profileRoute.put("/", async (c: Context) => {
       .where(eq(profiles.user_id, Number(user.id)))
       .returning();
 
-    if (!updatedProfile.length) {
+    const newProfile = updatedProfile?.[0];
+
+    if (!newProfile) {
       return c.json({ message: "Profile not found" }, 404);
     }
 
-    return c.json(updatedProfile[0]);
+    return c.json(newProfile);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return c.json(

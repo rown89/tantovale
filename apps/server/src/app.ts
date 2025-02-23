@@ -17,7 +17,6 @@ import {
   passwordResetVerifyToken,
   verifyEmailRoute,
 } from "./routes";
-import { hc } from "hono/client";
 
 const app = createApp();
 

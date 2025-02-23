@@ -26,54 +26,57 @@ export async function submitLogin(
     }
 
     const response = await client?.login.$post({
-      json: {
-        email: rawData.email,
-        password: rawData.password,
-      },
+      json: rawData,
     });
 
-    const data = await response?.json();
-
     if (response?.status !== 200) {
+      const data = await response?.json();
+
+      console.log(data);
+
       return {
         success: false,
         message: data?.message || "An error occurred",
       };
-    }
+    } else {
+      const cookieHeader = response.headers.get("Set-Cookie");
 
-    const setCookieHeader: string = response.headers.get("Set-Cookie");
+      if (!cookieHeader) {
+        return {
+          success: false,
+          inputs: rawData,
+          message: "No cookie set",
+        };
+      }
 
-    if (!setCookieHeader) {
+      const cookieReader = await cookies();
+
+      cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
+        const [name, ...rest] = cookie.split("=");
+        const trimmedName = name?.trim();
+        const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
+
+        if (trimmedName === "access_token" || trimmedName === "refresh_token") {
+          console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
+          cookieReader.set(trimmedName, value, { path: "/" });
+        }
+      });
+
+      const data = await response.json();
+      const { user } = data;
+      const { id, username, email_verified, phone_verified } = user;
+
       return {
-        success: false,
-        inputs: rawData,
-        message: "No cookie set",
+        success: true,
+        message: "Correctly logged-in",
+        user: {
+          id,
+          username,
+          email_verified,
+          phone_verified,
+        },
       };
     }
-
-    const cookieReader = await cookies();
-
-    setCookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-      const [name, ...rest] = cookie.split("=");
-      const trimmedName = name?.trim();
-      const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
-
-      if (trimmedName === "auth_token" || trimmedName === "refresh_token") {
-        console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
-        cookieReader.set(trimmedName, value, { path: "/" });
-      }
-    });
-
-    return {
-      success: true,
-      message: "Correctly logged-in",
-      user: {
-        id: data.user.id,
-        username: data.user.username,
-        email_verified: data.user.email_verified,
-        phone_verified: data.user.phone_verified,
-      },
-    };
   } catch (error) {
     console.log(error);
     return {

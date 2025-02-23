@@ -15,11 +15,7 @@ export async function signupAction(
       password: formData.get("password") as string,
     };
 
-    const validatedFields = UserSchema.safeParse({
-      username: formData.get("username"),
-      email: formData.get("email"),
-      password: formData.get("password"),
-    });
+    const validatedFields = UserSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
       return {
@@ -31,11 +27,7 @@ export async function signupAction(
     }
 
     const response = await client?.signup.$post({
-      json: {
-        username: rawData.username,
-        email: rawData.email,
-        password: rawData.password,
-      },
+      json: rawData,
     });
 
     const data = await response?.json();
@@ -57,6 +49,12 @@ export async function signupAction(
         errors: {
           email: ["Email already exist"],
         },
+      };
+    } else if (response?.status === 500) {
+      return {
+        success: false,
+        inputs: rawData,
+        message: data?.message || "Internal Server Error",
       };
     } else {
       return {

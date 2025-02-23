@@ -1,12 +1,12 @@
 import type { AppBindings } from "@/lib/types";
 import { Hono } from "hono";
-import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
 
 export const passwordResetVerifyToken = new Hono<AppBindings>()
   // Verify Reset Token
   .get("/reset-verify-token", async (c) => {
-    const { RESET_TOKEN_SECRET } = env(c);
+    const { RESET_TOKEN_SECRET } = c.env;
+
     const token = c.req.query("token");
 
     if (!token) return c.json({ error: "Token required" }, 400);

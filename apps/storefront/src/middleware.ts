@@ -1,87 +1,99 @@
-import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { client } from "@/lib/api";
-import { loginUrl } from "./routes";
-import { getAuthTokenOptions } from "@workspace/server/lib/getAuthTokenOptions";
-import { ResponseCookie } from "@edge-runtime/cookies";
+import { NextRequest, NextResponse } from "next/server";
+import { loginUrl, signupUrl } from "./routes";
 
 const restrictedPaths = ["/protected", "/profile"];
+
+const NODE_ENV = process.env.NODE_ENV;
+const NEXT_PUBLIC_SERVER_HOSTNAME = process.env.NEXT_PUBLIC_SERVER_HOSTNAME;
+const NEXT_PUBLIC_SERVER_PORT = process.env.NEXT_PUBLIC_SERVER_PORT;
+const isProductionMode = NODE_ENV === "production";
+
+const serverUrl = `${isProductionMode ? "http" : "http"}://${NEXT_PUBLIC_SERVER_HOSTNAME}:${NEXT_PUBLIC_SERVER_PORT}`;
+
+async function logoutUser(cookieHeader: string) {
+  const LogoutRequest = new Request(`${serverUrl}/auth/logout`, {
+    method: "POST",
+    headers: {
+      Cookie: cookieHeader,
+    },
+  });
+
+  await fetch(LogoutRequest);
+
+  const cookieReader = await cookies();
+  cookieReader.delete("access_token");
+  cookieReader.delete("refresh_token");
+}
 
 export async function middleware(req: NextRequest, res: NextResponse) {
   const { nextUrl } = req;
   const { pathname } = nextUrl;
-
   const cookieReader = await cookies();
 
-  // Retrieve both tokens.
-  const access_token = cookieReader.get("access_token")?.value;
-  const refresh_token = cookieReader.get("refresh_token")?.value;
+  const access_token = req.cookies.get("access_token")?.value?.split(";")[0];
+  const refresh_token = req.cookies.get("refresh_token")?.value?.split(";")[0];
 
-  if (access_token && refresh_token) {
-    const me = await client.auth.verify.$get();
-    console.log("ME: ", await me.json());
+  // Manually build a Cookie header string
+  const cookieHeader = `access_token=${access_token}; refresh_token=${refresh_token}`;
 
-    if (pathname === loginUrl) {
+  const response = NextResponse.next({
+    headers: {
+      Cookie: cookieHeader,
+    },
+  });
+
+  if (pathname === loginUrl || pathname === signupUrl) {
+    if (access_token && refresh_token) {
       return NextResponse.redirect(new URL("/", req.url));
     }
   }
 
-  // Only operate on protected routes.
+  // Protected routes logic
   if (restrictedPaths.includes(pathname)) {
-    console.log("\nmiddleware protected route");
+    console.log("\nmiddleware protected route\n");
 
     // If one or both tokens are missing, redirect to root.
     if (!access_token || !refresh_token) {
-      console.log("\nMissing token(s). Redirecting to login page.");
       return NextResponse.redirect(new URL("/login", req.url));
     }
 
-    try {
-      // Attempt to refresh the token.
-      const refreshResponse = await client.auth.refresh.$post({
-        credentials: "include",
+    // Verify the token and get the expiration time
+    const verifyTokenRequest = new Request(`${serverUrl}/auth/verify`, {
+      method: "GET",
+      headers: {
+        Cookie: cookieHeader,
+      },
+    });
+
+    const verifyResponse = await fetch(verifyTokenRequest);
+
+    if (!verifyResponse.ok) {
+      // If token is not valid try a refresh
+      const RefreshTokenRequest = new Request(`${serverUrl}/auth/refresh`, {
+        method: "POST",
+        headers: {
+          Cookie: cookieHeader,
+        },
       });
 
-      if (refreshResponse.status === 200) {
-        const data = await refreshResponse.json();
+      const refreshTokenResponse = await fetch(RefreshTokenRequest);
+
+      if (!refreshTokenResponse.ok) {
+        // If refresh fails, clear both cookies, logout user and redirect.
+        await logoutUser(cookieHeader);
+        return NextResponse.redirect(new URL("/", req.url));
+      } else {
+        const data = await refreshTokenResponse.json();
 
         const newAccessToken = data.access_token;
         const newRefreshToken = data.refresh_token;
 
-        // Get cookie options
-        const accessTokenOptions = getAuthTokenOptions(
-          "access_token",
-        ) as ResponseCookie;
-        const refreshTokenOptions = getAuthTokenOptions(
-          "refresh_token",
-        ) as ResponseCookie;
-
-        cookieReader.set("access_token", newAccessToken, accessTokenOptions);
-        cookieReader.set("refresh_token", newRefreshToken, refreshTokenOptions);
-      } else {
-        console.log("HERE");
-        await client.auth.logout.$post({
-          headers: {
-            Cookie: `access_token=${access_token}; refresh_token=${refresh_token}`,
-          },
-        });
-
-        // If refresh fails, clear both cookies and redirect.
-        cookieReader.delete("access_token");
-        cookieReader.delete("refresh_token");
-
-        return NextResponse.redirect(new URL("/", req.url));
+        cookieReader.set("access_token", newAccessToken);
+        cookieReader.set("refresh_token", newRefreshToken);
       }
-    } catch (error) {
-      await client.auth.logout.$post();
-      console.error("refresh the token error: ", error);
-      // If error, clear both cookies and redirect.
-      cookieReader.delete("access_token");
-      cookieReader.delete("refresh_token");
-
-      return NextResponse.redirect(new URL("/", req.url));
     }
   }
 
-  return NextResponse.next();
+  return response;
 }

@@ -37,9 +37,7 @@ export const AuthProvider = ({
 
   async function fetchSession() {
     try {
-      const response = await client?.auth.verify.$get({
-        credentials: "include",
-      });
+      const response = await client?.auth.verify.$get();
       if (!response || response.status !== 200) {
         setUser(null);
         return;

@@ -4,11 +4,10 @@ import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
-import { env } from "hono/adapter";
 import { checkUser } from "@/lib/utils";
 import { hashPassword } from "@/lib/password";
 import { UserSchema } from "@/schema";
-import { isDevelopmentMode } from "@/utils/constants";
+import { getNodeEnvMode } from "@/utils/constants";
 import { createDb } from "@/database/db";
 import { users } from "@/database/schema";
 import { sendVerifyEmail } from "@/mailer/templates/verify-email";
@@ -28,11 +27,7 @@ export const signupRoute = new Hono<AppBindings>().post(
   zValidator("json", UserSchema),
   async (c) => {
     const { EMAIL_VERIFY_TOKEN_SECRET, STOREFRONT_HOSTNAME, STOREFRONT_PORT } =
-      env<{
-        EMAIL_VERIFY_TOKEN_SECRET: string;
-        STOREFRONT_HOSTNAME: string;
-        STOREFRONT_PORT: string;
-      }>(c);
+      c.env;
 
     try {
       const values = await c.req.json();
@@ -76,13 +71,15 @@ export const signupRoute = new Hono<AppBindings>().post(
 
       const token = await sign(tmp_token_payload, EMAIL_VERIFY_TOKEN_SECRET);
 
-      // Send verification email
-      const verificationLink = `http${isDevelopmentMode ? "" : "s"}://${STOREFRONT_HOSTNAME}:${STOREFRONT_PORT}/api/verify/email?token=${token}`;
+      const { isProductionMode, isStagingMode } = getNodeEnvMode(
+        c.env.NODE_ENV,
+      );
+      const verificationLink = `http${isProductionMode || isStagingMode ? "s" : ""}://${c.env.STOREFRONT_HOSTNAME}:${c.env.STOREFRONT_PORT}/api/verify/email?token=${token}`;
 
-      if (isDevelopmentMode) {
-        console.log("\nverificationLink: ", verificationLink, "\n");
-      } else {
+      if (isProductionMode || isStagingMode) {
         await sendVerifyEmail(email, verificationLink);
+      } else {
+        console.log("\nverificationLink: ", verificationLink, "\n");
       }
 
       return c.json(
