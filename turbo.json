@@ -7,7 +7,7 @@
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				"./server/database/drizzle.config.ts",
-				"./server/database/schema.ts"
+				"./server/database/schema/schema.ts"
 			],
 			"outputs": ["./drizzle/**"],
 			"env": ["DATABASE_URL"]
@@ -32,7 +32,7 @@
 		},
 		"hono:dev": {
 			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "./apps/server/.env*", "./server/database/.env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": ["dist/**"],
 			"cache": false,
 			"persistent": true
