@@ -2,6 +2,21 @@
 	"$schema": "https://turbo.build/schema.json",
 	"ui": "tui",
 	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [".next/**", "dist/**", "!.next/cache/**", ".vercel/output/**"]
+		},
+		"next:dev": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
+		},
+		"next:build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
+		},
 		"db:generate": {
 			"cache": false,
 			"inputs": [
@@ -24,11 +39,6 @@
 			"dependsOn": ["db:generate"],
 			"cache": false
 		},
-		"build": {
-			"dependsOn": ["^build", "db:generate"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": [".next/**", "dist/**", "!.next/cache/**", ".vercel/output/**"]
-		},
 		"hono:dev": {
 			"dependsOn": ["db:push"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
@@ -40,16 +50,6 @@
 			"dependsOn": ["db:push"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"outputs": ["dist/**"]
-		},
-		"next:dev": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
-		},
-		"next:build": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
 		},
 		"lint": {
 			"dependsOn": ["^lint"]
