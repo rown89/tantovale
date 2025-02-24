@@ -16,7 +16,7 @@ export const profiles = pgTable(
   "profiles",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
-    profile_type: profileEnum("profile_type").notNull(),
+    profile_type: profileEnum("profile_type").notNull().default("private"),
     user_id: integer("user_id")
       .unique()
       .notNull()

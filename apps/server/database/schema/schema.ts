@@ -1,6 +1,7 @@
 export * from "./categories";
 export * from "./enumerated_types";
 export * from "./items";
+export * from "./items_images";
 export * from "./municipalities";
 export * from "./password_reset_tokens";
 export * from "./profiles";

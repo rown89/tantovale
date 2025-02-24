@@ -22,16 +22,18 @@ export const items = pgTable(
     id: integer("id").primaryKey().notNull().generatedAlwaysAsIdentity(),
     title: text("title").notNull(),
     description: text("description").notNull(),
+    condition: conditionsEnum().notNull().default("used"),
+    status: statusEnum("status").notNull().default("available"),
+    published: boolean("published").default(false).notNull(),
     price: numeric("price", { precision: 10, scale: 2 })
       .notNull()
       .default("0.00"),
-    condition: conditionsEnum().notNull().default("used"),
-    status: statusEnum("status").notNull().default("available"),
+    shipping_cost: numeric("shipping_cost", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     delivery_method: deliveryMethodEnum("delivery_method")
       .notNull()
       .default("pickup"),
-    draft: boolean("draft").notNull().default(false),
-    published: boolean("published").default(false).notNull(),
     user_id: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),

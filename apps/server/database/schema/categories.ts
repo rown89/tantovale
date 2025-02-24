@@ -1,10 +1,4 @@
-import {
-  pgTable,
-  integer,
-  text,
-  boolean,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { pgTable, integer, text, timestamp } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { subcategories } from "./subcategories";
 
