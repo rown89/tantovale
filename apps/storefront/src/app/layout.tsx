@@ -47,10 +47,7 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthProvider isLogged={isLogged}>
-              <NavBar />
-              {children}
-            </AuthProvider>
+            <AuthProvider isLogged={isLogged}>{children}</AuthProvider>
             <Toaster />
           </ThemeProvider>
         </QueryProvider>
