@@ -9,8 +9,7 @@
 				"./server/database/drizzle.config.ts",
 				"./server/database/schema/schema.ts"
 			],
-			"outputs": ["./drizzle/**"],
-			"env": ["DATABASE_URL"]
+			"outputs": ["./drizzle/**"]
 		},
 		"db:migrate": {
 			"dependsOn": ["db:generate"],
