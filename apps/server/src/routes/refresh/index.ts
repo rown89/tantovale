@@ -29,7 +29,7 @@ export const refreshRoute = new Hono<AppBindings>().post(
     const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = c.env;
 
     const refresh_token = getCookie(c, "refresh_token");
-    console.log("XXXXXXXXXXXXXXXXXXXXXXXXXXX");
+
     if (!refresh_token) {
       return c.json({ message: "No refresh token provided" }, 401);
     }

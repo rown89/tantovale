@@ -52,13 +52,17 @@ export async function submitLogin(
       const cookieReader = await cookies();
 
       cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-        const [name, ...rest] = cookie.split("=");
+        // Split the cookie string by semicolon; the first part is the key-value pair.
+        const [pair, ...rest] = cookie.split(";");
+        const [name, value] = pair?.split("=") ?? [];
         const trimmedName = name?.trim();
-        const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
+        const trimmedValue = value?.trim();
 
         if (trimmedName === "access_token" || trimmedName === "refresh_token") {
-          console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
-          cookieReader.set(trimmedName, value, { path: "/" });
+          console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
+          if (trimmedValue) {
+            cookieReader.set(trimmedName, trimmedValue, { path: "/" });
+          }
         }
       });
 

@@ -9,13 +9,17 @@ export async function logoutAndClearCookies({
   cookieHeader: string;
   serverUrl: string;
 }) {
-  const logoutRequest = new Request(`${serverUrl}/auth/logout`, {
-    method: "POST",
-    headers: { Cookie: cookieHeader },
-  });
-  await fetch(logoutRequest);
+  try {
+    const logoutRequest = new Request(`${serverUrl}/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: cookieHeader },
+    });
+    await fetch(logoutRequest);
 
-  const cookieStore = await cookies();
-  cookieStore.delete("access_token");
-  cookieStore.delete("refresh_token");
+    const cookieStore = await cookies();
+    cookieStore.delete("access_token");
+    cookieStore.delete("refresh_token");
+  } catch (error) {
+    console.error(error);
+  }
 }

@@ -27,6 +27,7 @@ export const verifyRoute = new Hono<AppBindings>().get(
     try {
       // Get the signed access token from cookies
       const accessToken = getCookie(c, "access_token");
+
       // const accessToken = await getSignedCookie(c, COOKIE_SECRET, "access_token");
       if (!accessToken) {
         return c.json(
@@ -44,11 +45,10 @@ export const verifyRoute = new Hono<AppBindings>().get(
         {
           message: "Token verified succesfully",
           user: {
-            id: payload.id,
-            username: payload.username,
-            email_verified: payload.email_verified,
-            phone_verified: payload.phone_verified,
-            exp: payload.exp,
+            id: payload.id as number,
+            username: payload.username as string,
+            email_verified: payload.email_verified as boolean,
+            phone_verified: payload.phone_verified as boolean,
           },
         },
         200,

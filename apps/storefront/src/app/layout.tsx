@@ -5,9 +5,8 @@ import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 import { AuthProvider } from "@/context/AuthProvider";
 
-import "@workspace/ui/globals.css";
 import NavBar from "@/components/navbar/navbar";
-import { cookies } from "next/headers";
+import "@workspace/ui/globals.css";
 
 const fontSans = Lato({
   weight: "400",
@@ -30,9 +29,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieReader = await cookies();
-  const accessToken = cookieReader.get("access_token")?.value;
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
@@ -44,7 +40,7 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthProvider access_token={accessToken}>
+            <AuthProvider>
               <NavBar />
               {children}
             </AuthProvider>

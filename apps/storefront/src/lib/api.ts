@@ -9,9 +9,10 @@ const isProductionMode = NODE_ENV === "production";
 const serverUrl = `${isProductionMode ? "https" : "http"}://${NEXT_PUBLIC_SERVER_HOSTNAME}:${NEXT_PUBLIC_SERVER_PORT}`;
 
 export const client = hc<ApiRoutesType>(`${serverUrl}/`, {
-  fetch: (req, requestInit, Env, executionCtx) =>
-    fetch(req, {
+  fetch: (req, requestInit, Env, executionCtx) => {
+    return fetch(req, {
       ...requestInit,
       credentials: "include",
-    }),
+    });
+  },
 });

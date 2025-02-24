@@ -1,5 +1,6 @@
 "use client";
 
+import { client } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import React, {
   createContext,
@@ -25,24 +26,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({
-  children,
-  access_token,
-}: {
-  children: ReactNode;
-  access_token?: string;
-}) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
-  // On mount, load the session.
   useEffect(() => {
-    if (access_token) {
-      // console.log("fetchSession");
-      // fetchSession();
+    async function initializeAuth() {
+      // Try to fetch current user info.
+      const res = await client.verify.$get({
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        // User is logged in.
+        const data = await res.json();
+        setUser(data.user);
+      } else {
+        // User is not logged in;
+        setUser(null);
+      }
+      setLoadingUser(false);
     }
-  }, [access_token]);
+    initializeAuth();
+  }, []);
 
   function logout() {
     router.push("/api/logout");

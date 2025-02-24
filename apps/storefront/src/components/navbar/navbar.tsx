@@ -5,10 +5,10 @@ import { useAuth } from "@/context/AuthProvider";
 import { Button } from "@workspace/ui/components/button";
 
 export default function NavBar() {
-  const { user, logout } = useAuth();
+  const { user, loadingUser, logout } = useAuth();
 
   return (
-    <div className="flex px-6 py-3 justify-between items-center">
+    <div className="flex px-6 py-2 justify-between items-center min-h-14">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale
@@ -16,27 +16,31 @@ export default function NavBar() {
       </div>
       <div></div>
       <div className="flex ml-auto items-center space-x-4">
-        {user ? (
-          <div className="flex items-center space-x-4">
-            <Link href="/profile" className="text-muted-foreground">
-              Profile
-            </Link>
-            <Button
-              variant="destructive"
-              onClick={async () => logout()}
-              className="text-muted-foreground"
-            >
-              Logout
-            </Button>
-          </div>
-        ) : (
+        {!loadingUser && (
           <>
-            <Link href="/signup" className="text-muted-foreground">
-              Signup
-            </Link>
-            <Link href="/login" className="text-muted-foreground">
-              Login
-            </Link>
+            {user ? (
+              <div className="flex items-center space-x-4">
+                <Link href="/profile" className="text-muted-foreground">
+                  Profile
+                </Link>
+                <Button
+                  variant="destructive"
+                  onClick={async () => logout()}
+                  className="text-muted-foreground"
+                >
+                  Logout
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Link href="/signup" className="text-muted-foreground">
+                  Signup
+                </Link>
+                <Link href="/login" className="text-muted-foreground">
+                  Login
+                </Link>
+              </>
+            )}
           </>
         )}
       </div>
