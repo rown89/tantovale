@@ -1,6 +1,7 @@
 "use client";
 
 import { client } from "@/lib/api";
+import refreshTokens from "@/utils/refreshTokens";
 import { useRouter } from "next/navigation";
 import React, {
   createContext,
@@ -26,35 +27,62 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export const AuthProvider = ({
+  isLogged,
+  children,
+}: {
+  isLogged: boolean;
+  children: ReactNode;
+}) => {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
-  useEffect(() => {
-    async function initializeAuth() {
-      // Try to fetch current user info.
-      const res = await client.verify.$get({
-        credentials: "include",
-      });
+  async function initializeAuth() {
+    try {
+      // Attempt to verify the user with the current token.
+      let res = await client.verify.$get({ credentials: "include" });
 
+      // If verification fails, attempt to refresh the token.
+      if (!res.ok) {
+        const refreshed = await refreshTokens();
+
+        // If refresh fails, log out the user.
+        if (!refreshed) logout();
+
+        // After a successful refresh, try verifying again.
+        res = await client.verify.$get({ credentials: "include" });
+      }
+
+      // If verification is ok set the user
       if (res.ok) {
-        // User is logged in.
         const data = await res.json();
         setUser(data.user);
       } else {
-        // User is not logged in;
+        // If verification still fails, log out.
+        await fetch("/api/logout", { credentials: "include" });
         setUser(null);
       }
+    } catch (error) {
+      console.error("Error during authentication initialization:", error);
+      setUser(null);
+    } finally {
       setLoadingUser(false);
     }
-    initializeAuth();
-  }, []);
+  }
 
   function logout() {
-    router.push("/api/logout");
     setUser(null);
+    router.push("/api/logout");
   }
+
+  useEffect(() => {
+    if (isLogged) {
+      initializeAuth();
+    } else {
+      setLoadingUser(false);
+    }
+  }, [isLogged]);
 
   return (
     <AuthContext.Provider value={{ user, loadingUser, setUser, logout }}>
