@@ -4,10 +4,9 @@ import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
 import { AuthProvider } from "#context/AuthProvider";
-
-import NavBar from "#components/navbar/navbar";
-import "@workspace/ui/globals.css";
 import { cookies } from "next/headers";
+
+import "@workspace/ui/globals.css";
 
 const fontSans = Lato({
   weight: "400",
@@ -22,7 +21,7 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Tantovale",
-  description: "open source marketplace",
+  description: "Open source marketplace",
 };
 
 export default async function RootLayout({

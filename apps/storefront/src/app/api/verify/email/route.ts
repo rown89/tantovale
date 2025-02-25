@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { client } from "#lib/api";
 import { cookies } from "next/headers";
 
-const STOREFRONT_URL = process.env.NEXT_PUBLIC_STOREFRONT_URL;
-const STOREFRONT_PORT = process.env.NEXT_PUBLIC_STOREFRONT_PORT;
-
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
 
@@ -39,5 +36,5 @@ export async function GET(request: NextRequest) {
     }
   });
 
-  return NextResponse.redirect(`${STOREFRONT_URL}:${STOREFRONT_PORT}/`);
+  return NextResponse.redirect(`/`);
 }
