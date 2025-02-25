@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { createDb } from "@/database/db";
-import { users } from "@/database/schema";
+import { createDb } from "#database/db";
+import { users } from "#database/schema";
 import type { Context } from "hono";
 import type { AppBindings } from "./types";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { client } from "@/lib/api";
+import { client } from "#lib/api";
 import { cookies } from "next/headers";
 
 const STOREFRONT_URL = process.env.NEXT_PUBLIC_STOREFRONT_URL;

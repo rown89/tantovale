@@ -3,16 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "module": "esnext",
-  "exports": {
-    "./apiRoutes": "./src/app.ts",
-    "./schema": "./src/schema/index.ts",
-    "./lib/constants": "./src/lib/constants.ts",
-    "./lib/getAuthTokenOptions": "./src/lib/getAuthTokenOptions.ts"
-  },
+  "type": "module",
+  "rootDir": ".",
   "scripts": {
     "hono:deploy": "wrangler deploy --minify",
     "hono:dev": "wrangler dev",
-    "hono:build": "NODE_ENV=production dotenv -e .env.production -- tsc",
     "db:build": "tsx src/index.ts",
     "db:dev": "tsx --watch",
     "db:check": "npx drizzle-kit check --config=./database/drizzle.config.ts",
@@ -21,6 +16,28 @@
     "db:migrate": "tsx ./database/migrate.ts",
     "db:push": "npx drizzle-kit push --config=./database/drizzle.config.ts",
     "typecheck": "npx tsc --noEmit"
+  },
+  "imports": {
+    "#*": [
+      "./src/*.ts"
+    ],
+    "#routes/*": "./src/routes/*.ts",
+    "#lib/*": "./src/lib/*.ts",
+    "#utils/*": "./src/utils/*.ts",
+    "#schema": "./src/schema/index.ts",
+    "#schema/*": [
+      "./src/schema/*.ts",
+      "./src/schema/index.ts"
+    ],
+    "#database/*": "./database/*.ts",
+    "#database/db": "./database/index.ts",
+    "#database/schema": "./database/schema/schema.ts",
+    "#mailer/*": "./mailer/*.ts"
+  },
+  "exports": {
+    "./apiRoutes": "./src/app.ts",
+    "./schema": "./src/schema/index.ts",
+    "./lib/constants": "./src/lib/constants.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

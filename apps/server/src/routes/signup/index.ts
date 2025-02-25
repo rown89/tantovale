@@ -4,15 +4,15 @@ import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
-import { checkUser } from "@/lib/utils";
-import { hashPassword } from "@/lib/password";
-import { UserSchema } from "@/schema";
-import { getNodeEnvMode } from "@/utils/constants";
-import { createDb } from "@/database/db";
-import { users } from "@/database/schema";
-import { sendVerifyEmail } from "@/mailer/templates/verify-email";
+import { checkUser } from "#lib/utils";
+import { hashPassword } from "#lib/password";
+import { UserSchema } from "#schema";
+import { getNodeEnvMode } from "#utils/constants";
+import { createDb } from "#database/db";
+import { users } from "#database/schema";
+import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie } from "hono/cookie";
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 
 export const signupRoute = new Hono<AppBindings>().post(
   "/",

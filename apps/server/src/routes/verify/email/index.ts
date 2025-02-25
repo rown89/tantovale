@@ -2,19 +2,19 @@ import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
-import { tokenPayload } from "@/lib/tokenPayload";
+import { tokenPayload } from "#lib/tokenPayload";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-} from "@/utils/constants";
-import { createDb } from "@/database/db";
-import { refreshTokens, users } from "@/database/schema";
+} from "#utils/constants";
+import { createDb } from "#database/db";
+import { refreshTokens, users } from "#database/schema";
 
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 import { setCookie } from "hono/cookie";
-import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
+import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 
 export const verifyEmailRoute = new Hono<AppBindings>().get(
   "/email",

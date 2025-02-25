@@ -9,12 +9,12 @@
 		},
 		"next:dev": {
 			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
 			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
 		},
 		"next:build": {
 			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
 			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
 		},
 		"db:generate": {
@@ -41,14 +41,14 @@
 		},
 		"hono:dev": {
 			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
 			"outputs": ["dist/**"],
 			"cache": false,
 			"persistent": true
 		},
-		"hono:build": {
+		"hono:deploy": {
 			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".dev.vars*", ".env*", "tsconfig.json"],
 			"outputs": ["dist/**"]
 		},
 		"lint": {

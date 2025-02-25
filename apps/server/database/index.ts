@@ -3,7 +3,7 @@ import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema/schema";
-import { type Environment } from "@/env";
+import { type Environment } from "../../server/src/env";
 
 export function createDb(env: Environment) {
   const client = new Pool({

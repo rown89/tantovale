@@ -1,4 +1,4 @@
-import { User } from "@/context/AuthProvider";
+import { User } from "#/context/AuthProvider";
 
 export interface LoginFormData {
   email: string;

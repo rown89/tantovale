@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
-import { AuthProvider } from "@/context/AuthProvider";
+import { AuthProvider } from "#context/AuthProvider";
 
-import NavBar from "@/components/navbar/navbar";
+import NavBar from "#components/navbar/navbar";
 import "@workspace/ui/globals.css";
 import { cookies } from "next/headers";
 

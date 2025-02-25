@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getCookie, getSignedCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 import { describeRoute } from "hono-openapi";
 
 export const verifyRoute = new Hono<AppBindings>().get(

@@ -1,7 +1,7 @@
 "use client";
 
-import { client } from "@/lib/api";
-import refreshTokens from "@/utils/refreshTokens";
+import { client } from "#lib/api";
+import refreshTokens from "#utils/refreshTokens";
 import { useRouter } from "next/navigation";
 import React, {
   createContext,

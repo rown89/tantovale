@@ -1,22 +1,22 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
-import { UserSchema } from "@/schema/users";
-import { tokenPayload } from "@/lib/tokenPayload";
-import { verifyPassword } from "@/lib/password";
-import { createDb } from "@/database/db";
-import { users, refreshTokens } from "@/database/schema";
+import { UserSchema } from "#schema/users";
+import { tokenPayload } from "#lib/tokenPayload";
+import { verifyPassword } from "#lib/password";
+import { createDb } from "#database/db";
+import { users, refreshTokens } from "#database/schema";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
   getNodeEnvMode,
-} from "@/utils/constants";
+} from "#utils/constants";
 import { sign } from "hono/jwt";
 import { setCookie } from "hono/cookie";
-import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
-import type { AppBindings } from "@/lib/types";
+import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
+import type { AppBindings } from "#lib/types";
 
 export const loginRoute = new Hono<AppBindings>().post(
   "/",

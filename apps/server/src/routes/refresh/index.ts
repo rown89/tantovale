@@ -3,17 +3,17 @@ import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
-import { createDb } from "@/database/db";
-import { refreshTokens } from "@/database/schema";
-import { tokenPayload } from "@/lib/tokenPayload";
-import type { AppBindings } from "@/lib/types";
-import { getAuthTokenOptions } from "@/lib/getAuthTokenOptions";
+import { createDb } from "#database/db";
+import { refreshTokens } from "#database/schema";
+import { tokenPayload } from "#lib/tokenPayload";
+import type { AppBindings } from "#lib/types";
+import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import {
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-} from "@/utils/constants";
+} from "#utils/constants";
 
 export const refreshRoute = new Hono<AppBindings>().post(
   "/",

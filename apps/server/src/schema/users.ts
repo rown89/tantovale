@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-const UserSchema = z.object({
+export const UserSchema = z.object({
   username: z.string().min(2).max(50).nonempty(),
   email: z.string().email("L'email non sembra essere valida").nonempty(),
   password: z
@@ -10,6 +10,4 @@ const UserSchema = z.object({
     .nonempty(),
 });
 
-const createUserSchema = UserSchema;
-
-export { UserSchema, createUserSchema };
+export const createUserSchema = UserSchema;

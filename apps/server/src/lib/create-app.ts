@@ -6,7 +6,7 @@ import { authPath, getNodeEnvMode } from "../utils/constants";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { pinoLogger } from "../middlewares/pino-loggers";
 import { authMiddleware } from "../middlewares/auth";
-import { parseEnv } from "@/env";
+import { parseEnv } from "../env";
 import type { AppBindings } from "./types";
 
 export function createRouter() {

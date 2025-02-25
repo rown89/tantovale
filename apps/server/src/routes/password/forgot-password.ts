@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { sign } from "hono/jwt";
-import { getNodeEnvMode } from "@/utils/constants";
-import { sendForgotPasswordEmail } from "@/mailer/templates/forgot-password-email";
-import { createDb } from "@/database/db";
-import { passwordResetTokens } from "@/database/schema";
-import type { AppBindings } from "@/lib/types";
+import { getNodeEnvMode } from "#utils/constants";
+import { sendForgotPasswordEmail } from "#mailer/templates/forgot-password-email";
+import { createDb } from "#database/db";
+import { passwordResetTokens } from "#database/schema";
+import type { AppBindings } from "#lib/types";
 
 export const passwordForgotRoute = new Hono<AppBindings>().post(
   "/forgot-password",

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import pino from "pino";
 import pretty from "pino-pretty";
 
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 
 export function pinoLogger() {
   return ((c, next) =>

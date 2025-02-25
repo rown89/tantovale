@@ -1,8 +1,8 @@
 import { apiReference } from "@scalar/hono-api-reference";
-import type { AppAPI } from "./types";
 import { openAPISpecs } from "hono-openapi";
 import { resolver } from "hono-openapi/zod";
 import { z } from "zod";
+import type { AppAPI } from "./types";
 
 export function configureOpenAPI(app: AppAPI) {
   // Create an endpoint that builds the OpenAPI spec dynamically

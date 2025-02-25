@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import itemSchema, { createItemSchema } from "@/schema/items";
-import type { AppBindings } from "@/lib/types";
+import { itemsSchema, createItemSchema } from "#schema/index";
+import type { AppBindings } from "#lib/types";
 
 const items = [
   {
@@ -41,7 +41,7 @@ export const itemsRoute = new Hono<AppBindings>()
 
     return c.json(data);
   })
-  .put("/", zValidator("json", itemSchema), async (c) => {
+  .put("/", zValidator("json", itemsSchema), async (c) => {
     const data = await c.req.valid("json");
 
     return c.json(data);

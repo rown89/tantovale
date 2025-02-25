@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import { createDb } from "@/database/db";
-import { profiles } from "@/database/schema";
+import { createDb } from "#database/db";
+import { profiles } from "#database/schema";
 import { eq } from "drizzle-orm";
-import { updateProfileSchema } from "@/schema/profiles";
+import { updateProfileSchema } from "#schema/profiles";
 import { z } from "zod";
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 
 export const profileRoute = new Hono<AppBindings>();
 

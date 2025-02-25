@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import type { PinoLogger } from "hono-pino";
-import type { Environment } from "@/env";
+import type { Environment } from "../env";
 import { type JwtVariables } from "hono/jwt";
 
 export interface AppBindings {

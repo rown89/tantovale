@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
-import { hashPassword } from "@/lib/password";
-import { createDb } from "@/database/db";
-import { users, passwordResetTokens } from "@/database/schema";
-import type { AppBindings } from "@/lib/types";
+import { hashPassword } from "#lib/password";
+import { createDb } from "#database/db";
+import { users, passwordResetTokens } from "#database/schema";
+import type { AppBindings } from "#lib/types";
 
 export const passwordResetRoute = new Hono<AppBindings>()
   // Update Password

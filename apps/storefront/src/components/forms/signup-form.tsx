@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import { signupAction } from "@/app/signup/actions";
+import { signupAction } from "#app/signup/actions";
 import {
   Card,
   CardContent,
@@ -14,7 +14,7 @@ import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Button } from "@workspace/ui/components/button";
 import { AlertCircle } from "lucide-react";
-import { SignupActionResponse } from "@/app/signup/types";
+import { SignupActionResponse } from "#app/signup/types";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 

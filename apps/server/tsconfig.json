@@ -2,25 +2,23 @@
   "extends": "@workspace/typescript-config/base.json",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": "./",
     "outDir": "./dist",
     "moduleResolution": "bundler",
-    "composite": true,
-    "paths": {
-      "@/*": ["./src/*"],
-      "@/lib": ["./src/lib/*"],
-      "@/utils": ["./src/utils/*"],
-      "@/database/*": ["./database/*"],
-      "@/database/db": ["./database/index.ts"],
-      "@/database/schema": ["./database/schema/schema.ts"],
-      "@/mailer/*": ["./mailer/*"],
-      "@/mailer/templates": ["./mailer/templates/*"]
-    },
     "verbatimModuleSyntax": true,
     "experimentalDecorators": true,
     "types": ["node", "@cloudflare/workers-types/2022-08-04"],
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "jsxImportSource": "hono/jsx",
+    "paths": {
+      "#*": ["./src/*"],
+      "#routes/*": ["./src/routes/*"],
+      "#lib/*": ["./src/lib/*"],
+      "#utils/*": ["./src/utils/*"],
+      "#schema": ["./src/schema/index.ts"],
+      "#schema/*": ["./src/schema/*"],
+      "#database/*": ["./database/*"],
+      "#mailer/*": ["./mailer/*"]
+    }
   },
   "include": ["src/**/*", "database/**/*", "mailer/**/*"],
   "exclude": ["node_modules"]

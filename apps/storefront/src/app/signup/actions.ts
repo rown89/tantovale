@@ -2,7 +2,7 @@
 
 import { UserSchema } from "@workspace/server/schema";
 import { SignupActionResponse, SignupFormData } from "./types";
-import { client } from "@/lib/api";
+import { client } from "#lib/api";
 
 export async function signupAction(
   prevState: SignupActionResponse | null,

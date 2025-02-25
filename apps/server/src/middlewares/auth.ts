@@ -1,7 +1,7 @@
 import type { Context, Next } from "hono";
 import { verify } from "hono/jwt";
 import { getCookie, getSignedCookie } from "hono/cookie";
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
   const {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/context/AuthProvider";
+import { useAuth } from "#/context/AuthProvider";
 import { Button } from "@workspace/ui/components/button";
 
 export default function NavBar() {

@@ -1,4 +1,4 @@
-import type { AppBindings } from "@/lib/types";
+import type { AppBindings } from "#lib/types";
 import { Hono } from "hono";
 import { verify } from "hono/jwt";
 

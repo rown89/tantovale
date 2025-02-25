@@ -1,6 +1,6 @@
 "use server";
 
-import { client } from "@/lib/api";
+import { client } from "#lib/api";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
 import { UserSchema } from "@workspace/server/schema";

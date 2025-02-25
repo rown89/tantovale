@@ -11,6 +11,12 @@
     "lint": "next lint --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
+  "imports": {
+    "#*": [
+      "./src/*.ts",
+      "./src/*.tsx"
+    ]
+  },
   "dependencies": {
     "@workspace/server": "*",
     "@workspace/ui": "*",

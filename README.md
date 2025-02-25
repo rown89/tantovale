@@ -1,31 +1,72 @@
-# Tantovale monorepo
+# Tantovale
 
-## What's inside?
+**Tantovale** is an open-source marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.
+Built with passion and community collaboration in mind, Tantovale welcomes contributions from anyone who wants to help shape the future of online marketplaces.
 
-This Turborepo includes the following packages/apps:
+## 🚀 Overview
 
-### Apps and Packages
+Tantovale is a modern, cloud-based platform that want leverages on cutting-edge technologies and AI to enhance user experience.
+Whether you're looking to buy or sell, our marketplace is designed to be intuitive, fast, and intelligent.
 
-- `storefront`: [Next.js](https://nextjs.org/) app
-- `server`: [Hono.js](<[https://nextjs.org/](https://hono.dev/)>) app
-- `ui`: [Tailwind](https://tailwindcss.com/) as Css library and [Shadcn](https://ui.shadcn.com/) as collection of re-usable components
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+### Key Features
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+- **Marketplace Functionality:**  
+  A dedicated platform to buy and sell new & used items, collectibles, and bundles.
+- **Community-Driven:**  
+  Open source from the ground up, ensuring that anyone can contribute ideas and features.
+- **AI-Powered Enhancements:**  
+  Artificial intelligence to improve listing experiences and SEO optimization.
+- **Cloud-Native Architecture:**  
+  Utilizing Cloudflare Workers for backend, Vercel for frontend hosting, and Amazon RDS for PostgreSQL.
 
-### Build
+## 🛠️ Tech Stack
 
-To build all apps and packages, run the following command:
+### General
 
-```
-npm build
-```
+- **Node.js**
+- **Monorepo (Turborepo)**
+- **TypeScript** & **Zod** as a schema validator
 
-### Develop
+### Frontend
 
-To develop all apps and packages, run the following command:
+- **Next.js**
+- **Tailwind CSS (Shadcn)**
+- **Zustand** for state management
+- **TanStack Query** for data fetching and caching
+- **HonoJS RPC Client**
 
-```
-npm dev
-```
+### Backend
+
+- **HonoJS** for a lightweight server framework
+- **zod-validator** & **hono-openapi** as middleware for request validation and API documentation
+
+### Database
+
+- **Drizzle ORM** with **PostgreSQL**
+
+## ☁️ Cloud Infrastructure
+
+- **Backend:** Cloudflare Workers
+- **Frontend:** Vercel
+- **Database:** Amazon RDS (PostgreSQL)
+
+## 💡 Why Open Source?
+
+I believe in the power of community. Unlike many similar projects, Tantovale is built to be collaborative and inclusive—anyone can contribute new features, propose improvements, and help evolve the platform.
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (version 16 or higher)
+- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
+- [PostgreSQL](https://www.postgresql.org/)
+
+### Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/yourusername/tantovale.git
+   cd tantovale
+   ```

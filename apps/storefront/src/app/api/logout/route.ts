@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { buildCookieHeader } from "@/utils/buildCookieHeader";
-import { logoutAndClearCookies } from "@/utils/logoutAndClearCookies";
+import { buildCookieHeader } from "#utils/buildCookieHeader";
+import { logoutAndClearCookies } from "#utils/logoutAndClearCookies";
 
 const NODE_ENV = process.env.NODE_ENV;
 const SERVER_HOSTNAME = process.env.NEXT_PUBLIC_SERVER_HOSTNAME;

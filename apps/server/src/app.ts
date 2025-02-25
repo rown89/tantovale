@@ -1,9 +1,8 @@
 import "dotenv/config";
 
-import { createApp } from "@/lib/create-app";
-import { configureOpenAPI } from "./lib/configureOpenApi";
-import { authPath } from "./utils/constants";
-import { verifyRoute } from "./routes/verify";
+import { createApp } from "#lib/create-app";
+import { configureOpenAPI } from "#lib/configureOpenApi";
+import { authPath } from "#utils/constants";
 
 import {
   itemsRoute,
@@ -15,6 +14,7 @@ import {
   passwordForgotRoute,
   passwordResetRoute,
   passwordResetVerifyToken,
+  verifyRoute,
   verifyEmailRoute,
 } from "./routes";
 
