@@ -3,8 +3,9 @@ import { relations } from "drizzle-orm";
 import { subcategories } from "./subcategories";
 
 export const categories = pgTable("categories", {
-  id: integer("id").primaryKey().notNull().generatedAlwaysAsIdentity(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
   description: text("description"),
   created_at: timestamp("created_at", { withTimezone: true })
     .notNull()

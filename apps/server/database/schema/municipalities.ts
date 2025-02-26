@@ -1,10 +1,10 @@
-import { pgTable, serial, text } from "drizzle-orm/pg-core";
+import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import { provinces } from "./provinces";
 import { regions } from "./regions";
 import { relations } from "drizzle-orm";
 
 export const municipalities = pgTable("municipalities", {
-  id: serial("id").primaryKey().notNull(),
+  id: integer("id").primaryKey().notNull(),
   municipality_name: text("municipality_name").notNull(),
   cap: text("cap").notNull(),
   province_code: text("province_code")

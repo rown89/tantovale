@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createDb } from "#database/db";
+import { createWranglerDb } from "#database/db";
 import { users } from "#database/schema";
 import type { Context } from "hono";
 import type { AppBindings } from "./types";
@@ -9,7 +9,7 @@ export const checkUser = async (
   identifier: string,
   type: "email" | "username",
 ) => {
-  const { db } = createDb(c.env);
+  const { db } = createWranglerDb(c.env);
 
   const user = await db
     .select()

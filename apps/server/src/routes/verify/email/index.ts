@@ -9,7 +9,7 @@ import {
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 } from "#utils/constants";
-import { createDb } from "#database/db";
+import { createWranglerDb } from "#database/db";
 import { refreshTokens, users } from "#database/schema";
 
 import type { AppBindings } from "#lib/types";
@@ -34,7 +34,7 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
 
     const { id, type } = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
 
-    const { db } = createDb(c.env);
+    const { db } = createWranglerDb(c.env);
     // Get existing user by id
     const user = await db.query.users.findFirst({
       where: (tbl) => eq(tbl.id, Number(id)),

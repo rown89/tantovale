@@ -4,7 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { UserSchema } from "#schema/users";
 import { tokenPayload } from "#lib/tokenPayload";
 import { verifyPassword } from "#lib/password";
-import { createDb } from "#database/db";
+import { createWranglerDb } from "#database/db";
 import { users, refreshTokens } from "#database/schema";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
@@ -28,7 +28,7 @@ export const loginRoute = new Hono<AppBindings>().post(
     try {
       const { email, password } = await c.req.json();
 
-      const { db } = createDb(c.env);
+      const { db } = createWranglerDb(c.env);
       // lookup email in database
       const userFromDb = await db
         .select()

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import { createDb } from "#database/db";
+import { createWranglerDb } from "#database/db";
 import { refreshTokens } from "#database/schema";
 import { eq } from "drizzle-orm";
 import type { AppBindings } from "#lib/types";
@@ -19,7 +19,7 @@ export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
         const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
         const username = payload.username as string;
 
-        const { db } = createDb(c.env);
+        const { db } = createWranglerDb(c.env);
         // Remove refresh token
         await db
           .delete(refreshTokens)
