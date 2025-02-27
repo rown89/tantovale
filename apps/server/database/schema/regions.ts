@@ -1,15 +1,18 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable, text } from "drizzle-orm/pg-core";
-import { provinces } from "./provinces";
-import { municipalities } from "./municipalities";
+import { pgTable, varchar, json, integer } from "drizzle-orm/pg-core";
+import { countries } from "./countries";
+import { subRegions } from "./subRegions";
 
 export const regions = pgTable("regions", {
-  id: integer("id").primaryKey().notNull(),
-  region_code: text("region_code").unique().notNull(),
-  region_name: text("region_name").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  translations: json("translations").notNull(),
+  wikiDataId: varchar("wiki_data_id", { length: 255 }).notNull(),
 });
 
 export const regionsRelations = relations(regions, ({ many }) => ({
-  provinces: many(provinces),
-  municipalities: many(municipalities),
+  countries: many(countries),
+  subRegions: many(subRegions),
 }));
+
+export type Region = typeof regions.$inferSelect;

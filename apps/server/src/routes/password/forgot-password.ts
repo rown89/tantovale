@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { getNodeEnvMode } from "#utils/constants";
 import { sendForgotPasswordEmail } from "#mailer/templates/forgot-password-email";
-import { createWranglerDb } from "#database/db";
+import { createClient } from "#database/db";
 import { passwordResetTokens } from "#database/schema";
 import type { AppBindings } from "#lib/types";
 
@@ -20,7 +20,7 @@ export const passwordForgotRoute = new Hono<AppBindings>().post(
       return c.json({ error: "Email is required" }, 400);
     }
 
-    const { db } = createWranglerDb(c.env);
+    const { db } = createClient(c.env);
     // Check if the user exists
     const user = await db.query.users.findFirst({
       where: (tbl) => eq(tbl.email, email),

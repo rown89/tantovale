@@ -16,6 +16,7 @@
     "db:migrate": "tsx ./database/migrate.ts",
     "db:push": "npx drizzle-kit push --config=./database/drizzle.config.ts",
     "seed:categories": "npx tsx ./database/scripts/seeders/categories/index.ts",
+    "seed:countries": "npx tsx ./database/scripts/seeders/countries/index.ts",
     "typecheck": "npx tsc --noEmit"
   },
   "imports": {

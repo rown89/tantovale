@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createWranglerDb } from "#database/db";
+import { createClient } from "#database/db";
 import { profiles } from "#database/schema";
 import { eq } from "drizzle-orm";
 import { updateProfileSchema } from "#schema/profiles";
@@ -11,7 +11,7 @@ export const profileRoute = new Hono<AppBindings>();
 profileRoute.post("/", async (c) => {
   const user = c.var.user;
 
-  const { db } = createWranglerDb(c.env);
+  const { db } = createClient(c.env);
   const userProfile = await db
     .select()
     .from(profiles)
@@ -32,7 +32,7 @@ profileRoute.put("/", async (c) => {
   try {
     const validatedData = updateProfileSchema.parse(body);
 
-    const { db } = createWranglerDb(c.env);
+    const { db } = createClient(c.env);
     const updatedProfile = await db
       .update(profiles)
       .set({

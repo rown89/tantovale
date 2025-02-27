@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
-import { createWranglerDb } from "#database/db";
+import { createClient } from "#database/db";
 import { refreshTokens } from "#database/schema";
 import { tokenPayload } from "#lib/tokenPayload";
 import type { AppBindings } from "#lib/types";
@@ -49,7 +49,7 @@ export const refreshRoute = new Hono<AppBindings>().post(
         phone_verified,
       };
 
-      const { db } = createWranglerDb(c.env);
+      const { db } = createClient(c.env);
       // Check if the refresh token exists in db
       const storedToken = await db
         .select()

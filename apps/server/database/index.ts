@@ -15,7 +15,7 @@ export type DrizzleClient = {
   client: typeof Pool;
 };
 
-export function createWranglerDb(env: Environment) {
+export function createClient(env: Environment) {
   const client = new Pool({
     connectionString: env.DATABASE_URL,
   });
@@ -27,7 +27,7 @@ export function createWranglerDb(env: Environment) {
   return { db, client };
 }
 
-export function createClient(connectionString: string) {
+export function nodeClient(connectionString: string) {
   const client = new Pool({
     connectionString,
   });

@@ -8,7 +8,7 @@ import { checkUser } from "#lib/utils";
 import { hashPassword } from "#lib/password";
 import { UserSchema } from "#schema";
 import { getNodeEnvMode } from "#utils/constants";
-import { createWranglerDb } from "#database/db";
+import { createClient } from "#database/db";
 import { users } from "#database/schema";
 import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie } from "hono/cookie";
@@ -45,7 +45,7 @@ export const signupRoute = new Hono<AppBindings>().post(
 
       const hashedPassword = await hashPassword(password);
 
-      const { db } = createWranglerDb(c.env);
+      const { db } = createClient(c.env);
       // Create new user
       const results = await db
         .insert(users)

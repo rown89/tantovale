@@ -1,5 +1,5 @@
 import { count, eq } from "drizzle-orm";
-import { createClient, type DrizzleClient } from "../../..";
+import { nodeClient, type DrizzleClient } from "../../..";
 import {
   categories,
   subcategories,
@@ -23,7 +23,7 @@ export const seedDatabase = async (databaseUrl: string): Promise<void> => {
     throw new Error("DATABASE_URL not provided");
   }
 
-  const { db, client } = createClient(databaseUrl);
+  const { db, client } = nodeClient(databaseUrl);
 
   try {
     // Begin transaction

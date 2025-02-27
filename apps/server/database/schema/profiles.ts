@@ -6,6 +6,7 @@ import {
   boolean,
   check,
   varchar,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { items } from "./items";
@@ -33,6 +34,7 @@ export const profiles = pgTable(
       .notNull(),
   },
   (table) => [
+    index("profiles_fullname_idx").on(table.fullname),
     check(
       "birthday_check1",
       sql`${table.profile_type} != 'private' OR ${table.birthday} IS NOT NULL`,
