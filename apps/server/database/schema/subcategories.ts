@@ -13,7 +13,6 @@ export const subcategories = pgTable("subcategories", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
-  description: text("description"),
   category_id: integer("category_id")
     .notNull()
     .references(() => categories.id, {

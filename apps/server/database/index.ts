@@ -1,9 +1,19 @@
 import "dotenv/config";
 
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
+import pkg from "pg";
 import * as schema from "./schema/schema";
 import { type Environment } from "../../server/src/env";
+
+const { Pool } = pkg;
+
+/**
+ * Database client return type
+ */
+export type DrizzleClient = {
+  db: NodePgDatabase<typeof schema>;
+  client: typeof Pool;
+};
 
 export function createWranglerDb(env: Environment) {
   const client = new Pool({

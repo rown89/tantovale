@@ -4,7 +4,7 @@ import { subcategories } from "./subcategories";
 
 export const subCategoryFilters = pgTable("subcategory_filters", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  filter_id: integer("user_id")
+  filter_id: integer("filter_id")
     .notNull()
     .references(() => filters.id, { onDelete: "cascade", onUpdate: "cascade" }),
   subcategory_id: integer("subcategory_id")
