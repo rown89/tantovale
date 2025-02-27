@@ -50,6 +50,10 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
 - **Frontend:** Vercel
 - **Database:** Amazon RDS (PostgreSQL)
 
+## Countries+Cities+Regions+State+Subregions
+[countries-states-cities-database](https://github.com/dr5hn/countries-states-cities-database)
+A zipped version updated at 27/02/2024 is placed [here](https://github.com/rown89/tantovale/tree/main/apps/server/database/scripts/seeders/countries/data)
+
 ## 💡 Why Open Source?
 
 I believe in the power of community. Unlike many similar projects, Tantovale is built to be collaborative and inclusive—anyone can contribute new features, propose improvements, and help evolve the platform.
