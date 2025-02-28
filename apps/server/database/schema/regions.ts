@@ -4,7 +4,7 @@ import { countries } from "./countries";
 import { subRegions } from "./subRegions";
 
 export const regions = pgTable("regions", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
+  id: integer("id").primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   translations: json("translations").notNull(),
   wikiDataId: varchar("wiki_data_id", { length: 255 }).notNull(),

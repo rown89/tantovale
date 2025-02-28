@@ -4,7 +4,7 @@ import { relations } from "drizzle-orm";
 import { countries } from "./countries";
 
 export const subRegions = pgTable("sub_regions", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
+  id: integer("id").primaryKey().notNull(),
   name: text("name").notNull(),
   region_id: integer("region_id")
     .notNull()

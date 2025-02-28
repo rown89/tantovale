@@ -54,7 +54,7 @@ async function batchInsert<T extends Record<string, any>>(
 
     const result = await db
       .insert(table)
-      .values(batch as any) // Type cast needed due to drizzle's typing limitations
+      .values(batch as any)
       .onConflictDoNothing()
       .returning();
 
@@ -67,15 +67,44 @@ async function batchInsert<T extends Record<string, any>>(
   console.log(
     `✅ Completed ${entityName} seeding: ${inserted} records inserted`,
   );
+
   return inserted;
 }
 
-// Entity-specific insert functions with proper types
-async function insertCountries(): Promise<number> {
-  const countriesData = readJsonFile<typeof countries>("./countries.json");
+async function insertRegions(): Promise<number> {
+  const regionsData = readJsonFile<typeof regions>("./regions.json");
 
-  const countriesReshape = countriesData.map(({ id, ...values }) => ({
+  const regionsReshape = regionsData.map(({ ...values }) => ({
     ...values,
+  }));
+
+  return await batchInsert<typeof regions>(regions, regionsReshape, "regions");
+}
+
+async function insertSubRegions(): Promise<number> {
+  const subRegionsData = readJsonFile<typeof subRegions>("./subregions.json");
+
+  const subRegionsReshape = subRegionsData.map(({ region_id, ...values }) => ({
+    ...values,
+    region_id: Number(region_id),
+  }));
+
+  return await batchInsert<typeof subRegions>(
+    subRegions,
+    subRegionsReshape,
+    "subRegions",
+  );
+}
+
+async function insertCountries(): Promise<number> {
+  const countriesData = readJsonFile<
+    typeof countries & { subregion_id: number | null; region_id: number | null }
+  >("./countries.json");
+
+  const countriesReshape = countriesData.map(({ ...values }) => ({
+    ...values,
+    subregion_id: values.subregion_id === 0 ? null : values.subregion_id,
+    region_id: values.region_id === 0 ? null : values.region_id,
   }));
 
   return await batchInsert<Omit<typeof countries, "id">>(
@@ -88,7 +117,7 @@ async function insertCountries(): Promise<number> {
 async function insertStates(): Promise<number> {
   const statesData = readJsonFile<typeof states>("./states.json");
 
-  const statesReshape = statesData.map(({ id, ...values }) => ({
+  const statesReshape = statesData.map(({ ...values }) => ({
     ...values,
   }));
 
@@ -102,7 +131,7 @@ async function insertStates(): Promise<number> {
 async function insertCities(): Promise<number> {
   const citiesData = readJsonFile<typeof cities>("./cities.json");
 
-  const citiesReshape = citiesData.map(({ id, ...values }) => ({
+  const citiesReshape = citiesData.map(({ ...values }) => ({
     ...values,
   }));
 
@@ -110,34 +139,6 @@ async function insertCities(): Promise<number> {
     cities,
     citiesReshape,
     "cities",
-  );
-}
-
-async function insertRegions(): Promise<number> {
-  const regionsData = readJsonFile<typeof regions>("./regions.json");
-
-  const regionsReshape = regionsData.map(({ id, ...values }) => ({
-    ...values,
-  }));
-
-  return await batchInsert<Omit<typeof regions, "id">>(
-    regions,
-    regionsReshape,
-    "regions",
-  );
-}
-
-async function insertSubRegions(): Promise<number> {
-  const subRegionsData = readJsonFile<typeof subRegions>("./subregions.json");
-
-  const subRegionsReshape = subRegionsData.map(({ id, ...values }) => ({
-    ...values,
-  }));
-
-  return await batchInsert<Omit<typeof subRegions, "id">>(
-    subRegions,
-    subRegionsReshape,
-    "subRegions",
   );
 }
 

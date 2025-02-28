@@ -10,7 +10,7 @@ import { states } from "./states";
 import { relations } from "drizzle-orm";
 
 export const cities = pgTable("cities", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
+  id: integer("id").primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   state_id: integer("state_id")
     .notNull()

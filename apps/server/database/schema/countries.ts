@@ -6,7 +6,7 @@ import { states } from "./states";
 import { cities } from "./cities";
 
 export const countries = pgTable("countries", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
+  id: integer("id").primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   iso3: varchar("iso3", { length: 3 }).notNull(),
   iso2: varchar("iso2", { length: 2 }).notNull(),
