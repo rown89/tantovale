@@ -17,3 +17,6 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 export const usersRelations = relations(users, ({ many }) => ({
   resetTokens: many(passwordResetTokens),
 }));
+
+export type SelectPasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;

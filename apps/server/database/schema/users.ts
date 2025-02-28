@@ -20,3 +20,6 @@ export const users = pgTable("users", {
     .defaultNow()
     .notNull(),
 });
+
+export type SelectUser = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;

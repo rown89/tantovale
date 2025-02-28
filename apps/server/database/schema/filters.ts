@@ -7,3 +7,6 @@ export const filters = pgTable("filters", {
   slug: text("slug").notNull().unique(),
   type: filterTypeEnum("type").notNull(),
 });
+
+export type SelectFilter = typeof filters.$inferSelect;
+export type InsertFilter = typeof filters.$inferInsert;

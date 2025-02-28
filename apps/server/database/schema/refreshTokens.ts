@@ -18,3 +18,6 @@ export const refreshTokens = pgTable("refresh_tokens", {
     .notNull()
     .defaultNow(),
 });
+
+export type SelectRefreshToken = typeof refreshTokens.$inferSelect;
+export type InsertRefreshToken = typeof refreshTokens.$inferInsert;

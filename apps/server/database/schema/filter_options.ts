@@ -8,3 +8,6 @@ export const filterOptions = pgTable("filter_options", {
     .references(() => filters.id, { onDelete: "cascade" }),
   value: text("value").notNull(),
 });
+
+export type SelectFilterOption = typeof filterOptions.$inferSelect;
+export type InsertFilterOption = typeof filterOptions.$inferInsert;

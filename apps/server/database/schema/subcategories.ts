@@ -43,3 +43,6 @@ export const subcategoriesRelations = relations(
     items: many(items),
   }),
 );
+
+export type SelectSubCategories = typeof subcategories.$inferSelect;
+export type InsertSubCategories = typeof subcategories.$inferInsert;

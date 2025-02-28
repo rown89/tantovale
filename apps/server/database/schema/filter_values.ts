@@ -12,3 +12,6 @@ export const filterValues = pgTable(
   },
   (table) => [index("value_id_idx").on(table.value)],
 );
+
+export type SelectFilterValue = typeof filterValues.$inferSelect;
+export type InsertFilterValue = typeof filterValues.$inferInsert;

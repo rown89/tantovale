@@ -37,3 +37,6 @@ export const userFavoritesRelations = relations(userFavorites, ({ one }) => ({
     references: [items.id],
   }),
 }));
+
+export type SelectUserFavorite = typeof userFavorites.$inferSelect;
+export type InsertUserFavorite = typeof userFavorites.$inferInsert;

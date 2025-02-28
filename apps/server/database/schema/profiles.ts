@@ -3,7 +3,6 @@ import {
   integer,
   timestamp,
   date,
-  boolean,
   check,
   varchar,
   index,
@@ -50,3 +49,6 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
   user: one(users),
   items: many(items),
 }));
+
+export type SelectProfile = typeof profiles.$inferSelect;
+export type InsertProfile = typeof profiles.$inferInsert;

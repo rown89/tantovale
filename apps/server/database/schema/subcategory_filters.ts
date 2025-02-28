@@ -14,3 +14,6 @@ export const subCategoryFilters = pgTable("subcategory_filters", {
       onUpdate: "cascade",
     }),
 });
+
+export type SelectCategoryFilter = typeof subCategoryFilters.$inferSelect;
+export type InsertCategoryFilter = typeof subCategoryFilters.$inferInsert;

@@ -27,4 +27,5 @@ export const statesRelations = relations(states, ({ one, many }) => ({
   cities: many(cities),
 }));
 
-export type State = typeof states.$inferSelect;
+export type SelectState = typeof states.$inferSelect;
+export type InsertState = typeof states.$inferInsert;

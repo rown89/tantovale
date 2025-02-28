@@ -24,4 +24,5 @@ export const subRegionsRelations = relations(subRegions, ({ one, many }) => ({
   countries: many(countries),
 }));
 
-export type SubRegion = typeof subRegions.$inferSelect;
+export type SelectSubRegion = typeof subRegions.$inferSelect;
+export type InsertSubRegion = typeof subRegions.$inferInsert;

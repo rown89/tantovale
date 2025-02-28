@@ -43,4 +43,5 @@ export const citiesRelations = relations(cities, ({ one }) => ({
   }),
 }));
 
-export type City = typeof cities.$inferSelect;
+export type SelectCity = typeof cities.$inferSelect;
+export type InsertCity = typeof cities.$inferInsert;

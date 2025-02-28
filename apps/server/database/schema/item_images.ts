@@ -23,3 +23,6 @@ export const itemImagesRelations = relations(itemImages, ({ one }) => ({
     references: [items.id],
   }),
 }));
+
+export type SelectItemImage = typeof itemImages.$inferSelect;
+export type InsertItemImage = typeof itemImages.$inferInsert;
