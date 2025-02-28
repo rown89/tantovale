@@ -3,6 +3,23 @@
 **Tantovale** is an open-source marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.  
 Built with passion and community collaboration in mind, Tantovale welcomes contributions from anyone who wants to help shape the future of online marketplaces.
 
+## 🏗️ Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (version 16 or higher)
+- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
+- [PostgreSQL](https://www.postgresql.org/)
+
+### Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/rown89/tantovale.git
+   cd tantovale
+   ```
+
 ## 🚀 Overview
 
 Tantovale is a modern, cloud-based platform that leverages cutting-edge technologies and AI to enhance user experience.  
@@ -23,27 +40,27 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
 
 ### General
 
-- **Node.js**
-- **Monorepo (Turborepo)**
-- **TypeScript** & **Zod** as a schema validator
-- **Husky** for Git hooks with **Conventional Commits** enforcement
+- **[Node.js](https://nodejs.org/en)**
+- **Monorepo with [Turborepo](https://turbo.build/)**
+- **[TypeScript](https://www.typescriptlang.org/)** & **[Zod](https://zod.dev/)** as a schema validator
+- **[Husky](https://typicode.github.io/husky/)** for Git hooks with **Conventional Commits** enforcement
 
 ### Frontend
 
-- **Next.js**
-- **Tailwind CSS (Shadcn)**
-- **Zustand** for state management
-- **TanStack Query** for data fetching and caching
-- **HonoJS RPC Client**
+- **[Next.js](https://nextjs.org/)**
+- **[Tailwind](https://tailwindcss.com/) CSS ([Shadcn](https://ui.shadcn.com/))**
+- **[Zustand](https://github.com/pmndrs/zustand)** for state management
+- **[TanStack Query](https://tanstack.com/query/latest)** for data fetching and caching
+- **[HonoJS RPC Client](https://hono.dev/docs/guides/rpc)**
 
 ### Backend
 
-- **HonoJS** for a lightweight server framework
-- **zod-validator** & **hono-openapi** as middleware for request validation and API documentation
+- **[HonoJS](https://hono.dev/)** for a lightweight server framework
+- **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)** & **[hono-openapi](https://hono.dev/examples/hono-openapi)** as middleware for request validation and API documentation
 
 ### Database
 
-- **Drizzle ORM** with **PostgreSQL**
+- **[Drizzle ORM](https://orm.drizzle.team/)** with **PostgreSQL**
 
 ## ☁️ Cloud Infrastructure
 
@@ -58,10 +75,10 @@ We use **Husky** to enforce commit message linting before changes are committed.
 
 ### Example Commit Messages:
 
-- `feat: add user authentication`
-- `fix: resolve checkout button bug`
-- `docs: update README`
-- `chore: setup Husky and commit linting`
+- `feat(context): add user authentication`
+- `fix(context): resolve checkout button bug`
+- `docs(context): update README`
+- `chore(context): setup Husky and commit linting`
 
 For more details, refer to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) guide.
 
@@ -74,20 +91,3 @@ This archive should be extracted directly in the data folder.
 ## 💡 Why Open Source?
 
 I believe in the power of community. Unlike many similar projects, Tantovale is built to be collaborative and inclusive—anyone can contribute new features, propose improvements, and help evolve the platform.
-
-## 🏗️ Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (version 16 or higher)
-- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
-- [PostgreSQL](https://www.postgresql.org/)
-
-### Installation
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/tantovale.git
-   cd tantovale
-   ```
