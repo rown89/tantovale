@@ -18,8 +18,6 @@ import {
   verifyEmailRoute,
 } from "./routes";
 
-import { seedDatabase } from "#database/scripts/seeders/categories/seeder";
-
 const app = createApp();
 
 // initiate OpenApi specs

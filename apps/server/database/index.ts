@@ -7,9 +7,6 @@ import { type Environment } from "../../server/src/env";
 
 const { Pool } = pkg;
 
-/**
- * Database client return type
- */
 export type DrizzleClient = {
   db: NodePgDatabase<typeof schema>;
   client: typeof Pool;
