@@ -2,6 +2,8 @@ import { pgTable, text, varchar, json, integer } from "drizzle-orm/pg-core";
 import { regions } from "./regions";
 import { relations } from "drizzle-orm";
 import { countries } from "./countries";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import type { ZodSchema } from "zod";
 
 export const subRegions = pgTable("sub_regions", {
   id: integer("id").primaryKey().notNull(),
@@ -26,3 +28,10 @@ export const subRegionsRelations = relations(subRegions, ({ one, many }) => ({
 
 export type SelectSubRegion = typeof subRegions.$inferSelect;
 export type InsertSubRegion = typeof subRegions.$inferInsert;
+
+export const selectSubRegionsSchema = createSelectSchema(subRegions);
+
+export const insertSubRegionsSchema = createInsertSchema(subRegions);
+
+export const patchSubRegionsSchema: ZodSchema =
+  insertSubRegionsSchema.partial();

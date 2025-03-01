@@ -6,6 +6,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { categories } from "./categories";
 import { items } from "./items";
 
@@ -46,3 +47,9 @@ export const subcategoriesRelations = relations(
 
 export type SelectSubCategories = typeof subcategories.$inferSelect;
 export type InsertSubCategories = typeof subcategories.$inferInsert;
+
+export const selectSubcategoriesSchema = createSelectSchema(subcategories);
+
+export const insertSubcategoriesSchema = createInsertSchema(subcategories);
+
+export const patchSubcategoriesSchema = insertSubcategoriesSchema.partial();

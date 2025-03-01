@@ -1,6 +1,7 @@
 import { pgTable, integer } from "drizzle-orm/pg-core";
 import { filters } from "./filters";
 import { subcategories } from "./subcategories";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const subCategoryFilters = pgTable("subcategory_filters", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -17,3 +18,12 @@ export const subCategoryFilters = pgTable("subcategory_filters", {
 
 export type SelectCategoryFilter = typeof subCategoryFilters.$inferSelect;
 export type InsertCategoryFilter = typeof subCategoryFilters.$inferInsert;
+
+export const selectSubcategoriesFiltersSchema =
+  createSelectSchema(subCategoryFilters);
+
+export const insertSubcategoriesFiltersSchema =
+  createInsertSchema(subCategoryFilters);
+
+export const patchSubcategoriesFiltersSchema =
+  insertSubcategoriesFiltersSchema.partial();

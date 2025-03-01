@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
 } from "drizzle-orm/pg-core";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity().notNull(),
@@ -23,3 +24,9 @@ export const users = pgTable("users", {
 
 export type SelectUser = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+export const selectUsersSchema = createSelectSchema(users);
+
+export const insertUsersSchema = createInsertSchema(users);
+
+export const patchUsersSchema = insertUsersSchema.partial();

@@ -2,6 +2,7 @@ import { pgTable, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { items } from "./items";
 import { relations } from "drizzle-orm";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const userFavorites = pgTable(
   "user_favorites",
@@ -40,3 +41,9 @@ export const userFavoritesRelations = relations(userFavorites, ({ one }) => ({
 
 export type SelectUserFavorite = typeof userFavorites.$inferSelect;
 export type InsertUserFavorite = typeof userFavorites.$inferInsert;
+
+export const selectUserFavoritesSchema = createSelectSchema(userFavorites);
+
+export const insertUserFavoritesSchema = createInsertSchema(userFavorites);
+
+export const patchUserFavoritesSchema = insertUserFavoritesSchema.partial();

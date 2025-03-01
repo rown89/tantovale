@@ -49,6 +49,7 @@
     "@scalar/hono-api-reference": "^0.5.172",
     "bcryptjs": "^3.0.2",
     "drizzle-orm": "^0.39.3",
+    "drizzle-zod": "^0.7.0",
     "hono": "^4.7.2",
     "hono-openapi": "^0.4.4",
     "hono-pino": "^0.7.2",
@@ -61,7 +62,6 @@
     "zod-openapi": "^4.2.3"
   },
   "devDependencies": {
-    "wrangler": "^3.109.2",
     "@cloudflare/workers-types": "^4.20250214.0",
     "@types/argon2-browser": "^1.18.4",
     "@types/node": "^20.11.17",
@@ -71,6 +71,7 @@
     "@workspace/typescript-config": "*",
     "dotenv-cli": "^8.0.0",
     "drizzle-kit": "^0.30.4",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "wrangler": "^3.109.2"
   }
 }

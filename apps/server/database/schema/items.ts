@@ -15,6 +15,7 @@ import {
   statusEnum,
 } from "./enumerated_types";
 import { subcategories } from "./subcategories";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
 export const items = pgTable(
   "items",
@@ -70,3 +71,15 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
 
 export type SelectItem = typeof items.$inferSelect;
 export type InsertItem = typeof items.$inferInsert;
+
+export const selectItemsSchema = createSelectSchema(items);
+
+export const insertItemsSchema = createInsertSchema(items, {
+  title: (schema) => schema.min(1).max(200),
+  description: (schema) => schema.max(800),
+}).omit({
+  created_at: true,
+  updated_at: true,
+});
+
+export const patchItemsSchema = insertItemsSchema.partial();

@@ -1,9 +1,11 @@
+import { relations } from "drizzle-orm";
 import { pgTable, varchar, numeric, json, integer } from "drizzle-orm/pg-core";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { regions } from "./regions";
 import { subRegions } from "./subRegions";
-import { relations } from "drizzle-orm";
 import { states } from "./states";
 import { cities } from "./cities";
+import { ZodSchema } from "drizzle-zod";
 
 export const countries = pgTable("countries", {
   id: integer("id").primaryKey().notNull(),
@@ -52,3 +54,9 @@ export const countriesRelations = relations(countries, ({ one, many }) => ({
 
 export type SelectCountry = typeof cities.$inferSelect;
 export type InsertCountry = typeof cities.$inferInsert;
+
+export const selectCountriesSchema = createSelectSchema(countries);
+
+export const insertCountriesSchema = createInsertSchema(countries);
+
+export const patchCountriesSchema: ZodSchema = insertCountriesSchema.partial();

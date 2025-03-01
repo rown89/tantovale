@@ -1,6 +1,8 @@
 import { pgTable, integer, timestamp, text } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { relations } from "drizzle-orm";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import type { countries } from "./countries";
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -20,3 +22,12 @@ export const usersRelations = relations(users, ({ many }) => ({
 
 export type SelectPasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
+export const selectPasswordResetTokensSchema =
+  createSelectSchema(passwordResetTokens);
+
+export const insertPasswordResetTokensSchema =
+  createInsertSchema(passwordResetTokens);
+
+export const patchPasswordResetTokensSchema =
+  insertPasswordResetTokensSchema.partial();

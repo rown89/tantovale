@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./users";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 
 export const refreshTokens = pgTable("refresh_tokens", {
   id: uuid("id")
@@ -21,3 +22,9 @@ export const refreshTokens = pgTable("refresh_tokens", {
 
 export type SelectRefreshToken = typeof refreshTokens.$inferSelect;
 export type InsertRefreshToken = typeof refreshTokens.$inferInsert;
+
+export const selectRefreshTokensSchema = createSelectSchema(refreshTokens);
+
+export const insertRefreshTokensSchema = createInsertSchema(refreshTokens);
+
+export const patchRefreshTokensSchema = insertRefreshTokensSchema.partial();

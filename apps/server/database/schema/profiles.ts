@@ -11,6 +11,8 @@ import { relations, sql } from "drizzle-orm";
 import { items } from "./items";
 import { profileEnum, sexEnum } from "./enumerated_types";
 import { users } from "./users";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
+import type { countries } from "./countries";
 
 export const profiles = pgTable(
   "profiles",
@@ -52,3 +54,9 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
 
 export type SelectProfile = typeof profiles.$inferSelect;
 export type InsertProfile = typeof profiles.$inferInsert;
+
+export const selectProfilesSchema = createSelectSchema(profiles);
+
+export const insertProfilesSchema = createInsertSchema(profiles);
+
+export const patchProfilesSchema = insertProfilesSchema.partial();

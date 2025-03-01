@@ -1,4 +1,5 @@
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
+import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { filterTypeEnum } from "./enumerated_types";
 
 export const filters = pgTable("filters", {
@@ -10,3 +11,9 @@ export const filters = pgTable("filters", {
 
 export type SelectFilter = typeof filters.$inferSelect;
 export type InsertFilter = typeof filters.$inferInsert;
+
+export const selectFilterSchema = createSelectSchema(filters);
+
+export const insertFilterSchema = createInsertSchema(filters);
+
+export const patchFilterSchema = insertFilterSchema.partial();
