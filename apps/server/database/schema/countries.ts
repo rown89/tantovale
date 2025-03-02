@@ -5,7 +5,7 @@ import { regions } from "./regions";
 import { subRegions } from "./subRegions";
 import { states } from "./states";
 import { cities } from "./cities";
-import { ZodSchema } from "drizzle-zod";
+import type { ZodSchema } from "zod";
 
 export const countries = pgTable("countries", {
   id: integer("id").primaryKey().notNull(),

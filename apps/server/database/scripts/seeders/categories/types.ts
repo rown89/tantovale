@@ -3,18 +3,25 @@ export interface BaseSubcategorySeed {
   slug: string;
 }
 
-export interface ClothingGroupSeed {
+export interface ParentGroupSeed {
   parent: BaseSubcategorySeed;
   children: BaseSubcategorySeed[];
 }
 
 export interface SubcategorySeeds {
-  electronic: BaseSubcategorySeed[];
-  clothing: ClothingGroupSeed[];
-  kids: BaseSubcategorySeed[];
-  collectables: BaseSubcategorySeed[];
+  electronics: (BaseSubcategorySeed | ParentGroupSeed)[];
+  clothings: (BaseSubcategorySeed | ParentGroupSeed)[];
+  kids: (BaseSubcategorySeed | ParentGroupSeed)[];
+  collectables: (BaseSubcategorySeed | ParentGroupSeed)[];
 }
 
 export interface FilterSeed extends BaseSubcategorySeed {
   type: "select" | "boolean" | "text";
+}
+
+export interface FilterValues {
+  slug: string;
+  value: string;
+  icon?: string;
+  meta?: Record<string, any>;
 }

@@ -14,7 +14,16 @@ import {
   Categories,
   Subcategories,
   FILTER_VALUES,
+  Filters,
 } from "./constants";
+import type { BaseSubcategorySeed, ParentGroupSeed } from "./types";
+
+// Type guard to check if an item is a ParentGroupSeed
+function isParentGroupSeed(
+  item: BaseSubcategorySeed | ParentGroupSeed,
+): item is ParentGroupSeed {
+  return "parent" in item && "children" in item;
+}
 
 export const seedDatabase = async (databaseUrl: string): Promise<void> => {
   console.log("🌱 Starting database seeding...");
@@ -89,43 +98,32 @@ async function seedSubcategories(
 ): Promise<Record<string, number>> {
   const subcategoryMap: Record<string, number> = {};
 
-  // 1. Electronic subcategories
+  // 1. Electronics
   const electronicSubcategories = await seedElectronicSubcategories(
     db,
     categoryMap,
   );
-  // Add electronic subcategories to the map
   electronicSubcategories.forEach((sub) => {
     subcategoryMap[sub.slug] = sub.id;
   });
 
-  // 2. Clothing subcategories (with parent-child hierarchy)
-  const { parents, children } = await seedClothingSubcategories(
-    db,
-    categoryMap,
-  );
-  // Add clothing parent subcategories to the map
-  parents.forEach((sub) => {
-    subcategoryMap[sub.slug] = sub.id;
-  });
-  // Add clothing child subcategories to the map
-  children.forEach((sub) => {
+  // 2. Clothings (modified to handle the combined return)
+  const clothingResult = await seedClothingsSubcategories(db, categoryMap);
+  [...clothingResult.parents, ...clothingResult.children].forEach((sub) => {
     subcategoryMap[sub.slug] = sub.id;
   });
 
-  // 3. Kids subcategories
+  // 3. Kids (now returns all subcategories)
   const kidsSubcategories = await seedKidsSubcategories(db, categoryMap);
-  // Add kids subcategories to the map
   kidsSubcategories.forEach((sub) => {
     subcategoryMap[sub.slug] = sub.id;
   });
 
-  // 4. Collectables subcategories
+  // 4. Collectables (now returns all subcategories)
   const collectablesSubcategories = await seedCollectablesSubcategories(
     db,
     categoryMap,
   );
-  // Add collectables subcategories to the map
   collectablesSubcategories.forEach((sub) => {
     subcategoryMap[sub.slug] = sub.id;
   });
@@ -133,115 +131,216 @@ async function seedSubcategories(
   return subcategoryMap;
 }
 
+/**
+ * Creates a unique slug for subcategories that appear in multiple categories
+ * by appending the parent category or subcategory name to the slug
+ */
+function createUniqueSlug(slug: string, parentSlug: string): string {
+  if (slug === Subcategories.ACCESSORIES) {
+    // Append parent slug to make accessories slug unique
+    return `${slug}-${parentSlug}`;
+  }
+  return slug;
+}
+
 async function seedElectronicSubcategories(
   db: DrizzleClient["db"],
   categoryMap: Record<string, number>,
 ) {
-  const electronicCategoryId = categoryMap[Categories.ELECTRONIC];
+  const electronicCategoryId = categoryMap[Categories.ELECTRONICS];
   if (!electronicCategoryId) {
-    throw new Error(`Category with slug ${Categories.ELECTRONIC} not found`);
-  }
-
-  const electronicSubcategorySeeds = SUBCATEGORY_SEEDS.electronic.map(
-    (sub) => ({
-      category_id: electronicCategoryId,
-      name: sub.name,
-      slug: sub.slug,
-    }),
-  );
-
-  const insertedElectronicSubcategories = await db
-    .insert(subcategories)
-    .values(electronicSubcategorySeeds)
-    .onConflictDoNothing()
-    .returning();
-
-  console.log(
-    `✅ Electronic Subcategories Inserted: ${insertedElectronicSubcategories.length}`,
-  );
-
-  return insertedElectronicSubcategories;
-}
-
-async function seedClothingSubcategories(
-  db: DrizzleClient["db"],
-  categoryMap: Record<string, number>,
-) {
-  const clothingCategoryId = categoryMap[Categories.CLOTHING];
-  if (!clothingCategoryId) {
-    throw new Error(`Category with slug ${Categories.CLOTHING} not found`);
+    throw new Error(`Category with slug ${Categories.ELECTRONICS} not found`);
   }
 
   // First insert parent subcategories
-  const clothingParentSubcategoriesData = SUBCATEGORY_SEEDS.clothing.map(
-    (group) => ({
-      category_id: clothingCategoryId,
-      name: group.parent.name,
-      slug: group.parent.slug,
-    }),
-  );
+  const parentSubcategories = SUBCATEGORY_SEEDS.electronics
+    .filter(isParentGroupSeed)
+    .map((sub) => ({
+      category_id: electronicCategoryId,
+      name: sub.parent.name,
+      slug: sub.parent.slug,
+    }));
 
-  const insertedClothingParents = await db
+  // Add standalone subcategories (those without children)
+  const standaloneSubcategories = SUBCATEGORY_SEEDS.electronics
+    .filter((sub) => !isParentGroupSeed(sub))
+    .map((sub) => ({
+      category_id: electronicCategoryId,
+      name: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.name : sub.name,
+        Categories.ELECTRONICS,
+      ),
+      slug: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.slug : sub.slug,
+        Categories.ELECTRONICS,
+      ),
+    }));
+
+  const allParents = [...parentSubcategories, ...standaloneSubcategories];
+
+  const insertedParents = await db
     .insert(subcategories)
-    .values(clothingParentSubcategoriesData)
+    .values(allParents)
     .onConflictDoNothing()
     .returning();
 
   console.log(
-    `✅ Clothing Parent Subcategories Inserted: ${insertedClothingParents.length}`,
+    `✅ Electronic Parent Subcategories Inserted: ${insertedParents.length}`,
   );
 
   // Create a map of parent slugs to their IDs
-  const clothingParentMap = insertedClothingParents.reduce<
-    Record<string, number>
-  >((map, parent) => {
-    map[parent.slug] = parent.id;
-    return map;
-  }, {});
+  const parentMap = insertedParents.reduce<Record<string, number>>(
+    (map, parent) => {
+      map[parent.slug] = parent.id;
+      return map;
+    },
+    {},
+  );
 
   // Then insert children subcategories
-  let clothingChildSubcategories: Array<{
+  let childSubcategories: Array<{
     category_id: number;
     name: string;
     slug: string;
     parent_id: number;
   }> = [];
 
-  for (const group of SUBCATEGORY_SEEDS.clothing) {
-    const parentId = clothingParentMap[group.parent.slug];
-    if (!parentId) {
-      console.warn(
-        `Parent subcategory ${group.parent.slug} not found, skipping its children`,
-      );
-      continue;
+  for (const group of SUBCATEGORY_SEEDS.electronics) {
+    if (isParentGroupSeed(group)) {
+      const parentId = parentMap[group.parent.slug];
+      if (!parentId) {
+        console.warn(
+          `Parent subcategory ${group.parent.slug} not found, skipping its children`,
+        );
+        continue;
+      }
+
+      const children = group.children.map((child) => ({
+        category_id: electronicCategoryId,
+        name: child.name,
+        slug: createUniqueSlug(child.slug, group.parent.slug),
+        parent_id: parentId,
+      }));
+
+      childSubcategories = childSubcategories.concat(children);
     }
-
-    const children = group.children.map((child) => ({
-      category_id: clothingCategoryId,
-      name: child.name,
-      slug: child.slug,
-      parent_id: parentId,
-    }));
-
-    clothingChildSubcategories = clothingChildSubcategories.concat(children);
   }
 
-  let insertedClothingChildren: any[] = [];
-  if (clothingChildSubcategories.length > 0) {
-    insertedClothingChildren = await db
+  let insertedChildren: any[] = [];
+  if (childSubcategories.length > 0) {
+    insertedChildren = await db
       .insert(subcategories)
-      .values(clothingChildSubcategories)
+      .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
 
     console.log(
-      `✅ Clothing Child Subcategories Inserted: ${insertedClothingChildren.length}`,
+      `✅ Electronic Child Subcategories Inserted: ${insertedChildren.length}`,
+    );
+  }
+
+  return [...insertedParents, ...insertedChildren];
+}
+
+async function seedClothingsSubcategories(
+  db: DrizzleClient["db"],
+  categoryMap: Record<string, number>,
+) {
+  const clothingCategoryId = categoryMap[Categories.CLOTHINGS];
+  if (!clothingCategoryId) {
+    throw new Error(`Category with slug ${Categories.CLOTHINGS} not found`);
+  }
+
+  // First insert parent subcategories
+  const parentSubcategories = SUBCATEGORY_SEEDS.clothings
+    .filter(isParentGroupSeed)
+    .map((sub) => ({
+      category_id: clothingCategoryId,
+      name: sub.parent.name,
+      slug: sub.parent.slug,
+    }));
+
+  // Add standalone subcategories (those without children)
+  const standaloneSubcategories = SUBCATEGORY_SEEDS.clothings
+    .filter((sub) => !isParentGroupSeed(sub))
+    .map((sub) => ({
+      category_id: clothingCategoryId,
+      name: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.name : sub.name,
+        Categories.CLOTHINGS,
+      ),
+      slug: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.slug : sub.slug,
+        Categories.CLOTHINGS,
+      ),
+    }));
+
+  const allParents = [...parentSubcategories, ...standaloneSubcategories];
+
+  const insertedParents = await db
+    .insert(subcategories)
+    .values(allParents)
+    .onConflictDoNothing()
+    .returning();
+
+  console.log(
+    `✅ Clothing Parent Subcategories Inserted: ${insertedParents.length}`,
+  );
+
+  // Create a map of parent slugs to their IDs
+  const parentMap = insertedParents.reduce<Record<string, number>>(
+    (map, parent) => {
+      map[parent.slug] = parent.id;
+      return map;
+    },
+    {},
+  );
+
+  // Then insert children subcategories
+  let childSubcategories: Array<{
+    category_id: number;
+    name: string;
+    slug: string;
+    parent_id: number;
+  }> = [];
+
+  for (const group of SUBCATEGORY_SEEDS.clothings) {
+    if (isParentGroupSeed(group)) {
+      const parentId = parentMap[group.parent.slug];
+      if (!parentId) {
+        console.warn(
+          `Parent subcategory ${group.parent.slug} not found, skipping its children`,
+        );
+        continue;
+      }
+
+      const children = group.children.map((child) => ({
+        category_id: clothingCategoryId,
+        name: child.name,
+        slug: createUniqueSlug(child.slug, group.parent.slug),
+        parent_id: parentId,
+      }));
+
+      childSubcategories = childSubcategories.concat(children);
+    }
+  }
+
+  let insertedChildren: any[] = [];
+  if (childSubcategories.length > 0) {
+    insertedChildren = await db
+      .insert(subcategories)
+      .values(childSubcategories)
+      .onConflictDoNothing()
+      .returning();
+
+    console.log(
+      `✅ Clothing Child Subcategories Inserted: ${insertedChildren.length}`,
     );
   }
 
   return {
-    parents: insertedClothingParents,
-    children: insertedClothingChildren,
+    parents: insertedParents,
+    children: insertedChildren,
   };
 }
 
@@ -254,23 +353,94 @@ async function seedKidsSubcategories(
     throw new Error(`Category with slug ${Categories.KIDS} not found`);
   }
 
-  const kidsSubcategorySeeds = SUBCATEGORY_SEEDS.kids.map((sub) => ({
-    category_id: kidsCategoryId,
-    name: sub.name,
-    slug: sub.slug,
-  }));
+  // First insert parent subcategories
+  const parentSubcategories = SUBCATEGORY_SEEDS.kids
+    .filter(isParentGroupSeed)
+    .map((sub) => ({
+      category_id: kidsCategoryId,
+      name: sub.parent.name,
+      slug: sub.parent.slug,
+    }));
 
-  const insertedKidsSubcategories = await db
+  // Add standalone subcategories (those without children)
+  const standaloneSubcategories = SUBCATEGORY_SEEDS.kids
+    .filter((sub) => !isParentGroupSeed(sub))
+    .map((sub) => ({
+      category_id: kidsCategoryId,
+      name: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.name : sub.name,
+        Categories.KIDS,
+      ),
+      slug: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.slug : sub.slug,
+        Categories.KIDS,
+      ),
+    }));
+
+  const allParents = [...parentSubcategories, ...standaloneSubcategories];
+
+  const insertedParents = await db
     .insert(subcategories)
-    .values(kidsSubcategorySeeds)
+    .values(allParents)
     .onConflictDoNothing()
     .returning();
 
   console.log(
-    `✅ Kids Subcategories Inserted: ${insertedKidsSubcategories.length}`,
+    `✅ Kids Parent Subcategories Inserted: ${insertedParents.length}`,
   );
 
-  return insertedKidsSubcategories;
+  // Create a map of parent slugs to their IDs
+  const parentMap = insertedParents.reduce<Record<string, number>>(
+    (map, parent) => {
+      map[parent.slug] = parent.id;
+      return map;
+    },
+    {},
+  );
+
+  // Then insert children subcategories
+  let childSubcategories: Array<{
+    category_id: number;
+    name: string;
+    slug: string;
+    parent_id: number;
+  }> = [];
+
+  for (const group of SUBCATEGORY_SEEDS.kids) {
+    if (isParentGroupSeed(group)) {
+      const parentId = parentMap[group.parent.slug];
+      if (!parentId) {
+        console.warn(
+          `Parent subcategory ${group.parent.slug} not found, skipping its children`,
+        );
+        continue;
+      }
+
+      const children = group.children.map((child) => ({
+        category_id: kidsCategoryId,
+        name: child.name,
+        slug: child.slug,
+        parent_id: parentId,
+      }));
+
+      childSubcategories = childSubcategories.concat(children);
+    }
+  }
+
+  let insertedChildren: any[] = [];
+  if (childSubcategories.length > 0) {
+    insertedChildren = await db
+      .insert(subcategories)
+      .values(childSubcategories)
+      .onConflictDoNothing()
+      .returning();
+
+    console.log(
+      `✅ Kids Child Subcategories Inserted: ${insertedChildren.length}`,
+    );
+  }
+
+  return [...insertedParents, ...insertedChildren];
 }
 
 async function seedCollectablesSubcategories(
@@ -282,29 +452,100 @@ async function seedCollectablesSubcategories(
     throw new Error(`Category with slug ${Categories.COLLECTABLES} not found`);
   }
 
-  const collectablesSubcategorySeeds = SUBCATEGORY_SEEDS.collectables.map(
-    (sub) => ({
+  // First insert parent subcategories
+  const parentSubcategories = SUBCATEGORY_SEEDS.collectables
+    .filter(isParentGroupSeed)
+    .map((sub) => ({
       category_id: collectablesCategoryId,
-      name: sub.name,
-      slug: sub.slug,
-    }),
+      name: sub.parent.name,
+      slug: sub.parent.slug,
+    }));
+
+  // Add standalone subcategories (those without children)
+  const standaloneSubcategories = SUBCATEGORY_SEEDS.collectables
+    .filter((sub) => !isParentGroupSeed(sub))
+    .map((sub) => ({
+      category_id: collectablesCategoryId,
+      name: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.name : sub.name,
+        Categories.COLLECTABLES,
+      ),
+      slug: createUniqueSlug(
+        isParentGroupSeed(sub) ? sub.parent.slug : sub.slug,
+        Categories.COLLECTABLES,
+      ),
+    }));
+
+  const allParents = [...parentSubcategories, ...standaloneSubcategories];
+
+  // Skip if no subcategories to insert
+  if (allParents.length === 0) {
+    console.log("ℹ️ No collectables subcategories to insert");
+    return [];
+  }
+
+  const insertedParents = await db
+    .insert(subcategories)
+    .values(allParents)
+    .onConflictDoNothing()
+    .returning();
+
+  console.log(
+    `✅ Collectables Parent Subcategories Inserted: ${insertedParents.length}`,
   );
 
-  if (collectablesSubcategorySeeds.length > 0) {
-    const insertedCollectablesSubcategories = await db
+  // Create a map of parent slugs to their IDs
+  const parentMap = insertedParents.reduce<Record<string, number>>(
+    (map, parent) => {
+      map[parent.slug] = parent.id;
+      return map;
+    },
+    {},
+  );
+
+  // Then insert children subcategories
+  let childSubcategories: Array<{
+    category_id: number;
+    name: string;
+    slug: string;
+    parent_id: number;
+  }> = [];
+
+  for (const group of SUBCATEGORY_SEEDS.collectables) {
+    if (isParentGroupSeed(group)) {
+      const parentId = parentMap[group.parent.slug];
+      if (!parentId) {
+        console.warn(
+          `Parent subcategory ${group.parent.slug} not found, skipping its children`,
+        );
+        continue;
+      }
+
+      const children = group.children.map((child) => ({
+        category_id: collectablesCategoryId,
+        name: child.name,
+        slug: child.slug,
+        parent_id: parentId,
+      }));
+
+      childSubcategories = childSubcategories.concat(children);
+    }
+  }
+
+  let insertedChildren: any[] = [];
+  if (childSubcategories.length > 0) {
+    insertedChildren = await db
       .insert(subcategories)
-      .values(collectablesSubcategorySeeds)
+      .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
 
     console.log(
-      `✅ Collectables Subcategories Inserted: ${insertedCollectablesSubcategories.length}`,
+      `✅ Collectables Child Subcategories Inserted: ${insertedChildren.length}`,
     );
-
-    return insertedCollectablesSubcategories;
   }
 
-  return [];
+  return [...insertedParents, ...insertedChildren];
 }
 
 /**
@@ -339,29 +580,89 @@ async function linkFiltersToSubcategories(
 ) {
   // Define filter assignments by subcategory type
   const filterAssignments = [
-    // Assign condition filter to all subcategories
     {
-      filterSlug: "condition",
-      subcategorySlugs: Object.keys(subcategoryMap),
-    },
-    // Assign size_clothing filter to clothing subcategories
-    {
-      filterSlug: "size_clothing",
-      subcategorySlugs: [
-        Subcategories.MAN_ADULT,
-        Subcategories.WOMEN_ADULT,
-        Subcategories.MAN_KIDS,
-        Subcategories.GIRL_KIDS,
+      filterSlug: Filters.GENDER,
+      subcategories: [
+        {
+          slug: Subcategories.PANTS,
+          isOptionalField: true,
+          isEditableField: false,
+        },
+        {
+          slug: Subcategories.JEANS,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+        {
+          slug: Subcategories.SHOES,
+          isOptionalField: true,
+          isEditableField: true,
+        },
       ],
     },
-    // Assign size_phone_screen filter to smartphones
     {
-      filterSlug: "size_phone_screen",
-      subcategorySlugs: [Subcategories.SMARTPHONES],
+      filterSlug: Filters.SIZE_CLOTHING,
+      subcategories: [
+        {
+          slug: Subcategories.PANTS,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+        {
+          slug: Subcategories.JEANS,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+      ],
+    },
+    {
+      filterSlug: Filters.SIZE_SHOES,
+      subcategories: [
+        {
+          slug: Subcategories.SHOES,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+      ],
+    },
+    {
+      filterSlug: Filters.SIZE_PHONE_SCREEN,
+      subcategories: [
+        {
+          slug: Subcategories.PHONES,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+      ],
+    },
+    {
+      filterSlug: Filters.SIZE_MONITOR_SCREEN,
+      subcategories: [
+        {
+          slug: Subcategories.LAPTOPS,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+        {
+          slug: Subcategories.DESKTOP_COMPUTER,
+          isOptionalField: false,
+          isEditableField: true,
+        },
+      ],
+    },
+    // For filters that apply to all subcategories with the same flags, you can still use a flat array:
+    {
+      filterSlug: Filters.CONDITION,
+      subcategories: Object.keys(subcategoryMap).map((slug) => ({
+        slug,
+        isOptionalField: false,
+        isEditableField: true,
+      })),
     },
   ];
 
   // Create subcategory-filter links
+
   const subCategoryFilterLinks = [];
 
   for (const assignment of filterAssignments) {
@@ -373,18 +674,19 @@ async function linkFiltersToSubcategories(
       continue;
     }
 
-    for (const subcategorySlug of assignment.subcategorySlugs) {
-      const subcategoryId = subcategoryMap[subcategorySlug];
+    // Loop through the subcategories defined for this filter assignment
+    for (const sub of assignment.subcategories) {
+      const subcategoryId = subcategoryMap[sub.slug];
       if (!subcategoryId) {
-        console.warn(
-          `Subcategory with slug ${subcategorySlug} not found, skipping`,
-        );
+        console.warn(`Subcategory with slug ${sub.slug} not found, skipping`);
         continue;
       }
 
       subCategoryFilterLinks.push({
         subcategory_id: subcategoryId,
         filter_id: filterId,
+        isOptionalField: sub.isOptionalField,
+        isEditableField: sub.isEditableField,
       });
     }
   }

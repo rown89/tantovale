@@ -15,6 +15,8 @@ const reqObject = {
   commons: {
     title: "blabbla",
     description: "blalblalblalblalbla bla",
+    subcategory_id_: 1,
+    // ...
   },
   properties: [{ name: Filters.CONDITION, value: "new" }],
 };
@@ -45,7 +47,7 @@ export const itemsRoute = new Hono<AppBindings>().post(
     }
 
     // smartphone rules
-    if (currentSubCategory?.name === Subcategories.SMARTPHONES) {
+    if (currentSubCategory?.name === Subcategories.PHONES) {
     }
 
     return c.json(data);

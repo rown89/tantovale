@@ -1,4 +1,4 @@
-import { pgTable, integer } from "drizzle-orm/pg-core";
+import { pgTable, integer, boolean } from "drizzle-orm/pg-core";
 import { filters } from "./filters";
 import { subcategories } from "./subcategories";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
@@ -14,6 +14,8 @@ export const subCategoryFilters = pgTable("subcategory_filters", {
       onDelete: "cascade",
       onUpdate: "cascade",
     }),
+  isOptionalField: boolean("isOptionalField").default(false).notNull(),
+  isEditableField: boolean("isEditableField").default(true).notNull(),
 });
 
 export type SelectCategoryFilter = typeof subCategoryFilters.$inferSelect;
