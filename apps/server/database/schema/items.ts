@@ -16,6 +16,9 @@ import {
 } from "./enumerated_types";
 import { subcategories } from "./subcategories";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { z } from "zod";
+import { selectFilterSchema } from "./filters";
+import { selectFilterValuesSchema } from "./filter_values";
 
 export const items = pgTable(
   "items",
@@ -83,5 +86,7 @@ export const insertItemsSchema = createInsertSchema(items, {
   created_at: true,
   updated_at: true,
 });
+
+export type createItemTypes = z.infer<typeof createItemSchema>;
 
 export const patchItemsSchema = insertItemsSchema.partial();

@@ -1,16 +1,15 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
-import { insertItemsSchema as insertCommonItemsSchema } from "#database/schema/items";
 import { createClient } from "#database/db";
 import { subcategories } from "#database/schema/subcategories";
 import { Filters } from "#database/scripts/seeders/categories/constants";
 import { subCategoryFilters } from "#database/schema/subcategory_filters";
-import { filters, selectFilterSchema } from "#database/schema/filters";
-import { selectFilterValuesSchema } from "#database/schema/filter_values";
+import { filters } from "#database/schema/filters";
 
 import type { AppBindings } from "#lib/types";
+import { createItemSchema } from "./types";
 
 // example:
 const reqObject = {
@@ -23,15 +22,7 @@ const reqObject = {
   properties: [{ name: Filters.CONDITION, value: "new" }],
 };
 
-const propertySchema = z.object({
-  name: selectFilterSchema.shape.slug,
-  value: selectFilterValuesSchema.shape.value,
-});
-
-export const createItemSchema = z.object({
-  commons: insertCommonItemsSchema,
-  properties: z.array(propertySchema),
-});
+export type createItemTypes = z.infer<typeof createItemSchema>;
 
 export const itemCreateRoute = new Hono<AppBindings>().post(
   "/create",
