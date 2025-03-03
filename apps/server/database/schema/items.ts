@@ -78,6 +78,8 @@ export const insertItemsSchema = createInsertSchema(items, {
   title: (schema) => schema.min(1).max(200),
   description: (schema) => schema.max(800),
 }).omit({
+  user_id: true,
+  published: true,
   created_at: true,
   updated_at: true,
 });

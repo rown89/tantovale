@@ -7,12 +7,17 @@ import { validator as zValidator } from "hono-openapi/zod";
 import { checkUser } from "#lib/utils";
 import { hashPassword } from "#lib/password";
 import { UserSchema } from "#schema";
-import { getNodeEnvMode } from "#utils/constants";
+import {
+  DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES,
+  DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS,
+  getNodeEnvMode,
+} from "#utils/constants";
 import { createClient } from "#database/db";
 import { users } from "#database/schema";
 import { sendVerifyEmail } from "#mailer/templates/verify-email";
-import { deleteCookie } from "hono/cookie";
+import { deleteCookie, setCookie } from "hono/cookie";
 import type { AppBindings } from "#lib/types";
+import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 
 export const signupRoute = new Hono<AppBindings>().post(
   "/",
@@ -26,8 +31,12 @@ export const signupRoute = new Hono<AppBindings>().post(
   }),
   zValidator("json", UserSchema),
   async (c) => {
-    const { EMAIL_VERIFY_TOKEN_SECRET, STOREFRONT_HOSTNAME, STOREFRONT_PORT } =
-      c.env;
+    const {
+      NODE_ENV,
+      EMAIL_VERIFY_TOKEN_SECRET,
+      STOREFRONT_HOSTNAME,
+      STOREFRONT_PORT,
+    } = c.env;
 
     try {
       const values = await c.req.json();
@@ -66,15 +75,22 @@ export const signupRoute = new Hono<AppBindings>().post(
         id: Number(results?.[0]?.id),
         username: results?.[0]?.username,
         type: "email_verification",
-        expiresIn: new Date(Date.now() + 60 * 60 * 1000), // 60min
+        expiresIn: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS(),
       };
 
-      const token = await sign(tmp_token_payload, EMAIL_VERIFY_TOKEN_SECRET);
-
-      const { isProductionMode, isStagingMode } = getNodeEnvMode(
-        c.env.NODE_ENV,
+      const email_activation_token = await sign(
+        tmp_token_payload,
+        EMAIL_VERIFY_TOKEN_SECRET,
       );
-      const verificationLink = `http${isProductionMode || isStagingMode ? "s" : ""}://${c.env.STOREFRONT_HOSTNAME}:${c.env.STOREFRONT_PORT}/api/verify/email?token=${token}`;
+
+      setCookie(c, "email_activation_token", email_activation_token, {
+        ...getAuthTokenOptions({
+          expires: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES(),
+        }),
+      });
+
+      const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
+      const verificationLink = `http${isProductionMode || isStagingMode ? "s" : ""}://${STOREFRONT_HOSTNAME}:${STOREFRONT_PORT}/api/verify/email?token=${email_activation_token}`;
 
       if (isProductionMode || isStagingMode) {
         await sendVerifyEmail(email, verificationLink);
@@ -91,7 +107,8 @@ export const signupRoute = new Hono<AppBindings>().post(
     } catch (error) {
       console.error(error);
 
-      deleteCookie(c, "token"); // Clear any existing token on error
+      // Clear email activation token on error
+      deleteCookie(c, "email_activation_token");
 
       return c.json(
         {

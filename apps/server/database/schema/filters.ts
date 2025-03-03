@@ -1,11 +1,11 @@
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
-import { filterTypeEnum } from "./enumerated_types";
+import { filtersEnum, filterTypeEnum } from "./enumerated_types";
 
 export const filters = pgTable("filters", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
+  slug: filtersEnum("slug").notNull().unique(),
   type: filterTypeEnum("type").notNull(),
 });
 

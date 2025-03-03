@@ -6,6 +6,7 @@ import { authPath } from "#utils/constants";
 
 import {
   itemsRoute,
+  itemCreateRoute,
   loginRoute,
   signupRoute,
   refreshRoute,
@@ -30,6 +31,7 @@ const apiRoutes = app
   .route(`/verify`, verifyRoute)
   .route("/items", itemsRoute)
   .route("/password", passwordForgotRoute)
+  .route(`/${authPath}/item`, itemCreateRoute)
   .route(`/${authPath}/logout`, logoutRoute)
   .route(`/${authPath}/refresh`, refreshRoute)
   .route(`/${authPath}/password`, passwordResetRoute)

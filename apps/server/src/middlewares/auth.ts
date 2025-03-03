@@ -1,22 +1,12 @@
 import type { Context, Next } from "hono";
 import { verify } from "hono/jwt";
-import { getCookie, getSignedCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie";
 import type { AppBindings } from "#lib/types";
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
-  const {
-    ACCESS_TOKEN_SECRET,
-    // COOKIE_SECRET
-  } = c.env;
+  const { ACCESS_TOKEN_SECRET } = c.env;
 
   try {
-    // TODO: signed cookie doesn't work yet
-    /* const access_token = await getSignedCookie(
-      c,
-      COOKIE_SECRET,
-      "access_token",
-    ); */
-
     const access_token = getCookie(c, "access_token");
 
     if (!access_token) {

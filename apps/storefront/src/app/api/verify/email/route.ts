@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { client } from "#lib/api";
 import { cookies } from "next/headers";
+import { client } from "#lib/api";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -8,12 +8,13 @@ export async function GET(request: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: "No token provided" });
   }
+
   const response = await client.verify.email.$get({
     query: { token },
   });
 
   if (response.status !== 200) {
-    return NextResponse.json({ error: "Invalid token provided" });
+    return NextResponse.json({ error: "Invalid verify email token provided" });
   }
 
   const cookieHeader = response.headers.get("Set-Cookie");
@@ -27,14 +28,15 @@ export async function GET(request: NextRequest) {
   cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
     const [name, ...rest] = cookie.split("=");
     const trimmedName = name?.trim();
-    const value = rest.join("=").trim(); // Preserve values with `=` (e.g., JWTs)
+    const value = rest.join("=").trim();
 
     if (trimmedName === "access_token" || trimmedName === "refresh_token") {
-      console.log(`🔑 Setting cookie: ${trimmedName} = ${value}`);
+      console.log(`🔑 Sending pure token: ${value}`);
 
-      cookieReader.set(trimmedName, value, { path: "/" });
+      // Send only the token value without options
+      cookieReader.set(trimmedName, value);
     }
   });
 
-  return NextResponse.redirect(`/`);
+  return NextResponse.redirect(new URL("/", request.url));
 }

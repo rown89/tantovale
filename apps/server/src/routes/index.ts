@@ -2,6 +2,7 @@ export * from "./login";
 export * from "./signup";
 export * from "./users";
 export * from "./items";
+export * from "./item";
 export * from "./verify";
 export * from "./verify/email";
 export * from "./refresh";

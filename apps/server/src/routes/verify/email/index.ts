@@ -49,6 +49,7 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
     if (user.email_verified) {
       return c.json({ message: "User already verified" });
     }
+
     if (type != "email_verification") {
       return c.json({ message: "Invalid token type" });
     }

@@ -1,6 +1,7 @@
-import { pgTable, integer, text, index } from "drizzle-orm/pg-core";
+import { pgTable, integer, index } from "drizzle-orm/pg-core";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { filters } from "./filters";
+import { FilterValuesEnum } from "./enumerated_types";
 
 export const filterValues = pgTable(
   "filter_values",
@@ -9,7 +10,7 @@ export const filterValues = pgTable(
     filter_id: integer("filter_id")
       .notNull()
       .references(() => filters.id, { onDelete: "cascade" }),
-    value: text("value"),
+    value: FilterValuesEnum("value"),
   },
   (table) => [index("value_id_idx").on(table.value)],
 );

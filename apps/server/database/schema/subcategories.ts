@@ -9,11 +9,12 @@ import { relations, sql } from "drizzle-orm";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { categories } from "./categories";
 import { items } from "./items";
+import { SubcategoriesEnum } from "./enumerated_types";
 
 export const subcategories = pgTable("subcategories", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
+  slug: SubcategoriesEnum("slug").notNull().unique(),
   category_id: integer("category_id")
     .notNull()
     .references(() => categories.id, {
