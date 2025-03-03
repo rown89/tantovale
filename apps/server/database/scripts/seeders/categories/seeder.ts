@@ -15,6 +15,7 @@ import {
   Subcategories,
   FILTER_VALUES,
   Filters,
+  SUBCATEGORIES_FILTERS,
 } from "./constants";
 import type { BaseSubcategorySeed, ParentGroupSeed } from "./types";
 
@@ -580,76 +581,6 @@ async function linkFiltersToSubcategories(
 ) {
   // Define filter assignments by subcategory type
   const filterAssignments = [
-    {
-      filterSlug: Filters.GENDER,
-      subcategories: [
-        {
-          slug: Subcategories.PANTS,
-          isOptionalField: true,
-          isEditableField: false,
-        },
-        {
-          slug: Subcategories.JEANS,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-        {
-          slug: Subcategories.SHOES,
-          isOptionalField: true,
-          isEditableField: true,
-        },
-      ],
-    },
-    {
-      filterSlug: Filters.SIZE_CLOTHING,
-      subcategories: [
-        {
-          slug: Subcategories.PANTS,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-        {
-          slug: Subcategories.JEANS,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-      ],
-    },
-    {
-      filterSlug: Filters.SIZE_SHOES,
-      subcategories: [
-        {
-          slug: Subcategories.SHOES,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-      ],
-    },
-    {
-      filterSlug: Filters.SIZE_PHONE_SCREEN,
-      subcategories: [
-        {
-          slug: Subcategories.PHONES,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-      ],
-    },
-    {
-      filterSlug: Filters.SIZE_MONITOR_SCREEN,
-      subcategories: [
-        {
-          slug: Subcategories.LAPTOPS,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-        {
-          slug: Subcategories.DESKTOP_COMPUTER,
-          isOptionalField: false,
-          isEditableField: true,
-        },
-      ],
-    },
     // For filters that apply to all subcategories with the same flags, you can still use a flat array:
     {
       filterSlug: Filters.CONDITION,
@@ -659,6 +590,7 @@ async function linkFiltersToSubcategories(
         isEditableField: true,
       })),
     },
+    ...SUBCATEGORIES_FILTERS,
   ];
 
   // Create subcategory-filter links

@@ -7,12 +7,19 @@ export const Categories = {
   COLLECTABLES: "collectables",
 };
 
+export const CATEGORY_SEEDS = [
+  { name: "Electronics", slug: Categories.ELECTRONICS },
+  { name: "Clothings", slug: Categories.CLOTHINGS },
+  { name: "Kids", slug: Categories.KIDS },
+  { name: "Collectables", slug: Categories.COLLECTABLES },
+];
+
 export const Subcategories = {
   COMPUTERS: "computers",
   LAPTOPS: "laptops",
-  DESKTOP_COMPUTER: "desktop-computer",
+  DESKTOP_COMPUTER: "desktop_computer",
   PHONES: "phones",
-  SMARTPHONES_CELLULARS: "smartphones-cellulares",
+  SMARTPHONES_CELLULARS: "smartphones_cellulares",
   ACCESSORIES: "accessories",
   PHOTOGRAPHY: "photography",
   CAMERAS: "cameras",
@@ -26,14 +33,10 @@ export const Subcategories = {
   BOOK_KIDS: "book_kids",
   SINGLE_CARDS: "single_cards",
   UNCUT_PAPER_SHEET: "uncut_paper_sheet",
-};
+} as const;
 
-export const CATEGORY_SEEDS = [
-  { name: "Electronics", slug: Categories.ELECTRONICS },
-  { name: "Clothings", slug: Categories.CLOTHINGS },
-  { name: "Kids", slug: Categories.KIDS },
-  { name: "Collectables", slug: Categories.COLLECTABLES },
-];
+export type SubcategoryTypes =
+  (typeof Subcategories)[keyof typeof Subcategories];
 
 export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
   electronics: [
@@ -95,12 +98,16 @@ export const Filters = {
   SIZE_WATCHES: "size_watches",
   SIZE_PHONE_SCREEN: "size_phone_screen",
   SIZE_MONITOR_SCREEN: "size_monitor_screen",
-};
+} as const;
+
+export type FiltersTypes = (typeof Filters)[keyof typeof Filters];
 
 export const FilterTypes = {
   SELECT: "select",
   BOOLEAN: "boolean",
   TEXT: "text",
+  NUMBER: "number",
+  RANGE: "range",
 } as const;
 
 export const FILTER_SEEDS: FilterSeed[] = [
@@ -334,4 +341,77 @@ export const FILTER_VALUES: FilterValues[] = [
   { slug: Filters.SIZE_MONITOR_SCREEN, value: '43"' },
   { slug: Filters.SIZE_MONITOR_SCREEN, value: '49"' },
   { slug: Filters.SIZE_MONITOR_SCREEN, value: '55"' },
+];
+
+export const SUBCATEGORIES_FILTERS = [
+  {
+    filterSlug: Filters.GENDER,
+    subcategories: [
+      {
+        slug: Subcategories.PANTS,
+        isOptionalField: true,
+        isEditableField: false,
+      },
+      {
+        slug: Subcategories.JEANS,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+      {
+        slug: Subcategories.SHOES,
+        isOptionalField: true,
+        isEditableField: true,
+      },
+    ],
+  },
+  {
+    filterSlug: Filters.SIZE_CLOTHING,
+    subcategories: [
+      {
+        slug: Subcategories.PANTS,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+      {
+        slug: Subcategories.JEANS,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+    ],
+  },
+  {
+    filterSlug: Filters.SIZE_SHOES,
+    subcategories: [
+      {
+        slug: Subcategories.SHOES,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+    ],
+  },
+  {
+    filterSlug: Filters.SIZE_PHONE_SCREEN,
+    subcategories: [
+      {
+        slug: Subcategories.PHONES,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+    ],
+  },
+  {
+    filterSlug: Filters.SIZE_MONITOR_SCREEN,
+    subcategories: [
+      {
+        slug: Subcategories.LAPTOPS,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+      {
+        slug: Subcategories.DESKTOP_COMPUTER,
+        isOptionalField: false,
+        isEditableField: true,
+      },
+    ],
+  },
 ];

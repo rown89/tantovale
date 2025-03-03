@@ -8,6 +8,9 @@ import { subcategories } from "#database/schema/subcategories";
 import {
   Filters,
   Subcategories,
+  SUBCATEGORIES_FILTERS,
+  type FiltersTypes,
+  type SubcategoryTypes,
 } from "#database/scripts/seeders/categories/constants";
 
 // example:
@@ -38,6 +41,35 @@ export const itemsRoute = new Hono<AppBindings>().post(
     const currentSubCategory = availableSubcategories.find(
       (cat) => cat.id === data.subcategory_id,
     );
+
+    const TEST = SUBCATEGORIES_FILTERS.reduce(
+      (acc, { filterSlug, subcategories }) => {
+        subcategories.forEach(({ slug }) => {
+          if (!acc[slug]) {
+            acc[slug] = [];
+          }
+          acc[slug].push(filterSlug as FiltersTypes);
+        });
+
+        return acc;
+      },
+      {} as Record<SubcategoryTypes, FiltersTypes[]>,
+    );
+
+    if (currentSubCategory) {
+      const isSubcatAccessories = currentSubCategory.name.includes(
+        Subcategories.ACCESSORIES,
+      );
+
+      if (isSubcatAccessories) {
+        // TODO: check for dynamic accessories-NAME
+      }
+
+      const subcategoryFitlers =
+        TEST[currentSubCategory?.name as SubcategoryTypes];
+
+      console.log(subcategoryFitlers);
+    }
 
     // laptops rules
     if (currentSubCategory?.name === Subcategories.LAPTOPS) {
