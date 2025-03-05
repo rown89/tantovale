@@ -6,8 +6,8 @@ export default async function CreateItemPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const categoryId = (await searchParams).category;
-  const subCategoryId = (await searchParams).subCategory;
+  const catId = (await searchParams).cat;
+  const subcatId = (await searchParams).subcat;
 
-  return <CreateItemForm subCategoryId={subCategoryId} />;
+  return <CreateItemForm catId={catId} subcatId={subcatId} />;
 }

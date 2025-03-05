@@ -25,10 +25,14 @@ export const subcategoriesRoute = new Hono<AppBindings>()
       return c.json({ message: "subcategoriesRoute error" }, 500);
     }
   })
-  .get("/:id{[0-9]+}", async (c) => {
+  .get("/:id", async (c) => {
     try {
-      const id = c.req.param("id");
       const { db } = createClient(c.env);
+      const id = Number(c.req.param("id"));
+
+      if (isNaN(id)) {
+        return c.json({ message: "Invalid subcategory ID" }, 400);
+      }
 
       const subcategoryList = await db
         .select({
@@ -36,14 +40,19 @@ export const subcategoriesRoute = new Hono<AppBindings>()
           name: subcategories.name,
         })
         .from(subcategories)
-        .where(eq(subcategories.id, Number(id)));
+        .where(eq(subcategories.category_id, Number(id)));
 
       if (!subcategoryList.length) {
-        return c.json({ message: "Missing subcategories" }, 500);
+        return c.json({ message: "Missing subcategories" }, 404);
       }
 
       return c.json(subcategoryList, 200);
     } catch (error) {
-      return c.json({ message: "subcategoriesRoute :id error" }, 500);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      return c.json(
+        { message: "subcategoriesRoute :id error", error: errorMessage },
+        500,
+      );
     }
   });

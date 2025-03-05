@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import {
-  AnyFieldApi,
   formOptions,
   mergeForm,
   useField,
@@ -34,6 +33,7 @@ import { initialFormState } from "@tanstack/react-form/nextjs";
 import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { FieldInfo } from "./field-info";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export const formOpts = formOptions({
   defaultValues: {
@@ -51,12 +51,14 @@ export const formOpts = formOptions({
 });
 
 export default function CreateItemForm({
-  categoryId,
-  subCategoryId,
+  catId,
+  subcatId,
 }: {
-  categoryId?: string | string[];
-  subCategoryId?: string | string[];
+  catId?: string | string[];
+  subcatId?: string | string[];
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, action, isPending] = useActionState(
     createItemAction,
     initialFormState,
@@ -72,6 +74,12 @@ export default function CreateItemForm({
       [state],
     ),
   });
+
+  const title = useField({ form, name: "commons.title" });
+  const description = useField({ form, name: "commons.description" });
+  const price = useField({ form, name: "commons.price" });
+  const category_id = useField({ form, name: "commons.category_id" });
+  const subcategory_id = useField({ form, name: "commons.subcategory_id" });
 
   const {
     data: cat,
@@ -90,27 +98,35 @@ export default function CreateItemForm({
     isLoading: isLoadingSubCat,
     isError: isErrorSubCat,
   } = useQuery({
-    queryKey: ["subcategories"],
+    queryKey: ["subcategories", catId],
     queryFn: async () => {
-      const res = await client.subcategories.$get();
+      if (!catId) return [];
+
+      const res = await client.subcategories[":id"].$get({
+        param: {
+          id: String(catId),
+        },
+      });
+
+      if (!res.ok) throw new Error("Failed to fetch subcategories");
+
       return await res.json();
     },
+    enabled: !!catId,
   });
 
-  const title = useField({
-    form,
-    name: "commons.title",
-  });
+  const handleQueryParamChange = (qs: string, value: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set(qs, value);
+    const newUrl = `?${params.toString()}`;
 
-  const description = useField({
-    form,
-    name: "commons.description",
-  });
+    router.replace(newUrl);
+  };
 
-  const price = useField({
-    form,
-    name: "commons.price",
-  });
+  useEffect(() => {
+    if (catId) category_id.setValue(Number(catId));
+    if (subcatId) subcategory_id.setValue(Number(subcatId));
+  }, [catId, subcatId]);
 
   return (
     <div className="container mx-auto py-6 px-4">
@@ -118,7 +134,7 @@ export default function CreateItemForm({
 
       <div className="flex gap-6">
         {/* Left Column - Form */}
-        <div className="md:w-md w-full">
+        <div className="md:max-w-md w-full break-words">
           <form
             action={action as never}
             onSubmit={() => form.handleSubmit()}
@@ -151,71 +167,95 @@ export default function CreateItemForm({
               }}
             </form.Field>
 
-            {!isErrorCat && Array.isArray(cat) && cat.length && (
-              <form.Field name="commons.category_id">
-                {(field) => {
-                  return (
-                    <div className="space-y-2">
-                      <Select
-                        onValueChange={(e) => field.handleChange(e)}
-                        defaultValue={field.state.value}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
+            <form.Field name="commons.category_id">
+              {(field) => {
+                return (
+                  <div className="space-y-2">
+                    <Select
+                      onValueChange={(e) => {
+                        field.handleChange(Number(e));
+                        handleQueryParamChange("cat", e);
+                      }}
+                      defaultValue={
+                        field.state.value?.toString() ?? catId?.toString() ?? ""
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue
+                          placeholder={
+                            isLoadingCat
+                              ? "loading categories..."
+                              : "Select a category"
+                          }
+                        />
+                      </SelectTrigger>
 
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectLabel className="block">
-                              Categoy <span className="text-red-500">*</span>
-                            </SelectLabel>
-
-                            {cat?.map((item, i) => (
-                              <SelectItem key={i} value={item.id?.toString()}>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel className="block">
+                            Categoy <span className="text-red-500">*</span>
+                          </SelectLabel>
+                          {!isErrorCat &&
+                            Array.isArray(cat) &&
+                            cat.length &&
+                            cat?.map((item, i) => (
+                              <SelectItem key={i} value={item.id.toString()}>
                                 {item.name}
                               </SelectItem>
                             ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                }}
-              </form.Field>
-            )}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }}
+            </form.Field>
 
-            {!isErrorSubCat && Array.isArray(subCat) && subCat.length && (
-              <form.Field name="commons.subcategory_id">
-                {(field) => {
-                  return (
-                    <div className="space-y-2">
-                      <Select
-                        onValueChange={(e) => field.handleChange(e)}
-                        defaultValue={field.state.value}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
+            <form.Field name="commons.subcategory_id">
+              {(field) => {
+                return (
+                  <div className="space-y-2">
+                    <Select
+                      onValueChange={(e) => {
+                        field.handleChange(Number(e));
+                        handleQueryParamChange("subcat", e);
+                      }}
+                      defaultValue={
+                        field.state.value?.toString() ??
+                        subcatId?.toString() ??
+                        ""
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue
+                          placeholder={
+                            isLoadingCat
+                              ? "loading subcategories..."
+                              : "Select a subcategory"
+                          }
+                        />
+                      </SelectTrigger>
 
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectLabel className="block">
-                              Subcategory{" "}
-                              <span className="text-red-500">*</span>
-                            </SelectLabel>
-                            {subCat?.map((item, i) => (
-                              <SelectItem key={i} value={item.id?.toString()}>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel className="block">
+                            Subcategory <span className="text-red-500">*</span>
+                          </SelectLabel>
+                          {!isErrorSubCat &&
+                            Array.isArray(subCat) &&
+                            subCat.length &&
+                            subCat?.map((item, i) => (
+                              <SelectItem key={i} value={item.id.toString()}>
                                 {item.name}
                               </SelectItem>
                             ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                }}
-              </form.Field>
-            )}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }}
+            </form.Field>
 
             <form.Field name="commons.price">
               {(field) => {
@@ -302,22 +342,22 @@ export default function CreateItemForm({
         <div className="md:w-full md:inline-block hidden">
           <Card>
             <CardHeader>
-              <CardTitle>Article Preview</CardTitle>
+              <CardTitle>Item Preview</CardTitle>
             </CardHeader>
             <CardContent>
               <h2 className="text-2xl font-bold mb-2 break-all">
-                {String(title.state.value) || "Item Title"}
+                {String(title.state.value ?? "") || "Title of the item"}
               </h2>
               <p className="text-xl font-semibold mb-4">
-                € {Number(price.state.value).toFixed(2) || "Item Title"}
+                € {Number(price.state.value ?? 0).toFixed(2) || "Item Title"}
               </p>
               <div className="text-gray-600 mb-4 whitespace-pre-wrap max-h-60 overflow-auto break-all">
-                {String(description.state.value) ||
+                {String(description.state.value ?? "") ||
                   "Item description will appear here."}
               </div>
               <div className="bg-gray-100 p-4 rounded-md">
                 <p className="text-sm text-gray-500">
-                  This is a preview of how your article will appear to others.
+                  This is a preview of how your item will appear to others.
                 </p>
               </div>
             </CardContent>

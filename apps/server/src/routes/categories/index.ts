@@ -15,7 +15,7 @@ export const categoriesRoute = new Hono<AppBindings>().get("/", async (c) => {
       .from(categories);
 
     if (!categoryList.length) {
-      return c.json({ message: "Missing categoryList" }, 500);
+      return c.json({ message: "Missing categoryList" }, 404);
     }
 
     return c.json(categoryList, 200);

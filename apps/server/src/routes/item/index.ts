@@ -71,6 +71,6 @@ export const itemRoute = new Hono<AppBindings>().post(
 
     */
 
-    return c.json(data);
+    return c.json(data, 201);
   },
 );
