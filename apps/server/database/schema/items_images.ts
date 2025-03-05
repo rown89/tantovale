@@ -2,8 +2,8 @@ import { pgTable, integer, text, timestamp, index } from "drizzle-orm/pg-core";
 import { items } from "./items";
 import { relations } from "drizzle-orm";
 
-export const itemImages = pgTable(
-  "item_images",
+export const itemsImages = pgTable(
+  "items_images",
   {
     id: integer("id").primaryKey().notNull().generatedAlwaysAsIdentity(),
     item_id: integer("item_id")
@@ -17,12 +17,12 @@ export const itemImages = pgTable(
   (table) => [index("item_id_idx").on(table.item_id)],
 );
 
-export const itemImagesRelations = relations(itemImages, ({ one }) => ({
+export const itemImagesRelations = relations(itemsImages, ({ one }) => ({
   item: one(items, {
-    fields: [itemImages.item_id],
+    fields: [itemsImages.item_id],
     references: [items.id],
   }),
 }));
 
-export type SelectItemImage = typeof itemImages.$inferSelect;
-export type InsertItemImage = typeof itemImages.$inferInsert;
+export type SelectItemImage = typeof itemsImages.$inferSelect;
+export type InsertItemImage = typeof itemsImages.$inferInsert;

@@ -3,7 +3,7 @@ import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { items } from "./items";
 import { filterValues } from "./filter_values";
 
-export const itemProperties = pgTable("item_properties", {
+export const itemsFiltersValues = pgTable("items_filters_values", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   item_id: integer("item_id")
     .notNull()
@@ -19,14 +19,14 @@ export const itemProperties = pgTable("item_properties", {
     }),
 });
 
-export type SelectItemPropertyFilter = typeof itemProperties.$inferSelect;
-export type InsertItemPropertyFilter = typeof itemProperties.$inferInsert;
+export type SelectItemFilterValue = typeof itemsFiltersValues.$inferSelect;
+export type InsertItemFilterValue = typeof itemsFiltersValues.$inferInsert;
 
-export const selectItemPropertiesFiltersSchema =
-  createSelectSchema(itemProperties);
+export const selectItemFiltersValuesSchema =
+  createSelectSchema(itemsFiltersValues);
 
-export const insertItemPropertiesFiltersSchema =
-  createInsertSchema(itemProperties);
+export const insertItemFiltersValuesSchema =
+  createInsertSchema(itemsFiltersValues);
 
-export const patchItemPropertiesFiltersSchema =
-  insertItemPropertiesFiltersSchema.partial();
+export const patchItemFiltersValuesSchema =
+  insertItemFiltersValuesSchema.partial();

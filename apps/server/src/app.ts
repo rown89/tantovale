@@ -6,7 +6,6 @@ import { authPath } from "#utils/constants";
 
 import {
   itemsRoute,
-  itemCreateRoute,
   loginRoute,
   signupRoute,
   refreshRoute,
@@ -17,6 +16,10 @@ import {
   passwordResetVerifyToken,
   verifyRoute,
   verifyEmailRoute,
+  itemRoute,
+  subcategoriesRoute,
+  subcategoryFiltersRoute,
+  categoriesRoute,
 } from "./routes";
 
 const app = createApp();
@@ -30,8 +33,12 @@ const apiRoutes = app
   .route("/verify", verifyEmailRoute)
   .route(`/verify`, verifyRoute)
   .route("/items", itemsRoute)
+  .route("/item", itemRoute)
+  .route("/categories", categoriesRoute)
+  .route("/subcategories", subcategoriesRoute)
+  .route("/subcategory-fitlers", subcategoryFiltersRoute)
   .route("/password", passwordForgotRoute)
-  .route(`/${authPath}/item`, itemCreateRoute)
+  .route(`/${authPath}/item`, itemRoute)
   .route(`/${authPath}/logout`, logoutRoute)
   .route(`/${authPath}/refresh`, refreshRoute)
   .route(`/${authPath}/password`, passwordResetRoute)

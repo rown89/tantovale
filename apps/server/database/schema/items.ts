@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { relations } from "drizzle-orm";
 import {
   pgTable,
@@ -5,9 +6,9 @@ import {
   text,
   timestamp,
   boolean,
-  numeric,
   index,
 } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { users } from "./users";
 import {
   conditionsEnum,
@@ -15,10 +16,8 @@ import {
   statusEnum,
 } from "./enumerated_types";
 import { subcategories } from "./subcategories";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { z } from "zod";
-import { selectFilterSchema } from "./filters";
-import { selectFilterValuesSchema } from "./filter_values";
+import type { createItemSchema } from "#routes/item/types";
+import { categories } from "./categories";
 
 export const items = pgTable(
   "items",
@@ -29,18 +28,20 @@ export const items = pgTable(
     condition: conditionsEnum().notNull().default("used"),
     status: statusEnum("status").notNull().default("available"),
     published: boolean("published").default(false).notNull(),
-    price: numeric("price", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    shipping_cost: numeric("shipping_cost", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    price: integer("price").notNull().default(0),
+    shipping_cost: integer("shipping_cost").notNull().default(0),
     delivery_method: deliveryMethodEnum("delivery_method")
       .notNull()
       .default("pickup"),
     user_id: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    category_id: integer("category_id")
+      .notNull()
+      .references(() => categories.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     subcategory_id: integer("subcategory_id")
       .notNull()
       .references(() => subcategories.id, {
@@ -66,6 +67,10 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
     fields: [items.user_id],
     references: [users.id],
   }),
+  categories: one(categories, {
+    fields: [items.category_id],
+    references: [categories.id],
+  }),
   subcategory: one(subcategories, {
     fields: [items.subcategory_id],
     references: [subcategories.id],
@@ -77,15 +82,7 @@ export type InsertItem = typeof items.$inferInsert;
 
 export const selectItemsSchema = createSelectSchema(items);
 
-export const insertItemsSchema = createInsertSchema(items, {
-  title: (schema) => schema.min(1).max(200),
-  description: (schema) => schema.max(800),
-}).omit({
-  user_id: true,
-  published: true,
-  created_at: true,
-  updated_at: true,
-});
+export const insertItemsSchema = createInsertSchema(items);
 
 export type createItemTypes = z.infer<typeof createItemSchema>;
 

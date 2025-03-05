@@ -5,16 +5,23 @@ import {
 } from "#database/scripts/seeders/categories/constants";
 import { pgEnum } from "drizzle-orm/pg-core";
 
-export const conditionsEnum = pgEnum("conditions", ["new", "used", "damaged"]);
-export const statusEnum = pgEnum("status", ["available", "sold"]);
-export const deliveryMethodEnum = pgEnum("delivery_method", [
+export const conditionsEnum = pgEnum("conditions_enum", [
+  "new",
+  "used",
+  "damaged",
+]);
+export const statusEnum = pgEnum("status_enum", ["available", "sold"]);
+export const deliveryMethodEnum = pgEnum("delivery_method_enum", [
   "shipping",
   "pickup",
 ]);
-export const sexEnum = pgEnum("sex", ["male", "female"]);
-export const profileEnum = pgEnum("profile_types", ["private", "professional"]);
+export const sexEnum = pgEnum("sex_enum", ["male", "female"]);
+export const profileEnum = pgEnum("profile_types_enum", [
+  "private",
+  "professional",
+]);
 
-export const filtersEnum = pgEnum("filters", [
+export const filtersEnum = pgEnum("filters_enum", [
   Filters.CONDITION,
   Filters.GENDER,
   Filters.COLOR,
@@ -26,7 +33,7 @@ export const filtersEnum = pgEnum("filters", [
   Filters.SIZE_MONITOR_SCREEN,
 ]);
 
-export const filterTypeEnum = pgEnum("filter_types", [
+export const filterTypeEnum = pgEnum("filter_types_enum", [
   "select",
   "boolean",
   "text",
@@ -34,14 +41,14 @@ export const filterTypeEnum = pgEnum("filter_types", [
   "range",
 ]);
 
-export const categoriesEnum = pgEnum("categories", [
+export const categoriesEnum = pgEnum("categories_enum", [
   Categories.ELECTRONICS,
   Categories.CLOTHINGS,
   Categories.KIDS,
   Categories.COLLECTABLES,
 ]);
 
-export const SubcategoriesEnum = pgEnum("subcategories", [
+export const SubcategoriesEnum = pgEnum("subcategories_enum", [
   Subcategories.COMPUTERS,
   `${Subcategories.ACCESSORIES}-${Subcategories.COMPUTERS}`,
   `${Subcategories.ACCESSORIES}-${Categories.CLOTHINGS}`,
@@ -65,7 +72,7 @@ export const SubcategoriesEnum = pgEnum("subcategories", [
   Subcategories.UNCUT_PAPER_SHEET,
 ]);
 
-export const FilterValuesEnum = pgEnum("filter_values", [
+export const FilterValuesEnum = pgEnum("filter_values_enum", [
   // CONDITIONS
   "new",
   "used-like-new",

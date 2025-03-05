@@ -1,70 +1,34 @@
 "use server";
 
-import { createItemTypes } from "../../../../../server/src/routes";
+import {
+  ServerValidateError,
+  createServerValidate,
+} from "@tanstack/react-form/nextjs";
+
 import { createItemSchema } from "../../../../../server/src/routes/item/types";
-import type { ItemActionResponse } from "./types";
 
-export async function createItemAction(
-  prevState: ItemActionResponse | null,
-  formData: FormData,
-): Promise<ItemActionResponse> {
-  // TODO: edit
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+const serverValidate = createServerValidate({
+  onServerValidate: ({ value }) => {
+    console.log(value);
+    const result = createItemSchema.safeParse(value);
+    if (!result.success) {
+      // Return the validation errors
+      return result.error.errors.map((err) => err.message);
+    }
 
+    // api network call
+  },
+});
+
+export async function createItemAction(prevState: unknown, formData: FormData) {
   try {
-    const rawData: createItemTypes = {
-      commons: {
-        title: formData.get("title") as string,
-        description: formData.get("description") as string,
-        price: formData.get("price") as string,
-        subcategory_id: 2,
-      },
-      properties: [
-        {
-          name: "condition",
-          value: "new",
-        },
-      ],
-    };
-
-    const validationResult = createItemSchema.safeParse(rawData);
-
-    if (!validationResult.success) {
-      const errors: { [key: string]: string[] } = {};
-
-      validationResult.error.issues.forEach((issue) => {
-        const path = issue.path[0] as string;
-        if (!errors[path]) {
-          errors[path] = [];
-        }
-        errors[path]?.push(issue.message);
-      });
-
-      return {
-        success: false,
-        message: "Validation failed. Please check the form for errors.",
-        inputs: rawData,
-        errors,
-      };
-    }
-
-    const articleData = validationResult.data;
-
-    if (Math.random() < 0.1) {
-      throw new Error("Server error occurred while processing your request");
-    }
-
-    return {
-      success: true,
-      message: "Article created successfully!",
-      inputs: articleData,
-    };
+    await serverValidate(formData);
   } catch (error) {
-    console.error("Error creating article:", error);
-    return {
-      success: false,
-      message:
-        error instanceof Error ? error.message : "An unexpected error occurred",
-    };
+    if (error instanceof ServerValidateError) {
+      return error.formState;
+    }
+
+    // Some other error occurred while validating your form
+    throw error;
   }
 }
