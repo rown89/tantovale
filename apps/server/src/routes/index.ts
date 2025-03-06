@@ -5,7 +5,7 @@ export * from "./items";
 export * from "./item";
 export * from "./categories";
 export * from "./subcategories";
-export * from "./subcategoryFilters";
+export * from "./subcategory-filters";
 export * from "./verify";
 export * from "./verify/email";
 export * from "./refresh";

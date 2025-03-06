@@ -1,5 +1,4 @@
 import CreateItemForm from "#components/forms/item-create-form";
-import { redirect } from "next/navigation";
 
 export default async function CreateItemPage({
   searchParams,

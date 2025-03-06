@@ -16,6 +16,7 @@ import {
   FILTER_VALUES,
   Filters,
   SUBCATEGORIES_FILTERS,
+  type SubcategoryTypes,
 } from "./constants";
 import type { BaseSubcategorySeed, ParentGroupSeed } from "./types";
 
@@ -136,7 +137,7 @@ async function seedSubcategories(
  * Creates a unique slug for subcategories that appear in multiple categories
  * by appending the parent category or subcategory name to the slug
  */
-function createUniqueSlug(slug: string, parentSlug: string): string {
+function createUniqueSlug<T>(slug: T, parentSlug: string) {
   if (slug === Subcategories.ACCESSORIES) {
     // Append parent slug to make accessories slug unique
     return `${slug}-${parentSlug}`;

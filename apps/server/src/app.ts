@@ -36,7 +36,7 @@ const apiRoutes = app
   .route("/item", itemRoute)
   .route("/categories", categoriesRoute)
   .route("/subcategories", subcategoriesRoute)
-  .route("/subcategory-fitlers", subcategoryFiltersRoute)
+  .route("/subcategory_fitlers", subcategoryFiltersRoute)
   .route("/password", passwordForgotRoute)
   .route(`/${authPath}/item`, itemRoute)
   .route(`/${authPath}/logout`, logoutRoute)

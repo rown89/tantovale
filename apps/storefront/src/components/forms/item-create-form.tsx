@@ -89,6 +89,9 @@ export default function CreateItemForm({
     queryKey: ["categories"],
     queryFn: async () => {
       const res = await client.categories.$get();
+
+      if (!res.ok) return [];
+
       return await res.json();
     },
   });
@@ -108,11 +111,39 @@ export default function CreateItemForm({
         },
       });
 
-      if (!res.ok) throw new Error("Failed to fetch subcategories");
+      if (!res.ok) {
+        console.error("Failed to fetch subcategories");
+        return [];
+      }
 
       return await res.json();
     },
     enabled: !!catId,
+  });
+
+  const {
+    data: subCatFilters,
+    isLoading: isLoadingSubCatFilters,
+    isError: isErrorSubCatFilters,
+  } = useQuery({
+    queryKey: ["subcategories_filters", subcatId],
+    queryFn: async () => {
+      if (!subcatId) return [];
+
+      const res = await client.subcategory_fitlers[":id"].$get({
+        param: {
+          id: String(subcatId),
+        },
+      });
+
+      if (!res.ok) {
+        console.error("Failed to fetch subcategories filters");
+        return [];
+      }
+
+      return await res.json();
+    },
+    enabled: !!subcatId,
   });
 
   const handleQueryParamChange = (qs: string, value: string) => {
@@ -127,6 +158,8 @@ export default function CreateItemForm({
     if (catId) category_id.setValue(Number(catId));
     if (subcatId) subcategory_id.setValue(Number(subcatId));
   }, [catId, subcatId]);
+
+  useEffect(() => {}, [isErrorCat, isErrorSubCat]);
 
   return (
     <div className="container mx-auto py-6 px-4">
@@ -171,7 +204,11 @@ export default function CreateItemForm({
               {(field) => {
                 return (
                   <div className="space-y-2">
+                    <Label className="block">
+                      Category <span className="text-red-500">*</span>
+                    </Label>
                     <Select
+                      disabled={isLoadingCat || !cat}
                       onValueChange={(e) => {
                         field.handleChange(Number(e));
                         handleQueryParamChange("cat", e);
@@ -181,23 +218,12 @@ export default function CreateItemForm({
                       }
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue
-                          placeholder={
-                            isLoadingCat
-                              ? "loading categories..."
-                              : "Select a category"
-                          }
-                        />
+                        <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
 
                       <SelectContent>
                         <SelectGroup>
-                          <SelectLabel className="block">
-                            Categoy <span className="text-red-500">*</span>
-                          </SelectLabel>
                           {!isErrorCat &&
-                            Array.isArray(cat) &&
-                            cat.length &&
                             cat?.map((item, i) => (
                               <SelectItem key={i} value={item.id.toString()}>
                                 {item.name}
@@ -215,7 +241,15 @@ export default function CreateItemForm({
               {(field) => {
                 return (
                   <div className="space-y-2">
+                    <Label className="block">
+                      Subcategory <span className="text-red-500">*</span>
+                    </Label>
                     <Select
+                      disabled={
+                        isLoadingCat ||
+                        isLoadingSubCat ||
+                        !category_id.state.value
+                      }
                       onValueChange={(e) => {
                         field.handleChange(Number(e));
                         handleQueryParamChange("subcat", e);
@@ -227,23 +261,12 @@ export default function CreateItemForm({
                       }
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue
-                          placeholder={
-                            isLoadingCat
-                              ? "loading subcategories..."
-                              : "Select a subcategory"
-                          }
-                        />
+                        <SelectValue placeholder="Select a subcategory" />
                       </SelectTrigger>
 
                       <SelectContent>
                         <SelectGroup>
-                          <SelectLabel className="block">
-                            Subcategory <span className="text-red-500">*</span>
-                          </SelectLabel>
                           {!isErrorSubCat &&
-                            Array.isArray(subCat) &&
-                            subCat.length &&
                             subCat?.map((item, i) => (
                               <SelectItem key={i} value={item.id.toString()}>
                                 {item.name}
@@ -325,16 +348,18 @@ export default function CreateItemForm({
               ]}
             >
               {([canSubmit, isSubmitting, isDirty]) => {
-                console.log("canSubmit", canSubmit);
                 return (
-                  <Button type="submit" disabled={!canSubmit || !isDirty}>
+                  <Button
+                    type="submit"
+                    disabled={!canSubmit || !isDirty || isPending}
+                  >
                     {isSubmitting ? "..." : "Submit"}
                   </Button>
                 );
               }}
             </form.Subscribe>
 
-            {JSON.stringify(form.state.errors)}
+            <p>{JSON.stringify(form.state.errors, null, 2)}</p>
           </form>
         </div>
 
