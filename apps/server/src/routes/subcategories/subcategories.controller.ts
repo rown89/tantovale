@@ -29,8 +29,9 @@ export const getSubcategoriesByIdController = async (
   if (!id) return c.json({ error: "subcategory id is required" }, 400);
   if (isNaN(id)) return c.json({ message: "Invalid subcategory ID" }, 400);
 
-  const filters = await getSubcategoriesById(c, id);
-  return c.json(filters);
+  const subcategory = await getSubcategoriesById(c, id);
+
+  return c.json(subcategory);
 };
 
 export const getSubcategoriesWithoutParentByIdController = async (

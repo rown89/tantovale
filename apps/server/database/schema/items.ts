@@ -17,7 +17,6 @@ import {
 } from "./enumerated_types";
 import { subcategories } from "./subcategories";
 import type { createItemSchema } from "#routes/item/types";
-import { categories } from "./categories";
 
 export const items = pgTable(
   "items",
@@ -36,12 +35,6 @@ export const items = pgTable(
     user_id: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    category_id: integer("category_id")
-      .notNull()
-      .references(() => categories.id, {
-        onDelete: "cascade",
-        onUpdate: "cascade",
-      }),
     subcategory_id: integer("subcategory_id")
       .notNull()
       .references(() => subcategories.id, {
@@ -66,10 +59,6 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
   author: one(users, {
     fields: [items.user_id],
     references: [users.id],
-  }),
-  categories: one(categories, {
-    fields: [items.category_id],
-    references: [categories.id],
   }),
   subcategory: one(subcategories, {
     fields: [items.subcategory_id],

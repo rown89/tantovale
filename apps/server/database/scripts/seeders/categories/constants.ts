@@ -44,8 +44,8 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
       parent: { name: "Computers", slug: Subcategories.COMPUTERS },
       children: [
         { name: "Laptops", slug: Subcategories.LAPTOPS },
-        { name: "Desktop's", slug: Subcategories.DESKTOP_COMPUTER },
-        { name: "Accessories", slug: Subcategories.ACCESSORIES },
+        { name: "Desktop Computers", slug: Subcategories.DESKTOP_COMPUTER },
+        { name: "Computer Accessories", slug: Subcategories.ACCESSORIES },
       ],
     },
     {
@@ -55,7 +55,7 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
           name: "Smartphones & Cellulars",
           slug: Subcategories.SMARTPHONES_CELLULARS,
         },
-        { name: "Accessories", slug: Subcategories.ACCESSORIES },
+        { name: "Phone Accessories", slug: Subcategories.ACCESSORIES },
       ],
     },
     {
@@ -63,7 +63,7 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
       children: [
         { name: "Cameras", slug: Subcategories.CAMERAS },
         { name: "Lenses", slug: Subcategories.LENSES },
-        { name: "Accessories", slug: Subcategories.ACCESSORIES },
+        { name: "Photography Accessories", slug: Subcategories.ACCESSORIES },
       ],
     },
   ],
@@ -71,7 +71,7 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
     { name: "Shoes", slug: Subcategories.SHOES },
     { name: "Jeans", slug: Subcategories.JEANS },
     { name: "Pants", slug: Subcategories.PANTS },
-    { name: "Accessories", slug: Subcategories.ACCESSORIES },
+    { name: "Clothing Accessories", slug: Subcategories.ACCESSORIES },
   ],
   kids: [
     { name: "Toys", slug: Subcategories.TOYS },

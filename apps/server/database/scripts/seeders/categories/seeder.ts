@@ -16,7 +16,6 @@ import {
   FILTER_VALUES,
   Filters,
   SUBCATEGORIES_FILTERS,
-  type SubcategoryTypes,
 } from "./constants";
 import type { BaseSubcategorySeed, ParentGroupSeed } from "./types";
 
@@ -140,7 +139,7 @@ async function seedSubcategories(
 function createUniqueSlug<T>(slug: T, parentSlug: string) {
   if (slug === Subcategories.ACCESSORIES) {
     // Append parent slug to make accessories slug unique
-    return `${slug}-${parentSlug}`;
+    return `${slug}_${parentSlug}`;
   }
   return slug;
 }

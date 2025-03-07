@@ -7,6 +7,7 @@ import { AuthProvider } from "#context/AuthProvider";
 import { cookies } from "next/headers";
 
 import "@workspace/ui/globals.css";
+import NavBar from "#components/navbar/navbar";
 
 const fontSans = Lato({
   weight: "400",
@@ -46,7 +47,10 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthProvider isLogged={isLogged}>{children}</AuthProvider>
+            <AuthProvider isLogged={isLogged}>
+              <NavBar />
+              {children}
+            </AuthProvider>
             <Toaster />
           </ThemeProvider>
         </QueryProvider>

@@ -11,6 +11,8 @@ export const getSubcategories = async (c: Context<AppBindings>) => {
     .select({
       id: subcategories.id,
       name: subcategories.name,
+      category_id: subcategories.category_id,
+      parent_id: subcategories.parent_id,
     })
     .from(subcategories);
 };
@@ -27,7 +29,7 @@ export const getSubcategoriesById = async (
       name: subcategories.name,
     })
     .from(subcategories)
-    .where(eq(subcategories.category_id, Number(id)));
+    .where(eq(subcategories.id, Number(id)));
 };
 
 export const getSubcategoriesWithoutParentById = async (
@@ -43,9 +45,6 @@ export const getSubcategoriesWithoutParentById = async (
     })
     .from(subcategories)
     .where(
-      and(
-        isNull(subcategories.parent_id),
-        eq(subcategories.category_id, Number(id)),
-      ),
+      and(isNull(subcategories.parent_id), eq(subcategories.id, Number(id))),
     );
 };

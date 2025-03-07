@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   formOptions,
   mergeForm,
@@ -12,15 +12,6 @@ import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Textarea } from "@workspace/ui/components/textarea";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-  SelectLabel,
-  SelectGroup,
-} from "@workspace/ui/components/select";
 import {
   Card,
   CardContent,
@@ -34,6 +25,13 @@ import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { FieldInfo } from "./field-info";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CategorySelector } from "#components/category-selector/category-selector";
+
+interface Category {
+  id: number;
+  name: string;
+  subcategories: Category[];
+}
 
 export const formOpts = formOptions({
   defaultValues: {
@@ -51,17 +49,23 @@ export const formOpts = formOptions({
 });
 
 export default function CreateItemForm({
-  catId,
-  subcatId,
+  subcategory,
 }: {
-  catId?: string | string[];
-  subcatId?: string | string[];
+  subcategory?: Omit<Category, "subcategories">;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, action, isPending] = useActionState(
     createItemAction,
     initialFormState,
+  );
+
+  const [selectedCategory, setSelectedCategory] = useState<Omit<
+    Category,
+    "subcategories"
+  > | null>(subcategory || null);
+  const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
+    [],
   );
 
   const form = useForm({
@@ -78,11 +82,10 @@ export default function CreateItemForm({
   const title = useField({ form, name: "commons.title" });
   const description = useField({ form, name: "commons.description" });
   const price = useField({ form, name: "commons.price" });
-  const category_id = useField({ form, name: "commons.category_id" });
   const subcategory_id = useField({ form, name: "commons.subcategory_id" });
 
   const {
-    data: cat,
+    data: allCategories,
     isLoading: isLoadingCat,
     isError: isErrorCat,
   } = useQuery({
@@ -97,28 +100,18 @@ export default function CreateItemForm({
   });
 
   const {
-    data: subCat,
+    data: allSubcategories,
     isLoading: isLoadingSubCat,
     isError: isErrorSubCat,
   } = useQuery({
-    queryKey: ["subcategories", catId],
+    queryKey: ["subcategories"],
     queryFn: async () => {
-      if (!catId) return [];
+      const res = await client.subcategories.$get();
 
-      const res = await client.subcategories[":id"].$get({
-        param: {
-          id: String(catId),
-        },
-      });
-
-      if (!res.ok) {
-        console.error("Failed to fetch subcategories");
-        return [];
-      }
+      if (!res.ok) return [];
 
       return await res.json();
     },
-    enabled: !!catId,
   });
 
   const {
@@ -126,13 +119,13 @@ export default function CreateItemForm({
     isLoading: isLoadingSubCatFilters,
     isError: isErrorSubCatFilters,
   } = useQuery({
-    queryKey: ["subcategories_filters", subcatId],
+    queryKey: ["subcategories_filters", subcategory?.id],
     queryFn: async () => {
-      if (!subcatId) return [];
+      if (!subcategory?.id) return [];
 
       const res = await client.subcategory_fitlers[":id"].$get({
         param: {
-          id: String(subcatId),
+          id: String(subcategory?.id),
         },
       });
 
@@ -141,9 +134,13 @@ export default function CreateItemForm({
         return [];
       }
 
-      return await res.json();
+      const subcategoryFilters = await res.json();
+
+      console.log(subcategoryFilters);
+
+      return subcategoryFilters;
     },
-    enabled: !!subcatId,
+    enabled: !!subcategory?.id,
   });
 
   const handleQueryParamChange = (qs: string, value: string) => {
@@ -154,192 +151,195 @@ export default function CreateItemForm({
     router.replace(newUrl);
   };
 
-  useEffect(() => {
-    if (catId) category_id.setValue(Number(catId));
-    if (subcatId) subcategory_id.setValue(Number(subcatId));
-  }, [catId, subcatId]);
+  function getNestedCategories() {
+    // Convert subcategories array into a nested structure
+    const subcategoryMap = new Map<number, any>();
 
-  useEffect(() => {}, [isErrorCat, isErrorSubCat]);
+    // Initialize subcategories map
+    allSubcategories?.forEach((sub) => {
+      subcategoryMap.set(sub.id, { ...sub, subcategories: [] });
+    });
+
+    // Build the hierarchy by linking parent subcategories
+    allSubcategories?.forEach((sub) => {
+      if (sub.parent_id) {
+        const parent = subcategoryMap.get(sub.parent_id);
+        if (parent) {
+          parent.subcategories.push(subcategoryMap.get(sub.id));
+        }
+      }
+    });
+
+    if (allCategories?.length && allSubcategories?.length) {
+      // Attach subcategories to categories
+      const categoriesWithSubcategories = allCategories?.map((category) => ({
+        ...category,
+        subcategories: allSubcategories
+          ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
+          .map((sub) => subcategoryMap.get(sub.id)),
+      }));
+
+      const nestedSubcategories = categoriesWithSubcategories;
+
+      setNestedSubcategories(nestedSubcategories);
+    }
+  }
+
+  const handleSelect = (category: Omit<Category, "subcategories">) => {
+    setSelectedCategory(category);
+  };
+
+  useEffect(() => {
+    if (subcategory) {
+      subcategory_id.setValue(Number(subcategory.id));
+      handleSelect(subcategory);
+    }
+  }, [subcategory]);
+
+  useEffect(() => {
+    if (allCategories?.length && allSubcategories?.length) {
+      getNestedCategories();
+    }
+  }, [allCategories, allSubcategories]);
 
   return (
-    <div className="container mx-auto py-6 px-4">
-      <h1 className="text-2xl font-bold mb-6">Create New Item</h1>
-
-      <div className="flex gap-6">
+    <div className="container mx-auto py-6 px-4 h-[calc(100vh-56px)]">
+      <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
         <div className="md:max-w-md w-full break-words">
           <form
             action={action as never}
             onSubmit={() => form.handleSubmit()}
-            className="space-y-4 w-full"
+            className="space-y-4 w-full h-full flex flex-col justify-between"
           >
-            <form.Field name="commons.title">
-              {(field) => {
-                return (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name} className="block">
-                      Title <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id={field.name}
-                      name={field.name}
-                      value={field.state.value ?? ""}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      aria-invalid={
-                        field.state.meta.errors?.length ? "true" : "false"
-                      }
-                      className={
-                        field.state.meta.errors?.length ? "border-red-500" : ""
-                      }
-                      placeholder="Enter a title"
-                    />
-                    <FieldInfo field={field} />
-                  </div>
-                );
-              }}
-            </form.Field>
+            <div className="overflow-scroll flex gap-4 flex-col">
+              <form.Field name="commons.subcategory_id">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label className="block">
+                        Category <span className="text-red-500">*</span>
+                      </Label>
+                      <CategorySelector
+                        categories={nestedSubcategories}
+                        selectedCategoryControlled={selectedCategory}
+                        onSelect={(e) => {
+                          handleSelect(e);
+                          field.setValue(e.id);
+                        }}
+                      />
+                    </div>
+                  );
+                }}
+              </form.Field>
 
-            <form.Field name="commons.category_id">
-              {(field) => {
-                return (
-                  <div className="space-y-2">
-                    <Label className="block">
-                      Category <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      disabled={isLoadingCat || !cat}
-                      onValueChange={(e) => {
-                        field.handleChange(Number(e));
-                        handleQueryParamChange("cat", e);
-                      }}
-                      defaultValue={
-                        field.state.value?.toString() ?? catId?.toString() ?? ""
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
+              <form.Field name="commons.title">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="block">
+                        Title <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        value={field.state.value ?? ""}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "true"
+                            : "false"
+                        }
+                        className={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "border-red-500"
+                            : ""
+                        }
+                        placeholder="Enter a title"
+                      />
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
 
-                      <SelectContent>
-                        <SelectGroup>
-                          {!isErrorCat &&
-                            cat?.map((item, i) => (
-                              <SelectItem key={i} value={item.id.toString()}>
-                                {item.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              }}
-            </form.Field>
+              <form.Field name="commons.price">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="block">
+                        Price <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="0.20"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) =>
+                          field.handleChange(e.target.valueAsNumber)
+                        }
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "true"
+                            : "false"
+                        }
+                        className={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "border-red-500"
+                            : ""
+                        }
+                      />
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
 
-            <form.Field name="commons.subcategory_id">
-              {(field) => {
-                return (
-                  <div className="space-y-2">
-                    <Label className="block">
-                      Subcategory <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      disabled={
-                        isLoadingCat ||
-                        isLoadingSubCat ||
-                        !category_id.state.value
-                      }
-                      onValueChange={(e) => {
-                        field.handleChange(Number(e));
-                        handleQueryParamChange("subcat", e);
-                      }}
-                      defaultValue={
-                        field.state.value?.toString() ??
-                        subcatId?.toString() ??
-                        ""
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a subcategory" />
-                      </SelectTrigger>
+              <form.Field name="commons.description">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="block">
+                        Description <span className="text-red-500">*</span>
+                      </Label>
+                      <Textarea
+                        id={field.name}
+                        name={field.name}
+                        rows={4}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="Enter a description for your item"
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "true"
+                            : "false"
+                        }
+                        className={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "border-red-500"
+                            : ""
+                        }
+                      />
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
 
-                      <SelectContent>
-                        <SelectGroup>
-                          {!isErrorSubCat &&
-                            subCat?.map((item, i) => (
-                              <SelectItem key={i} value={item.id.toString()}>
-                                {item.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              }}
-            </form.Field>
-
-            <form.Field name="commons.price">
-              {(field) => {
-                return (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name} className="block">
-                      Price <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id={field.name}
-                      name={field.name}
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="0.20"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) =>
-                        field.handleChange(e.target.valueAsNumber)
-                      }
-                      className={
-                        field.state.meta.errors?.length ? "border-red-500" : ""
-                      }
-                      aria-invalid={
-                        field.state.meta.errors?.length ? "true" : "false"
-                      }
-                    />
-                    <FieldInfo field={field} />
-                  </div>
-                );
-              }}
-            </form.Field>
-
-            <form.Field name="commons.description">
-              {(field) => {
-                return (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name} className="block">
-                      Description <span className="text-red-500">*</span>
-                    </Label>
-                    <Textarea
-                      id={field.name}
-                      name={field.name}
-                      rows={4}
-                      className={
-                        field.state.meta.errors?.length ? "border-red-500" : ""
-                      }
-                      aria-invalid={
-                        field.state.meta.errors?.length ? "true" : "false"
-                      }
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter a description for your item"
-                    />
-                    <FieldInfo field={field} />
-                  </div>
-                );
-              }}
-            </form.Field>
-
+              <p>{JSON.stringify(form.state.errors, null, 2)}</p>
+            </div>
             <form.Subscribe
               selector={(formState) => [
                 formState.canSubmit,
@@ -352,33 +352,34 @@ export default function CreateItemForm({
                   <Button
                     type="submit"
                     disabled={!canSubmit || !isDirty || isPending}
+                    className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}
                   </Button>
                 );
               }}
             </form.Subscribe>
-
-            <p>{JSON.stringify(form.state.errors, null, 2)}</p>
           </form>
         </div>
 
         {/* Right Column - Preview */}
-        <div className="md:w-full md:inline-block hidden">
-          <Card>
+        <div className="md:w-full md:inline-block hidden h-full py-5">
+          <Card className="h-full">
             <CardHeader>
               <CardTitle>Item Preview</CardTitle>
             </CardHeader>
-            <CardContent>
-              <h2 className="text-2xl font-bold mb-2 break-all">
-                {String(title.state.value ?? "") || "Title of the item"}
-              </h2>
-              <p className="text-xl font-semibold mb-4">
-                € {Number(price.state.value ?? 0).toFixed(2) || "Item Title"}
-              </p>
-              <div className="text-gray-600 mb-4 whitespace-pre-wrap max-h-60 overflow-auto break-all">
-                {String(description.state.value ?? "") ||
-                  "Item description will appear here."}
+            <CardContent className="flex flex-col justify-between">
+              <div className="flex flex-col">
+                <h2 className="text-2xl font-bold mb-2 break-all">
+                  {String(title.state.value ?? "") || "Title of the item"}
+                </h2>
+                <p className="text-xl font-semibold mb-4">
+                  € {Number(price.state.value ?? 0).toFixed(2) || "Item Title"}
+                </p>
+                <div className="text-gray-600 mb-4 whitespace-pre-wrap max-h-60 overflow-auto break-all">
+                  {String(description.state.value ?? "") ||
+                    "Item description will appear here."}
+                </div>
               </div>
               <div className="bg-gray-100 p-4 rounded-md">
                 <p className="text-sm text-gray-500">
