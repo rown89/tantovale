@@ -1,5 +1,5 @@
 {
-  "id": "ce598609-f4af-48e3-ab8e-92de7a2b7acf",
+  "id": "ce259da5-7e42-4d62-9d28-d5f29ab4f199",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -36,6 +36,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "isOptionalField": {
           "name": "isOptionalField",
@@ -320,8 +327,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.item_images": {
-      "name": "item_images",
+    "public.items_images": {
+      "name": "items_images",
       "schema": "",
       "columns": {
         "id": {
@@ -331,7 +338,7 @@
           "notNull": true,
           "identity": {
             "type": "always",
-            "name": "item_images_id_seq",
+            "name": "items_images_id_seq",
             "schema": "public",
             "increment": "1",
             "startWith": "1",
@@ -379,9 +386,9 @@
         }
       },
       "foreignKeys": {
-        "item_images_item_id_items_id_fk": {
-          "name": "item_images_item_id_items_id_fk",
-          "tableFrom": "item_images",
+        "items_images_item_id_items_id_fk": {
+          "name": "items_images_item_id_items_id_fk",
+          "tableFrom": "items_images",
           "tableTo": "items",
           "columnsFrom": ["item_id"],
           "columnsTo": ["id"],
@@ -395,8 +402,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.item_filters_values": {
-      "name": "item_filters_values",
+    "public.items_filters_values": {
+      "name": "items_filters_values",
       "schema": "",
       "columns": {
         "id": {
@@ -406,7 +413,7 @@
           "notNull": true,
           "identity": {
             "type": "always",
-            "name": "item_filters_values_id_seq",
+            "name": "items_filters_values_id_seq",
             "schema": "public",
             "increment": "1",
             "startWith": "1",
@@ -431,18 +438,18 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "item_filters_values_item_id_items_id_fk": {
-          "name": "item_filters_values_item_id_items_id_fk",
-          "tableFrom": "item_filters_values",
+        "items_filters_values_item_id_items_id_fk": {
+          "name": "items_filters_values_item_id_items_id_fk",
+          "tableFrom": "items_filters_values",
           "tableTo": "items",
           "columnsFrom": ["item_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
-        "item_filters_values_filter_value_id_filter_values_id_fk": {
-          "name": "item_filters_values_filter_value_id_filter_values_id_fk",
-          "tableFrom": "item_filters_values",
+        "items_filters_values_filter_value_id_filter_values_id_fk": {
+          "name": "items_filters_values_filter_value_id_filter_values_id_fk",
+          "tableFrom": "items_filters_values",
           "tableTo": "filter_values",
           "columnsFrom": ["filter_value_id"],
           "columnsTo": ["id"],
@@ -539,10 +546,28 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "value": {
           "name": "value",
           "type": "filter_values_enum",
           "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -1631,16 +1656,12 @@
       "schema": "public",
       "values": [
         "computers",
-        "accessories-computers",
-        "accessories-clothings",
-        "laptops",
         "desktop_computer",
         "phones",
-        "accessories-phones",
         "smartphones_cellulares",
         "accessories",
         "photography",
-        "accessories-photography",
+        "laptops",
         "cameras",
         "lenses",
         "shoes",
@@ -1650,7 +1671,11 @@
         "book_kids",
         "cards",
         "single_cards",
-        "uncut_paper_sheet"
+        "uncut_paper_sheet",
+        "accessories_phones",
+        "accessories_photography",
+        "accessories_computers",
+        "accessories_clothings"
       ]
     },
     "public.categories_enum": {

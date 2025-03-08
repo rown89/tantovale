@@ -26,6 +26,22 @@ import { useQuery } from "@tanstack/react-query";
 import { FieldInfo } from "./field-info";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CategorySelector } from "#components/category-selector/category-selector";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+} from "#workspace/ui/components/select";
+import { Spinner } from "#workspace/ui/components/spinner";
+import { Switch } from "#workspace/ui/components/switch";
+import { Checkbox } from "#workspace/ui/components/checkbox";
+import { MultiSelect } from "#workspace/ui/components/multi-select";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "#workspace/ui/components/radio-group";
 
 interface Category {
   id: number;
@@ -119,11 +135,11 @@ export default function CreateItemForm({
     isLoading: isLoadingSubCatFilters,
     isError: isErrorSubCatFilters,
   } = useQuery({
-    queryKey: ["subcategories_filters", subcategory?.id],
+    queryKey: ["filters_by_subcategories_filters", subcategory?.id],
     queryFn: async () => {
       if (!subcategory?.id) return [];
 
-      const res = await client.subcategory_fitlers[":id"].$get({
+      const res = await client.filters.subcategory_filters[":id"].$get({
         param: {
           id: String(subcategory?.id),
         },
@@ -135,8 +151,6 @@ export default function CreateItemForm({
       }
 
       const subcategoryFilters = await res.json();
-
-      console.log(subcategoryFilters);
 
       return subcategoryFilters;
     },
@@ -187,6 +201,7 @@ export default function CreateItemForm({
 
   const handleSelect = (category: Omit<Category, "subcategories">) => {
     setSelectedCategory(category);
+    handleQueryParamChange("cat", category?.id?.toString());
   };
 
   useEffect(() => {
@@ -194,7 +209,7 @@ export default function CreateItemForm({
       subcategory_id.setValue(Number(subcategory.id));
       handleSelect(subcategory);
     }
-  }, [subcategory]);
+  }, []);
 
   useEffect(() => {
     if (allCategories?.length && allSubcategories?.length) {
@@ -315,6 +330,7 @@ export default function CreateItemForm({
                         id={field.name}
                         name={field.name}
                         rows={4}
+                        maxLength={800}
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
@@ -328,8 +344,8 @@ export default function CreateItemForm({
                         className={
                           field.state.meta.isTouched &&
                           field.state.meta.errors?.length
-                            ? "border-red-500"
-                            : ""
+                            ? "border-red-500 max-h-52"
+                            : "max-h-52"
                         }
                       />
                       <FieldInfo field={field} />
@@ -337,6 +353,194 @@ export default function CreateItemForm({
                   );
                 }}
               </form.Field>
+
+              {isLoadingSubCatFilters ? (
+                <Spinner />
+              ) : (
+                subCatFilters &&
+                subCatFilters?.length > 0 &&
+                subCatFilters?.map((filter) => {
+                  return (
+                    <form.Field
+                      key={filter.id}
+                      name={`properties.${filter.name}`}
+                    >
+                      {(field) => {
+                        if (filter.type === "select") {
+                          return (
+                            <div className="space-y-2">
+                              <Label htmlFor={field.name} className="block">
+                                {filter.name}{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Select
+                                onValueChange={(e) => field.handleChange(e)}
+                                defaultValue={field.state.value}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue
+                                    placeholder={`Select a ${filter.name}`}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    {filter.options?.map((item, i) => (
+                                      <SelectItem
+                                        key={i}
+                                        value={item.id?.toString()}
+                                      >
+                                        {item.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        }
+
+                        if (filter.type === "select_multi") {
+                          return (
+                            <div className="space-y-2">
+                              <Label htmlFor={field.name} className="block">
+                                {filter.name}{" "}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <MultiSelect
+                                options={filter.options.map(
+                                  ({ id, name: label, value }) => ({
+                                    id,
+                                    label,
+                                    value: value?.toString() ?? "",
+                                  }),
+                                )}
+                                onValueChange={field.handleChange}
+                                defaultValue={field.state.value}
+                                placeholder={`Select ${filter.name}`}
+                                variant="inverted"
+                                animation={2}
+                                maxCount={3}
+                              />
+                            </div>
+                          );
+                        }
+
+                        if (filter.type === "boolean") {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <Label htmlFor={field.name}>{filter.name}</Label>
+                              <Switch
+                                checked={field.state.value}
+                                onCheckedChange={(checked) =>
+                                  field.handleChange(checked)
+                                }
+                              />
+                            </div>
+                          );
+                        }
+
+                        if (filter.type === "number") {
+                          return (
+                            <div className="space-y-2">
+                              <Label htmlFor={field.name}>{filter.name}</Label>
+
+                              <Input
+                                type="number"
+                                id={field.name}
+                                value={field.state.value}
+                                onChange={(e) =>
+                                  field.handleChange(e.target.value)
+                                }
+                              />
+                            </div>
+                          );
+                        }
+
+                        if (filter.type === "checkbox") {
+                          return (
+                            <div
+                              className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
+                            >
+                              <Label htmlFor={field.name}>{filter.name}</Label>
+                              {filter.options.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Checkbox
+                                    id={`${field.name}-${item.id}`}
+                                    checked={
+                                      Array.isArray(field.state.value) &&
+                                      field.state.value.includes(item.id)
+                                    }
+                                    onCheckedChange={(checked) => {
+                                      const currentValues = Array.isArray(
+                                        field.state.value,
+                                      )
+                                        ? [...field.state.value]
+                                        : [];
+
+                                      if (checked) {
+                                        // Add the item.id if it's not already in the array
+                                        if (!currentValues.includes(item.id)) {
+                                          field.handleChange([
+                                            ...currentValues,
+                                            item.id,
+                                          ]);
+                                        }
+                                      } else {
+                                        // Remove the item.id from the array
+                                        field.handleChange(
+                                          currentValues.filter(
+                                            (id) => id !== item.id,
+                                          ),
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label htmlFor={`${field.name}-${item.id}`}>
+                                    {item.name}
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }
+
+                        if (filter.type === "radio") {
+                          return (
+                            <div className={`flex gap-2 flex-col`}>
+                              <Label htmlFor={field.name}>{filter.name}</Label>
+                              <RadioGroup
+                                value={field.state.value?.toString()}
+                                onValueChange={(val) => field.handleChange(val)}
+                                className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
+                              >
+                                {filter.options.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <RadioGroupItem
+                                      id={`${field.name}-${item.id}`}
+                                      value={item.id?.toString()}
+                                    />
+                                    <Label htmlFor={`${field.name}-${item.id}`}>
+                                      {item.name}
+                                    </Label>
+                                  </div>
+                                ))}
+                              </RadioGroup>
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      }}
+                    </form.Field>
+                  );
+                })
+              )}
 
               <p>{JSON.stringify(form.state.errors, null, 2)}</p>
             </div>
@@ -351,7 +555,12 @@ export default function CreateItemForm({
                 return (
                   <Button
                     type="submit"
-                    disabled={!canSubmit || !isDirty || isPending}
+                    disabled={
+                      !canSubmit ||
+                      !isDirty ||
+                      isPending ||
+                      isLoadingSubCatFilters
+                    }
                     className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}
@@ -364,15 +573,16 @@ export default function CreateItemForm({
 
         {/* Right Column - Preview */}
         <div className="md:w-full md:inline-block hidden h-full py-5">
-          <Card className="h-full">
+          <Card>
             <CardHeader>
-              <CardTitle>Item Preview</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col justify-between">
-              <div className="flex flex-col">
-                <h2 className="text-2xl font-bold mb-2 break-all">
+              <CardTitle>
+                <h2 className="text-2xl font-bold break-all">
                   {String(title.state.value ?? "") || "Title of the item"}
                 </h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col justify-between relative">
+              <div className="flex flex-col">
                 <p className="text-xl font-semibold mb-4">
                   € {Number(price.state.value ?? 0).toFixed(2) || "Item Title"}
                 </p>
@@ -381,13 +591,14 @@ export default function CreateItemForm({
                     "Item description will appear here."}
                 </div>
               </div>
-              <div className="bg-gray-100 p-4 rounded-md">
-                <p className="text-sm text-gray-500">
-                  This is a preview of how your item will appear to others.
-                </p>
-              </div>
             </CardContent>
           </Card>
+
+          <div className="bg-gray-100 p-4 rounded-md my-6">
+            <p className="text-sm text-gray-500">
+              This is a preview of how your item will appear to others.
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -657,11 +657,9 @@ async function seedFilterValues(
     }
     return {
       filter_id: filterId,
-      value: fv.value,
+      ...fv,
     };
-  }).filter(
-    (value): value is { filter_id: number; value: string } => value !== null,
-  ); // Remove any nulls
+  });
 
   if (valuesToInsert.length === 0) {
     console.warn("No filter values to insert.");

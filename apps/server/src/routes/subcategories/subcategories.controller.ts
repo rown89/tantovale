@@ -27,9 +27,13 @@ export const getSubcategoriesByIdController = async (
   const id = Number(c.req.param("id"));
 
   if (!id) return c.json({ error: "subcategory id is required" }, 400);
-  if (isNaN(id)) return c.json({ message: "Invalid subcategory ID" }, 400);
+  if (isNaN(id)) return c.json({ message: "Invalid ID" }, 400);
 
   const subcategory = await getSubcategoriesById(c, id);
+
+  if (!subcategory.length) {
+    return c.json({ message: "Invalid subcategory ID" }, 400);
+  }
 
   return c.json(subcategory);
 };
@@ -39,12 +43,13 @@ export const getSubcategoriesWithoutParentByIdController = async (
 ) => {
   const id = Number(c.req.param("id"));
 
-  if (!id) return c.json({ error: "subcategory id is required" }, 400);
+  if (!id) return c.json({ error: "Invalid id required" }, 400);
   if (isNaN(id)) return c.json({ message: "Invalid subcategory ID" }, 400);
 
   const subcategoriesWithoutParent = await getSubcategoriesWithoutParentById(
     c,
     id,
   );
+
   return c.json(subcategoriesWithoutParent);
 };

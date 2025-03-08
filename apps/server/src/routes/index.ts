@@ -3,6 +3,7 @@ export * from "./signup";
 export * from "./users";
 export * from "./items";
 export * from "./item";
+export * from "./filters";
 export * from "./categories";
 export * from "./subcategories";
 export * from "./subcategory-filters";

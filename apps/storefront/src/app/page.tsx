@@ -4,7 +4,7 @@ import { Linkedin } from "lucide-react";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-white text-black">
+    <div className="min-h-screen">
       <section className="py-20 px-4 text-center">
         <div className="flex w-full justify-center items-center pt-20 mb-6">
           <Image

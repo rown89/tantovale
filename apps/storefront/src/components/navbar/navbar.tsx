@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useAuth } from "#/context/AuthProvider";
 import { Button } from "@workspace/ui/components/button";
+import { useRouter } from "next/navigation";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
+  const router = useRouter();
 
   return (
-    <div className="flex px-6 py-2 justify-between items-center min-h-14">
+    <div className="container flex px-6 py-2 justify-between items-center min-h-14 mx-auto">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale
@@ -20,6 +22,13 @@ export default function NavBar() {
           <>
             {user ? (
               <div className="flex items-center space-x-4">
+                <Button
+                  variant="default"
+                  onClick={async () => router.push("/item/new")}
+                  className="text-muted-foreground"
+                >
+                  Sell
+                </Button>
                 <Link href="/profile" className="text-muted-foreground">
                   Profile
                 </Link>

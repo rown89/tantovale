@@ -35,10 +35,11 @@ export const filtersEnum = pgEnum("filters_enum", [
 
 export const filterTypeEnum = pgEnum("filter_types_enum", [
   "select",
+  "select_multi",
   "boolean",
-  "text",
+  "checkbox",
+  "radio",
   "number",
-  "range",
 ]);
 
 export const categoriesEnum = pgEnum("categories_enum", [

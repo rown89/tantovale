@@ -20,6 +20,7 @@ import {
   subcategoriesRoute,
   subcategoryFiltersRoute,
   categoriesRoute,
+  filtersRoute,
 } from "./routes";
 
 const app = createApp();
@@ -35,6 +36,7 @@ const apiRoutes = app
   .route("/items", itemsRoute)
   .route("/item", itemRoute)
   .route("/categories", categoriesRoute)
+  .route("/filters", filtersRoute)
   .route("/subcategories", subcategoriesRoute)
   .route("/subcategory_fitlers", subcategoryFiltersRoute)
   .route("/password", passwordForgotRoute)

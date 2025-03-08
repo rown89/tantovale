@@ -1,7 +1,7 @@
 export default async function ProfilePage() {
   return (
     <div>
-      <h1>Welcome!</h1>
+      <h1>Profile page!</h1>
     </div>
   );
 }

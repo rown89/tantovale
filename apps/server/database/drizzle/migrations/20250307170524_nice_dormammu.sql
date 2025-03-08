@@ -1,5 +1,5 @@
 CREATE TYPE "public"."filter_values_enum" AS ENUM('new', 'used-like-new', 'used-good', 'used-fair', 'unisex', 'men', 'women', 'leather', 'cotton', 'wool', 'silk', 'linen', 'polyester', 'nylon', 'rayon', 'spandex', 'acrylic', 'viscose', 'denim', 'suede', 'velvet', 'cashmere', 'corduroy', 'tweed', 'flannel', 'canvas', 'hemp', 'bamboo', 'fleece', 'microfiber', 'modal', 'jacquard', 'chiffon', 'taffeta', 'satin', 'gabardine', 'terrycloth', 'seersucker', 'batiste', 'muslin', 'organza', 'tulle', 'black', 'white', 'red', 'blue', 'yellow', 'green', 'orange', 'purple', 'pink', 'brown', 'gray', 'beige', 'cyan', 'magenta', 'lime', 'olive', 'navy', 'teal', 'maroon', 'turquoise', 'gold', 'silver', 'bronze', 'ivory', 'mustard', 'coral', 'salmon', 'peach', 'lavender', 'charcoal', 'indigo', 'periwinkle', 'burgundy', 'mint', 'ochre', 'plum', 'rust', 'saffron', 'jade', 'violet', 's', 'm', 'l', 'xl', 'xxl', 'xxxl', '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5', '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5', '43', '43.5', '44', '44.5', '45', '45.5', '46', '46.5', '47', '47.5', '48', '48.5', '49', '49.5', '50', '28mm', '30mm', '32mm', '34mm', '36mm', '38mm', '40mm', '41mm', '42mm', '43mm', '44mm', '45mm', '46mm', '47mm', '48mm', '50mm', '52mm', '3.5"', '4.0"', '4.5"', '5.0"', '5.2"', '5.5"', '5.7"', '6.0"', '6.1"', '6.2"', '6.3"', '6.4"', '6.5"', '6.6"', '6.7"', '6.8"', '7.0"', '7.2"', '7.6"', '8.0"', '15"', '17"', '19"', '20"', '21"', '21.5"', '22"', '23"', '23.6"', '24"', '25"', '27"', '28"', '29"', '30"', '32"', '34"', '35"', '37.5"', '38"', '40"', '42"', '43"', '49"', '55"');--> statement-breakpoint
-CREATE TYPE "public"."subcategories_enum" AS ENUM('computers', 'accessories-computers', 'accessories-clothings', 'laptops', 'desktop_computer', 'phones', 'accessories-phones', 'smartphones_cellulares', 'accessories', 'photography', 'accessories-photography', 'cameras', 'lenses', 'shoes', 'jeans', 'pants', 'toys', 'book_kids', 'cards', 'single_cards', 'uncut_paper_sheet');--> statement-breakpoint
+CREATE TYPE "public"."subcategories_enum" AS ENUM('computers', 'desktop_computer', 'phones', 'smartphones_cellulares', 'accessories', 'photography', 'laptops', 'cameras', 'lenses', 'shoes', 'jeans', 'pants', 'toys', 'book_kids', 'cards', 'single_cards', 'uncut_paper_sheet', 'accessories_phones', 'accessories_photography', 'accessories_computers', 'accessories_clothings');--> statement-breakpoint
 CREATE TYPE "public"."categories_enum" AS ENUM('electronics', 'clothings', 'kids', 'collectables');--> statement-breakpoint
 CREATE TYPE "public"."conditions_enum" AS ENUM('new', 'used', 'damaged');--> statement-breakpoint
 CREATE TYPE "public"."delivery_method_enum" AS ENUM('shipping', 'pickup');--> statement-breakpoint
@@ -12,6 +12,7 @@ CREATE TABLE "subcategory_filters" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "subcategory_filters_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"filter_id" integer NOT NULL,
 	"subcategory_id" integer NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
 	"isOptionalField" boolean DEFAULT false NOT NULL,
 	"isEditableField" boolean DEFAULT true NOT NULL
 );
@@ -41,15 +42,15 @@ CREATE TABLE "items" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "item_images" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "item_images_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+CREATE TABLE "items_images" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "items_images_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"item_id" integer NOT NULL,
 	"url" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "item_filters_values" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "item_filters_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+CREATE TABLE "items_filters_values" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "items_filters_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"item_id" integer NOT NULL,
 	"filter_value_id" integer NOT NULL
 );
@@ -65,7 +66,10 @@ CREATE TABLE "filters" (
 CREATE TABLE "filter_values" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "filter_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"filter_id" integer NOT NULL,
-	"value" "filter_values_enum"
+	"name" text NOT NULL,
+	"value" "filter_values_enum" NOT NULL,
+	"icon" text,
+	"meta" text
 );
 --> statement-breakpoint
 CREATE TABLE "password_reset_tokens" (
@@ -193,9 +197,9 @@ ALTER TABLE "subcategory_filters" ADD CONSTRAINT "subcategory_filters_filter_id_
 ALTER TABLE "subcategory_filters" ADD CONSTRAINT "subcategory_filters_subcategory_id_subcategories_id_fk" FOREIGN KEY ("subcategory_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_subcategory_id_subcategories_id_fk" FOREIGN KEY ("subcategory_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "item_images" ADD CONSTRAINT "item_images_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "item_filters_values" ADD CONSTRAINT "item_filters_values_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "item_filters_values" ADD CONSTRAINT "item_filters_values_filter_value_id_filter_values_id_fk" FOREIGN KEY ("filter_value_id") REFERENCES "public"."filter_values"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "items_images" ADD CONSTRAINT "items_images_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "items_filters_values" ADD CONSTRAINT "items_filters_values_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "items_filters_values" ADD CONSTRAINT "items_filters_values_filter_value_id_filter_values_id_fk" FOREIGN KEY ("filter_value_id") REFERENCES "public"."filter_values"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "filter_values" ADD CONSTRAINT "filter_values_filter_id_filters_id_fk" FOREIGN KEY ("filter_id") REFERENCES "public"."filters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -211,6 +215,6 @@ ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_parent_id_subcategorie
 CREATE INDEX "user_id_idx" ON "items" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "title_idx" ON "items" USING btree ("title");--> statement-breakpoint
 CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> statement-breakpoint
-CREATE INDEX "item_id_idx" ON "item_images" USING btree ("item_id");--> statement-breakpoint
+CREATE INDEX "item_id_idx" ON "items_images" USING btree ("item_id");--> statement-breakpoint
 CREATE INDEX "value_id_idx" ON "filter_values" USING btree ("value");--> statement-breakpoint
 CREATE INDEX "profiles_fullname_idx" ON "profiles" USING btree ("fullname");

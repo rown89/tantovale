@@ -16,12 +16,13 @@ export interface SubcategorySeeds {
 }
 
 export interface FilterSeed extends BaseSubcategorySeed {
-  type: "select" | "boolean" | "text";
+  type: "select" | "select_multi" | "boolean" | "checkbox" | "radio";
 }
 
 export interface FilterValues {
   slug: string;
   value: string;
+  name: string;
   icon?: string;
   meta?: Record<string, any>;
 }

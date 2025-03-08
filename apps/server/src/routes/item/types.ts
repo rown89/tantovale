@@ -5,6 +5,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { number, z } from "zod";
 
 export const propertySchema = z.object({
+  id: selectFilterSchema.shape.id,
   name: selectFilterSchema.shape.slug,
   value: selectFilterValuesSchema.shape.value,
 });
