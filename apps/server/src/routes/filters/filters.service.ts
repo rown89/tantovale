@@ -96,7 +96,5 @@ export const getFiltersBySubcategoryFiltersIdService = async (
   // Convert object to array of values
   const filtersWithValues: FilterWithValues[] = Object.values(filtersLookup);
 
-  console.log(filtersRequest);
-
   return filtersWithValues;
 };

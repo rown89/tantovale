@@ -10,13 +10,9 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { users } from "./users";
-import {
-  conditionsEnum,
-  deliveryMethodEnum,
-  statusEnum,
-} from "./enumerated_types";
+import { deliveryMethodEnum, statusEnum } from "./enumerated_types";
 import { subcategories } from "./subcategories";
-import type { createItemSchema } from "#routes/item/types";
+import type { createItemSchema } from "../../../server/src/schema";
 
 export const items = pgTable(
   "items",
@@ -24,14 +20,13 @@ export const items = pgTable(
     id: integer("id").primaryKey().notNull().generatedAlwaysAsIdentity(),
     title: text("title").notNull(),
     description: text("description").notNull(),
-    condition: conditionsEnum().notNull().default("used"),
     status: statusEnum("status").notNull().default("available"),
     published: boolean("published").default(false).notNull(),
     price: integer("price").notNull().default(0),
     shipping_cost: integer("shipping_cost").notNull().default(0),
     delivery_method: deliveryMethodEnum("delivery_method")
       .notNull()
-      .default("pickup"),
+      .default("shipping"),
     user_id: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),

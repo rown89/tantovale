@@ -2,30 +2,20 @@
 
 import { useActionState, useEffect, useState } from "react";
 import {
+  AnyFieldApi,
   formOptions,
   mergeForm,
   useField,
   useForm,
   useTransform,
 } from "@tanstack/react-form";
-import { Button } from "@workspace/ui/components/button";
-import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
-import { Textarea } from "@workspace/ui/components/textarea";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card";
 import { createItemAction } from "#actions/item/create";
-import { createItemSchema } from "../../../../server/src/routes/item/types";
 import { initialFormState } from "@tanstack/react-form/nextjs";
 import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { FieldInfo } from "./field-info";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CategorySelector } from "#components/category-selector/category-selector";
+import { CategorySelector } from "#components/category-selector";
 import {
   Select,
   SelectTrigger,
@@ -33,15 +23,26 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-} from "#workspace/ui/components/select";
-import { Spinner } from "#workspace/ui/components/spinner";
-import { Switch } from "#workspace/ui/components/switch";
-import { Checkbox } from "#workspace/ui/components/checkbox";
-import { MultiSelect } from "#workspace/ui/components/multi-select";
+} from "@workspace/ui/components/select";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card";
+import { Button } from "@workspace/ui/components/button";
+import { Input } from "@workspace/ui/components/input";
+import { Label } from "@workspace/ui/components/label";
+import { Textarea } from "@workspace/ui/components/textarea";
+import { Spinner } from "@workspace/ui/components/spinner";
+import { Switch } from "@workspace/ui/components/switch";
+import { Checkbox } from "@workspace/ui/components/checkbox";
+import { MultiSelect } from "@workspace/ui/components/multi-select";
 import {
   RadioGroup,
   RadioGroupItem,
-} from "#workspace/ui/components/radio-group";
+} from "@workspace/ui/components/radio-group";
+import { createItemSchema } from "@workspace/server/schema";
 
 interface Category {
   id: number;
@@ -54,13 +55,12 @@ export const formOpts = formOptions({
     commons: {
       title: "",
       description: "",
-      condition: "used",
-      price: 1,
-      shipping_cost: 1,
-      delivery_method: "pickup",
-      subcategory_id: 1,
+      price: 0,
+      delivery_method: "",
+      subcategory_id: 0,
     },
-    properties: [{ name: "condition", value: "new" }],
+    serializedProperties: "",
+    properties: [],
   },
 });
 
@@ -76,7 +76,7 @@ export default function CreateItemForm({
     initialFormState,
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<Omit<
+  const [selectedSubCategory, setSelectedSubCategory] = useState<Omit<
     Category,
     "subcategories"
   > | null>(subcategory || null);
@@ -85,12 +85,13 @@ export default function CreateItemForm({
   );
 
   const form = useForm({
-    ...formOpts?.defaultValues,
     validators: {
       onChange: createItemSchema,
     },
     transform: useTransform(
-      (baseForm) => mergeForm(baseForm, state ?? {}),
+      (baseForm) => {
+        return mergeForm(baseForm, state ?? {});
+      },
       [state],
     ),
   });
@@ -99,6 +100,7 @@ export default function CreateItemForm({
   const description = useField({ form, name: "commons.description" });
   const price = useField({ form, name: "commons.price" });
   const subcategory_id = useField({ form, name: "commons.subcategory_id" });
+  const properties = useField({ form, name: "properties" });
 
   const {
     data: allCategories,
@@ -165,7 +167,7 @@ export default function CreateItemForm({
     router.replace(newUrl);
   };
 
-  function getNestedCategories() {
+  function buildNestedSubCatHierarchy() {
     // Convert subcategories array into a nested structure
     const subcategoryMap = new Map<number, any>();
 
@@ -199,21 +201,72 @@ export default function CreateItemForm({
     }
   }
 
-  const handleSelect = (category: Omit<Category, "subcategories">) => {
-    setSelectedCategory(category);
-    handleQueryParamChange("cat", category?.id?.toString());
+  const handleSubCategorySelect = (
+    subcategory: Omit<Category, "subcategories">,
+  ) => {
+    setSelectedSubCategory(subcategory);
+    subcategory_id.setValue(subcategory.id);
+    handleQueryParamChange("cat", subcategory?.id?.toString());
   };
 
-  useEffect(() => {
-    if (subcategory) {
-      subcategory_id.setValue(Number(subcategory.id));
-      handleSelect(subcategory);
+  // Helper function to update the properties array with proper types
+  function updatePropertiesArray({
+    value,
+    filter,
+    field,
+  }: {
+    value: string | number | boolean | (string | number)[];
+    filter: { id: number; name: string; options?: any[]; type: string };
+    field: AnyFieldApi;
+  }) {
+    // Ensure we have an array from the field state.
+    const currentProperties: { id: number; name: string; value: any }[] =
+      Array.isArray(field.state.value) ? [...field.state.value] : [];
+
+    // Create the new property object.
+    const newProperty = {
+      id: filter.id,
+      name: filter.name,
+      value,
+    };
+
+    // Find if the property already exists.
+    const existingIndex = currentProperties.findIndex(
+      (prop) => prop.id === filter.id,
+    );
+
+    if (existingIndex !== -1) {
+      // Update the existing property.
+      currentProperties[existingIndex] = newProperty;
+    } else {
+      // Add a new property.
+      currentProperties.push(newProperty);
     }
+
+    // Update the form field state.
+    field.handleChange(currentProperties);
+  }
+
+  function getCurrentValue(field: AnyFieldApi, filterName: string) {
+    if (!Array.isArray(field.state.value)) return undefined;
+    const prop = field.state.value.find((p) => p.name === filterName);
+    return prop ? prop.value : undefined;
+  }
+
+  // on mount
+  useEffect(() => {
+    // if we have a subcategory already settled in the query params:
+    if (subcategory) handleSubCategorySelect(subcategory);
   }, []);
 
   useEffect(() => {
+    form.reset();
+  }, [subcategory]);
+
+  useEffect(() => {
+    // build category (subcategory) menu hierarchy:
     if (allCategories?.length && allSubcategories?.length) {
-      getNestedCategories();
+      buildNestedSubCatHierarchy();
     }
   }, [allCategories, allSubcategories]);
 
@@ -223,12 +276,15 @@ export default function CreateItemForm({
         {/* Left Column - Form */}
         <div className="md:max-w-md w-full break-words">
           <form
-            action={action as never}
+            action={action}
             onSubmit={() => form.handleSubmit()}
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
             <div className="overflow-scroll flex gap-4 flex-col">
-              <form.Field name="commons.subcategory_id">
+              <form.Field
+                name="commons.subcategory_id"
+                defaultValue={selectedSubCategory?.id}
+              >
                 {(field) => {
                   return (
                     <div className="space-y-2">
@@ -237,11 +293,17 @@ export default function CreateItemForm({
                       </Label>
                       <CategorySelector
                         categories={nestedSubcategories}
-                        selectedCategoryControlled={selectedCategory}
+                        selectedCategoryControlled={
+                          selectedSubCategory || subcategory
+                        }
                         onSelect={(e) => {
-                          handleSelect(e);
-                          field.setValue(e.id);
+                          handleSubCategorySelect(e);
                         }}
+                      />
+                      <input
+                        name={field.name}
+                        type="hidden"
+                        value={Number(field.state.value)}
                       />
                     </div>
                   );
@@ -258,7 +320,7 @@ export default function CreateItemForm({
                       <Input
                         id={field.name}
                         name={field.name}
-                        value={field.state.value ?? ""}
+                        value={field.state.value?.toString()}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         aria-invalid={
@@ -295,11 +357,13 @@ export default function CreateItemForm({
                         min="0.01"
                         step="0.01"
                         placeholder="0.20"
-                        value={field.state.value}
+                        value={((field.state.value as number) / 100).toString()}
                         onBlur={field.handleBlur}
-                        onChange={(e) =>
-                          field.handleChange(e.target.valueAsNumber)
-                        }
+                        onChange={(e) => {
+                          field.handleChange(
+                            Math.round(e.target.valueAsNumber * 100),
+                          );
+                        }}
                         aria-invalid={
                           field.state.meta.isTouched &&
                           field.state.meta.errors?.length
@@ -331,7 +395,7 @@ export default function CreateItemForm({
                         name={field.name}
                         rows={4}
                         maxLength={800}
-                        value={field.state.value}
+                        value={field.state.value?.toString()}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder="Enter a description for your item"
@@ -354,6 +418,62 @@ export default function CreateItemForm({
                 }}
               </form.Field>
 
+              <form.Field name="commons.delivery_method">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="block">
+                        Delivery method <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        name={field.name}
+                        onValueChange={(value) => field.handleChange(value)}
+                        defaultValue={field.state.value?.toString()}
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors?.length
+                            ? "true"
+                            : "false"
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue
+                            placeholder={`Select a Delivery method`}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {[
+                              {
+                                id: "pickup",
+                                name: "Pickup",
+                              },
+                              { id: "shipping", name: "Shipping" },
+                            ]?.map((item, i) => (
+                              <SelectItem key={i} value={item.id?.toString()}>
+                                {item.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
+
+              {/* hidden form for properties serialization */}
+              <form.Field name="serializedProperties">
+                {(field) => (
+                  <input
+                    type="hidden"
+                    name={field.name}
+                    value={JSON.stringify(properties.state.value || "")}
+                  />
+                )}
+              </form.Field>
+
               {isLoadingSubCatFilters ? (
                 <Spinner />
               ) : (
@@ -361,10 +481,7 @@ export default function CreateItemForm({
                 subCatFilters?.length > 0 &&
                 subCatFilters?.map((filter) => {
                   return (
-                    <form.Field
-                      key={filter.id}
-                      name={`properties.${filter.name}`}
-                    >
+                    <form.Field key={filter.id} name={`properties`}>
                       {(field) => {
                         if (filter.type === "select") {
                           return (
@@ -374,8 +491,18 @@ export default function CreateItemForm({
                                 <span className="text-red-500">*</span>
                               </Label>
                               <Select
-                                onValueChange={(e) => field.handleChange(e)}
-                                defaultValue={field.state.value}
+                                name={field.name}
+                                onValueChange={(value) =>
+                                  updatePropertiesArray({
+                                    value,
+                                    filter,
+                                    field,
+                                  })
+                                }
+                                defaultValue={getCurrentValue(
+                                  field,
+                                  filter.name,
+                                )}
                               >
                                 <SelectTrigger className="w-full">
                                   <SelectValue
@@ -414,8 +541,17 @@ export default function CreateItemForm({
                                     value: value?.toString() ?? "",
                                   }),
                                 )}
-                                onValueChange={field.handleChange}
-                                defaultValue={field.state.value}
+                                onValueChange={(value) =>
+                                  updatePropertiesArray({
+                                    value,
+                                    filter,
+                                    field,
+                                  })
+                                }
+                                defaultValue={getCurrentValue(
+                                  field,
+                                  filter.name,
+                                )}
                                 placeholder={`Select ${filter.name}`}
                                 variant="inverted"
                                 animation={2}
@@ -430,9 +566,15 @@ export default function CreateItemForm({
                             <div className="flex items-center gap-2">
                               <Label htmlFor={field.name}>{filter.name}</Label>
                               <Switch
-                                checked={field.state.value}
+                                checked={
+                                  getCurrentValue(field, filter.name) || false
+                                }
                                 onCheckedChange={(checked) =>
-                                  field.handleChange(checked)
+                                  updatePropertiesArray({
+                                    value: checked,
+                                    filter,
+                                    field,
+                                  })
                                 }
                               />
                             </div>
@@ -447,10 +589,21 @@ export default function CreateItemForm({
                               <Input
                                 type="number"
                                 id={field.name}
-                                value={field.state.value}
-                                onChange={(e) =>
-                                  field.handleChange(e.target.value)
+                                value={
+                                  getCurrentValue(field, filter.name) || ""
                                 }
+                                onChange={(e) => {
+                                  // Convert string to number for number inputs
+                                  const numValue =
+                                    e.target.value === ""
+                                      ? ""
+                                      : Number(e.target.value);
+                                  updatePropertiesArray({
+                                    value: numValue,
+                                    filter,
+                                    field,
+                                  });
+                                }}
                               />
                             </div>
                           );
@@ -470,31 +623,44 @@ export default function CreateItemForm({
                                   <Checkbox
                                     id={`${field.name}-${item.id}`}
                                     checked={
-                                      Array.isArray(field.state.value) &&
-                                      field.state.value.includes(item.id)
+                                      Array.isArray(
+                                        getCurrentValue(field, filter.name),
+                                      ) &&
+                                      getCurrentValue(
+                                        field,
+                                        filter.name,
+                                      ).includes(item.id)
                                     }
                                     onCheckedChange={(checked) => {
                                       const currentValues = Array.isArray(
-                                        field.state.value,
+                                        getCurrentValue(field, filter.name),
                                       )
-                                        ? [...field.state.value]
+                                        ? [
+                                            ...getCurrentValue(
+                                              field,
+                                              filter.name,
+                                            ),
+                                          ]
                                         : [];
 
                                       if (checked) {
                                         // Add the item.id if it's not already in the array
                                         if (!currentValues.includes(item.id)) {
-                                          field.handleChange([
-                                            ...currentValues,
-                                            item.id,
-                                          ]);
+                                          updatePropertiesArray({
+                                            value: [...currentValues, item.id],
+                                            filter,
+                                            field,
+                                          });
                                         }
                                       } else {
                                         // Remove the item.id from the array
-                                        field.handleChange(
-                                          currentValues.filter(
+                                        updatePropertiesArray({
+                                          value: currentValues.filter(
                                             (id) => id !== item.id,
                                           ),
-                                        );
+                                          filter,
+                                          field,
+                                        });
                                       }
                                     }}
                                   />
@@ -512,8 +678,16 @@ export default function CreateItemForm({
                             <div className={`flex gap-2 flex-col`}>
                               <Label htmlFor={field.name}>{filter.name}</Label>
                               <RadioGroup
-                                value={field.state.value?.toString()}
-                                onValueChange={(val) => field.handleChange(val)}
+                                value={(
+                                  getCurrentValue(field, filter.name) || ""
+                                ).toString()}
+                                onValueChange={(val) =>
+                                  updatePropertiesArray({
+                                    value: val,
+                                    filter,
+                                    field,
+                                  })
+                                }
                                 className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
                               >
                                 {filter.options.map((item) => (
@@ -542,7 +716,7 @@ export default function CreateItemForm({
                 })
               )}
 
-              <p>{JSON.stringify(form.state.errors, null, 2)}</p>
+              <p>{JSON.stringify(form.state.errors)}</p>
             </div>
             <form.Subscribe
               selector={(formState) => [
@@ -555,12 +729,7 @@ export default function CreateItemForm({
                 return (
                   <Button
                     type="submit"
-                    disabled={
-                      !canSubmit ||
-                      !isDirty ||
-                      isPending ||
-                      isLoadingSubCatFilters
-                    }
+                    disabled={!canSubmit || isPending}
                     className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}
@@ -573,8 +742,8 @@ export default function CreateItemForm({
 
         {/* Right Column - Preview */}
         <div className="md:w-full md:inline-block hidden h-full py-5">
-          <Card>
-            <CardHeader>
+          <Card className="min-h-[350px]">
+            <CardHeader className="pb-2">
               <CardTitle>
                 <h2 className="text-2xl font-bold break-all">
                   {String(title.state.value ?? "") || "Title of the item"}
@@ -584,11 +753,14 @@ export default function CreateItemForm({
             <CardContent className="flex flex-col justify-between relative">
               <div className="flex flex-col">
                 <p className="text-xl font-semibold mb-4">
-                  € {Number(price.state.value ?? 0).toFixed(2) || "Item Title"}
+                  €{" "}
+                  {Number(price.state.value)
+                    ? (Number(price.state.value) / 100).toFixed(2)
+                    : "0.00"}
                 </p>
-                <div className="text-gray-600 mb-4 whitespace-pre-wrap max-h-60 overflow-auto break-all">
+                <div className="text-gray-500 mb-4 whitespace-pre-wrap max-h-60 overflow-auto break-all">
                   {String(description.state.value ?? "") ||
-                    "Item description will appear here."}
+                    "Your item description will appear here..."}
                 </div>
               </div>
             </CardContent>

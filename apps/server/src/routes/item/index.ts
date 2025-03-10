@@ -9,7 +9,7 @@ import { subCategoryFilters } from "#database/schema/subcategory_filters";
 import { filters } from "#database/schema/filters";
 
 import type { AppBindings } from "#lib/types";
-import { createItemSchema } from "./types";
+import { createItemSchema } from "../../schema";
 
 // example:
 const reqObject = {
