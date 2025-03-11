@@ -38,11 +38,15 @@ export const getFiltersBySubcategoryFiltersIdService = async (
       filter_id: filters.id,
       filter_name: filters.name,
       filter_type: filters.type,
-      filter_value_id: filterValues.id,
-      filter_value_name: filterValues.name,
-      filter_value_value: filterValues.value,
-      filter_number_value: filterValues.numeric_value,
-      filter_boolean_value: filterValues.boolean_value,
+      filter_slug: filters.slug,
+      // filter_values table
+      fv_id: filterValues.id,
+      fv_name: filterValues.name,
+      fv_value: filterValues.value,
+      fv_number_value: filterValues.numeric_value,
+      fv_boolean_value: filterValues.boolean_value,
+      // subcategory_filters table
+      on_create_required: subCategoryFilters.on_item_create_required,
     })
     .from(subCategoryFilters)
     .innerJoin(filters, eq(subCategoryFilters.filter_id, filters.id))
@@ -55,13 +59,15 @@ export const getFiltersBySubcategoryFiltersIdService = async (
     id: FilterRow["filter_id"];
     name: FilterRow["filter_name"];
     type: FilterRow["filter_type"];
+    slug: FilterRow["filter_slug"];
+    on_create_required: FilterRow["on_create_required"];
     options: Array<{
-      id: FilterRow["filter_value_id"];
-      name: FilterRow["filter_value_name"];
+      id: FilterRow["fv_id"];
+      name: FilterRow["fv_name"];
       value:
-        | FilterRow["filter_value_value"]
-        | FilterRow["filter_number_value"]
-        | FilterRow["filter_boolean_value"];
+        | FilterRow["fv_value"]
+        | FilterRow["fv_number_value"]
+        | FilterRow["fv_boolean_value"];
     }>;
   };
 
@@ -74,21 +80,21 @@ export const getFiltersBySubcategoryFiltersIdService = async (
         id: row.filter_id,
         name: row.filter_name,
         type: row.filter_type,
+        slug: row.filter_slug,
+        on_create_required: row.on_create_required,
         options: [],
       };
     }
 
-    let value:
-      | FilterRow["filter_value_value"]
-      | FilterRow["filter_number_value"]
-      | FilterRow["filter_boolean_value"] = row.filter_value_value;
+    let value: FilterWithValues["options"][number]["value"] = row.fv_value;
 
-    if (row.filter_boolean_value) value = row.filter_boolean_value;
-    if (row.filter_number_value) value = row.filter_number_value;
+    if (row.fv_boolean_value) value = row.fv_boolean_value;
+    if (row.fv_number_value) value = row.fv_number_value;
 
     filtersLookup[row.filter_id]?.options.push({
-      id: row.filter_value_id,
-      name: row.filter_value_name,
+      id: row.fv_id,
+      name: row.fv_name,
+
       value,
     });
   }

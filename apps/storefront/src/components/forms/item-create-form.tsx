@@ -216,17 +216,17 @@ export default function CreateItemForm({
     field,
   }: {
     value: string | number | boolean | (string | number)[];
-    filter: { id: number; name: string; options?: any[]; type: string };
+    filter: NonNullable<typeof subCatFilters>[number];
     field: AnyFieldApi;
   }) {
     // Ensure we have an array from the field state.
-    const currentProperties: { id: number; name: string; value: any }[] =
+    const currentProperties: { id: number; slug: string; value: any }[] =
       Array.isArray(field.state.value) ? [...field.state.value] : [];
 
     // Create the new property object.
     const newProperty = {
       id: filter.id,
-      name: filter.name,
+      slug: filter.slug,
       value,
     };
 
@@ -247,9 +247,9 @@ export default function CreateItemForm({
     field.handleChange(currentProperties);
   }
 
-  function getCurrentValue(field: AnyFieldApi, filterName: string) {
+  function getCurrentValue(field: AnyFieldApi, filterId: string | number) {
     if (!Array.isArray(field.state.value)) return undefined;
-    const prop = field.state.value.find((p) => p.name === filterName);
+    const prop = field.state.value.find((p) => p.id === filterId.toString());
     return prop ? prop.value : undefined;
   }
 
@@ -499,10 +499,7 @@ export default function CreateItemForm({
                                     field,
                                   })
                                 }
-                                defaultValue={getCurrentValue(
-                                  field,
-                                  filter.name,
-                                )}
+                                defaultValue={getCurrentValue(field, filter.id)}
                               >
                                 <SelectTrigger className="w-full">
                                   <SelectValue
@@ -548,10 +545,7 @@ export default function CreateItemForm({
                                     field,
                                   })
                                 }
-                                defaultValue={getCurrentValue(
-                                  field,
-                                  filter.name,
-                                )}
+                                defaultValue={getCurrentValue(field, filter.id)}
                                 placeholder={`Select ${filter.name}`}
                                 variant="inverted"
                                 animation={2}
@@ -567,7 +561,7 @@ export default function CreateItemForm({
                               <Label htmlFor={field.name}>{filter.name}</Label>
                               <Switch
                                 checked={
-                                  getCurrentValue(field, filter.name) || false
+                                  getCurrentValue(field, filter.id) || false
                                 }
                                 onCheckedChange={(checked) =>
                                   updatePropertiesArray({
@@ -589,9 +583,7 @@ export default function CreateItemForm({
                               <Input
                                 type="number"
                                 id={field.name}
-                                value={
-                                  getCurrentValue(field, filter.name) || ""
-                                }
+                                value={getCurrentValue(field, filter.id) || ""}
                                 onChange={(e) => {
                                   // Convert string to number for number inputs
                                   const numValue =
@@ -624,23 +616,18 @@ export default function CreateItemForm({
                                     id={`${field.name}-${item.id}`}
                                     checked={
                                       Array.isArray(
-                                        getCurrentValue(field, filter.name),
+                                        getCurrentValue(field, filter.slug),
                                       ) &&
                                       getCurrentValue(
                                         field,
-                                        filter.name,
+                                        filter.id,
                                       ).includes(item.id)
                                     }
                                     onCheckedChange={(checked) => {
                                       const currentValues = Array.isArray(
-                                        getCurrentValue(field, filter.name),
+                                        getCurrentValue(field, filter.id),
                                       )
-                                        ? [
-                                            ...getCurrentValue(
-                                              field,
-                                              filter.name,
-                                            ),
-                                          ]
+                                        ? [...getCurrentValue(field, filter.id)]
                                         : [];
 
                                       if (checked) {
@@ -679,7 +666,7 @@ export default function CreateItemForm({
                               <Label htmlFor={field.name}>{filter.name}</Label>
                               <RadioGroup
                                 value={(
-                                  getCurrentValue(field, filter.name) || ""
+                                  getCurrentValue(field, filter.id) || ""
                                 ).toString()}
                                 onValueChange={(val) =>
                                   updatePropertiesArray({

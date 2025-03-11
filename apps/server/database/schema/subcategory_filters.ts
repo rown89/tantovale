@@ -20,13 +20,13 @@ export const subCategoryFilters = pgTable(
         onUpdate: "cascade",
       }),
     position: integer("position").notNull().default(0),
-    on_create_field_required: boolean("item_create_field_optional")
+    on_item_create_required: boolean("on_item_create_required")
       .default(false)
       .notNull(),
-    on_update_field_editable: boolean("item_update_field_editable")
+    on_item_update_editable: boolean("on_item_update_editable")
       .default(true)
       .notNull(),
-    is_searchable_field: boolean("is_searchable_field").default(true).notNull(),
+    is_searchable: boolean("is_searchable").default(true).notNull(),
   },
   (table) => {
     return {

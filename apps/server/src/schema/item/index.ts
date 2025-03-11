@@ -4,7 +4,7 @@ import { number, string, z } from "zod";
 
 export const propertySchema = z.object({
   id: number(),
-  name: string(),
+  slug: string(),
   value: z.union([
     z.string(),
     z.number(),

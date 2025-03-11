@@ -33,6 +33,8 @@ const serverValidate = createServerValidate({
       }
     }
 
+    console.log(value);
+
     // Validate the value against the schema.
     const result = createItemSchema.safeParse(value);
     if (!result.success) {
