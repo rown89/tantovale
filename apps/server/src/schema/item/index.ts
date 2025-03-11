@@ -13,7 +13,19 @@ export const propertySchema = z.object({
   ]),
 });
 
+const imageFileSchema = z
+  .instanceof(File)
+  .refine((file) => file.type.startsWith("image/"), {
+    message: "Only image files are allowed",
+  });
+
+const multipleImagesSchema = z
+  .array(imageFileSchema)
+  .nonempty({ message: "At least one image is required" })
+  .max(6, { message: "You can upload up to 6 images at once" });
+
 export const createItemSchema = z.object({
+  images: multipleImagesSchema,
   commons: createInsertSchema(items, {
     title: (schema) =>
       schema.min(5, "Title must be at least 5 characters").max(180),

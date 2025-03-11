@@ -321,6 +321,31 @@ export default function CreateItemForm({
                 className="space-y-4 w-full h-full flex flex-col justify-between"
               >
                 <div className="overflow-scroll flex gap-4 flex-col">
+                  <form.Field name="images">
+                    {(field) => {
+                      return (
+                        <div className="space-y-2">
+                          <Label htmlFor={field.name} className="block">
+                            Images <span className="text-red-500">*</span>
+                          </Label>{" "}
+                          <Input
+                            id={field.name}
+                            name={field.name}
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files?.length) {
+                                field.handleChange(Array.from(e.target.files));
+                              }
+                            }}
+                          />
+                          <FieldInfo field={field} />
+                        </div>
+                      );
+                    }}
+                  </form.Field>
+
                   <form.Field name="commons.title">
                     {(field) => {
                       return (
@@ -779,8 +804,6 @@ export default function CreateItemForm({
                         </form.Field>
                       );
                     })}
-
-                  <p>{JSON.stringify(form.state.errors)}</p>
                 </div>
                 <form.Subscribe
                   selector={(formState) => [
@@ -831,6 +854,8 @@ export default function CreateItemForm({
               </div>
             </CardContent>
           </Card>
+
+          <p className="py-4">{JSON.stringify(form.state.errors, null, 4)}</p>
 
           <div className="bg-gray-100 p-4 rounded-md my-6">
             <p className="text-sm text-gray-500">
