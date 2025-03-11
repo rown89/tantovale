@@ -25,7 +25,7 @@ const multipleImagesSchema = z
   .max(6, { message: "You can upload up to 6 images at once" });
 
 export const createItemSchema = z.object({
-  images: multipleImagesSchema,
+  images: multipleImagesSchema.optional(),
   commons: createInsertSchema(items, {
     title: (schema) =>
       schema.min(5, "Title must be at least 5 characters").max(180),

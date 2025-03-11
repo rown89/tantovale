@@ -142,33 +142,29 @@ export default function CreateItemForm({
     enabled: !!subcategory?.id,
   });
 
-  const schema = useMemo(
-    () =>
-      createItemSchema.superRefine((val, ctx) => {
-        const requiredFilters =
-          subCatFilters?.filter((filter) => filter.on_create_required) || [];
+  const schema = createItemSchema.superRefine((val, ctx) => {
+    const requiredFilters =
+      subCatFilters?.filter((filter) => filter.on_create_required) || [];
 
-        // For each required filter, check if there's a corresponding property in the schema
-        requiredFilters.forEach((requiredFilter) => {
-          const propertyExists = val.properties?.some(
-            (prop: {
-              id: number;
-              value: string | number | string[] | number[];
-              slug: string;
-            }) => prop.slug === requiredFilter.slug,
-          );
+    // For each required filter, check if there's a corresponding property in the schema
+    requiredFilters.forEach((requiredFilter) => {
+      const propertyExists = val.properties?.some(
+        (prop: {
+          id: number;
+          value: string | number | string[] | number[];
+          slug: string;
+        }) => prop.slug === requiredFilter.slug,
+      );
 
-          if (!propertyExists) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Property for required filter "${requiredFilter.name}" is missing.`,
-              path: ["properties"],
-            });
-          }
+      if (!propertyExists) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Property for required filter "${requiredFilter.name}" is missing.`,
+          path: ["properties"],
         });
-      }),
-    [subCatFilters],
-  );
+      }
+    });
+  });
 
   const form = useForm({
     ...formOpts.defaultValues,
