@@ -13,7 +13,7 @@ import { createItemAction } from "#actions/item/create";
 import { initialFormState } from "@tanstack/react-form/nextjs";
 import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
-import { FieldInfo } from "./field-info";
+import { FieldInfo } from "./utils/field-info";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CategorySelector } from "#components/category-selector";
 import {
@@ -321,35 +321,6 @@ export default function CreateItemForm({
                 className="space-y-4 w-full h-full flex flex-col justify-between"
               >
                 <div className="overflow-scroll flex gap-4 flex-col">
-                  <form.Field
-                    name="commons.subcategory_id"
-                    defaultValue={selectedSubCategory?.id}
-                  >
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label className="block">
-                            Category <span className="text-red-500">*</span>
-                          </Label>
-                          <CategorySelector
-                            categories={nestedSubcategories}
-                            selectedCategoryControlled={
-                              selectedSubCategory || subcategory
-                            }
-                            onSelect={(e) => {
-                              handleSubCategorySelect(e);
-                            }}
-                          />
-                          <input
-                            name={field.name}
-                            type="hidden"
-                            value={Number(field.state.value)}
-                          />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
-
                   <form.Field name="commons.title">
                     {(field) => {
                       return (
@@ -498,6 +469,35 @@ export default function CreateItemForm({
                             </SelectContent>
                           </Select>
                           <FieldInfo field={field} />
+                        </div>
+                      );
+                    }}
+                  </form.Field>
+
+                  <form.Field
+                    name="commons.subcategory_id"
+                    defaultValue={selectedSubCategory?.id}
+                  >
+                    {(field) => {
+                      return (
+                        <div className="space-y-2">
+                          <Label className="block">
+                            Category <span className="text-red-500">*</span>
+                          </Label>
+                          <CategorySelector
+                            categories={nestedSubcategories}
+                            selectedCategoryControlled={
+                              selectedSubCategory || subcategory
+                            }
+                            onSelect={(e) => {
+                              handleSubCategorySelect(e);
+                            }}
+                          />
+                          <input
+                            name={field.name}
+                            type="hidden"
+                            value={Number(field.state.value)}
+                          />
                         </div>
                       );
                     }}
