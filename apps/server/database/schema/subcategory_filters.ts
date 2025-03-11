@@ -1,4 +1,10 @@
-import { pgTable, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  integer,
+  boolean,
+  uniqueIndex,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { filters } from "./filters";
 import { subcategories } from "./subcategories";
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
@@ -27,6 +33,12 @@ export const subCategoryFilters = pgTable(
       .default(true)
       .notNull(),
     is_searchable: boolean("is_searchable").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => {
     return {

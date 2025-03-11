@@ -33,14 +33,12 @@ const serverValidate = createServerValidate({
       }
     }
 
-    console.log(value);
-
     // Validate the value against the schema.
     const result = createItemSchema.safeParse(value);
     if (!result.success) {
       // Log and return an array of error messages.
       const errorMessages = result.error.errors.map((err) => err.message);
-      errorMessages.forEach((msg) => console.log(msg));
+      errorMessages.forEach((msg) => console.error(msg));
       return errorMessages;
     }
   },
