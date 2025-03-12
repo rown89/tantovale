@@ -22,10 +22,11 @@ const imageFileSchema = z
 const multipleImagesSchema = z
   .array(imageFileSchema)
   .nonempty({ message: "At least one image is required" })
-  .max(6, { message: "You can upload up to 6 images at once" });
+  .min(1, "At least 1 image is required")
+  .max(5, { message: "You can upload up to 6 images at once" });
 
 export const createItemSchema = z.object({
-  images: multipleImagesSchema.optional(),
+  images: multipleImagesSchema,
   commons: createInsertSchema(items, {
     title: (schema) =>
       schema.min(5, "Title must be at least 5 characters").max(180),

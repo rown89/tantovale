@@ -8,8 +8,8 @@ import {
   useField,
   useForm,
 } from "@tanstack/react-form";
-import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
+import { client } from "#lib/api";
 import { FieldInfo } from "./utils/field-info";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CategorySelector } from "#components/category-selector";
@@ -41,16 +41,19 @@ import {
 } from "@workspace/ui/components/radio-group";
 import { createItemSchema } from "@workspace/server/schema";
 import Slider from "@workspace/ui/components/carousel/slider";
-import { createItemTypes } from "../../../../server/database/schema/items";
-
-import ResponsiveImageUpload from "@workspace/ui/components/multi-image-uploader/responsive-image-uploader";
-import MultiImageUpload from "#workspace/ui/components/multi-image-uploader/multi-image-uploader";
+import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
+import Image from "next/image";
 
 interface Category {
   id: number;
   name: string;
   subcategories: Category[];
 }
+
+const placeholderImages = [
+  <Image className="object-cover" fill src="/placeholder.svg" alt="" />,
+  <Image className="object-cover" fill src="/placeholder.svg" alt="" />,
+];
 
 export const formOpts = formOptions({
   defaultValues: {
@@ -172,7 +175,7 @@ export default function CreateItemForm({
       console.log(value);
 
       try {
-        await client.item.create.$post({ json: value as createItemTypes });
+        await client.item.create.$post({ json: value as never });
       } catch (error) {
         console.log(error);
       }
@@ -180,12 +183,10 @@ export default function CreateItemForm({
   });
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
-  const images = useField({ form, name: "images" });
   const description = useField({ form, name: "commons.description" });
   const subcategory_id = useField({ form, name: "commons.subcategory_id" });
   const properties = useField({ form, name: "properties" });
-
-  console.log("IMAGES ", images.state.value);
+  const images = useField({ form, name: "images" });
 
   const handleQueryParamChange = (qs: string, value: string) => {
     const params = new URLSearchParams(searchParams);
@@ -390,39 +391,14 @@ export default function CreateItemForm({
                 }}
               </form.Field>
 
-              {/*  <form.Field name="images">
-                {(field) => {
-                  return (
-                    <div className="space-y-2">
-                      <Label htmlFor={field.name} className="block">
-                        Images <span className="text-red-500">*</span>
-                      </Label>{" "}
-                      <Input
-                        id={field.name}
-                        name={field.name}
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files?.length) {
-                            field.handleChange(Array.from(e.target.files));
-                          }
-                        }}
-                      />
-                      <FieldInfo field={field} />
-                    </div>
-                  );
-                }}
-              </form.Field> */}
               <form.Field name="images">
                 {(field) => {
                   return (
                     <div className="space-y-2 ">
                       <MultiImageUpload
-                        field={field}
-                        onImagesChange={(files) => {
-                          // In a real application, you might want to do something with these files
-                          console.log("Files changed:", files);
+                        maxImages={5}
+                        onImagesChange={(images) => {
+                          field.handleChange(images);
                         }}
                       />
                       <FieldInfo field={field} />
@@ -832,10 +808,34 @@ export default function CreateItemForm({
                     : "0.00"}
                 </p>
 
-                <div className="min-h-[300px] max-h-[500px] h-full">
+                <div className="min-h-[350px] w-full relative">
                   <Slider
-                    images={["image1.jpg", "image2.jpg", "image3.jpg"]}
-                    thumbnails={["thumb1.jpg", "thumb2.jpg", "thumb3.jpg"]}
+                    images={
+                      images.state.value && Array.isArray(images.state.value)
+                        ? images.state.value.map((file, i) => (
+                            <Image
+                              key={i}
+                              fill
+                              className="object-cover"
+                              src={URL.createObjectURL(file)}
+                              alt=""
+                            />
+                          ))
+                        : placeholderImages
+                    }
+                    thumbnails={
+                      images.state.value && Array.isArray(images.state.value)
+                        ? images.state.value.map((file, i) => (
+                            <Image
+                              key={i}
+                              fill
+                              className="object-cover"
+                              src={URL.createObjectURL(file)}
+                              alt=""
+                            />
+                          ))
+                        : placeholderImages
+                    }
                   />
                 </div>
 

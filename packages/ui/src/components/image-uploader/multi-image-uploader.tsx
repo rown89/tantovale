@@ -11,23 +11,24 @@ import { Button } from '../button';
 import { Card } from '../card';
 import { AlertCircle, Upload, X, ImageIcon, Move } from 'lucide-react';
 import { Alert, AlertDescription } from '../alert';
-import { AnyFieldApi } from '@tanstack/react-form';
 import { isMobile } from '../../hooks';
 import { Input } from '../input';
 
 export type UploadedImage = {
 	id: string;
-	file: File;
+	file?: File;
 	preview: string;
+	isExternalUrl?: boolean;
+	url?: string;
 };
 
 export type MultiImageUploadProps = {
-	onImagesChange?: (images: File[]) => void;
+	onImagesChange?: (images: (File | string)[]) => void;
 	maxImages?: number;
 	maxSizeInMB?: number;
 	acceptedFileTypes?: string[];
 	className?: string;
-	field?: AnyFieldApi;
+	initialImageUrls?: string[]; // New prop for initial image URLs
 };
 
 export default function MultiImageUpload({
@@ -36,13 +37,40 @@ export default function MultiImageUpload({
 	maxSizeInMB = 5,
 	acceptedFileTypes = ['image/jpeg', 'image/png'],
 	className,
-	field,
+	initialImageUrls = [], // Default to empty array
 }: MultiImageUploadProps) {
 	const [useTouchBackend, setUseTouchBackend] = useState(false);
 	const [images, setImages] = useState<UploadedImage[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+
+	// Load initial image URLs when component mounts
+	useEffect(() => {
+		// Only process initial URLs if we don't already have images loaded
+		if (initialImageUrls.length > 0 && images.length === 0) {
+			const urlImages = initialImageUrls.map((url) => ({
+				id: crypto.randomUUID(),
+				preview: url,
+				isExternalUrl: true,
+				url: url,
+			}));
+
+			// Check if adding these files would exceed the maximum
+			if (urlImages.length > maxImages) {
+				setError(`You can only have a maximum of ${maxImages} images`);
+				// Still load up to the maximum
+				setImages(urlImages.slice(0, maxImages));
+			} else {
+				setImages(urlImages);
+			}
+
+			// Call the onChange callback with the updated files/urls
+			if (onImagesChange) {
+				onImagesChange(initialImageUrls);
+			}
+		}
+	}, [initialImageUrls, maxImages, onImagesChange, images.length]);
 
 	const handleFileChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,14 +116,17 @@ export default function MultiImageUpload({
 				id: crypto.randomUUID(),
 				file,
 				preview: URL.createObjectURL(file),
+				isExternalUrl: false,
 			}));
 
 			const updatedImages = [...images, ...newImages];
 			setImages(updatedImages);
 
-			// Call the onChange callback with the updated files
+			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
-				onImagesChange(updatedImages.map((img) => img.file));
+				// Create a mixed array of Files and URL strings
+				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
+				onImagesChange(mixedData);
 			}
 
 			// Reset the file input
@@ -143,9 +174,11 @@ export default function MultiImageUpload({
 			const updatedImages = images.filter((image) => image.id !== id);
 			setImages(updatedImages);
 
-			// Call the onChange callback with the updated files
+			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
-				onImagesChange(updatedImages.map((img) => img.file));
+				// Create a mixed array of Files and URL strings
+				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
+				onImagesChange(mixedData);
 			}
 		},
 		[images, onImagesChange],
@@ -164,9 +197,11 @@ export default function MultiImageUpload({
 
 			setImages(updatedImages);
 
-			// Call the onChange callback with the updated files
+			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
-				onImagesChange(updatedImages.map((img) => img.file));
+				// Create a mixed array of Files and URL strings
+				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
+				onImagesChange(mixedData);
 			}
 		},
 		[images, onImagesChange],
@@ -184,8 +219,16 @@ export default function MultiImageUpload({
 		};
 
 		window.addEventListener('resize', handleResize);
-		return () => window.removeEventListener('resize', handleResize);
-	}, []);
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			// Clean up object URLs to prevent memory leaks
+			images.forEach((image) => {
+				if (!image.isExternalUrl && image.preview) {
+					URL.revokeObjectURL(image.preview);
+				}
+			});
+		};
+	}, [images]);
 
 	return (
 		<div className={cn('space-y-4', className)}>
@@ -213,18 +256,12 @@ export default function MultiImageUpload({
 					</div>
 					<Input
 						ref={fileInputRef}
-						name={field?.name}
 						type='file'
 						multiple
 						accept={acceptedFileTypes.join(',')}
 						className='hidden'
 						onChange={(e) => {
 							handleFileChange(e);
-
-							if (field) {
-								const files = e.target.files?.[0];
-								field?.handleChange(files);
-							}
 						}}
 					/>
 				</div>
@@ -258,39 +295,57 @@ export default function MultiImageUpload({
 									id={image.id}
 									index={index}
 									preview={image.preview}
-									filename={image.file.name}
+									filename={
+										image.file?.name || (image.isExternalUrl ? getFileNameFromUrl(image.url || '') : 'External image')
+									}
 									moveImage={moveImage}
 									removeImage={removeImage}
 								/>
 							))}
 
-							<div
-								className={cn(
-									'flex cursor-pointer justify-center rounded-lg border-2 border-dashed p-2 text-center transition-colors',
-									isDraggingOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50',
-								)}
-								onDragOver={handleDragOver}
-								onDragLeave={handleDragLeave}
-								onDrop={handleDrop}
-								onClick={() => fileInputRef.current?.click()}>
-								<div className='flex flex-col items-center justify-center space-y-2'>
-									<Upload className='text-primary h-6 w-6' />
+							{images.length < maxImages && (
+								<div
+									className={cn(
+										'flex cursor-pointer justify-center rounded-lg border-2 border-dashed p-2 text-center transition-colors',
+										isDraggingOver
+											? 'border-primary bg-primary/5'
+											: 'border-muted-foreground/25 hover:border-primary/50',
+									)}
+									onDragOver={handleDragOver}
+									onDragLeave={handleDragLeave}
+									onDrop={handleDrop}
+									onClick={() => fileInputRef.current?.click()}>
+									<div className='flex flex-col items-center justify-center space-y-2'>
+										<Upload className='text-primary h-6 w-6' />
+									</div>
+									<input
+										ref={fileInputRef}
+										type='file'
+										multiple
+										accept={acceptedFileTypes.join(',')}
+										className='hidden'
+										onChange={handleFileChange}
+									/>
 								</div>
-								<input
-									ref={fileInputRef}
-									type='file'
-									multiple
-									accept={acceptedFileTypes.join(',')}
-									className='hidden'
-									onChange={handleFileChange}
-								/>
-							</div>
+							)}
 						</div>
 					</DndProvider>
 				</div>
 			)}
 		</div>
 	);
+}
+
+// Helper function to extract filename from URL
+function getFileNameFromUrl(url: string): string {
+	try {
+		const pathname = new URL(url).pathname;
+		const filename = pathname.split('/').pop() || 'image';
+		// Remove any query parameters
+		return filename.split('?')[0] || 'image';
+	} catch (e) {
+		return 'External image';
+	}
 }
 
 type DraggableImageItemProps = {

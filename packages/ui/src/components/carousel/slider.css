@@ -7,9 +7,8 @@
 	font-size: 50px;
 	color: #fff;
 	font-weight: 500;
-	height: auto;
+	height: 200px;
 	max-height: 100vh;
-	width: 100%; /* Make sure slides take full width */
 }
 
 .keen-slider {
@@ -23,14 +22,14 @@
 	height: 50px;
 }
 
-.thumbnail {
-	width: 100%; /* Make the thumbnail slider take full width */
+.thumbnail .keen-slider__slide {
+	font-size: 30px;
+	margin-top: 10px;
+	height: 100px;
 }
-
 .thumbnail .keen-slider__slide {
 	cursor: pointer;
 }
-
 .thumbnail .keen-slider__slide.active {
 	border: 2px dashed black;
 }
