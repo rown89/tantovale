@@ -5,8 +5,9 @@
 		"paths": {
 			"@workspace/ui/*": ["./src/*"]
 		},
+		"moduleResolution": "node",
 		"jsx": "react"
 	},
-	"include": ["."],
+	"include": [".", "**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules", "dist"]
 }
