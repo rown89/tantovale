@@ -45,7 +45,6 @@ export const createItemSchema = z.object({
     created_at: true,
     updated_at: true,
   }),
-  serializedProperties: z.string().optional(),
   properties: z
     .preprocess(
       (val) => (Array.isArray(val) ? val : []),

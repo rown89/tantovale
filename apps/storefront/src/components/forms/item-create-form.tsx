@@ -1,16 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AnyFieldApi,
   formOptions,
-  mergeForm,
   useField,
   useForm,
-  useTransform,
 } from "@tanstack/react-form";
-import { createItemAction } from "#actions/item/create";
-import { initialFormState } from "@tanstack/react-form/nextjs";
 import { client } from "#lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { FieldInfo } from "./utils/field-info";
@@ -72,10 +68,6 @@ export default function CreateItemForm({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [state, action, isPending] = useActionState(
-    createItemAction,
-    initialFormState,
-  );
 
   const [selectedSubCategory, setSelectedSubCategory] = useState<Omit<
     Category,
@@ -171,12 +163,15 @@ export default function CreateItemForm({
     validators: {
       onChange: schema,
     },
-    transform: useTransform(
-      (baseForm) => {
-        return mergeForm(baseForm, state ?? {});
-      },
-      [state],
-    ),
+    onSubmit: async ({ value }) => {
+      console.log(value);
+
+      try {
+        await client.item.create.$post({ json: value });
+      } catch (error) {
+        console.log(error);
+      }
+    },
   });
   const title = useField({ form, name: "commons.title" });
   const description = useField({ form, name: "commons.description" });
@@ -283,9 +278,7 @@ export default function CreateItemForm({
     if (subcategory) handleSubCategorySelect(subcategory);
   }, []);
 
-  useEffect(() => {
-    form.reset();
-  }, [subcategory]);
+  useEffect(() => {}, [subcategory]);
 
   useEffect(() => {
     // build category (subcategory) menu hierarchy:
@@ -307,443 +300,459 @@ export default function CreateItemForm({
       <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
         <div className="min-w-[350px] md:max-w-[350px] w-full">
-          {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
-            <Spinner />
-          ) : (
-            <div className="md:max-w-md w-full break-words">
-              <form
-                action={action}
-                onSubmit={() => form.handleSubmit()}
-                className="space-y-4 w-full h-full flex flex-col justify-between"
-              >
-                <div className="overflow-scroll flex gap-4 flex-col">
-                  <form.Field name="images">
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Images <span className="text-red-500">*</span>
-                          </Label>{" "}
-                          <Input
-                            id={field.name}
-                            name={field.name}
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            onChange={(e) => {
-                              if (e.target.files?.length) {
-                                field.handleChange(Array.from(e.target.files));
-                              }
-                            }}
-                          />
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
+          <div className="md:max-w-md w-full h-full break-words">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                form.handleSubmit();
+              }}
+              className="space-y-4 w-full h-full flex flex-col justify-between"
+            >
+              <div className="overflow-scroll flex gap-4 flex-col">
+                <form.Field name="images">
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor={field.name} className="block">
+                          Images <span className="text-red-500">*</span>
+                        </Label>{" "}
+                        <Input
+                          id={field.name}
+                          name={field.name}
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files?.length) {
+                              field.handleChange(Array.from(e.target.files));
+                            }
+                          }}
+                        />
+                        <FieldInfo field={field} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
 
-                  <form.Field name="commons.title">
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Title <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id={field.name}
-                            name={field.name}
-                            value={field.state.value?.toString()}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            aria-invalid={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "true"
-                                : "false"
-                            }
-                            className={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "border-red-500"
-                                : ""
-                            }
-                            placeholder="Enter a title"
-                          />
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
+                <form.Field name="commons.title">
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor={field.name} className="block">
+                          Title <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id={field.name}
+                          name={field.name}
+                          value={field.state.value?.toString()}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          aria-invalid={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "true"
+                              : "false"
+                          }
+                          className={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "border-red-500"
+                              : ""
+                          }
+                          placeholder="Enter a title"
+                        />
+                        <FieldInfo field={field} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
 
-                  <form.Field name="commons.price">
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Price <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id={field.name}
-                            name={field.name}
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            placeholder="0.20"
-                            value={(
-                              (field.state.value as number) / 100
-                            ).toString()}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => {
-                              field.handleChange(
-                                Math.round(e.target.valueAsNumber * 100),
-                              );
-                            }}
-                            aria-invalid={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "true"
-                                : "false"
-                            }
-                            className={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "border-red-500"
-                                : ""
-                            }
-                          />
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
+                <form.Field name="commons.price">
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor={field.name} className="block">
+                          Price <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id={field.name}
+                          name={field.name}
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="0.20"
+                          value={(
+                            (field.state.value as number) / 100
+                          ).toString()}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => {
+                            field.handleChange(
+                              Math.round(e.target.valueAsNumber * 100),
+                            );
+                          }}
+                          aria-invalid={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "true"
+                              : "false"
+                          }
+                          className={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "border-red-500"
+                              : ""
+                          }
+                        />
+                        <FieldInfo field={field} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
 
-                  <form.Field name="commons.description">
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Description <span className="text-red-500">*</span>
-                          </Label>
-                          <Textarea
-                            id={field.name}
-                            name={field.name}
-                            rows={4}
-                            maxLength={800}
-                            value={field.state.value?.toString()}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            placeholder="Enter a description for your item"
-                            aria-invalid={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "true"
-                                : "false"
-                            }
-                            className={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "border-red-500 max-h-52"
-                                : "max-h-52"
-                            }
-                          />
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
+                <form.Field name="commons.description">
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor={field.name} className="block">
+                          Description <span className="text-red-500">*</span>
+                        </Label>
+                        <Textarea
+                          id={field.name}
+                          name={field.name}
+                          rows={4}
+                          maxLength={800}
+                          value={field.state.value?.toString()}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          placeholder="Enter a description for your item"
+                          aria-invalid={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "true"
+                              : "false"
+                          }
+                          className={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "border-red-500 max-h-52"
+                              : "max-h-52"
+                          }
+                        />
+                        <FieldInfo field={field} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
 
-                  <form.Field name="commons.delivery_method">
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Delivery method{" "}
-                            <span className="text-red-500">*</span>
-                          </Label>
-                          <Select
-                            name={field.name}
-                            onValueChange={(value) => field.handleChange(value)}
-                            defaultValue={field.state.value?.toString()}
-                            aria-invalid={
-                              field.state.meta.isTouched &&
-                              field.state.meta.errors?.length
-                                ? "true"
-                                : "false"
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue
-                                placeholder={`Select a Delivery method`}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                {delivery_method_types?.map((item, i) => (
-                                  <SelectItem
-                                    key={i}
-                                    value={item.id?.toString()}
+                <form.Field name="commons.delivery_method">
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label htmlFor={field.name} className="block">
+                          Delivery method{" "}
+                          <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          name={field.name}
+                          onValueChange={(value) => field.handleChange(value)}
+                          defaultValue={field.state.value?.toString()}
+                          aria-invalid={
+                            field.state.meta.isTouched &&
+                            field.state.meta.errors?.length
+                              ? "true"
+                              : "false"
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue
+                              placeholder={`Select a Delivery method`}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {delivery_method_types?.map((item, i) => (
+                                <SelectItem key={i} value={item.id?.toString()}>
+                                  {item.name}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FieldInfo field={field} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
+
+                <form.Field
+                  name="commons.subcategory_id"
+                  defaultValue={selectedSubCategory?.id}
+                >
+                  {(field) => {
+                    return (
+                      <div className="space-y-2">
+                        <Label className="block">
+                          Category <span className="text-red-500">*</span>
+                        </Label>
+                        <CategorySelector
+                          categories={nestedSubcategories}
+                          selectedCategoryControlled={
+                            selectedSubCategory || subcategory
+                          }
+                          onSelect={(e) => {
+                            form.reset({ properties: [] });
+                            handleSubCategorySelect(e);
+                            field.setValue(e.id);
+                          }}
+                        />
+                      </div>
+                    );
+                  }}
+                </form.Field>
+
+                {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
+                  <Spinner />
+                ) : (
+                  subCatFilters &&
+                  subCatFilters?.length > 0 &&
+                  subCatFilters?.map((filter) => {
+                    return (
+                      <form.Field key={filter.id} name={`properties`}>
+                        {(field) => {
+                          return (
+                            <div className="space-y-2">
+                              {/* select */}
+                              {filter.type === "select" && (
+                                <>
+                                  <Label htmlFor={field.name} className="block">
+                                    {filter.name}{" "}
+                                    {filter.on_create_required && (
+                                      <span className="text-red-500">*</span>
+                                    )}
+                                  </Label>
+                                  <Select
+                                    name={field.name}
+                                    onValueChange={(value) =>
+                                      updatePropertiesArray({
+                                        value,
+                                        filter,
+                                        field,
+                                      })
+                                    }
+                                    defaultValue={getCurrentValue(
+                                      field,
+                                      filter.id,
+                                    )}
                                   >
-                                    {item.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue
+                                        placeholder={`Select a ${filter.name}`}
+                                      />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectGroup>
+                                        {filter.options?.map((item, i) => (
+                                          <SelectItem
+                                            key={i}
+                                            value={item.id?.toString()}
+                                          >
+                                            {item.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectGroup>
+                                    </SelectContent>
+                                  </Select>
 
-                  <form.Field
-                    name="commons.subcategory_id"
-                    defaultValue={selectedSubCategory?.id}
-                  >
-                    {(field) => {
-                      return (
-                        <div className="space-y-2">
-                          <Label className="block">
-                            Category <span className="text-red-500">*</span>
-                          </Label>
-                          <CategorySelector
-                            categories={nestedSubcategories}
-                            selectedCategoryControlled={
-                              selectedSubCategory || subcategory
-                            }
-                            onSelect={(e) => {
-                              handleSubCategorySelect(e);
-                            }}
-                          />
-                          <input
-                            name={field.name}
-                            type="hidden"
-                            value={Number(field.state.value)}
-                          />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
-
-                  {/* hidden form for properties serialization */}
-                  <form.Field name="serializedProperties">
-                    {(field) => (
-                      <input
-                        type="hidden"
-                        name={field.name}
-                        value={JSON.stringify(properties.state.value || "")}
-                      />
-                    )}
-                  </form.Field>
-
-                  {subCatFilters &&
-                    subCatFilters?.length > 0 &&
-                    subCatFilters?.map((filter) => {
-                      return (
-                        <form.Field key={filter.id} name={`properties`}>
-                          {(field) => {
-                            return (
-                              <div className="space-y-2">
-                                {/* select */}
-                                {filter.type === "select" && (
-                                  <>
-                                    <Label
-                                      htmlFor={field.name}
-                                      className="block"
-                                    >
-                                      {filter.name}{" "}
-                                      <span className="text-red-500">*</span>
-                                    </Label>
-                                    <Select
-                                      name={field.name}
-                                      onValueChange={(value) =>
-                                        updatePropertiesArray({
-                                          value,
-                                          filter,
-                                          field,
-                                        })
-                                      }
-                                      defaultValue={getCurrentValue(
+                                  {field.state.meta.errors.some((item) =>
+                                    item?.message?.includes(filter.name),
+                                  ) ? (
+                                    <FieldInfo field={field} />
+                                  ) : null}
+                                </>
+                              )}
+                              {/* select_multi */}
+                              {filter.type === "select_multi" && (
+                                <>
+                                  <Label htmlFor={field.name} className="block">
+                                    {filter.name}{" "}
+                                    <span className="text-red-500">*</span>
+                                  </Label>
+                                  <MultiSelect
+                                    options={filter.options.map(
+                                      ({ id, name: label, value }) => ({
+                                        id,
+                                        label,
+                                        value: value?.toString() ?? "",
+                                      }),
+                                    )}
+                                    onValueChange={(value) =>
+                                      updatePropertiesArray({
+                                        value,
+                                        filter,
                                         field,
-                                        filter.id,
-                                      )}
-                                    >
-                                      <SelectTrigger className="w-full">
-                                        <SelectValue
-                                          placeholder={`Select a ${filter.name}`}
-                                        />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectGroup>
-                                          {filter.options?.map((item, i) => (
-                                            <SelectItem
-                                              key={i}
-                                              value={item.id?.toString()}
-                                            >
-                                              {item.name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectGroup>
-                                      </SelectContent>
-                                    </Select>
-
-                                    {field.state.meta.errors.some((item) =>
-                                      item?.message?.includes(filter.name),
-                                    ) ? (
-                                      <FieldInfo field={field} />
-                                    ) : null}
-                                  </>
-                                )}
-                                {/* select_multi */}
-                                {filter.type === "select_multi" && (
-                                  <>
-                                    <Label
-                                      htmlFor={field.name}
-                                      className="block"
-                                    >
-                                      {filter.name}{" "}
-                                      <span className="text-red-500">*</span>
-                                    </Label>
-                                    <MultiSelect
-                                      options={filter.options.map(
-                                        ({ id, name: label, value }) => ({
-                                          id,
-                                          label,
-                                          value: value?.toString() ?? "",
-                                        }),
-                                      )}
-                                      onValueChange={(value) =>
-                                        updatePropertiesArray({
-                                          value,
-                                          filter,
-                                          field,
-                                        })
-                                      }
-                                      defaultValue={getCurrentValue(
+                                      })
+                                    }
+                                    defaultValue={getCurrentValue(
+                                      field,
+                                      filter.id,
+                                    )}
+                                    placeholder={`Select ${filter.name}`}
+                                    variant="inverted"
+                                    animation={2}
+                                    maxCount={3}
+                                  />
+                                  <FieldInfo field={field} />
+                                </>
+                              )}
+                              {/* boolean */}
+                              {filter.type === "boolean" && (
+                                <>
+                                  <Label htmlFor={field.name}>
+                                    {filter.name}
+                                  </Label>
+                                  <Switch
+                                    checked={
+                                      getCurrentValue(field, filter.id) || false
+                                    }
+                                    onCheckedChange={(checked) =>
+                                      updatePropertiesArray({
+                                        value: checked,
+                                        filter,
                                         field,
-                                        filter.id,
-                                      )}
-                                      placeholder={`Select ${filter.name}`}
-                                      variant="inverted"
-                                      animation={2}
-                                      maxCount={3}
-                                    />
-                                    <FieldInfo field={field} />
-                                  </>
-                                )}
-                                {/* boolean */}
-                                {filter.type === "boolean" && (
-                                  <>
-                                    <Label htmlFor={field.name}>
-                                      {filter.name}
-                                    </Label>
-                                    <Switch
-                                      checked={
-                                        getCurrentValue(field, filter.id) ||
-                                        false
-                                      }
-                                      onCheckedChange={(checked) =>
-                                        updatePropertiesArray({
-                                          value: checked,
-                                          filter,
-                                          field,
-                                        })
-                                      }
-                                    />
-                                    <FieldInfo field={field} />
-                                  </>
-                                )}
-                                {/* number */}
-                                {filter.type === "number" && (
-                                  <>
-                                    <Label htmlFor={field.name}>
-                                      {filter.name}
-                                    </Label>
-                                    <Input
-                                      type="number"
-                                      id={field.name}
-                                      value={
-                                        getCurrentValue(field, filter.id) || ""
-                                      }
-                                      onChange={(e) => {
-                                        // Convert string to number for number inputs
-                                        const numValue =
-                                          e.target.value === ""
-                                            ? ""
-                                            : Number(e.target.value);
-                                        updatePropertiesArray({
-                                          value: numValue,
-                                          filter,
-                                          field,
-                                        });
-                                      }}
-                                    />
-                                    <FieldInfo field={field} />
-                                  </>
-                                )}
-                                {/* checkbox */}
-                                {filter.type === "checkbox" && (
-                                  <div
+                                      })
+                                    }
+                                  />
+                                  <FieldInfo field={field} />
+                                </>
+                              )}
+                              {/* number */}
+                              {filter.type === "number" && (
+                                <>
+                                  <Label htmlFor={field.name}>
+                                    {filter.name}
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    id={field.name}
+                                    value={
+                                      getCurrentValue(field, filter.id) || ""
+                                    }
+                                    onChange={(e) => {
+                                      // Convert string to number for number inputs
+                                      const numValue =
+                                        e.target.value === ""
+                                          ? ""
+                                          : Number(e.target.value);
+                                      updatePropertiesArray({
+                                        value: numValue,
+                                        filter,
+                                        field,
+                                      });
+                                    }}
+                                  />
+                                  <FieldInfo field={field} />
+                                </>
+                              )}
+                              {/* checkbox */}
+                              {filter.type === "checkbox" && (
+                                <div
+                                  className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
+                                >
+                                  <Label htmlFor={field.name}>
+                                    {filter.name}
+                                  </Label>
+                                  {filter.options.map((item) => (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Checkbox
+                                        id={`${field.name}-${item.id}`}
+                                        checked={
+                                          Array.isArray(
+                                            getCurrentValue(field, filter.slug),
+                                          ) &&
+                                          getCurrentValue(
+                                            field,
+                                            filter.id,
+                                          ).includes(item.id)
+                                        }
+                                        onCheckedChange={(checked) => {
+                                          const currentValues = Array.isArray(
+                                            getCurrentValue(field, filter.id),
+                                          )
+                                            ? [
+                                                ...getCurrentValue(
+                                                  field,
+                                                  filter.id,
+                                                ),
+                                              ]
+                                            : [];
+
+                                          if (checked) {
+                                            // Add the item.id if it's not already in the array
+                                            if (
+                                              !currentValues.includes(item.id)
+                                            ) {
+                                              updatePropertiesArray({
+                                                value: [
+                                                  ...currentValues,
+                                                  item.id,
+                                                ],
+                                                filter,
+                                                field,
+                                              });
+                                            }
+                                          } else {
+                                            // Remove the item.id from the array
+                                            updatePropertiesArray({
+                                              value: currentValues.filter(
+                                                (id) => id !== item.id,
+                                              ),
+                                              filter,
+                                              field,
+                                            });
+                                          }
+                                        }}
+                                      />
+                                      <Label
+                                        htmlFor={`${field.name}-${item.id}`}
+                                      >
+                                        {item.name}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                  <FieldInfo field={field} />
+                                </div>
+                              )}
+                              {/* radio */}
+                              {filter.type === "radio" && (
+                                <>
+                                  <Label htmlFor={field.name}>
+                                    {filter.name}
+                                  </Label>
+                                  <RadioGroup
+                                    value={(
+                                      getCurrentValue(field, filter.id) || ""
+                                    ).toString()}
+                                    onValueChange={(val) =>
+                                      updatePropertiesArray({
+                                        value: val,
+                                        filter,
+                                        field,
+                                      })
+                                    }
                                     className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
                                   >
-                                    <Label htmlFor={field.name}>
-                                      {filter.name}
-                                    </Label>
                                     {filter.options.map((item) => (
                                       <div
                                         key={item.id}
                                         className="flex items-center gap-2"
                                       >
-                                        <Checkbox
+                                        <RadioGroupItem
                                           id={`${field.name}-${item.id}`}
-                                          checked={
-                                            Array.isArray(
-                                              getCurrentValue(
-                                                field,
-                                                filter.slug,
-                                              ),
-                                            ) &&
-                                            getCurrentValue(
-                                              field,
-                                              filter.id,
-                                            ).includes(item.id)
-                                          }
-                                          onCheckedChange={(checked) => {
-                                            const currentValues = Array.isArray(
-                                              getCurrentValue(field, filter.id),
-                                            )
-                                              ? [
-                                                  ...getCurrentValue(
-                                                    field,
-                                                    filter.id,
-                                                  ),
-                                                ]
-                                              : [];
-
-                                            if (checked) {
-                                              // Add the item.id if it's not already in the array
-                                              if (
-                                                !currentValues.includes(item.id)
-                                              ) {
-                                                updatePropertiesArray({
-                                                  value: [
-                                                    ...currentValues,
-                                                    item.id,
-                                                  ],
-                                                  filter,
-                                                  field,
-                                                });
-                                              }
-                                            } else {
-                                              // Remove the item.id from the array
-                                              updatePropertiesArray({
-                                                value: currentValues.filter(
-                                                  (id) => id !== item.id,
-                                                ),
-                                                filter,
-                                                field,
-                                              });
-                                            }
-                                          }}
+                                          value={item.id?.toString()}
                                         />
                                         <Label
                                           htmlFor={`${field.name}-${item.id}`}
@@ -752,77 +761,39 @@ export default function CreateItemForm({
                                         </Label>
                                       </div>
                                     ))}
-                                    <FieldInfo field={field} />
-                                  </div>
-                                )}
-                                {/* radio */}
-                                {filter.type === "radio" && (
-                                  <>
-                                    <Label htmlFor={field.name}>
-                                      {filter.name}
-                                    </Label>
-                                    <RadioGroup
-                                      value={(
-                                        getCurrentValue(field, filter.id) || ""
-                                      ).toString()}
-                                      onValueChange={(val) =>
-                                        updatePropertiesArray({
-                                          value: val,
-                                          filter,
-                                          field,
-                                        })
-                                      }
-                                      className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
-                                    >
-                                      {filter.options.map((item) => (
-                                        <div
-                                          key={item.id}
-                                          className="flex items-center gap-2"
-                                        >
-                                          <RadioGroupItem
-                                            id={`${field.name}-${item.id}`}
-                                            value={item.id?.toString()}
-                                          />
-                                          <Label
-                                            htmlFor={`${field.name}-${item.id}`}
-                                          >
-                                            {item.name}
-                                          </Label>
-                                        </div>
-                                      ))}
-                                    </RadioGroup>
-                                    <FieldInfo field={field} />
-                                  </>
-                                )}
-                              </div>
-                            );
-                          }}
-                        </form.Field>
-                      );
-                    })}
-                </div>
-                <form.Subscribe
-                  selector={(formState) => [
-                    formState.canSubmit,
-                    formState.isSubmitting,
-                    formState.isDirty,
-                  ]}
-                >
-                  {([canSubmit, isSubmitting]) => {
-                    return (
-                      <Button
-                        type="submit"
-                        disabled={!canSubmit || isPending}
-                        className="sticky bottom-0"
-                      >
-                        {isSubmitting ? "..." : "Submit"}
-                      </Button>
+                                  </RadioGroup>
+                                  <FieldInfo field={field} />
+                                </>
+                              )}
+                            </div>
+                          );
+                        }}
+                      </form.Field>
                     );
-                  }}
-                </form.Subscribe>
-              </form>
-            </div>
-          )}
+                  })
+                )}
+              </div>
+              <form.Subscribe
+                selector={(formState) => [
+                  formState.canSubmit,
+                  formState.isSubmitting,
+                  formState.isDirty,
+                ]}
+              >
+                {([canSubmit, isSubmitting]) => {
+                  return (
+                    <Button
+                      type="submit"
+                      disabled={!canSubmit}
+                      className="sticky bottom-0"
+                    >
+                      {isSubmitting ? "..." : "Submit"}
+                    </Button>
+                  );
+                }}
+              </form.Subscribe>
+            </form>
+          </div>
         </div>
 
         {/* Right Column - Preview */}

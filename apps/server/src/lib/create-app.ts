@@ -8,6 +8,7 @@ import { pinoLogger } from "../middlewares/pino-loggers";
 import { authMiddleware } from "../middlewares/auth";
 import { parseEnv } from "../env";
 import type { AppBindings } from "./types";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export function createRouter() {
   return new Hono<AppBindings>();
@@ -22,17 +23,41 @@ export function createApp() {
   });
 
   app.use("*", async (c, next) => {
-    const { isProductionMode } = getNodeEnvMode(c.env.NODE_ENV);
+    const requestOrigin = c.req.header("Origin");
 
+    const allowedOrigins = ["http://localhost:3000", "https://tantovale.it"];
+
+    const isAllowedOrigin =
+      requestOrigin && allowedOrigins.includes(requestOrigin);
+    const originToUse = isAllowedOrigin
+      ? requestOrigin
+      : (allowedOrigins?.[0] ?? ""); // Fallback to first allowed origin
+
+    // ✅ Properly handle CORS preflight (OPTIONS) requests
+    if (c.req.method === "OPTIONS") {
+      const headers = new Headers({
+        "Access-Control-Allow-Origin": originToUse,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers":
+          "Origin, Content-Type, X-Requested-With, Accept, Authorization",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "600",
+      });
+
+      return new Response(null, {
+        status: 204,
+        headers: headers,
+      });
+    }
+
+    // Continue with normal request processing
     const corsMiddleware = cors({
-      origin: isProductionMode
-        ? `https://tantovale.it`
-        : "http://localhost:3000",
-
+      origin: originToUse,
       allowHeaders: [
         "Origin",
         "Content-Type",
-        "x-middleware-subrequest",
+        "X-Requested-With",
+        "Accept",
         "Authorization",
       ],
       allowMethods: ["GET", "OPTIONS", "POST", "PUT", "DELETE"],
