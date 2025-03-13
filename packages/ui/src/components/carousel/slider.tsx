@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useState, RefObject } from 'react';
+import React, { ReactNode, useEffect, RefObject } from 'react';
 import { useKeenSlider, KeenSliderPlugin, KeenSliderInstance } from 'keen-slider/react';
 
 import 'keen-slider/keen-slider.min.css';
@@ -41,7 +41,6 @@ function ThumbnailPlugin(mainRef: RefObject<KeenSliderInstance | null>): KeenSli
 			});
 		});
 
-		// 🔹 Attach click events again when slides change
 		slider.on('updated', () => {
 			addClickEvents();
 		});
@@ -64,7 +63,7 @@ export default function Slider({ images, thumbnails }: SliderProps) {
 		[ThumbnailPlugin(instanceRef)],
 	);
 
-	// 🔹 Force reinitialization when images change
+	// Reinitialize slider on images update
 	useEffect(() => {
 		instanceRef.current?.update();
 		thumbnailInstanceRef.current?.update();
@@ -72,7 +71,7 @@ export default function Slider({ images, thumbnails }: SliderProps) {
 
 	return (
 		<>
-			<div ref={sliderRef} className='keen-slider min-h-[300px] w-full'>
+			<div ref={sliderRef} className='keen-slider min-h-[inherit]'>
 				{images.map((image, index) => (
 					<div key={index} className='keen-slider__slide'>
 						{image}

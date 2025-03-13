@@ -2,6 +2,18 @@ import { items } from "#database/schema/items";
 import { createInsertSchema } from "drizzle-zod";
 import { number, string, z } from "zod";
 
+const imageFileSchema = z
+  .instanceof(File)
+  .refine((file) => file.type.startsWith("image/"), {
+    message: "Only image files are allowed",
+  });
+
+export const multipleImagesSchema = z
+  .array(imageFileSchema)
+  .nonempty({ message: "At least one image is required" })
+  .min(1, "At least 1 image is required")
+  .max(5, { message: "You can upload up to 6 images at once" });
+
 export const propertySchema = z.object({
   id: number(),
   slug: string(),
@@ -13,20 +25,7 @@ export const propertySchema = z.object({
   ]),
 });
 
-const imageFileSchema = z
-  .instanceof(File)
-  .refine((file) => file.type.startsWith("image/"), {
-    message: "Only image files are allowed",
-  });
-
-const multipleImagesSchema = z
-  .array(imageFileSchema)
-  .nonempty({ message: "At least one image is required" })
-  .min(1, "At least 1 image is required")
-  .max(5, { message: "You can upload up to 6 images at once" });
-
 export const createItemSchema = z.object({
-  images: multipleImagesSchema,
   commons: createInsertSchema(items, {
     title: (schema) =>
       schema.min(5, "Title must be at least 5 characters").max(180),
@@ -46,19 +45,6 @@ export const createItemSchema = z.object({
     created_at: true,
     updated_at: true,
   }),
-  properties: z
-    .preprocess(
-      (val) => (Array.isArray(val) ? val : []),
-      z.array(propertySchema).optional().default([]),
-    )
-    .superRefine((val, ctx) => {
-      if (val.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "At least one property is required.",
-          path: ["properties"],
-        });
-      }
-    })
-    .optional(),
+
+  properties: z.array(propertySchema).optional(),
 });

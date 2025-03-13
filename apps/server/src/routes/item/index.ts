@@ -12,28 +12,19 @@ import { itemsFiltersValues } from "#database/schema/items_filter_values";
 import type { AppBindings } from "#lib/types";
 
 export const itemRoute = new Hono<AppBindings>().post(
-  "/create",
+  "/new",
   zValidator("json", createItemSchema),
   async (c) => {
     try {
       const { ACCESS_TOKEN_SECRET } = c.env;
-      const data = c.req.valid("json");
+      const { commons, properties } = c.req.valid("json");
 
-      // Auth validation
+      // Auth TOKEN
       const accessToken = getCookie(c, "access_token");
+      let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+      const user_id = Number(payload.id);
 
-      let payload;
-
-      try {
-        payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-      } catch (err) {
-        return c.json({ message: "Invalid access token" }, 401);
-      }
-
-      const userId = Number(payload.id);
-      if (!userId) {
-        return c.json({ message: "Invalid user identifier" }, 400);
-      }
+      if (!user_id) return c.json({ message: "Invalid user identifier" }, 400);
 
       const { db } = createClient(c.env);
 
@@ -41,14 +32,14 @@ export const itemRoute = new Hono<AppBindings>().post(
       const availableSubcategory = await db
         .select()
         .from(subcategories)
-        .where(eq(subcategories.id, data.commons.subcategory_id))
+        .where(eq(subcategories.id, commons.subcategory_id))
         .limit(1)
         .then((results) => results[0]);
 
       if (!availableSubcategory) {
         return c.json(
           {
-            message: `Subcategory with ID ${data.commons.subcategory_id} doesn't exist`,
+            message: `Subcategory with ID ${commons.subcategory_id} doesn't exist`,
           },
           400,
         );
@@ -61,8 +52,8 @@ export const itemRoute = new Hono<AppBindings>().post(
         const [newItem] = await tx
           .insert(items)
           .values({
-            ...data.commons,
-            user_id: userId,
+            ...commons,
+            user_id,
             status: "available",
             published: true,
           })
@@ -73,16 +64,13 @@ export const itemRoute = new Hono<AppBindings>().post(
         }
 
         // Handle item properties(filters) if provided
-        if (data.properties?.length) {
+        if (properties?.length) {
           // Get valid filters for this subcategory
           const subcategoryFilters = await tx
             .select()
             .from(subCategoryFilters)
             .where(
-              eq(
-                subCategoryFilters.subcategory_id,
-                data.commons.subcategory_id,
-              ),
+              eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
             );
 
           const validFilterIds = new Set(
@@ -90,7 +78,7 @@ export const itemRoute = new Hono<AppBindings>().post(
           );
 
           // Validate all properties exist
-          const invalidProperties = data.properties.filter(
+          const invalidProperties = properties.filter(
             (p) => !validFilterIds.has(p.id),
           );
 
@@ -100,7 +88,7 @@ export const itemRoute = new Hono<AppBindings>().post(
 
           // Insert filter values
           await tx.insert(itemsFiltersValues).values(
-            data.properties.map(({ id: filter_value_id }) => ({
+            properties.map(({ id: filter_value_id }) => ({
               item_id: newItem.id,
               filter_value_id,
             })),

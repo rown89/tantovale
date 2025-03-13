@@ -14,22 +14,19 @@
 .keen-slider {
 	width: 100%; /* Make the slider take full width of parent */
 	overflow: hidden; /* Prevent overflow */
-}
-
-.thumbnail .keen-slider__slide {
-	font-size: 30px;
-	margin-top: 10px;
-	height: 50px;
+	border-radius: 12px;
 }
 
 .thumbnail .keen-slider__slide {
 	font-size: 30px;
 	margin-top: 10px;
 	height: 100px;
-}
-.thumbnail .keen-slider__slide {
 	cursor: pointer;
+	border-radius: 12px;
+	max-width: 120px !important;
+	min-width: 120px !important;
 }
+
 .thumbnail .keen-slider__slide.active {
-	border: 2px dashed black;
+	border: 2px dashed rgb(48, 170, 241);
 }

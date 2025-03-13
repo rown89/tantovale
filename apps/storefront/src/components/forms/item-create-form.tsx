@@ -8,10 +8,12 @@ import {
   useField,
   useForm,
 } from "@tanstack/react-form";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { client } from "#lib/api";
 import { FieldInfo } from "./utils/field-info";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { CategorySelector } from "#components/category-selector";
 import {
   Select,
@@ -27,6 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
+
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -39,10 +42,13 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
-import { createItemSchema } from "@workspace/server/schema";
+import {
+  createItemSchema,
+  multipleImagesSchema,
+} from "@workspace/server/schema";
 import Slider from "@workspace/ui/components/carousel/slider";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
-import Image from "next/image";
+import { compressImages } from "#utils/imageCompression";
 
 interface Category {
   id: number;
@@ -51,12 +57,15 @@ interface Category {
 }
 
 const placeholderImages = [
-  <Image className="object-cover" fill src="/placeholder.svg" alt="" />,
-  <Image className="object-cover" fill src="/placeholder.svg" alt="" />,
+  {
+    url: "/placeholder.svg",
+    alt: "",
+  },
 ];
 
 export const formOpts = formOptions({
   defaultValues: {
+    images: [],
     commons: {
       title: "",
       description: "",
@@ -84,6 +93,7 @@ export default function CreateItemForm({
   const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
     [],
   );
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
   const {
     data: allCategories,
@@ -142,29 +152,33 @@ export default function CreateItemForm({
     enabled: !!subcategory?.id,
   });
 
-  const schema = createItemSchema.superRefine((val, ctx) => {
-    const requiredFilters =
-      subCatFilters?.filter((filter) => filter.on_create_required) || [];
+  const schema = createItemSchema
+    .and(z.object({ images: multipleImagesSchema }))
+    .superRefine((val, ctx) => {
+      const requiredFilters =
+        subCatFilters?.filter((filter) => filter.on_create_required) || [];
 
-    // For each required filter, check if there's a corresponding property in the schema
-    requiredFilters.forEach((requiredFilter) => {
-      const propertyExists = val.properties?.some(
-        (prop: {
-          id: number;
-          value: string | number | string[] | number[];
-          slug: string;
-        }) => prop.slug === requiredFilter.slug,
-      );
+      // For each required filter, check if there's a corresponding property in the schema
+      requiredFilters.forEach((requiredFilter) => {
+        const propertyExists = val.properties?.some(
+          (prop: {
+            id: number;
+            value: string | number | string[] | number[];
+            slug: string;
+          }) => prop.slug === requiredFilter.slug,
+        );
 
-      if (!propertyExists) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Property for required filter "${requiredFilter.name}" is missing.`,
-          path: ["properties"],
-        });
-      }
+        if (!propertyExists) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Property for required filter "${requiredFilter.name}" is missing.`,
+            path: ["properties"],
+          });
+        }
+      });
     });
-  });
+
+  type schemaType = z.infer<typeof schema>;
 
   const form = useForm({
     ...formOpts.defaultValues,
@@ -172,10 +186,18 @@ export default function CreateItemForm({
       onChange: schema,
     },
     onSubmit: async ({ value }) => {
-      console.log(value);
+      const { images, ...rest } = value as schemaType;
 
       try {
-        await client.item.create.$post({ json: value as never });
+        const itemResponse = await client.item.new.$post({
+          json: rest,
+        });
+
+        if (!itemResponse?.ok) {
+          // error modal
+        } else {
+          // ok modal
+        }
       } catch (error) {
         console.log(error);
       }
@@ -188,13 +210,13 @@ export default function CreateItemForm({
   const properties = useField({ form, name: "properties" });
   const images = useField({ form, name: "images" });
 
-  const handleQueryParamChange = (qs: string, value: string) => {
+  function handleQueryParamChange(qs: string, value: string) {
     const params = new URLSearchParams(searchParams);
     params.set(qs, value);
     const newUrl = `?${params.toString()}`;
 
     router.replace(newUrl);
-  };
+  }
 
   function buildNestedSubCatHierarchy() {
     // Convert subcategories array into a nested structure
@@ -230,13 +252,13 @@ export default function CreateItemForm({
     }
   }
 
-  const handleSubCategorySelect = (
+  function handleSubCategorySelect(
     subcategory: Omit<Category, "subcategories">,
-  ) => {
+  ) {
     setSelectedSubCategory(subcategory);
     subcategory_id.setValue(subcategory.id);
     handleQueryParamChange("cat", subcategory?.id?.toString());
-  };
+  }
 
   // Update the properties array with proper types utility
   function updatePropertiesArray({
@@ -274,6 +296,7 @@ export default function CreateItemForm({
     // Update the form field state.
     field.handleChange(currentProperties);
   }
+
   // set field default values utility
   function getCurrentValue(field: AnyFieldApi, filterId: string | number) {
     if (!Array.isArray(field.state.value)) return undefined;
@@ -296,6 +319,18 @@ export default function CreateItemForm({
     }
   }, [allCategories, allSubcategories]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFullscreenImage(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const delivery_method_types = [
     {
       id: "pickup",
@@ -317,7 +352,11 @@ export default function CreateItemForm({
             }}
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
-            <div className="overflow-scroll flex gap-4 flex-col">
+            <div className="overflow-auto flex gap-4 flex-col">
+              {/* <p className="py-4 text-sm">
+                {JSON.stringify(form.state.errors, null, 4)}
+              </p> */}
+
               <form.Field name="commons.title">
                 {(field) => {
                   return (
@@ -397,7 +436,7 @@ export default function CreateItemForm({
                     <div className="space-y-2 ">
                       <MultiImageUpload
                         maxImages={5}
-                        onImagesChange={(images) => {
+                        onImagesChange={(images: any) => {
                           field.handleChange(images);
                         }}
                       />
@@ -451,7 +490,9 @@ export default function CreateItemForm({
                       </Label>
                       <Select
                         name={field.name}
-                        onValueChange={(value) => field.handleChange(value)}
+                        onValueChange={(
+                          value: schemaType["commons"]["delivery_method"],
+                        ) => field.handleChange(value)}
                         defaultValue={field.state.value?.toString()}
                         aria-invalid={
                           field.state.meta.isTouched &&
@@ -529,13 +570,14 @@ export default function CreateItemForm({
                                 </Label>
                                 <Select
                                   name={field.name}
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
                                     updatePropertiesArray({
-                                      value,
+                                      // If "reset" is selected, clear the selection
+                                      value: value === "reset" ? [] : value,
                                       filter,
                                       field,
-                                    })
-                                  }
+                                    });
+                                  }}
                                   defaultValue={getCurrentValue(
                                     field,
                                     filter.id,
@@ -548,6 +590,11 @@ export default function CreateItemForm({
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectGroup>
+                                      {!filter.on_create_required && (
+                                        <SelectItem value="reset">
+                                          --
+                                        </SelectItem>
+                                      )}
                                       {filter.options?.map((item, i) => (
                                         <SelectItem
                                           key={i}
@@ -560,7 +607,7 @@ export default function CreateItemForm({
                                   </SelectContent>
                                 </Select>
 
-                                {field.state.meta.errors.some((item) =>
+                                {field.state.meta.errors.some((item: any) =>
                                   item?.message?.includes(filter.name),
                                 ) ? (
                                   <FieldInfo field={field} />
@@ -808,46 +855,94 @@ export default function CreateItemForm({
                     : "0.00"}
                 </p>
 
-                <div className="min-h-[350px] w-full relative">
+                <div className="min-h-[450px]">
                   <Slider
                     images={
                       images.state.value && Array.isArray(images.state.value)
-                        ? images.state.value.map((file, i) => (
+                        ? images.state.value.map((file: File, i) => {
+                            const imageUrl = URL.createObjectURL(file);
+
+                            return (
+                              <div
+                                key={i}
+                                onClick={() => {
+                                  setFullscreenImage(imageUrl);
+                                }}
+                              >
+                                <Image
+                                  fill
+                                  className="object-cover hover:cursor-pointer"
+                                  src={imageUrl}
+                                  alt=""
+                                />
+                              </div>
+                            );
+                          })
+                        : placeholderImages.map((item, i) => (
                             <Image
                               key={i}
                               fill
                               className="object-cover"
-                              src={URL.createObjectURL(file)}
-                              alt=""
+                              src={item.url}
+                              alt={item.alt}
                             />
                           ))
-                        : placeholderImages
                     }
                     thumbnails={
                       images.state.value && Array.isArray(images.state.value)
-                        ? images.state.value.map((file, i) => (
+                        ? images.state.value.map((file: File, i) => {
+                            const thumbUrl = URL.createObjectURL(file);
+                            return (
+                              <Image
+                                key={i}
+                                fill
+                                className="object-cover hover:cursor-pointer"
+                                src={thumbUrl}
+                                alt=""
+                              />
+                            );
+                          })
+                        : placeholderImages.map((item, i) => (
                             <Image
                               key={i}
                               fill
                               className="object-cover"
-                              src={URL.createObjectURL(file)}
-                              alt=""
+                              src={item.url}
+                              alt={item.alt}
                             />
                           ))
-                        : placeholderImages
                     }
                   />
+
+                  {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
+                  <AnimatePresence>
+                    {fullscreenImage && (
+                      <motion.div
+                        className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setFullscreenImage(null)}
+                      >
+                        <motion.img
+                          src={fullscreenImage}
+                          alt="Fullscreen"
+                          className="h-full p-12 object-contain"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
-                <div className="text-gray-500 whitespace-pre-wrap max-h-60 overflow-auto break-all">
+                <div className="text-gray-200 whitespace-pre-wrap max-h-60 overflow-auto break-all">
                   {String(description.state.value ?? "") ||
                     "Your item description will appear here..."}
                 </div>
               </div>
-
-              <p className="py-4">
-                {JSON.stringify(form.state.errors, null, 4)}
-              </p>
             </CardContent>
           </Card>
 

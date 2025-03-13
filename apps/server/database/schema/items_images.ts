@@ -10,7 +10,11 @@ export const itemsImages = pgTable(
       .notNull()
       .references(() => items.id, { onDelete: "cascade", onUpdate: "cascade" }),
     url: text("url").notNull(),
+    order_position: integer().notNull().default(0),
     created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },

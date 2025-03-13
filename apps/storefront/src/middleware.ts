@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loginUrl, signupUrl } from "./routes";
 
-const restrictedPaths = ["/protected", "/profile", "items/create"];
+const restrictedPaths = ["/protected", "/profile", "item/new"];
 
 export async function middleware(req: NextRequest) {
   const { nextUrl } = req;

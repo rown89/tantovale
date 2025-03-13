@@ -23,12 +23,12 @@ export type UploadedImage = {
 };
 
 export type MultiImageUploadProps = {
-	onImagesChange?: (images: (File | string)[]) => void;
+	onImagesChange?: (images: File[]) => void;
 	maxImages?: number;
 	maxSizeInMB?: number;
 	acceptedFileTypes?: string[];
 	className?: string;
-	initialImageUrls?: string[]; // New prop for initial image URLs
+	initialImageUrls?: string[];
 };
 
 export default function MultiImageUpload({
@@ -37,7 +37,7 @@ export default function MultiImageUpload({
 	maxSizeInMB = 5,
 	acceptedFileTypes = ['image/jpeg', 'image/png'],
 	className,
-	initialImageUrls = [], // Default to empty array
+	initialImageUrls = [],
 }: MultiImageUploadProps) {
 	const [useTouchBackend, setUseTouchBackend] = useState(false);
 	const [images, setImages] = useState<UploadedImage[]>([]);
@@ -67,7 +67,7 @@ export default function MultiImageUpload({
 
 			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
-				onImagesChange(initialImageUrls);
+				onImagesChange(initialImageUrls as (File | string)[]);
 			}
 		}
 	}, [initialImageUrls, maxImages, onImagesChange, images.length]);
@@ -244,15 +244,10 @@ export default function MultiImageUpload({
 					onClick={() => fileInputRef.current?.click()}>
 					<div className='flex flex-col items-center justify-center space-y-2'>
 						<div className='bg-primary/10 rounded-full p-3'>
-							<Upload className='text-primary h-6 w-6' />
+							<Upload className='text-primary h-4 w-4' />
 						</div>
 						<h3 className='text-lg font-medium'>Drag & drop images or click to browse</h3>
-						<p className='text-muted-foreground text-sm'>
-							Upload up to {maxImages} images (max {maxSizeInMB}MB each)
-						</p>
-						<p className='text-muted-foreground text-xs'>
-							Supported formats: {acceptedFileTypes.map((type) => type.split('/')[1]).join(', ')}
-						</p>
+						<p className='text-muted-foreground text-sm'>Upload up to {maxImages} images</p>
 					</div>
 					<Input
 						ref={fileInputRef}
