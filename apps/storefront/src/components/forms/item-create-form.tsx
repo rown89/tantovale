@@ -49,6 +49,7 @@ import {
 import Slider from "@workspace/ui/components/carousel/slider";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 import { compressImages } from "#utils/imageCompression";
+import { toast } from "sonner";
 
 interface Category {
   id: number;
@@ -183,7 +184,7 @@ export default function CreateItemForm({
   const form = useForm({
     ...formOpts.defaultValues,
     validators: {
-      onChange: schema,
+      onSubmit: schema,
     },
     onSubmit: async ({ value }) => {
       const { images, ...rest } = value as schemaType;
@@ -193,10 +194,26 @@ export default function CreateItemForm({
           json: rest,
         });
 
-        if (!itemResponse?.ok) {
-          // error modal
+        if (itemResponse.status !== 201) {
+          toast(`Add new item rrror`, {
+            description:
+              "We are encountering tecnhical problems, please retry later.",
+            duration: 4000,
+          });
         } else {
           // ok modal
+          const newItem = await itemResponse.json();
+
+          if (newItem?.item_id) {
+            const imagesResponse = await client.auth.uploads[
+              "item-images"
+            ].$post({
+              form: {
+                images,
+                item_id: String(newItem.item_id),
+              },
+            });
+          }
         }
       } catch (error) {
         console.log(error);

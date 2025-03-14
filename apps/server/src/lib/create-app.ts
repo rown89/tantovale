@@ -2,13 +2,12 @@ import "dotenv/config";
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authPath, getNodeEnvMode } from "../utils/constants";
+import { authPath } from "../utils/constants";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { pinoLogger } from "../middlewares/pino-loggers";
 import { authMiddleware } from "../middlewares/auth";
 import { parseEnv } from "../env";
 import type { AppBindings } from "./types";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export function createRouter() {
   return new Hono<AppBindings>();

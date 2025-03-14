@@ -10,10 +10,12 @@ import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { itemsFiltersValues } from "#database/schema/items_filter_values";
 import type { AppBindings } from "#lib/types";
+import { authMiddleware } from "#middlewares/auth";
 
 export const itemRoute = new Hono<AppBindings>().post(
   "/new",
   zValidator("json", createItemSchema),
+  authMiddleware,
   async (c) => {
     try {
       const { ACCESS_TOKEN_SECRET } = c.env;
@@ -99,7 +101,7 @@ export const itemRoute = new Hono<AppBindings>().post(
         return c.json(
           {
             message: "Item created successfully",
-            item: newItem,
+            item_id: newItem.id,
           },
           201,
         );

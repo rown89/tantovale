@@ -21,6 +21,7 @@ import {
   subcategoryFiltersRoute,
   categoriesRoute,
   filtersRoute,
+  uploadsRoute,
 } from "./routes";
 
 const app = createApp();
@@ -34,12 +35,13 @@ const apiRoutes = app
   .route("/verify", verifyEmailRoute)
   .route(`/verify`, verifyRoute)
   .route("/items", itemsRoute)
-  .route("/item", itemRoute)
   .route("/categories", categoriesRoute)
   .route("/filters", filtersRoute)
   .route("/subcategories", subcategoriesRoute)
   .route("/subcategory_fitlers", subcategoryFiltersRoute)
   .route("/password", passwordForgotRoute)
+  .route(`/item`, itemRoute)
+  .route(`/${authPath}/uploads`, uploadsRoute)
   .route(`/${authPath}/item`, itemRoute)
   .route(`/${authPath}/logout`, logoutRoute)
   .route(`/${authPath}/refresh`, refreshRoute)

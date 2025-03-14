@@ -12,4 +12,5 @@ export * from "./verify/email";
 export * from "./refresh";
 export * from "./logout";
 export * from "./password";
+export * from "./uploads";
 export * from "./profile";
