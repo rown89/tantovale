@@ -15,6 +15,7 @@ import { refreshTokens, users } from "#database/schema";
 import type { AppBindings } from "#lib/types";
 import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
+import { env } from "hono/adapter";
 
 export const verifyEmailRoute = new Hono<AppBindings>().get(
   "/email",
@@ -27,7 +28,15 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
     },
   }),
   async (c) => {
-    const { EMAIL_VERIFY_TOKEN_SECRET } = c.env;
+    const {
+      ACCESS_TOKEN_SECRET,
+      REFRESH_TOKEN_SECRET,
+      EMAIL_VERIFY_TOKEN_SECRET,
+    } = env<{
+      ACCESS_TOKEN_SECRET: string;
+      REFRESH_TOKEN_SECRET: string;
+      EMAIL_VERIFY_TOKEN_SECRET: string;
+    }>(c);
 
     const token = c.req.query("token");
     if (!token) return c.json({ error: "Token required" }, 409);
@@ -80,11 +89,11 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
     // Generate and sign tokens
     const new_access_token = await sign(
       access_token_payload,
-      c.env.ACCESS_TOKEN_SECRET,
+      ACCESS_TOKEN_SECRET,
     );
     const new_refresh_token = await sign(
       refresh_token_payload,
-      c.env.REFRESH_TOKEN_SECRET,
+      REFRESH_TOKEN_SECRET,
     );
 
     setCookie(c, "access_token", new_access_token, {

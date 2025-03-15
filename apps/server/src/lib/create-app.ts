@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { requestId } from "hono/request-id";
 import { authPath } from "../utils/constants";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { pinoLogger } from "../middlewares/pino-loggers";
@@ -68,8 +69,7 @@ export function createApp() {
     await corsMiddleware(c, next);
   });
 
-  app.use(serveEmojiFavicon("📝"));
-  app.use(pinoLogger());
+  app.use(requestId()).use(serveEmojiFavicon("📝")).use(pinoLogger());
 
   app.notFound(notFound);
   app.onError(onError);

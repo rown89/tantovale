@@ -3,6 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "outDir": "./dist",
+    "rootDir": ".",
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
     "experimentalDecorators": true,

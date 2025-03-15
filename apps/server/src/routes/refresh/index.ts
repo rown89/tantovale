@@ -14,6 +14,7 @@ import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 } from "#utils/constants";
+import { env } from "hono/adapter";
 
 export const refreshRoute = new Hono<AppBindings>().post(
   "/",
@@ -26,7 +27,10 @@ export const refreshRoute = new Hono<AppBindings>().post(
     },
   }),
   async (c) => {
-    const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = c.env;
+    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
+      ACCESS_TOKEN_SECRET: string;
+      REFRESH_TOKEN_SECRET: string;
+    }>(c);
 
     const refresh_token = getCookie(c, "refresh_token");
 
@@ -78,11 +82,11 @@ export const refreshRoute = new Hono<AppBindings>().post(
       // Generate and sign tokens
       const new_access_token = await sign(
         access_token_payload,
-        c.env.ACCESS_TOKEN_SECRET,
+        ACCESS_TOKEN_SECRET,
       );
       const new_refresh_token = await sign(
         refresh_token_payload,
-        c.env.REFRESH_TOKEN_SECRET,
+        REFRESH_TOKEN_SECRET,
       );
 
       setCookie(c, "access_token", new_access_token, {

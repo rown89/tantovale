@@ -91,6 +91,7 @@ async function insertSubRegions(): Promise<number> {
 
   return await batchInsert<typeof subRegions>(
     subRegions,
+    // @ts-expect-error ignore seeder
     subRegionsReshape,
     "subRegions",
   );
@@ -109,6 +110,7 @@ async function insertCountries(): Promise<number> {
 
   return await batchInsert<Omit<typeof countries, "id">>(
     countries,
+    // @ts-expect-error ignore seeder
     countriesReshape,
     "countries",
   );

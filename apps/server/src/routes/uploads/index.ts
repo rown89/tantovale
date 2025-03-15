@@ -6,10 +6,23 @@ import { Upload } from "@aws-sdk/lib-storage";
 import sharp from "sharp";
 
 import type { AppBindings } from "#lib/types";
+import { env } from "hono/adapter";
 
 export const uploadsRoute = new Hono<AppBindings>().post(
   "/item-images",
   async (c) => {
+    const {
+      AWS_REGION,
+      AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY,
+      AWS_BUCKET_NAME,
+    } = env<{
+      AWS_REGION: string;
+      AWS_ACCESS_KEY_ID: string;
+      AWS_SECRET_ACCESS_KEY: string;
+      AWS_BUCKET_NAME: string;
+    }>(c);
+
     const formData = await c.req.parseBody({ all: true, dot: true });
     const { images, item_id } = formData;
 
@@ -33,9 +46,9 @@ export const uploadsRoute = new Hono<AppBindings>().post(
 
     // Initialize S3 client
     const client = s3Client(
-      c.env.AWS_REGION,
-      c.env.AWS_ACCESS_KEY_ID,
-      c.env.AWS_SECRET_ACCESS_KEY,
+      AWS_REGION,
+      AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY,
     );
 
     let refinedImages = [];
@@ -95,7 +108,7 @@ export const uploadsRoute = new Hono<AppBindings>().post(
           const upload = new Upload({
             client,
             params: {
-              Bucket: c.env.AWS_BUCKET_NAME,
+              Bucket: AWS_BUCKET_NAME,
               Key: `${fullFolderPath}/${fileName}_${timestamp}.${extension}`,
               Body: buffer,
               ContentType: file.type,
@@ -109,7 +122,7 @@ export const uploadsRoute = new Hono<AppBindings>().post(
         const thumbUpload = new Upload({
           client,
           params: {
-            Bucket: c.env.AWS_BUCKET_NAME,
+            Bucket: AWS_BUCKET_NAME,
             Key: `${thumbFolderPath}/${fileName}_${timestamp}_thumb.${extension}`,
             Body: thumbnailBuffer,
             ContentType: file.type,

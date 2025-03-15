@@ -1,8 +1,0 @@
-name = "tantovale-backend"
-main = "src/app.ts"
-compatibility_date = "2024-09-23"
-compatibility_flags = [ "nodejs_compat" ]
-keep_vars = true
-
-[alias]
-"sharp" = "./polyfills/sharp-polyfill"

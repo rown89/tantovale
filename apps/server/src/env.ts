@@ -15,6 +15,7 @@ expand(
 
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
+  SERVER_PORT: z.coerce.number().default(8787),
   STOREFRONT_HOSTNAME: z.string(),
   STOREFRONT_PORT: z.coerce.number().default(3000),
   ACCESS_TOKEN_SECRET: z.string(),

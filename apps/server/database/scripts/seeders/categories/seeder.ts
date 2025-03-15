@@ -181,6 +181,7 @@ async function seedElectronicSubcategories(
 
   const insertedParents = await db
     .insert(subcategories)
+    // @ts-expect-error ignore seeder
     .values(allParents)
     .onConflictDoNothing()
     .returning();
@@ -231,6 +232,7 @@ async function seedElectronicSubcategories(
   if (childSubcategories.length > 0) {
     insertedChildren = await db
       .insert(subcategories)
+      // @ts-expect-error ignore seeder
       .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
@@ -280,6 +282,7 @@ async function seedClothingsSubcategories(
 
   const insertedParents = await db
     .insert(subcategories)
+    // @ts-expect-error ignore seeder
     .values(allParents)
     .onConflictDoNothing()
     .returning();
@@ -330,6 +333,7 @@ async function seedClothingsSubcategories(
   if (childSubcategories.length > 0) {
     insertedChildren = await db
       .insert(subcategories)
+      // @ts-expect-error ignore seeder
       .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
@@ -382,6 +386,7 @@ async function seedKidsSubcategories(
 
   const insertedParents = await db
     .insert(subcategories)
+    // @ts-expect-error ignore seeder
     .values(allParents)
     .onConflictDoNothing()
     .returning();
@@ -432,6 +437,7 @@ async function seedKidsSubcategories(
   if (childSubcategories.length > 0) {
     insertedChildren = await db
       .insert(subcategories)
+      // @ts-expect-error ignore seeder
       .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
@@ -487,6 +493,7 @@ async function seedCollectablesSubcategories(
 
   const insertedParents = await db
     .insert(subcategories)
+    // @ts-expect-error ignore seeder
     .values(allParents)
     .onConflictDoNothing()
     .returning();
@@ -537,6 +544,7 @@ async function seedCollectablesSubcategories(
   if (childSubcategories.length > 0) {
     insertedChildren = await db
       .insert(subcategories)
+      // @ts-expect-error ignore seeder
       .values(childSubcategories)
       .onConflictDoNothing()
       .returning();
@@ -555,6 +563,7 @@ async function seedCollectablesSubcategories(
 async function seedFilters(db: DrizzleClient["db"]) {
   const insertedFilters = await db
     .insert(filters)
+    // @ts-expect-error ignore seeder
     .values(FILTER_SEEDS)
     .onConflictDoNothing()
     .returning();
@@ -668,6 +677,7 @@ async function seedFilterValues(
 
   const insertedFilterValues = await db
     .insert(filterValues)
+    // @ts-expect-error ignore seeder
     .values(valuesToInsert)
     .onConflictDoNothing()
     .returning();

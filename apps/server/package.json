@@ -4,10 +4,10 @@
   "private": true,
   "module": "esnext",
   "type": "module",
-  "rootDir": ".",
   "scripts": {
-    "hono:deploy": "wrangler deploy --minify",
-    "hono:dev": "wrangler dev",
+    "hono:dev": "tsx watch src/index.ts",
+    "hono:start": "node ./dist/src/index.js",
+    "hono:build": "tsc",
     "db:build": "tsx src/index.ts",
     "db:dev": "tsx --watch",
     "db:check": "npx drizzle-kit check --config=./database/drizzle.config.ts",
@@ -66,7 +66,6 @@
     "zod-openapi": "^4.2.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
     "@types/argon2-browser": "^1.18.4",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
@@ -75,7 +74,6 @@
     "@workspace/typescript-config": "*",
     "dotenv-cli": "^8.0.0",
     "drizzle-kit": "^0.30.4",
-    "tsx": "^4.19.2",
-    "wrangler": "^4.0"
+    "tsx": "^4.19.2"
   }
 }

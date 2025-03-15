@@ -19,11 +19,7 @@
 		},
 		"db:generate": {
 			"cache": false,
-			"inputs": [
-				"$TURBO_DEFAULT$",
-				"./server/database/drizzle.config.ts",
-				"./server/database/schema/schema.ts"
-			],
+			"inputs": ["$TURBO_DEFAULT$", "./server/database/drizzle.config.ts", "./server/database/schema/schema.ts"],
 			"outputs": ["./drizzle/**"]
 		},
 		"db:migrate": {
@@ -46,7 +42,12 @@
 			"cache": false,
 			"persistent": true
 		},
-		"hono:deploy": {
+		"hono:build": {
+			"dependsOn": ["db:push"],
+			"inputs": ["$TURBO_DEFAULT$", ".dev.vars*", ".env*", "tsconfig.json"],
+			"outputs": ["dist/**"]
+		},
+		"hono:start": {
 			"dependsOn": ["db:push"],
 			"inputs": ["$TURBO_DEFAULT$", ".dev.vars*", ".env*", "tsconfig.json"],
 			"outputs": ["dist/**"]

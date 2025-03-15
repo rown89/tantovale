@@ -1,1 +1,1 @@
-export * from "./verify-email";
+export * from "./templates/verify-email";
