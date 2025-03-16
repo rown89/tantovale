@@ -842,7 +842,7 @@ export default function CreateItemForm({
                 return (
                   <Button
                     type="submit"
-                    disabled={!canSubmit}
+                    //  disabled={!canSubmit}
                     className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}

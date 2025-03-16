@@ -5,7 +5,7 @@ import type { AppBindings } from "#lib/types";
 
 export const categoriesRoute = new Hono<AppBindings>().get("/", async (c) => {
   try {
-    const { db } = createClient(c.env);
+    const { db } = createClient();
 
     const categoryList = await db
       .select({

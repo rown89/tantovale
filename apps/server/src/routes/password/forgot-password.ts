@@ -20,7 +20,7 @@ export const passwordForgotRoute = new Hono<AppBindings>().post(
       return c.json({ error: "Email is required" }, 400);
     }
 
-    const { db } = createClient(c.env);
+    const { db } = createClient();
     // Check if the user exists
     const user = await db.query.users.findFirst({
       where: (tbl) => eq(tbl.email, email),

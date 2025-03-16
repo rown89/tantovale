@@ -9,7 +9,7 @@ export const checkUser = async (
   identifier: string,
   type: "email" | "username",
 ) => {
-  const { db } = createClient(c.env);
+  const { db } = createClient();
 
   const user = await db
     .select()

@@ -19,7 +19,7 @@ export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
         const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
         const username = payload.username as string;
 
-        const { db } = createClient(c.env);
+        const { db } = createClient();
         // Remove refresh token
         await db
           .delete(refreshTokens)

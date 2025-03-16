@@ -53,7 +53,7 @@ export const refreshRoute = new Hono<AppBindings>().post(
         phone_verified,
       };
 
-      const { db } = createClient(c.env);
+      const { db } = createClient();
       // Check if the refresh token exists in db
       const storedToken = await db
         .select()

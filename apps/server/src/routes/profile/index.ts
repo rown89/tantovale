@@ -11,7 +11,7 @@ export const profileRoute = new Hono<AppBindings>();
 profileRoute.post("/", async (c) => {
   const user = c.var.user;
 
-  const { db } = createClient(c.env);
+  const { db } = createClient();
   const userProfile = await db
     .select()
     .from(profiles)
@@ -32,7 +32,7 @@ profileRoute.put("/", async (c) => {
   try {
     const validatedData = updateProfileSchema.parse(body);
 
-    const { db } = createClient(c.env);
+    const { db } = createClient();
     const updatedProfile = await db
       .update(profiles)
       .set({

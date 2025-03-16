@@ -12,7 +12,7 @@ export const getFilterByIdService = async (
   id: number,
 ) => {
   try {
-    const { db } = createClient(c.env);
+    const { db } = createClient();
 
     const filtersList = await db
       .select()
@@ -31,7 +31,7 @@ export const getFiltersBySubcategoryFiltersIdService = async (
   c: Context<AppBindings>,
   id: number,
 ) => {
-  const { db } = createClient(c.env);
+  const { db } = createClient();
 
   const filtersRequest = await db
     .select({

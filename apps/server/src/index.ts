@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 
-import app from "./app";
+import { app } from "./app";
 import { parseEnv } from "./env";
 
 const port = parseEnv(process.env).SERVER_PORT;

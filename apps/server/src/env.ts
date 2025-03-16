@@ -1,4 +1,3 @@
-/* eslint-disable node/no-process-env */
 import { config } from "dotenv";
 import { expand } from "dotenv-expand";
 import path from "node:path";
@@ -15,7 +14,7 @@ expand(
 
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
-  SERVER_PORT: z.coerce.number().default(8787),
+  SERVER_PORT: z.coerce.number().default(8787).optional(),
   STOREFRONT_HOSTNAME: z.string(),
   STOREFRONT_PORT: z.coerce.number().default(3000),
   ACCESS_TOKEN_SECRET: z.string(),
@@ -23,10 +22,6 @@ const EnvSchema = z.object({
   EMAIL_VERIFY_TOKEN_SECRET: z.string(),
   RESET_TOKEN_SECRET: z.string(),
   COOKIE_SECRET: z.string(),
-  AWS_REGION: z.string(),
-  AWS_BUCKET_NAME: z.string(),
-  AWS_ACCESS_KEY_ID: z.string(),
-  AWS_SECRET_ACCESS_KEY: z.string(),
   SMTP_HOST: z.string(),
   SMTP_PORT: z.string(),
   SMTP_USER: z.string(),
@@ -40,10 +35,12 @@ const EnvSchema = z.object({
     "trace",
     "silent",
   ]),
-  DATABASE_URL: z.string().url(),
+  DATABASE_USERNAME: z.string(),
+  DATABASE_PASSWORD: z.string(),
+  DATABASE_HOST: z.string(),
+  DATABASE_PORT: z.coerce.number().default(5432),
+  DATABASE_NAME: z.string(),
 });
-
-export type Environment = z.infer<typeof EnvSchema>;
 
 export function parseEnv(data: any) {
   const { data: env, error } = EnvSchema.safeParse(data);
@@ -59,3 +56,5 @@ export function parseEnv(data: any) {
 
   return env;
 }
+
+export type Environment = z.infer<typeof EnvSchema>;

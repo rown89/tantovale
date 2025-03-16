@@ -20,7 +20,7 @@ export const passwordResetRoute = new Hono<AppBindings>()
     try {
       const payload = await verify(token, RESET_TOKEN_SECRET);
 
-      const { db } = createClient(c.env);
+      const { db } = createClient();
       // Check if token exists in DB
       const storedToken = await db.query.passwordResetTokens.findFirst({
         where: (tbl) => eq(tbl.token, token),

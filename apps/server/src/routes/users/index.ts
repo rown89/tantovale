@@ -8,7 +8,7 @@ export const usersRoute = new Hono<AppBindings>().get("/:id{[0-9]+}", (c) => {
   const id = c.req.param("id");
 
   try {
-    const { db } = createClient(c.env);
+    const { db } = createClient();
 
     const user = db
       .select()

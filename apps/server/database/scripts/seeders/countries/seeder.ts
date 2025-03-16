@@ -15,12 +15,11 @@ import {
 } from "#database/schema";
 
 // Configuration
-const DATABASE_URL = process.env.DATABASE_URL ?? "";
 const BATCH_SIZE = 1000;
 const DATA_DIR = "./data";
 
 // Initialize database client
-const { db } = nodeClient(DATABASE_URL);
+const { db } = nodeClient();
 
 // Helper function to read JSON data with type inference
 function readJsonFile<T>(filename: string): T[] {

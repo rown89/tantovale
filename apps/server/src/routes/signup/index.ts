@@ -54,7 +54,7 @@ export const signupRoute = new Hono<AppBindings>().post(
 
       const hashedPassword = await hashPassword(password);
 
-      const { db } = createClient(c.env);
+      const { db } = createClient();
       // Create new user
       const results = await db
         .insert(users)

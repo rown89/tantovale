@@ -5,7 +5,7 @@ import type { AppBindings } from "#lib/types";
 import type { Context } from "hono";
 
 export const getSubcategories = async (c: Context<AppBindings>) => {
-  const { db } = createClient(c.env);
+  const { db } = createClient();
 
   return await db
     .select({
@@ -21,7 +21,7 @@ export const getSubcategoriesById = async (
   c: Context<AppBindings>,
   id: number,
 ) => {
-  const { db } = createClient(c.env);
+  const { db } = createClient();
 
   return await db
     .select({
@@ -36,7 +36,7 @@ export const getSubcategoriesWithoutParentById = async (
   c: Context<AppBindings>,
   id: number,
 ) => {
-  const { db } = createClient(c.env);
+  const { db } = createClient();
 
   return await db
     .select({

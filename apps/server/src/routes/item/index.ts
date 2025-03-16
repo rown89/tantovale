@@ -28,7 +28,7 @@ export const itemRoute = new Hono<AppBindings>().post(
 
       if (!user_id) return c.json({ message: "Invalid user identifier" }, 400);
 
-      const { db } = createClient(c.env);
+      const { db } = createClient();
 
       // Validate subcategory exists
       const availableSubcategory = await db

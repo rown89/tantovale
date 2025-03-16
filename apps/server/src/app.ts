@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import { handle } from "hono/aws-lambda";
 import { createApp } from "#lib/create-app";
 import { configureOpenAPI } from "#lib/configureOpenApi";
 import { authPath } from "#utils/constants";
@@ -50,4 +51,6 @@ const apiRoutes = app
   .route(`/${authPath}/profile`, profileRoute);
 
 export type ApiRoutesType = typeof apiRoutes;
-export default app;
+
+export { app };
+export const handler = handle(app);

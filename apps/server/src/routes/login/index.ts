@@ -28,7 +28,7 @@ export const loginRoute = new Hono<AppBindings>().post(
     try {
       const { email, password } = await c.req.json();
 
-      const { db } = createClient(c.env);
+      const { db } = createClient();
       // lookup email in database
       const userFromDb = await db
         .select()

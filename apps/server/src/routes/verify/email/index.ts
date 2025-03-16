@@ -43,7 +43,7 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
 
     const { id, type } = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
 
-    const { db } = createClient(c.env);
+    const { db } = createClient();
     // Get existing user by id
     const user = await db.query.users.findFirst({
       where: (tbl) => eq(tbl.id, Number(id)),

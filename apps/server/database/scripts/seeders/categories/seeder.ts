@@ -26,14 +26,10 @@ function isParentGroupSeed(
   return "parent" in item && "children" in item;
 }
 
-export const seedDatabase = async (databaseUrl: string): Promise<void> => {
+export const seedDatabase = async (): Promise<void> => {
   console.log("🌱 Starting database seeding...");
 
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL not provided");
-  }
-
-  const { db, client } = nodeClient(databaseUrl);
+  const { db, client } = nodeClient();
 
   try {
     // Begin transaction

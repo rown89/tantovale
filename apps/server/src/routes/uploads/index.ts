@@ -1,8 +1,7 @@
 import { Hono } from "hono";
-import { validator } from "hono/validator";
-import { z } from "zod";
 import { s3Client } from "#lib/s3Client";
 import { Upload } from "@aws-sdk/lib-storage";
+import { Resource } from "sst";
 import sharp from "sharp";
 
 import type { AppBindings } from "#lib/types";
