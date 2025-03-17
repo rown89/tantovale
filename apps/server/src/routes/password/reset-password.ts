@@ -5,11 +5,14 @@ import { hashPassword } from "#lib/password";
 import { createClient } from "#database/db";
 import { users, passwordResetTokens } from "#database/schema";
 import type { AppBindings } from "#lib/types";
+import { env } from "hono/adapter";
 
 export const passwordResetRoute = new Hono<AppBindings>()
   // Update Password
   .post("/reset", async (c) => {
-    const { RESET_TOKEN_SECRET } = c.env;
+    const { RESET_TOKEN_SECRET } = env<{
+      RESET_TOKEN_SECRET: string;
+    }>(c);
 
     const { token, newPassword } = await c.req.json();
 

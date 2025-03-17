@@ -18,6 +18,8 @@ import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie, setCookie } from "hono/cookie";
 import type { AppBindings } from "#lib/types";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
+import { env } from "hono/adapter";
+import { Resource } from "sst";
 
 export const signupRoute = new Hono<AppBindings>().post(
   "/",
@@ -31,12 +33,10 @@ export const signupRoute = new Hono<AppBindings>().post(
   }),
   zValidator("json", UserSchema),
   async (c) => {
-    const {
-      NODE_ENV,
-      EMAIL_VERIFY_TOKEN_SECRET,
-      STOREFRONT_HOSTNAME,
-      STOREFRONT_PORT,
-    } = c.env;
+    const { NODE_ENV, EMAIL_VERIFY_TOKEN_SECRET } = env<{
+      NODE_ENV: string;
+      EMAIL_VERIFY_TOKEN_SECRET: string;
+    }>(c);
 
     try {
       const values = await c.req.json();
@@ -90,7 +90,7 @@ export const signupRoute = new Hono<AppBindings>().post(
       });
 
       const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
-      const verificationLink = `http${isProductionMode || isStagingMode ? "s" : ""}://${STOREFRONT_HOSTNAME}:${STOREFRONT_PORT}/api/verify/email?token=${email_activation_token}`;
+      const verificationLink = `${Resource.Tantovale_Frontend.url}/api/verify/email?token=${email_activation_token}`;
 
       if (isProductionMode || isStagingMode) {
         await sendVerifyEmail(email, verificationLink);

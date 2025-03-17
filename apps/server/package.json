@@ -5,10 +5,6 @@
   "module": "esnext",
   "type": "module",
   "scripts": {
-    "sso": "aws sso login --sso-session=tantovale",
-    "sso-dev": "aws sso login --sso-session=tantovale-dev",
-    "sst-deploy-prod": "sst deploy --stage production",
-    "sst-deploy-dev": "sst deploy --stage dev",
     "hono:build": "tsc",
     "hono:dev": "tsx watch src/index.ts",
     "hono:start": "node ./dist/src/index.js",
@@ -46,9 +42,6 @@
     "./schema": "./src/schema/index.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.758.0",
-    "@aws-sdk/lib-storage": "^3.758.0",
-    "@aws-sdk/s3-presigned-post": "^3.758.0",
     "@hono/node-server": "^1.13.8",
     "@hono/swagger-ui": "^0.5.1",
     "@hono/zod-openapi": "^0.19.2",
@@ -66,13 +59,12 @@
     "pino-pretty": "^13.0.0",
     "postgres": "^3.4.5",
     "sharp": "^0.33.5",
-    "sst": "3.9.37",
     "stoker": "^1.4.2",
-    "zod-openapi": "^4.2.3"
+    "zod-openapi": "^4.2.3",
+    "sst": "*"
   },
   "devDependencies": {
     "@types/argon2-browser": "^1.18.4",
-    "@types/aws-lambda": "8.10.147",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.11",

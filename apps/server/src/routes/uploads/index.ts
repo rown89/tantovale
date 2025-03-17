@@ -1,27 +1,15 @@
 import { Hono } from "hono";
-import { s3Client } from "#lib/s3Client";
+import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { Resource } from "sst";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import sharp from "sharp";
+import { Resource } from "sst";
 
 import type { AppBindings } from "#lib/types";
-import { env } from "hono/adapter";
 
 export const uploadsRoute = new Hono<AppBindings>().post(
   "/item-images",
   async (c) => {
-    const {
-      AWS_REGION,
-      AWS_ACCESS_KEY_ID,
-      AWS_SECRET_ACCESS_KEY,
-      AWS_BUCKET_NAME,
-    } = env<{
-      AWS_REGION: string;
-      AWS_ACCESS_KEY_ID: string;
-      AWS_SECRET_ACCESS_KEY: string;
-      AWS_BUCKET_NAME: string;
-    }>(c);
-
     const formData = await c.req.parseBody({ all: true, dot: true });
     const { images, item_id } = formData;
 
@@ -43,102 +31,100 @@ export const uploadsRoute = new Hono<AppBindings>().post(
       }
     }
 
-    // Initialize S3 client
-    const client = s3Client(
-      AWS_REGION,
-      AWS_ACCESS_KEY_ID,
-      AWS_SECRET_ACCESS_KEY,
-    );
-
     let refinedImages = [];
 
     Array.isArray(images)
       ? (refinedImages = images)
       : (refinedImages = [images]);
 
-    // Upload images to S3 in parallel
-    const uploadPromises = refinedImages
-      ?.filter((file): file is File => file instanceof File)
-      .map(async (file: File) => {
-        const timestamp = Date.now();
-        const fileName = file.name.split(".")?.[0];
-        const extension = file.name.split(".").pop();
+    const client = new S3Client({});
 
-        const itemImagesRoot = `items/${item_id}`;
-        const fullFolderPath = `${itemImagesRoot}/full`;
-        const thumbFolderPath = `${itemImagesRoot}/thumbs`;
+    try {
+      // Upload images to S3 in parallel
+      const uploadPromises = refinedImages
+        ?.filter((file): file is File => file instanceof File)
+        .map(async (file: File) => {
+          const timestamp = Date.now();
+          const fileName = file.name.split(".")?.[0];
+          const extension = file.name.split(".").pop();
 
-        // Read file buffer
-        const buffer = await file.arrayBuffer();
-        console.log("ArrayBuffer Length:", buffer?.byteLength);
-        const originalBuffer = Buffer.from(buffer);
-        console.log("Original Buffer Length:", originalBuffer?.byteLength);
+          const itemImagesRoot = `items/${item_id}`;
+          const fullFolderPath = `${itemImagesRoot}/full`;
+          const thumbFolderPath = `${itemImagesRoot}/thumbs`;
 
-        let metadata;
-        try {
-          metadata = await sharp(originalBuffer).metadata();
-          console.log("Metadata:", metadata); // Log metadata for debugging
-        } catch (error) {
-          console.error("Error reading metadata for file:", file.name, error);
-          return c.json({ error: `Error processing file: ${file.name}` }, 400);
-        }
+          // Read file buffer
+          const buffer = await file.arrayBuffer();
+          const originalBuffer = Buffer.from(buffer);
 
-        const { width, height } = metadata;
-        const mediumMaxSize = 800;
+          let metadata;
+          try {
+            metadata = await sharp(originalBuffer).metadata();
+            console.log("Metadata:", metadata); // Log metadata for debugging
+          } catch (error) {
+            console.error("Error reading metadata for file:", file.name, error);
+            throw new Error(`Error processing file: ${file.name}`);
+          }
 
-        // Resize logic
-        const mediumBuffer = await sharp(originalBuffer)
-          .resize({
-            width: width && width > mediumMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
-            height: height && height > mediumMaxSize ? mediumMaxSize : height, // Max height mediumMaxSize
-            fit: "inside", // Maintain aspect ratio
-          })
-          .toBuffer();
+          const { width, height } = metadata;
+          const mediumMaxSize = 800;
 
-        const thumbnailBuffer = await sharp(originalBuffer)
-          .resize(200, 200, { fit: "cover" }) // Force 200x200 crop
-          .toBuffer();
+          // Resize logic
+          const mediumBuffer = await sharp(originalBuffer)
+            .resize({
+              width: width && width > mediumMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
+              height: height && height > mediumMaxSize ? mediumMaxSize : height, // Max height mediumMaxSize
+              fit: "inside", // Maintain aspect ratio
+            })
+            .toBuffer();
 
-        // Upload full images & their variants to `full/`
-        const fullUploads = [
-          { key: "original", buffer: originalBuffer },
-          { key: "medium", buffer: mediumBuffer },
-        ].map(async ({ key, buffer }) => {
-          const upload = new Upload({
+          const thumbnailBuffer = await sharp(originalBuffer)
+            .resize(200, 200, { fit: "cover" }) // Force 200x200 crop
+            .toBuffer();
+
+          // Upload full images & their variants to `full/`
+          const fullUploads = [
+            { key: "original", buffer: originalBuffer },
+            { key: "medium", buffer: mediumBuffer },
+          ].map(async ({ key, buffer }) => {
+            const upload = new Upload({
+              client,
+              params: {
+                Bucket: Resource.TantovaleBucket.name,
+                Key: `${fullFolderPath}/${fileName}_${key}_${timestamp}.${extension}`,
+                Body: buffer,
+                ContentType: file.type,
+              },
+            });
+
+            return upload.done();
+          });
+
+          // Upload thumbnails to `thumbs/`
+          const thumbUpload = new Upload({
             client,
             params: {
-              Bucket: AWS_BUCKET_NAME,
-              Key: `${fullFolderPath}/${fileName}_${timestamp}.${extension}`,
-              Body: buffer,
+              Bucket: Resource.TantovaleBucket.name,
+              Key: `${thumbFolderPath}/${fileName}_${timestamp}_thumb.${extension}`,
+              Body: thumbnailBuffer,
               ContentType: file.type,
             },
           });
 
-          return upload.done();
+          await Promise.all([...fullUploads, thumbUpload.done()]);
         });
 
-        // Upload thumbnails to `thumbs/`
-        const thumbUpload = new Upload({
-          client,
-          params: {
-            Bucket: AWS_BUCKET_NAME,
-            Key: `${thumbFolderPath}/${fileName}_${timestamp}_thumb.${extension}`,
-            Body: thumbnailBuffer,
-            ContentType: file.type,
-          },
-        });
+      await Promise.all(uploadPromises);
 
-        await Promise.all([...fullUploads, thumbUpload.done()]);
-      });
-
-    await Promise.all(uploadPromises);
-
-    return c.json(
-      {
-        message: `Images for item ${item_id} uploaded successfully!`,
-        item_id,
-      },
-      201,
-    );
+      return c.json(
+        {
+          message: `Images for item ${item_id} uploaded successfully!`,
+          item_id,
+        },
+        201,
+      );
+    } catch (error) {
+      console.error("Error uploading images:", error);
+      return c.json({ error: "Failed to upload images" }, 500);
+    }
   },
 );

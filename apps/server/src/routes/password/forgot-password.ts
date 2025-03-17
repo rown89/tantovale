@@ -6,13 +6,18 @@ import { sendForgotPasswordEmail } from "#mailer/templates/forgot-password-email
 import { createClient } from "#database/db";
 import { passwordResetTokens } from "#database/schema";
 import type { AppBindings } from "#lib/types";
+import { env } from "hono/adapter";
 
 export const passwordForgotRoute = new Hono<AppBindings>().post(
   "/forgot-password",
   async (c) => {
-    const { hostname, protocol, port } = new URL(c.req.url);
     // Get the server URL from the environment
-    const { RESET_TOKEN_SECRET, NODE_ENV } = c.env;
+    const { hostname, protocol, port } = new URL(c.req.url);
+
+    const { RESET_TOKEN_SECRET, NODE_ENV } = env<{
+      RESET_TOKEN_SECRET: string;
+      NODE_ENV: string;
+    }>(c);
 
     const { email } = await c.req.json();
 

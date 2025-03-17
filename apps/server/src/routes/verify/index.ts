@@ -3,6 +3,7 @@ import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import type { AppBindings } from "#lib/types";
 import { describeRoute } from "hono-openapi";
+import { env } from "hono/adapter";
 
 export const verifyRoute = new Hono<AppBindings>().get(
   "/",
@@ -22,7 +23,9 @@ export const verifyRoute = new Hono<AppBindings>().get(
     },
   }),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET } = c.env;
+    const { ACCESS_TOKEN_SECRET } = env<{
+      ACCESS_TOKEN_SECRET: string;
+    }>(c);
 
     try {
       // Get the signed access token from cookies

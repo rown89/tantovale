@@ -22,7 +22,7 @@ export function configureOpenAPI(app: AppAPI) {
         },
         servers: [
           {
-            url: serverUrl, // using the dynamic value from c.env
+            url: serverUrl,
           },
         ],
       },

@@ -34,7 +34,7 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
 - **AI-Powered Enhancements:**  
   Artificial intelligence to improve listing experiences and SEO optimization.
 - **Cloud-Native Architecture:**  
-  Utilizing Cloudflare Workers for backend, Vercel for frontend hosting, and Amazon RDS for PostgreSQL.
+  Utilizing AWS Lambda for backend, Vercel for frontend hosting, and Amazon RDS for PostgreSQL.
 
 ## 🛠️ Tech Stack
 
@@ -64,7 +64,7 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
 
 ## ☁️ Cloud Infrastructure
 
-- **Backend:** Cloudflare Workers
+- **Backend:** Aws Lambda
 - **Frontend:** Vercel
 - **Database:** Amazon RDS (PostgreSQL)
 

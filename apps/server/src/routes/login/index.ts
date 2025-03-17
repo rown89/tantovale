@@ -17,12 +17,18 @@ import { sign } from "hono/jwt";
 import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import type { AppBindings } from "#lib/types";
+import { env } from "hono/adapter";
 
 export const loginRoute = new Hono<AppBindings>().post(
   "/",
   zValidator("json", UserSchema.omit({ username: true })),
   async (c) => {
-    const { NODE_ENV, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = c.env;
+    const { NODE_ENV, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
+      NODE_ENV: string;
+      ACCESS_TOKEN_SECRET: string;
+      REFRESH_TOKEN_SECRET: string;
+    }>(c);
+
     const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 
     try {

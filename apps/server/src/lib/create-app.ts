@@ -22,7 +22,7 @@ export function createApp() {
     return next();
   });
 
-  app.use("*", async (c, next) => {
+  /*   app.use("*", async (c, next) => {
     const requestOrigin = c.req.header("Origin");
 
     const allowedOrigins = ["http://localhost:3000", "https://tantovale.it"];
@@ -39,7 +39,7 @@ export function createApp() {
         "Access-Control-Allow-Origin": originToUse,
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers":
-          "Origin, Content-Type, X-Requested-With, Accept, Authorization",
+          "Origin, Content-Type, X-Requested-With, Accept, Authorization, x-amzn-RequestId, X-Amzn-Trace-Id, x-request-id",
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Max-Age": "600",
       });
@@ -68,7 +68,7 @@ export function createApp() {
 
     await corsMiddleware(c, next);
   });
-
+ */
   app.use(requestId()).use(serveEmojiFavicon("📝")).use(pinoLogger());
 
   app.notFound(notFound);

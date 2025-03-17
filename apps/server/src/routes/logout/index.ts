@@ -5,9 +5,13 @@ import { createClient } from "#database/db";
 import { refreshTokens } from "#database/schema";
 import { eq } from "drizzle-orm";
 import type { AppBindings } from "#lib/types";
+import { env } from "hono/adapter";
 
 export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
-  const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = c.env;
+  const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
+    REFRESH_TOKEN_SECRET: string;
+    COOKIE_SECRET: string;
+  }>(c);
 
   try {
     // Get the refresh token from the cookie

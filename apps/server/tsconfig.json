@@ -7,7 +7,6 @@
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
     "experimentalDecorators": true,
-    "types": ["node", "@cloudflare/workers-types/2022-08-04"],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "paths": {
@@ -19,8 +18,15 @@
       "#schema/*": ["./src/schema/*"],
       "#database/*": ["./database/*"],
       "#mailer/*": ["./mailer/*"]
-    }
+    },
+    "types": ["node", "../../.sst/**/*"]
   },
-  "include": ["src/**/*", "database/**/*", "mailer/**/*"],
+  "include": [
+    ".",
+    "src/**/*",
+    "database/**/*",
+    "mailer/**/*",
+    "../../.sst/**/*"
+  ],
   "exclude": ["node_modules"]
 }

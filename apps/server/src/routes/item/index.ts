@@ -11,6 +11,7 @@ import { verify } from "hono/jwt";
 import { itemsFiltersValues } from "#database/schema/items_filter_values";
 import type { AppBindings } from "#lib/types";
 import { authMiddleware } from "#middlewares/auth";
+import { env } from "hono/adapter";
 
 export const itemRoute = new Hono<AppBindings>().post(
   "/new",
@@ -18,7 +19,10 @@ export const itemRoute = new Hono<AppBindings>().post(
   authMiddleware,
   async (c) => {
     try {
-      const { ACCESS_TOKEN_SECRET } = c.env;
+      const { ACCESS_TOKEN_SECRET } = env<{
+        ACCESS_TOKEN_SECRET: string;
+      }>(c);
+
       const { commons, properties } = c.req.valid("json");
 
       // Auth TOKEN

@@ -1,5 +1,5 @@
 import { count, eq } from "drizzle-orm";
-import { nodeClient, type DrizzleClient } from "../../..";
+import { createClient, type DrizzleClient } from "../../..";
 import {
   categories,
   subcategories,
@@ -29,7 +29,7 @@ function isParentGroupSeed(
 export const seedDatabase = async (): Promise<void> => {
   console.log("🌱 Starting database seeding...");
 
-  const { db, client } = nodeClient();
+  const { db, client } = createClient();
 
   try {
     // Begin transaction

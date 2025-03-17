@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
 
   const response = await client.verify.email.$get({
     query: { token },
+    credentials: "include",
   });
 
   if (response.status !== 200) {

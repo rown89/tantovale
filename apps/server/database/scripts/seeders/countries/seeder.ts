@@ -1,4 +1,4 @@
-import { nodeClient } from "../../../";
+import { createClient } from "../../../";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
@@ -19,7 +19,7 @@ const BATCH_SIZE = 1000;
 const DATA_DIR = "./data";
 
 // Initialize database client
-const { db } = nodeClient();
+const { db } = createClient();
 
 // Helper function to read JSON data with type inference
 function readJsonFile<T>(filename: string): T[] {
