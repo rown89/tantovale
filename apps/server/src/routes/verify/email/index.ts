@@ -8,14 +8,16 @@ import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
+  getNodeEnvMode,
 } from "#utils/constants";
-import { createClient } from "#database/db";
-import { refreshTokens, users } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { refreshTokens, users } from "@workspace/database/schemas/schema";
 
-import type { AppBindings } from "#lib/types";
 import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const verifyEmailRoute = new Hono<AppBindings>().get(
   "/email",
@@ -32,11 +34,15 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
       ACCESS_TOKEN_SECRET,
       REFRESH_TOKEN_SECRET,
       EMAIL_VERIFY_TOKEN_SECRET,
+      NODE_ENV,
     } = env<{
       ACCESS_TOKEN_SECRET: string;
       REFRESH_TOKEN_SECRET: string;
       EMAIL_VERIFY_TOKEN_SECRET: string;
+      NODE_ENV: string;
     }>(c);
+
+    const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
 
     const token = c.req.query("token");
     if (!token) return c.json({ error: "Token required" }, 409);
@@ -98,11 +104,13 @@ export const verifyEmailRoute = new Hono<AppBindings>().get(
 
     setCookie(c, "access_token", new_access_token, {
       ...getAuthTokenOptions({
+        isProductionMode,
         expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
       }),
     });
     setCookie(c, "refresh_token", new_refresh_token, {
       ...getAuthTokenOptions({
+        isProductionMode,
         expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
       }),
     });

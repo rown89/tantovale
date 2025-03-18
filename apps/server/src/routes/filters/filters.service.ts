@@ -1,11 +1,11 @@
 import type { Context } from "hono";
 import { eq } from "drizzle-orm";
-import { createClient } from "#database/index";
-import { filters } from "#database/schema/filters";
-import { subCategoryFilters } from "#database/schema/subcategory_filters";
+import { createClient } from "@workspace/database/db";
+import { filters } from "@workspace/database/schemas/filters";
+import { subCategoryFilters } from "@workspace/database/schemas/subcategory_filters";
+import { filterValues } from "@workspace/database/schemas/filter_values";
 
 import type { AppBindings } from "#lib/types";
-import { filterValues } from "#database/schema/filter_values";
 
 export const getFilterByIdService = async (
   c: Context<AppBindings>,

@@ -16,14 +16,16 @@ export default $config({
 	async run() {
 		const frontend = await import('./infra/next');
 		const hono = await import('./infra/api');
-		const storage = await import('./infra/storage');
+		//	const storage = await import('./infra/storage');
 		const postgres = await import('./infra/rds');
+		const drizzleStudio = await import('./infra/drizzle-studio');
 
 		return {
 			nextJs: frontend.nextjs.url,
 			api: hono.api.url,
+			//	bucket: storage.bucket.name,
 			rds: postgres.rds.database,
-			bucket: storage.bucket.name,
+			d_studio: drizzleStudio.studio.urn,
 		};
 	},
 });

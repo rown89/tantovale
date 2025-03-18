@@ -1,9 +1,10 @@
-import type { AppBindings } from "#lib/types";
 import type { Context } from "hono";
 import {
   getFilterByIdService,
   getFiltersBySubcategoryFiltersIdService,
 } from "./filters.service";
+
+import type { AppBindings } from "#lib/types";
 
 export const getFilterByIdController = async (c: Context<AppBindings>) => {
   const id = Number(c.req.param("id"));

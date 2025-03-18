@@ -9,6 +9,9 @@ export const client = hc<ApiRoutesType>(`${serverUrl}/`, {
     return fetch(req, {
       ...requestInit,
       credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
   },
 });

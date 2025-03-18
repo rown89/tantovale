@@ -1,17 +1,18 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
-import { createClient } from "#database/db";
-import { subcategories } from "#database/schema/subcategories";
-import { subCategoryFilters } from "#database/schema/subcategory_filters";
+import { createClient } from "@workspace/database/db";
+import { subcategories } from "@workspace/database/schemas/subcategories";
+import { subCategoryFilters } from "@workspace/database/schemas/subcategory_filters";
 import { createItemSchema } from "../../schema";
-import { items } from "#database/schema/items";
+import { items } from "@workspace/database/schemas/items";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import { itemsFiltersValues } from "#database/schema/items_filter_values";
-import type { AppBindings } from "#lib/types";
+import { itemsFiltersValues } from "@workspace/database/schemas/items_filter_values";
 import { authMiddleware } from "#middlewares/auth";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const itemRoute = new Hono<AppBindings>().post(
   "/new",

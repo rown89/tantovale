@@ -3,18 +3,20 @@ import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
-import { createClient } from "#database/db";
-import { refreshTokens } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { refreshTokens } from "@workspace/database/schemas/schema";
 import { tokenPayload } from "#lib/tokenPayload";
-import type { AppBindings } from "#lib/types";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import {
   DEFAULT_REFRESH_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
+  getNodeEnvMode,
 } from "#utils/constants";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const refreshRoute = new Hono<AppBindings>().post(
   "/",
@@ -27,11 +29,13 @@ export const refreshRoute = new Hono<AppBindings>().post(
     },
   }),
   async (c) => {
-    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
+    const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
       ACCESS_TOKEN_SECRET: string;
       REFRESH_TOKEN_SECRET: string;
+      NODE_ENV: string;
     }>(c);
 
+    const { isProductionMode } = getNodeEnvMode(NODE_ENV);
     const refresh_token = getCookie(c, "refresh_token");
 
     if (!refresh_token) {
@@ -91,11 +95,13 @@ export const refreshRoute = new Hono<AppBindings>().post(
 
       setCookie(c, "access_token", new_access_token, {
         ...getAuthTokenOptions({
+          isProductionMode,
           expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
         }),
       });
       setCookie(c, "refresh_token", new_refresh_token, {
         ...getAuthTokenOptions({
+          isProductionMode,
           expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
         }),
       });

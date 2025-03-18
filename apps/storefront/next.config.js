@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
   transpilePackages: ["@workspace/ui", "@workspace/server"],
-  serverExternalPackages: ["argon2", "@node-rs/argon2"],
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -48,13 +48,6 @@ const nextConfig = {
         ],
       },
     ];
-  },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback.fs = false;
-    }
-
-    return config;
   },
 };
 

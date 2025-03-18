@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
-import { createClient } from "#database/db";
-import { users } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { users } from "@workspace/database/schemas/schema";
 import type { Context } from "hono";
+
 import type { AppBindings } from "./types";
 
 export const checkUser = async (

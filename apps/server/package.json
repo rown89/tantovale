@@ -8,24 +8,12 @@
     "hono:build": "tsc",
     "hono:dev": "tsx watch src/index.ts",
     "hono:start": "node ./dist/src/index.js",
-    "db:build": "tsx src/index.ts",
-    "db:check": "npx drizzle-kit check --config=./database/drizzle.config.ts",
-    "db:dev": "tsx --watch",
-    "db:generate": "npx drizzle-kit generate --config=./database/drizzle.config.ts",
-    "db:migrate": "tsx ./database/migrate.ts",
-    "db:push": "npx drizzle-kit push --config=./database/drizzle.config.ts",
-    "db:studio": "npx drizzle-kit studio --config=./database/drizzle.config.ts",
-    "seed:categories": "npx tsx ./database/scripts/seeders/categories/index.ts",
-    "seed:countries": "npx tsx ./database/scripts/seeders/countries/index.ts",
     "typecheck": "npx tsc --noEmit"
   },
   "imports": {
     "#*": [
       "./src/*.ts"
     ],
-    "#database/*": "./database/*.ts",
-    "#database/db": "./database/index.ts",
-    "#database/schema": "./database/schema/schema.ts",
     "#lib/*": "./src/lib/*.ts",
     "#mailer/*": "./mailer/*.ts",
     "#routes/*": "./src/routes/*.ts",
@@ -42,6 +30,7 @@
     "./schema": "./src/schema/index.ts"
   },
   "dependencies": {
+    "@workspace/database": "*",
     "@hono/node-server": "^1.13.8",
     "@hono/swagger-ui": "^0.5.1",
     "@hono/zod-openapi": "^0.19.2",
@@ -52,7 +41,7 @@
     "drizzle-zod": "^0.7.0",
     "hono": "^4.7.4",
     "hono-openapi": "^0.4.6",
-    "hono-pino": "^0.7.2",
+    "hono-pino": "^0.8.0",
     "nodemailer": "^6.10.0",
     "pg": "^8.13.1",
     "pino": "^9.6.0",
@@ -64,7 +53,6 @@
     "sst": "*"
   },
   "devDependencies": {
-    "@types/argon2-browser": "^1.18.4",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.11",

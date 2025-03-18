@@ -13,10 +13,10 @@
 		"sso-dev": "aws sso login --sso-session=tantovale-dev",
 		"sst-deploy-prod": "sst deploy --stage production",
 		"sst-deploy-dev": "dotenv -e ./apps/server/.env sst deploy --stage dev",
-		"sst-dev": "dotenv -e ./apps/server/.env npx sst dev"
+		"sst-dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 dotenv -e ./apps/server/.env npx sst dev"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=20"
 	},
 	"packageManager": "npm@10.9.2",
 	"workspaces": {

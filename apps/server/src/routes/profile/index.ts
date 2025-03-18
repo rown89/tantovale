@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { createClient } from "#database/db";
-import { profiles } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { profiles } from "@workspace/database/schemas/schema";
 import { eq } from "drizzle-orm";
 import { updateProfileSchema } from "#schema/profiles";
 import { z } from "zod";
+
 import type { AppBindings } from "#lib/types";
 
 export const profileRoute = new Hono<AppBindings>();

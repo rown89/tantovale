@@ -67,7 +67,8 @@ export default function MultiImageUpload({
 
 			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
-				onImagesChange(initialImageUrls as (File | string)[]);
+				// @ts-expect-error this must be checked
+				onImagesChange(initialImageUrls);
 			}
 		}
 	}, [initialImageUrls, maxImages, onImagesChange, images.length]);
@@ -125,6 +126,7 @@ export default function MultiImageUpload({
 			// Call the onChange callback with the updated files/urls
 			if (onImagesChange) {
 				// Create a mixed array of Files and URL strings
+				// @ts-expect-error this must be checked
 				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
 				onImagesChange(mixedData);
 			}
@@ -178,6 +180,7 @@ export default function MultiImageUpload({
 			if (onImagesChange) {
 				// Create a mixed array of Files and URL strings
 				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
+				// @ts-expect-error this must be checked
 				onImagesChange(mixedData);
 			}
 		},
@@ -201,6 +204,7 @@ export default function MultiImageUpload({
 			if (onImagesChange) {
 				// Create a mixed array of Files and URL strings
 				const mixedData = updatedImages.map((img) => (img.isExternalUrl ? img.url! : img.file!));
+				// @ts-expect-error this must be checked
 				onImagesChange(mixedData);
 			}
 		},

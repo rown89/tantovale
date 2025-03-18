@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { createClient } from "#database/index";
-import { categories } from "#database/schema/categories";
+import { createClient } from "@workspace/database/db";
+import { categories } from "@workspace/database/schemas/categories";
+
 import type { AppBindings } from "#lib/types";
 
 export const categoriesRoute = new Hono<AppBindings>().get("/", async (c) => {

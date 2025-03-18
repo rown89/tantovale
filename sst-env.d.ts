@@ -27,6 +27,7 @@ declare module 'sst' {
 			username: string;
 		};
 		Tantovale_Vpc: {
+			bastion: string;
 			type: 'sst.aws.Vpc';
 		};
 	}

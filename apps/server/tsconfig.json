@@ -18,15 +18,8 @@
       "#schema/*": ["./src/schema/*"],
       "#database/*": ["./database/*"],
       "#mailer/*": ["./mailer/*"]
-    },
-    "types": ["node", "../../.sst/**/*"]
+    }
   },
-  "include": [
-    ".",
-    "src/**/*",
-    "database/**/*",
-    "mailer/**/*",
-    "../../.sst/**/*"
-  ],
+  "include": [".", "src/**/*", "database/**/*", "mailer/**/*"],
   "exclude": ["node_modules"]
 }

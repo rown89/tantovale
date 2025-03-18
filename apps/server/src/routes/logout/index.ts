@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import { createClient } from "#database/db";
-import { refreshTokens } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { refreshTokens } from "@workspace/database/schemas/refreshTokens";
 import { eq } from "drizzle-orm";
-import type { AppBindings } from "#lib/types";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const logoutRoute = new Hono<AppBindings>().post("/", async (c) => {
   const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{

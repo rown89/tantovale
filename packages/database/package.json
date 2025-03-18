@@ -1,0 +1,31 @@
+{
+	"name": "@workspace/database",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"db": "sst shell drizzle-kit",
+		"db:build": "tsx src/index.ts",
+		"db:check": "npx drizzle-kit check",
+		"db:generate": "npx drizzle-kit generate",
+		"db:migrate": "npx tsx ./database/migrate.ts",
+		"db:push": "npx drizzle-kit push",
+		"db:studio": "npx drizzle-kit studio",
+		"seed:categories": "npx tsx ./scripts/seeders/categories/index.ts",
+		"seed:countries": "npx tsx ./scripts/seeders/countries/index.ts"
+	},
+	"exports": {
+		"./db": "./index.ts",
+		"./schemas/*": "./schemas/*.ts"
+	},
+	"dependencies": {
+		"drizzle-orm": "^0.39.3",
+		"drizzle-zod": "^0.7.0",
+		"pg": "^8.13.1",
+		"sst": "*"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.30.4",
+		"tsx": "^4.19.2"
+	}
+}

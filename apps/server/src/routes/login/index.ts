@@ -4,8 +4,8 @@ import { zValidator } from "@hono/zod-validator";
 import { UserSchema } from "#schema/users";
 import { tokenPayload } from "#lib/tokenPayload";
 import { verifyPassword } from "#lib/password";
-import { createClient } from "#database/db";
-import { users, refreshTokens } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { users, refreshTokens } from "@workspace/database/schemas/schema";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
@@ -16,8 +16,9 @@ import {
 import { sign } from "hono/jwt";
 import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
-import type { AppBindings } from "#lib/types";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const loginRoute = new Hono<AppBindings>().post(
   "/",
@@ -51,6 +52,7 @@ export const loginRoute = new Hono<AppBindings>().post(
 
       // handle invalid password
       const verifyResult = await verifyPassword(user?.password, password);
+
       if (!verifyResult) {
         console.log(verifyResult);
         return c.json({ message: "invalid email or password" }, 500);
@@ -93,11 +95,13 @@ export const loginRoute = new Hono<AppBindings>().post(
 
       setCookie(c, "access_token", access_token, {
         ...getAuthTokenOptions({
+          isProductionMode,
           expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
         }),
       });
       setCookie(c, "refresh_token", refresh_token, {
         ...getAuthTokenOptions({
+          isProductionMode,
           expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
         }),
       });

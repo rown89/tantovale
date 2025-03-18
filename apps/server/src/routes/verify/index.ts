@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import type { AppBindings } from "#lib/types";
 import { describeRoute } from "hono-openapi";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export const verifyRoute = new Hono<AppBindings>().get(
   "/",
@@ -29,15 +30,10 @@ export const verifyRoute = new Hono<AppBindings>().get(
 
     try {
       // Get the signed access token from cookies
-      const accessToken = getCookie(c, "access_token")?.split(";")?.[0];
-
-      console.log("accessToken :", accessToken);
+      const accessToken = getCookie(c, "access_token");
 
       if (!accessToken) {
-        return c.json(
-          { message: "No token provided", cookie: accessToken },
-          401,
-        );
+        return c.json({ message: "No token provided" }, 401);
       }
 
       // Verify and decode the token

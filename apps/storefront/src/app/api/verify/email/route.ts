@@ -12,6 +12,9 @@ export async function GET(request: NextRequest) {
   const response = await client.verify.email.$get({
     query: { token },
     credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
   });
 
   if (response.status !== 200) {

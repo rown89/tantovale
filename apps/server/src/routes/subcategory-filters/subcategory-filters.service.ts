@@ -1,8 +1,10 @@
-import { createClient } from "#database/index";
+import { createClient } from "@workspace/database/db";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
-import { filters } from "#database/schema/filters";
-import { subCategoryFilters } from "#database/schema/subcategory_filters";
+import {
+  filters,
+  subCategoryFilters,
+} from "@workspace/database/schemas/schema";
 
 import type { AppBindings } from "#lib/types";
 

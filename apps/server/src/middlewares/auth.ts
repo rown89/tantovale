@@ -1,8 +1,9 @@
 import type { Context, Next } from "hono";
 import { verify } from "hono/jwt";
 import { getCookie } from "hono/cookie";
-import type { AppBindings } from "#lib/types";
 import { env } from "hono/adapter";
+
+import type { AppBindings } from "#lib/types";
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
   const { ACCESS_TOKEN_SECRET } = env<{
@@ -11,6 +12,8 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 
   try {
     const access_token = getCookie(c, "access_token");
+
+    console.log("_authMiddleware: ", access_token);
 
     if (!access_token) {
       return c.json({ message: "Unauthorized - No Token" }, 401);

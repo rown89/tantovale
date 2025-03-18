@@ -1,8 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { createClient } from "#database/index";
-import { subcategories } from "#database/schema/subcategories";
-import type { AppBindings } from "#lib/types";
+import { createClient } from "@workspace/database/db";
+import { subcategories } from "@workspace/database/schemas/schema";
 import type { Context } from "hono";
+
+import type { AppBindings } from "#lib/types";
 
 export const getSubcategories = async (c: Context<AppBindings>) => {
   const { db } = createClient();

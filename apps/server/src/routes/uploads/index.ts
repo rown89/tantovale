@@ -89,7 +89,7 @@ export const uploadsRoute = new Hono<AppBindings>().post(
             const upload = new Upload({
               client,
               params: {
-                Bucket: Resource.TantovaleBucket.name,
+                Bucket: Resource.Tantovale_Bucket.name,
                 Key: `${fullFolderPath}/${fileName}_${key}_${timestamp}.${extension}`,
                 Body: buffer,
                 ContentType: file.type,
@@ -103,7 +103,7 @@ export const uploadsRoute = new Hono<AppBindings>().post(
           const thumbUpload = new Upload({
             client,
             params: {
-              Bucket: Resource.TantovaleBucket.name,
+              Bucket: Resource.Tantovale_Bucket.name,
               Key: `${thumbFolderPath}/${fileName}_${timestamp}_thumb.${extension}`,
               Body: thumbnailBuffer,
               ContentType: file.type,

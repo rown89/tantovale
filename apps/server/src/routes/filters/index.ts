@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import type { AppBindings } from "#lib/types";
 import {
   getFilterByIdController,
   getFiltersBySubcategoryFiltersId,
 } from "./filters.controller";
+
+import type { AppBindings } from "#lib/types";
 
 export const filtersRoute = new Hono<AppBindings>()
   .get("/:id", getFilterByIdController)

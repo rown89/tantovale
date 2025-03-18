@@ -8,6 +8,7 @@ import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
 import { pinoLogger } from "../middlewares/pino-loggers";
 import { authMiddleware } from "../middlewares/auth";
 import { parseEnv } from "../env";
+
 import type { AppBindings } from "./types";
 
 export function createRouter() {
@@ -22,58 +23,46 @@ export function createApp() {
     return next();
   });
 
-  /*   app.use("*", async (c, next) => {
-    const requestOrigin = c.req.header("Origin");
+  const allowedOrigins = [
+    "http://localhost:3000",
+    process.env.NEXT_PUBLIC_HONO_API_URL,
+    "https://tantovale.it",
+  ]
+    .filter(Boolean)
+    .map((origin) => origin?.replace(/\/$/, "")); // Remove trailing slashes
 
-    const allowedOrigins = ["http://localhost:3000", "https://tantovale.it"];
-
-    const isAllowedOrigin =
-      requestOrigin && allowedOrigins.includes(requestOrigin);
-    const originToUse = isAllowedOrigin
-      ? requestOrigin
-      : (allowedOrigins?.[0] ?? ""); // Fallback to first allowed origin
-
-    // ✅ Properly handle CORS preflight (OPTIONS) requests
-    if (c.req.method === "OPTIONS") {
-      const headers = new Headers({
-        "Access-Control-Allow-Origin": originToUse,
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers":
-          "Origin, Content-Type, X-Requested-With, Accept, Authorization, x-amzn-RequestId, X-Amzn-Trace-Id, x-request-id",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "600",
-      });
-
-      return new Response(null, {
-        status: 204,
-        headers: headers,
-      });
-    }
-
-    // Continue with normal request processing
-    const corsMiddleware = cors({
-      origin: originToUse,
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => {
+        const normalizedOrigin = origin?.replace(/\/$/, "");
+        return allowedOrigins.includes(normalizedOrigin || "")
+          ? normalizedOrigin
+          : allowedOrigins[0];
+      },
+      credentials: true,
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: [
         "Origin",
         "Content-Type",
         "X-Requested-With",
         "Accept",
         "Authorization",
+        "x-amzn-RequestId",
+        "X-Amzn-Trace-Id",
+        "x-request-id",
       ],
-      allowMethods: ["GET", "OPTIONS", "POST", "PUT", "DELETE"],
-      exposeHeaders: ["Content-Length"],
+      exposeHeaders: ["Content-Length", "Set-Cookie"],
       maxAge: 600,
-      credentials: true,
-    });
+    }),
+  );
 
-    await corsMiddleware(c, next);
-  });
- */
   app.use(requestId()).use(serveEmojiFavicon("📝")).use(pinoLogger());
 
   app.notFound(notFound);
   app.onError(onError);
 
+  // paths that require authorization starts with authPath
   app.use(`/${authPath}/*`, authMiddleware);
 
   return app;

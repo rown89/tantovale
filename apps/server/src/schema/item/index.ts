@@ -1,4 +1,4 @@
-import { items } from "#database/schema/items";
+import { items } from "@workspace/database/schemas/schema";
 import { createInsertSchema } from "drizzle-zod";
 import { number, string, z } from "zod";
 

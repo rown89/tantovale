@@ -12,14 +12,15 @@ import {
   DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS,
   getNodeEnvMode,
 } from "#utils/constants";
-import { createClient } from "#database/db";
-import { users } from "#database/schema";
+import { createClient } from "@workspace/database/db";
+import { users } from "@workspace/database/schemas/schema";
 import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie, setCookie } from "hono/cookie";
-import type { AppBindings } from "#lib/types";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 import { Resource } from "sst";
+
+import type { AppBindings } from "#lib/types";
 
 export const signupRoute = new Hono<AppBindings>().post(
   "/",
@@ -37,6 +38,8 @@ export const signupRoute = new Hono<AppBindings>().post(
       NODE_ENV: string;
       EMAIL_VERIFY_TOKEN_SECRET: string;
     }>(c);
+
+    const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
 
     try {
       const values = await c.req.json();
@@ -85,11 +88,11 @@ export const signupRoute = new Hono<AppBindings>().post(
 
       setCookie(c, "email_activation_token", email_activation_token, {
         ...getAuthTokenOptions({
+          isProductionMode,
           expires: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES(),
         }),
       });
 
-      const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
       const verificationLink = `${Resource.Tantovale_Frontend.url}/api/verify/email?token=${email_activation_token}`;
 
       if (isProductionMode || isStagingMode) {

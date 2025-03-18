@@ -10,4 +10,5 @@ export const rds = new sst.aws.Postgres('Tantovale_Postgres', {
 		port: environment.DATABASE_PORT,
 	},
 	vpc,
+	proxy: true,
 });

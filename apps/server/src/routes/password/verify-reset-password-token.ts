@@ -1,7 +1,8 @@
-import type { AppBindings } from "#lib/types";
 import { Hono } from "hono";
 import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
+
+import type { AppBindings } from "#lib/types";
 
 export const passwordResetVerifyToken = new Hono<AppBindings>()
   // Verify Reset Token

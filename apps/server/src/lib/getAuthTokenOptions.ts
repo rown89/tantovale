@@ -7,17 +7,15 @@ export function getAuthTokenOptions({
   isProductionMode?: boolean;
   expires: Date;
 }): CookieOptions {
-  const maxAge = 1000;
-
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
-    secure: true, // isProductionMode,
-    httpOnly: true, // isProductionMode ? true : false,
-    sameSite: "None", // isProductionMode ? "None" : "Lax",
-    maxAge,
+    secure: true, // Always use secure in modern browsers
+    httpOnly: true,
+    sameSite: "None", // Required for cross-domain requests
+    maxAge: 24 * 60 * 60, // 24 hours in seconds
     expires,
     path: "/",
-    domain: isProductionMode ? ".tantovale.it" : "localhost",
+    domain: isProductionMode ? "tantovale.it" : undefined,
   };
 
   return cookiesOptions;
