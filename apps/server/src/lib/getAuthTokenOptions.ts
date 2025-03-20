@@ -9,13 +9,13 @@ export function getAuthTokenOptions({
 }): CookieOptions {
   // Cookie options with environment-specific settings
   const cookiesOptions: CookieOptions = {
-    secure: true, // Always use secure in modern browsers
+    secure: true, // Ensure this is true for HTTPS
     httpOnly: true,
-    sameSite: "None", // Required for cross-domain requests
+    sameSite: "None", // Ensure this is "None" for cross-site requests
     maxAge: 24 * 60 * 60, // 24 hours in seconds
     expires,
-    path: "/",
-    domain: isProductionMode ? "tantovale.it" : undefined,
+    path: "/", // Ensure path is set to "/"
+    // domain: isProductionMode ? "tantovale.it" : undefined, // Ensure domain is correct
   };
 
   return cookiesOptions;

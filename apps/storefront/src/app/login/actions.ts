@@ -50,7 +50,6 @@ export async function submitLogin(
       const cookieReader = await cookies();
 
       cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-        // Split the cookie string by semicolon; the first part is the key-value pair.
         const [pair, ...rest] = cookie.split(";");
         const [name, value] = pair?.split("=") ?? [];
         const trimmedName = name?.trim();
@@ -80,7 +79,8 @@ export async function submitLogin(
       };
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
+
     return {
       success: false,
       message: "An unexpected error occurred with login form",

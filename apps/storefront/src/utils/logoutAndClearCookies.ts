@@ -1,3 +1,4 @@
+import { client } from "#lib/api";
 import { cookies } from "next/headers";
 
 // Logs out the user by calling the logout endpoint and clearing cookies.
@@ -10,13 +11,18 @@ export async function logoutAndClearCookies({
   serverUrl: string;
 }) {
   try {
-    const logoutRequest = new Request(`${serverUrl}/auth/logout`, {
+    /*     const logoutRequest = new Request(`${serverUrl}/auth/logout`, {
       method: "POST",
       credentials: "include",
       headers: { Cookie: cookieHeader },
     });
 
-    await fetch(logoutRequest);
+    await fetch(logoutRequest); */
+
+    await client.auth.logout.$post({
+      credentials: "include",
+      headers: { Cookie: cookieHeader },
+    });
 
     const cookieStore = await cookies();
     cookieStore.delete("access_token");

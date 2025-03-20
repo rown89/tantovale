@@ -13,7 +13,7 @@ import {
   getNodeEnvMode,
 } from "#utils/constants";
 import { sign } from "hono/jwt";
-import { setCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 
@@ -98,6 +98,7 @@ export const loginRoute = createRouter().post(
           expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
         }),
       });
+
       setCookie(c, "refresh_token", refresh_token, {
         ...getAuthTokenOptions({
           isProductionMode,

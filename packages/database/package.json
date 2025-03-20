@@ -19,13 +19,13 @@
 		"./schemas/*": "./schemas/*.ts"
 	},
 	"dependencies": {
-		"drizzle-orm": "^0.39.3",
-		"drizzle-zod": "^0.7.0",
 		"pg": "^8.13.1",
-		"sst": "*"
+		"sst": "*",
+		"drizzle-orm": "*",
+		"drizzle-zod": "*"
 	},
 	"devDependencies": {
-		"drizzle-kit": "^0.30.4",
+		"drizzle-kit": "*",
 		"tsx": "^4.19.2"
 	}
 }

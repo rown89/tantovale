@@ -41,7 +41,9 @@ export const AuthProvider = ({
   async function initializeAuth() {
     try {
       // Attempt to verify the user with the current token.
-      let res = await client.verify.$get();
+      let res = await client.verify.$get({
+        credentials: "include",
+      });
 
       // If verification fails, attempt to refresh the token.
       if (!res.ok) {

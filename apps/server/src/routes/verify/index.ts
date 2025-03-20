@@ -31,6 +31,8 @@ export const verifyRoute = createRouter().get(
       // Get the signed access token from cookies
       const accessToken = getCookie(c, "access_token");
 
+      console.log("::Verify route: ", accessToken);
+
       if (!accessToken) {
         return c.json({ message: "No token provided" }, 401);
       }

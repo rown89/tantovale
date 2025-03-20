@@ -12,25 +12,23 @@ export const logoutRoute = createRouter().post("/", async (c) => {
     COOKIE_SECRET: string;
   }>(c);
 
+  // Get the refresh token from the cookie
+  const refreshToken = getCookie(c, "refresh_token");
+
+  console.log("refreshToken", refreshToken);
+
+  if (!refreshToken) {
+    return c.json({ message: "Logout error - no refresh token" }, 401);
+  }
+
   try {
-    // Get the refresh token from the cookie
-    const refreshToken = getCookie(c, "refresh_token");
+    // Verify the refresh token to get the username
+    const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
+    const username = payload.username as string;
 
-    if (refreshToken) {
-      try {
-        // Verify the refresh token to get the username
-        const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
-        const username = payload.username as string;
-
-        const { db } = createClient();
-        // Remove refresh token
-        await db
-          .delete(refreshTokens)
-          .where(eq(refreshTokens.username, username));
-      } catch (error) {
-        console.log("XXXXXXXXXXXXXXXX", error);
-      }
-    }
+    const { db } = createClient();
+    // Remove refresh token
+    await db.delete(refreshTokens).where(eq(refreshTokens.username, username));
 
     // Delete cookies
     deleteCookie(c, "access_token");
@@ -38,7 +36,6 @@ export const logoutRoute = createRouter().post("/", async (c) => {
 
     return c.json({ message: "Logout successful" }, 200);
   } catch (error) {
-    console.error("Error during logout:", error);
-    return c.json({ message: "Error during logout" }, 500);
+    return c.json({ message: "Logout error" }, 401);
   }
 });
