@@ -20,6 +20,7 @@ const main = async () => {
 	await migrate(drizzle(db_url), {
 		migrationsFolder: `${__dirname}/drizzle/migrations`,
 	});
+
 	await client.end();
 	process.exit(0);
 };

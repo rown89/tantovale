@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
 import { createClient } from "@workspace/database/db";
@@ -12,9 +11,9 @@ import { itemsFiltersValues } from "@workspace/database/schemas/items_filter_val
 import { authMiddleware } from "#middlewares/auth";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const itemRoute = new Hono<AppBindings>().post(
+export const itemRoute = createRouter().post(
   "/new",
   zValidator("json", createItemSchema),
   authMiddleware,

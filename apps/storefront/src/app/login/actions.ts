@@ -32,8 +32,6 @@ export async function submitLogin(
     if (response?.status !== 200) {
       const data = await response?.json();
 
-      console.log(data);
-
       return {
         success: false,
         message: data?.message || "An error occurred",

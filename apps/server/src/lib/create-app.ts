@@ -29,16 +29,20 @@ export function createApp() {
     "https://tantovale.it",
   ]
     .filter(Boolean)
-    .map((origin) => origin?.replace(/\/$/, "")); // Remove trailing slashes
+    // Remove trailing slashes
+    .map((origin) => origin?.replace(/\/$/, ""));
 
+  /* 
   app.use(
     "*",
     cors({
-      origin: (origin) => {
-        const normalizedOrigin = origin?.replace(/\/$/, "");
-        return allowedOrigins.includes(normalizedOrigin || "")
-          ? normalizedOrigin
-          : allowedOrigins[0];
+      origin: (origin, c) => {
+        console.log(c);
+
+        if (allowedOrigins.includes(origin || "")) {
+          return origin; // Return the matched origin
+        }
+        return allowedOrigins[0]; // Default to the first allowed origin
       },
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -55,7 +59,7 @@ export function createApp() {
       exposeHeaders: ["Content-Length", "Set-Cookie"],
       maxAge: 600,
     }),
-  );
+  ); */
 
   app.use(requestId()).use(serveEmojiFavicon("📝")).use(pinoLogger());
 

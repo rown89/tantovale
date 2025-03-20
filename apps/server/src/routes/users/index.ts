@@ -1,11 +1,10 @@
 import { createClient } from "@workspace/database/db";
 import { users } from "@workspace/database/schemas/schema";
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const usersRoute = new Hono<AppBindings>().get("/:id{[0-9]+}", (c) => {
+export const usersRoute = createRouter().get("/:id{[0-9]+}", (c) => {
   const id = c.req.param("id");
 
   try {

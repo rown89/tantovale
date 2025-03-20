@@ -10,10 +10,12 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
     ACCESS_TOKEN_SECRET: string;
   }>(c);
 
+  console.log("::ACCESS_TOKEN_SECRET: ", ACCESS_TOKEN_SECRET);
+
   try {
     const access_token = getCookie(c, "access_token");
 
-    console.log("_authMiddleware: ", access_token);
+    console.log("::AuthMiddleware: ", access_token);
 
     if (!access_token) {
       return c.json({ message: "Unauthorized - No Token" }, 401);

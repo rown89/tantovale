@@ -41,7 +41,7 @@ export const AuthProvider = ({
   async function initializeAuth() {
     try {
       // Attempt to verify the user with the current token.
-      let res = await client.verify.$get({ credentials: "include" });
+      let res = await client.verify.$get();
 
       // If verification fails, attempt to refresh the token.
       if (!res.ok) {
@@ -51,7 +51,7 @@ export const AuthProvider = ({
         if (!refreshed) logout();
 
         // After a successful refresh, try verifying again.
-        res = await client.verify.$get({ credentials: "include" });
+        res = await client.verify.$get();
       }
 
       // If verification is ok set the user

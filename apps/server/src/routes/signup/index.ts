@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
@@ -20,9 +19,9 @@ import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 import { Resource } from "sst";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const signupRoute = new Hono<AppBindings>().post(
+export const signupRoute = createRouter().post(
   "/",
   describeRoute({
     description: "Create a user",

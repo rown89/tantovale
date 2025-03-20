@@ -1,10 +1,9 @@
-import { Hono } from "hono";
 import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const passwordResetVerifyToken = new Hono<AppBindings>()
+export const passwordResetVerifyToken = createRouter()
   // Verify Reset Token
   .get("/reset-verify-token", async (c) => {
     const { RESET_TOKEN_SECRET } = env<{

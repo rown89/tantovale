@@ -1,13 +1,11 @@
-import { Hono } from "hono";
 import { createClient } from "@workspace/database/db";
 import { profiles } from "@workspace/database/schemas/schema";
 import { eq } from "drizzle-orm";
 import { updateProfileSchema } from "#schema/profiles";
 import { z } from "zod";
+import { createRouter } from "#lib/create-app";
 
-import type { AppBindings } from "#lib/types";
-
-export const profileRoute = new Hono<AppBindings>();
+export const profileRoute = createRouter();
 
 profileRoute.post("/", async (c) => {
   const user = c.var.user;

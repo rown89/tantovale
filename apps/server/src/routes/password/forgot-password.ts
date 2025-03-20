@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { getNodeEnvMode } from "#utils/constants";
 import { sendForgotPasswordEmail } from "#mailer/templates/forgot-password-email";
@@ -7,9 +6,9 @@ import { createClient } from "@workspace/database/db";
 import { passwordResetTokens } from "@workspace/database/schemas/schema";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const passwordForgotRoute = new Hono<AppBindings>().post(
+export const passwordForgotRoute = createRouter().post(
   "/forgot-password",
   async (c) => {
     // Get the server URL from the environment

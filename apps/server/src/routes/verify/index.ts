@@ -1,12 +1,11 @@
-import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const verifyRoute = new Hono<AppBindings>().get(
+export const verifyRoute = createRouter().get(
   "/",
   describeRoute({
     description: "User token verifier",

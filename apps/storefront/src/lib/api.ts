@@ -5,13 +5,10 @@ import type { ApiRoutesType } from "@workspace/server/apiRoutes";
 const serverUrl = process.env.NEXT_PUBLIC_HONO_API_URL;
 
 export const client = hc<ApiRoutesType>(`${serverUrl}/`, {
-  fetch: (req, requestInit, Env, executionCtx) => {
-    return fetch(req, {
-      ...requestInit,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+  init: {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
   },
 });

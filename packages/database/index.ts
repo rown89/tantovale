@@ -20,8 +20,6 @@ export const dbConnection = {
 	database: Resource.Tantovale_Postgres.database,
 };
 
-console.log(dbConnection);
-
 const pool = new Pool(dbConnection);
 
 export function createClient() {

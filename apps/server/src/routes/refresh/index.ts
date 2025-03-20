@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { describeRoute } from "hono-openapi";
@@ -16,9 +15,9 @@ import {
 } from "#utils/constants";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const refreshRoute = new Hono<AppBindings>().post(
+export const refreshRoute = createRouter().post(
   "/",
   describeRoute({
     description: "Refresh token verifier",

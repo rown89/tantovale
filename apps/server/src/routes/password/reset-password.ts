@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "#lib/password";
@@ -6,9 +5,9 @@ import { createClient } from "@workspace/database/db";
 import { users, passwordResetTokens } from "@workspace/database/schemas/schema";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const passwordResetRoute = new Hono<AppBindings>()
+export const passwordResetRoute = createRouter()
   // Update Password
   .post("/reset", async (c) => {
     const { RESET_TOKEN_SECRET } = env<{

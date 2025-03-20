@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { eq } from "drizzle-orm";
 import { describeRoute } from "hono-openapi";
@@ -17,9 +16,9 @@ import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const verifyEmailRoute = new Hono<AppBindings>().get(
+export const verifyEmailRoute = createRouter().get(
   "/email",
   describeRoute({
     description: "Email verifier",

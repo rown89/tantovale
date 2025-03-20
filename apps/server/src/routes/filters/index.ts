@@ -1,11 +1,10 @@
-import { Hono } from "hono";
 import {
   getFilterByIdController,
   getFiltersBySubcategoryFiltersId,
 } from "./filters.controller";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const filtersRoute = new Hono<AppBindings>()
+export const filtersRoute = createRouter()
   .get("/:id", getFilterByIdController)
   .get("/subcategory_filters/:id", getFiltersBySubcategoryFiltersId);

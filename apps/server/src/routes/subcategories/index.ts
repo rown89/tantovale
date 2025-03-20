@@ -1,13 +1,12 @@
-import { Hono } from "hono";
 import {
   getSubcategoriesByIdController,
   getSubcategoriesController,
   getSubcategoriesWithoutParentByIdController,
 } from "./subcategories.controller";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const subcategoriesRoute = new Hono<AppBindings>()
+export const subcategoriesRoute = createRouter()
   .get("/", getSubcategoriesController)
   .get("/:id", getSubcategoriesByIdController)
   .get("/no_parent/:id", getSubcategoriesWithoutParentByIdController);

@@ -3,7 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
   transpilePackages: ["@workspace/ui", "@workspace/server"],
-  poweredByHeader: false,
   async headers() {
     return [
       {

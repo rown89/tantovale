@@ -1,7 +1,5 @@
-import { Hono } from "hono";
+import { createRouter } from "#lib/create-app";
 
-import type { AppBindings } from "#lib/types";
-
-export const itemsRoute = new Hono<AppBindings>().get("/", async (c) => {
+export const itemsRoute = createRouter().get("/", async (c) => {
   return c.json({ items: [] });
 });

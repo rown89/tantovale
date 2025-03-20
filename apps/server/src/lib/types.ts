@@ -13,7 +13,7 @@ export interface AppBindings {
       phone_verified: boolean;
     };
     logger: PinoLogger;
-  } & JwtVariables;
+  };
 }
 
 export type AppAPI = Hono<AppBindings>;

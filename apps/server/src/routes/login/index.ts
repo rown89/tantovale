@@ -1,4 +1,3 @@
-import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
 import { UserSchema } from "#schema/users";
@@ -18,9 +17,9 @@ import { setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 
-import type { AppBindings } from "#lib/types";
+import { createRouter } from "#lib/create-app";
 
-export const loginRoute = new Hono<AppBindings>().post(
+export const loginRoute = createRouter().post(
   "/",
   zValidator("json", UserSchema.omit({ username: true })),
   async (c) => {
