@@ -40,6 +40,7 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
     await next();
   } catch (error) {
     console.error("Auth Middleware Error:\n", error, "\n");
+
     return c.json({ message: "Invalid token" }, 401);
   }
 }

@@ -3,7 +3,6 @@ import 'dotenv/config';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pkg from 'pg';
 import * as schema from './schemas/schema';
-import { Resource } from 'sst';
 
 const { Pool } = pkg;
 
@@ -13,11 +12,11 @@ export type DrizzleClient = {
 };
 
 export const dbConnection = {
-	user: Resource.Tantovale_Postgres.username,
-	password: Resource.Tantovale_Postgres.password,
-	host: Resource.Tantovale_Postgres.host,
-	port: Resource.Tantovale_Postgres.port,
-	database: Resource.Tantovale_Postgres.database,
+	user: process.env.DATABASE_USERNAME,
+	password: process.env.DATABASE_PASSWORD,
+	host: process.env.DATABASE_HOST,
+	port: Number(process.env.DATABASE_PORT),
+	database: process.env.DATABASE_NAME,
 };
 
 const pool = new Pool(dbConnection);

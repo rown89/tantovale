@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "next:dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev --port 3000",
     "build": "next build",
-    "next:dev": "sst dev next dev --port 3000",
     "next:build": "next build",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
@@ -35,6 +34,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "typescript": "*",
     "@tanstack/eslint-plugin-query": "^5.64.2",
     "@types/node": "^20",
     "@types/react": "19.0.8",
@@ -43,9 +43,7 @@
     "@workspace/typescript-config": "*",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "5.5.4",
     "hono": "*",
-    "sst": "*",
     "zod": "*"
   }
 }

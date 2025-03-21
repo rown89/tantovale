@@ -17,9 +17,9 @@ import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
-import { Resource } from "sst";
 
 import { createRouter } from "#lib/create-app";
+import { parseEnv } from "#env";
 
 export const signupRoute = createRouter().post(
   "/",
@@ -92,7 +92,7 @@ export const signupRoute = createRouter().post(
         }),
       });
 
-      const verificationLink = `${Resource.Tantovale_Frontend.url}/api/verify/email?token=${email_activation_token}`;
+      const verificationLink = `${parseEnv(process.env).STOREFRONT_HOSTNAME}/api/verify/email?token=${email_activation_token}`;
 
       if (isProductionMode || isStagingMode) {
         await sendVerifyEmail(email, verificationLink);

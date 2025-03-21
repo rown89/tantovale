@@ -3,11 +3,11 @@
 **Tantovale** is an open-source marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.  
 Built with passion and community collaboration in mind, Tantovale welcomes contributions from anyone who wants to help shape the future of online marketplaces.
 
-## Current Phase:
+## 🏗️ Getting Started
+
+### Current Phase:
 
 - INITIAL BUILDING BLOCKS
-
-## 🏗️ Getting Started
 
 ### Prerequisites
 
@@ -26,7 +26,7 @@ Built with passion and community collaboration in mind, Tantovale welcomes contr
 
 ## 🚀 Overview
 
-Tantovale is a modern, cloud-based platform that leverages cutting-edge technologies and AI to enhance user experience.  
+Tantovale is a modern, platform that leverages cutting-edge technologies and AI to enhance user experience.  
 Whether you're looking to buy or sell, our marketplace is designed to be intuitive, fast, and intelligent.
 
 ### Key Features
@@ -37,8 +37,6 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
   Open source from the ground up, ensuring that anyone can contribute ideas and features.
 - **AI-Powered Enhancements:**  
   Artificial intelligence to improve listing experiences and SEO optimization.
-- **Cloud-Native Architecture:**  
-  Utilizing AWS Lambda for backend, Vercel for frontend hosting, and Amazon RDS for PostgreSQL.
 
 ## 🛠️ Tech Stack
 
@@ -65,12 +63,6 @@ Whether you're looking to buy or sell, our marketplace is designed to be intuiti
 ### Database
 
 - **[Drizzle ORM](https://orm.drizzle.team/)** with **PostgreSQL**
-
-## ☁️ Cloud Infrastructure
-
-- **Backend:** Aws Lambda
-- **Frontend:** Vercel
-- **Database:** Amazon RDS (PostgreSQL)
 
 ## ✅ Commit Standards
 

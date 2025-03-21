@@ -14,6 +14,10 @@ expand(
 
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
+  STOREFRONT_HOSTNAME: z.string().default("localhost"),
+  STOREFRONT_PORT: z.coerce.number().default(3000),
+  SERVER_HOSTNAME: z.string().default("localhost"),
+  SERVER_PORT: z.coerce.number().default(4000),
   ACCESS_TOKEN_SECRET: z.string(),
   REFRESH_TOKEN_SECRET: z.string(),
   EMAIL_VERIFY_TOKEN_SECRET: z.string(),

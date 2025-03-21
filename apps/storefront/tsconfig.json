@@ -2,6 +2,7 @@
   "extends": "@workspace/typescript-config/nextjs.json",
   "compilerOptions": {
     "strict": true,
+    "baseUrl": ".",
     "paths": {
       "#*": ["./src/*"],
       "#workspace/ui/*": ["../../packages/ui/src/*"]
@@ -13,6 +14,7 @@
     ]
   },
   "include": [
+    ".",
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",

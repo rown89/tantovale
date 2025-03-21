@@ -32,16 +32,10 @@ export function createApp() {
     // Remove trailing slashes
     .map((origin) => origin?.replace(/\/$/, ""));
 
-  /*
   app.use(
     "*",
     cors({
-      origin: (origin, c) => {
-        if (allowedOrigins.includes(origin || "")) {
-          return origin;
-        }
-        return allowedOrigins[0];
-      },
+      origin: "http://localhost:3000",
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: [
@@ -51,15 +45,11 @@ export function createApp() {
         "X-Requested-With",
         "Accept",
         "Authorization",
-        "x-amzn-RequestId",
-        "X-Amzn-Trace-Id",
-        "x-request-id",
       ],
-      exposeHeaders: ["Content-Length", "Set-Cookie", "Origin"],
+      exposeHeaders: ["Content-Length"],
       maxAge: 600,
     }),
   );
- */
 
   app.use(requestId()).use(serveEmojiFavicon("📝")).use(pinoLogger());
 

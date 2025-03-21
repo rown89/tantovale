@@ -11,11 +11,7 @@ export async function GET(request: NextRequest) {
 
   const cookieHeader = buildCookieHeader(accessToken, refreshToken);
 
-  await logoutAndClearCookies({
-    cookieHeader,
-    // env injected from sst.aws.Nextjs
-    serverUrl: process.env.NEXT_PUBLIC_HONO_API_URL!,
-  });
+  await logoutAndClearCookies({ cookieHeader });
 
   return NextResponse.redirect(new URL("/", request.url));
 }

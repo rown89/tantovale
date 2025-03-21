@@ -53,7 +53,9 @@ export const AuthProvider = ({
         if (!refreshed) logout();
 
         // After a successful refresh, try verifying again.
-        res = await client.verify.$get();
+        res = await client.verify.$get({
+          credentials: "include",
+        });
       }
 
       // If verification is ok set the user
@@ -62,7 +64,10 @@ export const AuthProvider = ({
         setUser(data.user);
       } else {
         // If verification still fails, log out.
-        await fetch("/api/logout", { credentials: "include" });
+        await client.auth.logout.$post({
+          credentials: "include",
+        });
+
         setUser(null);
       }
     } catch (error) {

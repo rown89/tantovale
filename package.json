@@ -8,12 +8,7 @@
 		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"lint": "turbo lint",
-		"prepare": "husky",
-		"sso": "aws sso login --sso-session=tantovale",
-		"sso-dev": "aws sso login --sso-session=tantovale-dev",
-		"sst-deploy-prod": "sst deploy --stage production",
-		"sst-deploy-dev": "dotenv -e ./apps/server/.env sst deploy --stage dev",
-		"sst-dev": "dotenv -e ./apps/server/.env npx sst dev"
+		"prepare": "husky"
 	},
 	"engines": {
 		"node": ">=20"
@@ -33,7 +28,6 @@
 		"aws-cdk-lib": "^2.184.1",
 		"dotenv": "^16.4.7",
 		"prettier-plugin-tailwindcss": "^0.6.10",
-		"sst": "3.9.39",
 		"hono": "^4.7.5",
 		"drizzle-orm": "^0.39.3",
 		"drizzle-zod": "^0.7.0",
@@ -43,7 +37,6 @@
 	"devDependencies": {
 		"@commitlint/cli": "^19.6.1",
 		"@commitlint/config-conventional": "^19.6.0",
-		"@types/aws-lambda": "8.10.147",
 		"dotenv-cli": "^8.0.0",
 		"husky": "^9.1.7",
 		"prettier": "^3.2.5",

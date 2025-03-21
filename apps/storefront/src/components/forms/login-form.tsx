@@ -28,7 +28,7 @@ export function LoginForm({
   const [state, action, isPending] = useActionState(submitLogin, initialState);
 
   useEffect(() => {
-    if (state.success && state?.user) {
+    if (state && state?.success && state?.user) {
       setUser(state?.user);
       router.push("/");
     }

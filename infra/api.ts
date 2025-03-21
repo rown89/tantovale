@@ -1,7 +1,6 @@
 import { rds } from './rds';
 import { bucket } from './storage';
 import { environment } from '../apps/server/src/utils/constants';
-import * as cdk from 'aws-cdk-lib';
 
 const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_HONO_API_URL, 'https://tantovale.it']
 	.filter(Boolean)

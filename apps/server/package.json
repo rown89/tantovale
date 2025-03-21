@@ -5,9 +5,9 @@
   "module": "esnext",
   "type": "module",
   "scripts": {
-    "hono:build": "tsc",
-    "hono:dev": "tsx watch src/index.ts",
-    "hono:start": "node ./dist/src/index.js",
+    "hono:dev": "NODE_ENV=development dotenv -e ../../packages/database/.env.local tsx watch src/index.ts --turbopack",
+    "hono:build": "NODE_ENV=production dontenv -e ../../packages/database/.env tsc --turbopack",
+    "hono:start": "NODE_ENV=production dontenv -e ../../packages/database/.env node ./dist/src/index.js --turbopack",
     "typecheck": "npx tsc --noEmit"
   },
   "imports": {
@@ -47,7 +47,6 @@
     "sharp": "^0.33.5",
     "stoker": "^1.4.2",
     "zod-openapi": "^4.2.3",
-    "sst": "*",
     "drizzle-orm": "*",
     "drizzle-zod": "*",
     "zod": "*"

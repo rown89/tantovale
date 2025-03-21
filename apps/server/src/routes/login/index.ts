@@ -13,11 +13,11 @@ import {
   getNodeEnvMode,
 } from "#utils/constants";
 import { sign } from "hono/jwt";
-import { getCookie, setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
 
 import { createRouter } from "#lib/create-app";
+import { setCookie } from "hono/cookie";
 
 export const loginRoute = createRouter().post(
   "/",
