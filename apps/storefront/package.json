@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@edge-runtime/cookies": "^6.0.0",
-    "@opennextjs/aws": "^3.5.2",
     "@tanstack/react-form": "^1.0.5",
     "@tanstack/react-query": "^5.64.2",
     "@workspace/server": "*",

@@ -35,7 +35,12 @@ export function createApp() {
   app.use(
     "*",
     cors({
-      origin: "http://localhost:3000",
+      origin: (origin) => {
+        const normalizedOrigin = origin?.replace(/\/$/, "");
+        return allowedOrigins.includes(normalizedOrigin || "")
+          ? normalizedOrigin
+          : allowedOrigins[0];
+      },
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: [

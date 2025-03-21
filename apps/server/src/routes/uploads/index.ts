@@ -1,19 +1,35 @@
-import { S3Client } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createRouter } from "#lib/create-app";
+import fs from "fs";
+import { env } from "hono/adapter";
+import { getCookie } from "hono/cookie";
+import { verify } from "hono/jwt";
+import path from "path";
 import sharp from "sharp";
 
-import { createRouter } from "#lib/create-app";
+export const uploadsRoute = createRouter().post("/images-item", async (c) => {
+  const { ACCESS_TOKEN_SECRET } = env<{
+    ACCESS_TOKEN_SECRET: string;
+  }>(c);
 
-export const uploadsRoute = createRouter().post("/item-images", async (c) => {
+  const accessToken = getCookie(c, "access_token");
+  let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+  const user_id = Number(payload.id);
+
   const formData = await c.req.parseBody({ all: true, dot: true });
   const { images, item_id } = formData;
 
   const receivedImages = Array.isArray(images) ? images : [images];
 
-  if (!receivedImages.length) {
-    return c.json({ error: "No images uploaded" }, 400);
+  if (
+    !accessToken ||
+    !images ||
+    !item_id ||
+    !user_id ||
+    !receivedImages.length
+  ) {
+    return c.json({ message: "Upload images-item error" }, 400);
   }
+
   // Validate files are images and do not exceed 5MB
   for (const file of receivedImages) {
     if (!(file instanceof File) || !file.type.startsWith("image/")) {
@@ -28,20 +44,33 @@ export const uploadsRoute = createRouter().post("/item-images", async (c) => {
 
   Array.isArray(images) ? (refinedImages = images) : (refinedImages = [images]);
 
-  const client = new S3Client({});
-
   try {
-    // Upload images to S3 in parallel
+    // Create base directories for the item
+    const baseDir = path.join(process.cwd(), "uploads");
+    const imagesDir = "images";
+    const itemsDir = "items";
+
+    const uploadPath = path.join(
+      baseDir,
+      imagesDir,
+      itemsDir,
+      item_id.toString(),
+    );
+
+    const fullFolderPath = path.join(uploadPath, "full");
+    const thumbFolderPath = path.join(uploadPath, "thumbs");
+
+    // Ensure directories exist
+    fs.mkdirSync(fullFolderPath, { recursive: true });
+    fs.mkdirSync(thumbFolderPath, { recursive: true });
+
+    // Upload images in parallel
     const uploadPromises = refinedImages
       ?.filter((file): file is File => file instanceof File)
       .map(async (file: File) => {
         const timestamp = Date.now();
         const fileName = file.name.split(".")?.[0];
         const extension = file.name.split(".").pop();
-
-        const itemImagesRoot = `items/${item_id}`;
-        const fullFolderPath = `${itemImagesRoot}/full`;
-        const thumbFolderPath = `${itemImagesRoot}/thumbs`;
 
         // Read file buffer
         const buffer = await file.arrayBuffer();
@@ -72,36 +101,24 @@ export const uploadsRoute = createRouter().post("/item-images", async (c) => {
           .resize(200, 200, { fit: "cover" }) // Force 200x200 crop
           .toBuffer();
 
-        // Upload full images & their variants to `full/`
-        const fullUploads = [
-          { key: "original", buffer: originalBuffer },
-          { key: "medium", buffer: mediumBuffer },
-        ].map(async ({ key, buffer }) => {
-          const upload = new Upload({
-            client,
-            params: {
-              Bucket: Resource.Tantovale_Bucket.name,
-              Key: `${fullFolderPath}/${fileName}_${key}_${timestamp}.${extension}`,
-              Body: buffer,
-              ContentType: file.type,
-            },
-          });
+        // Save full images & their variants to `full/`
+        const originalPath = path.join(
+          fullFolderPath,
+          `${fileName}_original_${timestamp}.${extension}`,
+        );
+        const mediumPath = path.join(
+          fullFolderPath,
+          `${fileName}_medium_${timestamp}.${extension}`,
+        );
+        const thumbPath = path.join(
+          thumbFolderPath,
+          `${fileName}_${timestamp}_thumb.${extension}`,
+        );
 
-          return upload.done();
-        });
-
-        // Upload thumbnails to `thumbs/`
-        const thumbUpload = new Upload({
-          client,
-          params: {
-            Bucket: Resource.Tantovale_Bucket.name,
-            Key: `${thumbFolderPath}/${fileName}_${timestamp}_thumb.${extension}`,
-            Body: thumbnailBuffer,
-            ContentType: file.type,
-          },
-        });
-
-        await Promise.all([...fullUploads, thumbUpload.done()]);
+        // Write files to disk
+        await fs.promises.writeFile(originalPath, originalBuffer);
+        await fs.promises.writeFile(mediumPath, mediumBuffer);
+        await fs.promises.writeFile(thumbPath, thumbnailBuffer);
       });
 
     await Promise.all(uploadPromises);

@@ -1,19 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { z } from "zod";
-import {
-  AnyFieldApi,
-  formOptions,
-  useField,
-  useForm,
-} from "@tanstack/react-form";
-import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { client } from "#lib/api";
-import { FieldInfo } from "./utils/field-info";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import Image from "next/image";
+import { useField } from "@tanstack/react-form";
+import { motion, AnimatePresence } from "framer-motion";
+
+import { delivery_method_types, placeholderImages } from "./constants";
+
 import { CategorySelector } from "#components/category-selector";
 import {
   Select,
@@ -42,14 +35,12 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
-import {
-  createItemSchema,
-  multipleImagesSchema,
-} from "@workspace/server/schema";
+
 import Slider from "@workspace/ui/components/carousel/slider";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
-import { compressImages } from "#utils/imageCompression";
-import { toast } from "sonner";
+import { useItemCreate } from "#components/forms/item-create-form/hooks/useItemCreate";
+
+import { FieldInfo } from "../utils/field-info";
 
 interface Category {
   id: number;
@@ -57,169 +48,30 @@ interface Category {
   subcategories: Category[];
 }
 
-const placeholderImages = [
-  {
-    url: "/placeholder.svg",
-    alt: "",
-  },
-];
-
-export const formOpts = formOptions({
-  defaultValues: {
-    images: [],
-    commons: {
-      title: "",
-      description: "",
-      price: 0,
-      delivery_method: "shipping",
-      subcategory_id: 0,
-    },
-    serializedProperties: "",
-    properties: [],
-  },
-});
-
 export default function CreateItemForm({
   subcategory,
 }: {
   subcategory?: Omit<Category, "subcategories">;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const [selectedSubCategory, setSelectedSubCategory] = useState<Omit<
-    Category,
-    "subcategories"
-  > | null>(subcategory || null);
-  const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
-    [],
-  );
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
-
   const {
-    data: allCategories,
-    isLoading: isLoadingCat,
-    isError: isErrorCat,
-  } = useQuery({
-    queryKey: ["categories"],
-    queryFn: async () => {
-      const res = await client.categories.$get();
+    form,
+    isSubmittingForm,
+    selectedSubCategory,
+    nestedSubcategories,
+    fullscreenImage,
+    setFullscreenImage,
+    isLoadingCat,
+    isLoadingSubCat,
+    isLoadingSubCatFilters,
+    subCatFilters,
+    allCategories,
+    allSubcategories,
+    handleSubCategorySelect,
+    buildNestedSubCatHierarchy,
+    updatePropertiesArray,
+    getCurrentValue,
+  } = useItemCreate(subcategory);
 
-      if (!res.ok) return [];
-
-      return await res.json();
-    },
-  });
-
-  const {
-    data: allSubcategories,
-    isLoading: isLoadingSubCat,
-    isError: isErrorSubCat,
-  } = useQuery({
-    queryKey: ["subcategories"],
-    queryFn: async () => {
-      const res = await client.subcategories.$get();
-
-      if (!res.ok) return [];
-
-      return await res.json();
-    },
-  });
-
-  const {
-    data: subCatFilters,
-    isLoading: isLoadingSubCatFilters,
-    isError: isErrorSubCatFilters,
-  } = useQuery({
-    queryKey: ["filters_by_subcategories_filters", subcategory?.id],
-    queryFn: async () => {
-      if (!subcategory?.id) return [];
-
-      const res = await client.filters.subcategory_filters[":id"].$get({
-        param: {
-          id: String(subcategory?.id),
-        },
-      });
-
-      if (!res.ok) {
-        console.error("Failed to fetch subcategories filters");
-        return [];
-      }
-
-      const subcategoryFilters = await res.json();
-
-      return subcategoryFilters;
-    },
-    enabled: !!subcategory?.id,
-  });
-
-  const schema = createItemSchema
-    .and(z.object({ images: multipleImagesSchema }))
-    .superRefine((val, ctx) => {
-      const requiredFilters =
-        subCatFilters?.filter((filter) => filter.on_create_required) || [];
-
-      // For each required filter, check if there's a corresponding property in the schema
-      requiredFilters.forEach((requiredFilter) => {
-        const propertyExists = val.properties?.some(
-          (prop: {
-            id: number;
-            value: string | number | string[] | number[];
-            slug: string;
-          }) => prop.slug === requiredFilter.slug,
-        );
-
-        if (!propertyExists) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Property for required filter "${requiredFilter.name}" is missing.`,
-            path: ["properties"],
-          });
-        }
-      });
-    });
-
-  type schemaType = z.infer<typeof schema>;
-
-  const form = useForm({
-    ...formOpts.defaultValues,
-    validators: {
-      onSubmit: schema,
-    },
-    onSubmit: async ({ value }) => {
-      const { images, ...rest } = value as schemaType;
-
-      try {
-        const itemResponse = await client.item.new.$post({
-          json: rest,
-        });
-
-        if (itemResponse.status !== 201) {
-          toast(`Add new item rrror`, {
-            description:
-              "We are encountering tecnhical problems, please retry later.",
-            duration: 4000,
-          });
-        } else {
-          // ok modal
-          const newItem = await itemResponse.json();
-
-          if (newItem?.item_id) {
-            const imagesResponse = await client.auth.uploads[
-              "item-images"
-            ].$post({
-              form: {
-                images,
-                item_id: String(newItem.item_id),
-              },
-            });
-          }
-        }
-      } catch (error) {
-        console.log(error);
-      }
-    },
-  });
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
   const description = useField({ form, name: "commons.description" });
@@ -227,107 +79,11 @@ export default function CreateItemForm({
   const properties = useField({ form, name: "properties" });
   const images = useField({ form, name: "images" });
 
-  function handleQueryParamChange(qs: string, value: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set(qs, value);
-    const newUrl = `?${params.toString()}`;
-
-    router.replace(newUrl);
-  }
-
-  function buildNestedSubCatHierarchy() {
-    // Convert subcategories array into a nested structure
-    const subcategoryMap = new Map<number, any>();
-
-    // Initialize subcategories map
-    allSubcategories?.forEach((sub) => {
-      subcategoryMap.set(sub.id, { ...sub, subcategories: [] });
-    });
-
-    // Build the hierarchy by linking parent subcategories
-    allSubcategories?.forEach((sub) => {
-      if (sub.parent_id) {
-        const parent = subcategoryMap.get(sub.parent_id);
-        if (parent) {
-          parent.subcategories.push(subcategoryMap.get(sub.id));
-        }
-      }
-    });
-
-    if (allCategories?.length && allSubcategories?.length) {
-      // Attach subcategories to categories
-      const categoriesWithSubcategories = allCategories?.map((category) => ({
-        ...category,
-        subcategories: allSubcategories
-          ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
-          .map((sub) => subcategoryMap.get(sub.id)),
-      }));
-
-      const nestedSubcategories = categoriesWithSubcategories;
-
-      setNestedSubcategories(nestedSubcategories);
-    }
-  }
-
-  function handleSubCategorySelect(
-    subcategory: Omit<Category, "subcategories">,
-  ) {
-    setSelectedSubCategory(subcategory);
-    subcategory_id.setValue(subcategory.id);
-    handleQueryParamChange("cat", subcategory?.id?.toString());
-  }
-
-  // Update the properties array with proper types utility
-  function updatePropertiesArray({
-    value,
-    filter,
-    field,
-  }: {
-    value: string | number | boolean | (string | number)[];
-    filter: NonNullable<typeof subCatFilters>[number];
-    field: AnyFieldApi;
-  }) {
-    // Ensure we have an array from the field state.
-    const currentProperties: { id: number; slug: string; value: any }[] =
-      Array.isArray(field.state.value) ? [...field.state.value] : [];
-
-    // Create the new property object.
-    const newProperty = {
-      id: filter.id,
-      slug: filter.slug,
-      value,
-    };
-
-    // Find if the property already exists.
-    const existingIndex = currentProperties.findIndex(
-      (prop) => prop.id === filter.id,
-    );
-
-    if (existingIndex !== -1) {
-      // Update the existing property.
-      currentProperties[existingIndex] = newProperty;
-    } else {
-      // Add a new property.
-      currentProperties.push(newProperty);
-    }
-    // Update the form field state.
-    field.handleChange(currentProperties);
-  }
-
-  // set field default values utility
-  function getCurrentValue(field: AnyFieldApi, filterId: string | number) {
-    if (!Array.isArray(field.state.value)) return undefined;
-    const prop = field.state.value.find((p) => p.id === filterId.toString());
-    return prop ? prop.value : undefined;
-  }
-
-  // on mount
+  // Effects
   useEffect(() => {
     // if we have a subcategory already settled in the query params:
     if (subcategory) handleSubCategorySelect(subcategory);
   }, []);
-
-  useEffect(() => {}, [subcategory]);
 
   useEffect(() => {
     // build category (subcategory) menu hierarchy:
@@ -336,7 +92,7 @@ export default function CreateItemForm({
     }
   }, [allCategories, allSubcategories]);
 
-  // Close on Escape key
+  // Close fullscreen image on Escape key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -347,14 +103,6 @@ export default function CreateItemForm({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  const delivery_method_types = [
-    {
-      id: "pickup",
-      name: "Pickup",
-    },
-    { id: "shipping", name: "Shipping" },
-  ];
 
   return (
     <div className="container mx-auto py-6 px-4 h-[calc(100vh-56px)]">
@@ -507,9 +255,7 @@ export default function CreateItemForm({
                       </Label>
                       <Select
                         name={field.name}
-                        onValueChange={(
-                          value: schemaType["commons"]["delivery_method"],
-                        ) => field.handleChange(value)}
+                        onValueChange={(value) => field.handleChange(value)}
                         defaultValue={field.state.value?.toString()}
                         aria-invalid={
                           field.state.meta.isTouched &&
@@ -843,6 +589,7 @@ export default function CreateItemForm({
                   <Button
                     type="submit"
                     //  disabled={!canSubmit}
+                    disabled={isSubmittingForm}
                     className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}
