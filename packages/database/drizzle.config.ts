@@ -6,7 +6,7 @@ export default defineConfig({
 	dialect: 'postgresql',
 	out: './drizzle/migrations',
 	schema: './schemas/schema*.ts',
-	dbCredentials: { ...dbConnection },
+	dbCredentials: { ...dbConnection, ssl: false },
 	extensionsFilters: ['postgis'],
 	schemaFilter: 'public',
 	tablesFilter: '*',

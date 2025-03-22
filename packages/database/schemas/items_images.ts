@@ -1,6 +1,7 @@
-import { pgTable, integer, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, index, pgEnum } from 'drizzle-orm/pg-core';
 import { items } from './items';
 import { relations } from 'drizzle-orm';
+import { itemImagesSizeEnum } from './enumerated_types';
 
 export const itemsImages = pgTable(
 	'items_images',
@@ -11,6 +12,7 @@ export const itemsImages = pgTable(
 			.references(() => items.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		url: text('url').notNull(),
 		order_position: integer().notNull().default(0),
+		size: itemImagesSizeEnum('size').notNull(),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { AnyFieldApi, useForm } from "@tanstack/react-form";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { client } from "#lib/api";
 import { createDynamicSchema, formOpts } from "../constants";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -13,7 +11,20 @@ interface Category {
   subcategories: Category[];
 }
 
-export function useItemCreate(subcategory?: Omit<Category, "subcategories">) {
+interface UseItemFormProps {
+  subcategory?: Omit<Category, "subcategories">;
+  subCatFilters: any[] | undefined;
+  submitItemData: (
+    formData: any,
+    images: File[],
+  ) => Promise<{ success: boolean; item?: any; error?: any }>;
+}
+
+export function useItemForm({
+  subcategory,
+  subCatFilters,
+  submitItemData,
+}: UseItemFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -21,65 +32,8 @@ export function useItemCreate(subcategory?: Omit<Category, "subcategories">) {
     Category,
     "subcategories"
   > | null>(subcategory || null);
-  const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
-    [],
-  );
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-
-  // Fetch categories
-  const {
-    data: allCategories,
-    isLoading: isLoadingCat,
-    isError: isErrorCat,
-  } = useQuery({
-    queryKey: ["categories"],
-    queryFn: async () => {
-      const res = await client.categories.$get();
-      if (!res.ok) return [];
-      return await res.json();
-    },
-  });
-
-  // Fetch subcategories
-  const {
-    data: allSubcategories,
-    isLoading: isLoadingSubCat,
-    isError: isErrorSubCat,
-  } = useQuery({
-    queryKey: ["subcategories"],
-    queryFn: async () => {
-      const res = await client.subcategories.$get();
-      if (!res.ok) return [];
-      return await res.json();
-    },
-  });
-
-  // Fetch subcategory filters
-  const {
-    data: subCatFilters,
-    isLoading: isLoadingSubCatFilters,
-    isError: isErrorSubCatFilters,
-  } = useQuery({
-    queryKey: ["filters_by_subcategories_filters", subcategory?.id],
-    queryFn: async () => {
-      if (!subcategory?.id) return [];
-
-      const res = await client.filters.subcategory_filters[":id"].$get({
-        param: {
-          id: String(subcategory?.id),
-        },
-      });
-
-      if (!res.ok) {
-        console.error("Failed to fetch subcategories filters");
-        return [];
-      }
-
-      return await res.json();
-    },
-    enabled: !!subcategory?.id,
-  });
 
   // Create schema with validation
   const schema = createDynamicSchema(subCatFilters);
@@ -94,41 +48,24 @@ export function useItemCreate(subcategory?: Omit<Category, "subcategories">) {
     onSubmit: async ({ value }) => {
       setIsSubmittingForm(true);
 
-      const { images, ...rest } = value as schemaType;
-
       try {
-        const itemResponse = await client.item.new.$post({
-          json: rest,
-        });
+        const { images, ...rest } = value as schemaType;
+        const result = await submitItemData(rest, images);
 
-        if (itemResponse.status !== 201) {
-          throw new Error("Failed to add new item");
+        if (result.success) {
+          toast(`Success!`, {
+            description: "Item added correctly!",
+            duration: 4000,
+          });
+        } else {
+          toast(`Error :(`, {
+            description:
+              "We are encountering technical problems, please retry later.",
+            duration: 4000,
+          });
         }
-
-        const newItem = await itemResponse.json();
-
-        if (images.length > 0) {
-          const imagesResponse = await client.auth.uploads["images-item"].$post(
-            {
-              form: {
-                images,
-                item_id: String(newItem.item_id),
-              },
-            },
-          );
-
-          if (!imagesResponse.ok) {
-            throw new Error("Failed to upload images");
-          }
-        }
-
-        toast(`Success!`, {
-          description: "Item added correctly!",
-          duration: 4000,
-        });
       } catch (error) {
         console.error(error);
-
         toast(`Error :(`, {
           description:
             "We are encountering technical problems, please retry later.",
@@ -146,38 +83,6 @@ export function useItemCreate(subcategory?: Omit<Category, "subcategories">) {
     params.set(qs, value);
     const newUrl = `?${params.toString()}`;
     router.replace(newUrl);
-  }
-
-  function buildNestedSubCatHierarchy() {
-    // Convert subcategories array into a nested structure
-    const subcategoryMap = new Map<number, any>();
-
-    // Initialize subcategories map
-    allSubcategories?.forEach((sub) => {
-      subcategoryMap.set(sub.id, { ...sub, subcategories: [] });
-    });
-
-    // Build the hierarchy by linking parent subcategories
-    allSubcategories?.forEach((sub) => {
-      if (sub.parent_id) {
-        const parent = subcategoryMap.get(sub.parent_id);
-        if (parent) {
-          parent.subcategories.push(subcategoryMap.get(sub.id));
-        }
-      }
-    });
-
-    if (allCategories?.length && allSubcategories?.length) {
-      // Attach subcategories to categories
-      const categoriesWithSubcategories = allCategories?.map((category) => ({
-        ...category,
-        subcategories: allSubcategories
-          ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
-          .map((sub) => subcategoryMap.get(sub.id)),
-      }));
-
-      setNestedSubcategories(categoriesWithSubcategories);
-    }
   }
 
   function handleSubCategorySelect(
@@ -239,17 +144,9 @@ export function useItemCreate(subcategory?: Omit<Category, "subcategories">) {
     form,
     isSubmittingForm,
     selectedSubCategory,
-    nestedSubcategories,
     fullscreenImage,
     setFullscreenImage,
-    isLoadingCat,
-    isLoadingSubCat,
-    isLoadingSubCatFilters,
-    subCatFilters,
-    allCategories,
-    allSubcategories,
     handleSubCategorySelect,
-    buildNestedSubCatHierarchy,
     updatePropertiesArray,
     getCurrentValue,
   };

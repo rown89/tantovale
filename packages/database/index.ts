@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pkg from 'pg';
 import * as schema from './schemas/schema';
+import { parseEnv } from './env';
 
 const { Pool } = pkg;
 
@@ -12,11 +13,11 @@ export type DrizzleClient = {
 };
 
 export const dbConnection = {
-	user: process.env.DATABASE_USERNAME,
-	password: process.env.DATABASE_PASSWORD,
-	host: process.env.DATABASE_HOST,
-	port: Number(process.env.DATABASE_PORT),
-	database: process.env.DATABASE_NAME,
+	user: parseEnv(process.env).DATABASE_USERNAME,
+	password: parseEnv(process.env).DATABASE_PASSWORD,
+	host: parseEnv(process.env).DATABASE_HOST,
+	port: Number(parseEnv(process.env).DATABASE_PORT),
+	database: parseEnv(process.env).DATABASE_NAME,
 };
 
 const pool = new Pool(dbConnection);

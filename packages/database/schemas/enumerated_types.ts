@@ -7,6 +7,8 @@ export const deliveryMethodEnum = pgEnum('delivery_method_enum', ['shipping', 'p
 export const sexEnum = pgEnum('sex_enum', ['male', 'female']);
 export const profileEnum = pgEnum('profile_types_enum', ['private', 'professional']);
 
+export const itemImagesSizeEnum = pgEnum('item_images_size_enum', ['original', 'small', 'medium', 'thumbnail']);
+
 export const filtersEnum = pgEnum('filters_enum', [
 	Filters.CONDITION,
 	Filters.GENDER,

@@ -1,10 +1,16 @@
 import { createRouter } from "#lib/create-app";
-import fs from "fs";
 import { env } from "hono/adapter";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
-import path from "path";
+import { s3Client } from "#lib/s3client";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { parseEnv } from "#env";
 import sharp from "sharp";
+import { createClient } from "@workspace/database/db";
+import {
+  itemsImages,
+  type InsertItemImage,
+} from "@workspace/database/schemas/schema";
 
 export const uploadsRoute = createRouter().post("/images-item", async (c) => {
   const { ACCESS_TOKEN_SECRET } = env<{
@@ -45,29 +51,14 @@ export const uploadsRoute = createRouter().post("/images-item", async (c) => {
   Array.isArray(images) ? (refinedImages = images) : (refinedImages = [images]);
 
   try {
-    // Create base directories for the item
-    const baseDir = path.join(process.cwd(), "uploads");
-    const imagesDir = "images";
-    const itemsDir = "items";
-
-    const uploadPath = path.join(
-      baseDir,
-      imagesDir,
-      itemsDir,
-      item_id.toString(),
-    );
-
-    const fullFolderPath = path.join(uploadPath, "full");
-    const thumbFolderPath = path.join(uploadPath, "thumbs");
-
-    // Ensure directories exist
-    fs.mkdirSync(fullFolderPath, { recursive: true });
-    fs.mkdirSync(thumbFolderPath, { recursive: true });
+    // Define S3 paths
+    const s3BasePath = `images/items/${item_id}`;
+    const s3BucketName = parseEnv(process.env).AWS_BUCKET_NAME;
 
     // Upload images in parallel
     const uploadPromises = refinedImages
       ?.filter((file): file is File => file instanceof File)
-      .map(async (file: File) => {
+      .map(async (file: File, index: number) => {
         const timestamp = Date.now();
         const fileName = file.name.split(".")?.[0];
         const extension = file.name.split(".").pop();
@@ -79,16 +70,15 @@ export const uploadsRoute = createRouter().post("/images-item", async (c) => {
         let metadata;
         try {
           metadata = await sharp(originalBuffer).metadata();
-          console.log("Metadata:", metadata); // Log metadata for debugging
         } catch (error) {
-          console.error("Error reading metadata for file:", file.name, error);
           throw new Error(`Error processing file: ${file.name}`);
         }
 
         const { width, height } = metadata;
         const mediumMaxSize = 800;
+        const smallMaxSize = 800;
 
-        // Resize logic
+        // Resize logic medium
         const mediumBuffer = await sharp(originalBuffer)
           .resize({
             width: width && width > mediumMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
@@ -97,41 +87,128 @@ export const uploadsRoute = createRouter().post("/images-item", async (c) => {
           })
           .toBuffer();
 
+        // Resize logic small
+        const smallBuffer = await sharp(originalBuffer)
+          .resize({
+            width: width && width > smallMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
+            height: height && height > smallMaxSize ? smallMaxSize : height, // Max height mediumMaxSize
+            fit: "inside", // Maintain aspect ratio
+          })
+          .toBuffer();
+
         const thumbnailBuffer = await sharp(originalBuffer)
           .resize(200, 200, { fit: "cover" }) // Force 200x200 crop
           .toBuffer();
 
-        // Save full images & their variants to `full/`
-        const originalPath = path.join(
-          fullFolderPath,
-          `${fileName}_original_${timestamp}.${extension}`,
-        );
-        const mediumPath = path.join(
-          fullFolderPath,
-          `${fileName}_medium_${timestamp}.${extension}`,
-        );
-        const thumbPath = path.join(
-          thumbFolderPath,
-          `${fileName}_${timestamp}_thumb.${extension}`,
+        // Define S3 keys for each image variant
+        const originalKey = `${s3BasePath}/full/${fileName}_original_${timestamp}.${extension}`;
+        const mediumKey = `${s3BasePath}/full/${fileName}_medium_${timestamp}.${extension}`;
+        const smallKey = `${s3BasePath}/full/${fileName}_small_${timestamp}.${extension}`;
+        const thumbKey = `${s3BasePath}/thumbs/${fileName}_${timestamp}_thumb.${extension}`;
+
+        // Upload original image to S3
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: s3BucketName,
+            Key: originalKey,
+            Body: originalBuffer,
+            ContentType: file.type,
+          }),
         );
 
-        // Write files to disk
-        await fs.promises.writeFile(originalPath, originalBuffer);
-        await fs.promises.writeFile(mediumPath, mediumBuffer);
-        await fs.promises.writeFile(thumbPath, thumbnailBuffer);
+        // Upload medium image to S3
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: s3BucketName,
+            Key: mediumKey,
+            Body: mediumBuffer,
+            ContentType: file.type,
+          }),
+        );
+
+        // Upload small image to S3
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: s3BucketName,
+            Key: smallKey,
+            Body: smallBuffer,
+            ContentType: file.type,
+          }),
+        );
+
+        // Upload thumbnail to S3
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: s3BucketName,
+            Key: thumbKey,
+            Body: thumbnailBuffer,
+            ContentType: file.type,
+          }),
+        );
+
+        return {
+          originalKey,
+          smallKey,
+          mediumKey,
+          thumbKey,
+          orderPosition: index, // Store the original array position
+        };
       });
 
-    await Promise.all(uploadPromises);
+    const uploadedFiles = await Promise.all(uploadPromises);
+
+    // Save image URLs to database
+    const { db } = createClient();
+
+    // Prepare data for database insertion - one row for each size
+    const imageRecords: InsertItemImage[] = uploadedFiles.flatMap((file) => [
+      // Original image
+      {
+        item_id: Number(item_id),
+        url: `https://${s3BucketName}.s3.amazonaws.com/${file.originalKey}`,
+        order_position: file.orderPosition,
+        created_by: user_id,
+        size: "original",
+      },
+      // Medium image
+      {
+        item_id: Number(item_id),
+        url: `https://${s3BucketName}.s3.amazonaws.com/${file.mediumKey}`,
+        order_position: file.orderPosition,
+        created_by: user_id,
+        size: "medium",
+      },
+      // Small image
+      {
+        item_id: Number(item_id),
+        url: `https://${s3BucketName}.s3.amazonaws.com/${file.smallKey}`,
+        order_position: file.orderPosition,
+        created_by: user_id,
+        size: "small",
+      },
+      // Thumbnail image
+      {
+        item_id: Number(item_id),
+        url: `https://${s3BucketName}.s3.amazonaws.com/${file.thumbKey}`,
+        order_position: file.orderPosition,
+        created_by: user_id,
+        size: "thumbnail",
+      },
+    ]);
+
+    // Insert records into the database
+    await db.insert(itemsImages).values(imageRecords);
 
     return c.json(
       {
         message: `Images for item ${item_id} uploaded successfully!`,
         item_id,
+        files: uploadedFiles,
       },
       201,
     );
   } catch (error) {
-    console.error("Error uploading images:", error);
+    console.error("Error uploading images to S3:", error);
     return c.json({ error: "Failed to upload images" }, 500);
   }
 });

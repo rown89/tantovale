@@ -1,4 +1,4 @@
-import CreateItemForm from "#components/forms/item-create-form";
+import CreateItemFormComponent from "#components/forms/item-create-form";
 import { client } from "#lib/api";
 import { redirect } from "next/navigation";
 
@@ -24,8 +24,8 @@ export default async function CreateItemPage({
 
     const subcategory = await response.json();
 
-    return <CreateItemForm subcategory={subcategory?.[0]} />;
+    return <CreateItemFormComponent subcategory={subcategory?.[0]} />;
   }
 
-  return <CreateItemForm />;
+  return <CreateItemFormComponent />;
 }

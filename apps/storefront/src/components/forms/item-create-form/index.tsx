@@ -1,12 +1,8 @@
 "use client";
-
 import { useEffect } from "react";
 import Image from "next/image";
 import { useField } from "@tanstack/react-form";
 import { motion, AnimatePresence } from "framer-motion";
-
-import { delivery_method_types, placeholderImages } from "./constants";
-
 import { CategorySelector } from "#components/category-selector";
 import {
   Select,
@@ -22,7 +18,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card";
-
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -35,12 +30,13 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
-
 import Slider from "@workspace/ui/components/carousel/slider";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
-import { useItemCreate } from "#components/forms/item-create-form/hooks/useItemCreate";
 
 import { FieldInfo } from "../utils/field-info";
+import { delivery_method_types, placeholderImages } from "./constants";
+import { useCreateItemForm } from "./hooks/useCreateItemForm";
+import { useCreateItemData } from "./hooks/useCreateItemData";
 
 interface Category {
   id: number;
@@ -48,29 +44,32 @@ interface Category {
   subcategories: Category[];
 }
 
-export default function CreateItemForm({
+export default function CreateItemFormComponent({
   subcategory,
 }: {
   subcategory?: Omit<Category, "subcategories">;
 }) {
   const {
-    form,
-    isSubmittingForm,
-    selectedSubCategory,
+    allCategories,
+    allSubcategories,
+    subCatFilters,
     nestedSubcategories,
-    fullscreenImage,
-    setFullscreenImage,
     isLoadingCat,
     isLoadingSubCat,
     isLoadingSubCatFilters,
-    subCatFilters,
-    allCategories,
-    allSubcategories,
-    handleSubCategorySelect,
     buildNestedSubCatHierarchy,
+  } = useCreateItemData(subcategory);
+
+  const {
+    form,
+    isSubmittingForm,
+    selectedSubCategory,
+    fullscreenImage,
+    setFullscreenImage,
+    handleSubCategorySelect,
     updatePropertiesArray,
     getCurrentValue,
-  } = useItemCreate(subcategory);
+  } = useCreateItemForm({ subcategory, subCatFilters });
 
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
