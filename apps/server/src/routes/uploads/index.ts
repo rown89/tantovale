@@ -41,8 +41,9 @@ export const uploadsRoute = createRouter().post("/images-item", async (c) => {
     if (!(file instanceof File) || !file.type.startsWith("image/")) {
       return c.json({ error: "Invalid file type" }, 400);
     }
-    if (file.size > 5 * 1024 * 1024) {
-      return c.json({ error: `File ${file.name} exceeds the 5MB limit` }, 400);
+
+    if (file.size > 3 * 1024 * 1024) {
+      return c.json({ error: `File ${file.name} exceeds the 3MB limit` }, 400);
     }
   }
 
@@ -76,7 +77,7 @@ export const uploadsRoute = createRouter().post("/images-item", async (c) => {
 
         const { width, height } = metadata;
         const mediumMaxSize = 800;
-        const smallMaxSize = 800;
+        const smallMaxSize = 500;
 
         // Resize logic medium
         const mediumBuffer = await sharp(originalBuffer)

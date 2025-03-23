@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useField } from "@tanstack/react-form";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,26 +38,30 @@ import { delivery_method_types, placeholderImages } from "./constants";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
 
-interface Category {
+export interface Category {
   id: number;
   name: string;
   subcategories: Category[];
 }
 
+interface CreateItemFormComponentProps {
+  subcategory?: Omit<Category, "subcategories">;
+}
+
 export default function CreateItemFormComponent({
   subcategory,
-}: {
-  subcategory?: Omit<Category, "subcategories">;
-}) {
+}: CreateItemFormComponentProps) {
+  const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
+    [],
+  );
+
   const {
     allCategories,
     allSubcategories,
     subCatFilters,
-    nestedSubcategories,
     isLoadingCat,
     isLoadingSubCat,
     isLoadingSubCatFilters,
-    buildNestedSubCatHierarchy,
   } = useCreateItemData(subcategory);
 
   const {
@@ -77,6 +81,39 @@ export default function CreateItemFormComponent({
   const subcategory_id = useField({ form, name: "commons.subcategory_id" });
   const properties = useField({ form, name: "properties" });
   const images = useField({ form, name: "images" });
+
+  // Helper function to build nested subcategory hierarchy for CategorySelector
+  function buildNestedSubCatHierarchy() {
+    // Convert subcategories array into a nested structure
+    const subcategoryMap = new Map<number, any>();
+
+    // Initialize subcategories map
+    allSubcategories?.forEach((sub) => {
+      subcategoryMap.set(sub.id, { ...sub, subcategories: [] });
+    });
+
+    // Build the hierarchy by linking parent subcategories
+    allSubcategories?.forEach((sub) => {
+      if (sub.parent_id) {
+        const parent = subcategoryMap.get(sub.parent_id);
+        if (parent) {
+          parent.subcategories.push(subcategoryMap.get(sub.id));
+        }
+      }
+    });
+
+    if (allCategories?.length && allSubcategories?.length) {
+      // Attach subcategories to categories
+      const categoriesWithSubcategories = allCategories?.map((category) => ({
+        ...category,
+        subcategories: allSubcategories
+          ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
+          .map((sub) => subcategoryMap.get(sub.id)),
+      }));
+
+      setNestedSubcategories(categoriesWithSubcategories);
+    }
+  }
 
   // Effects
   useEffect(() => {
@@ -200,8 +237,8 @@ export default function CreateItemFormComponent({
                     <div className="space-y-2 ">
                       <MultiImageUpload
                         maxImages={5}
-                        onImagesChange={(images: any) => {
-                          field.handleChange(images);
+                        onImagesChange={(images: File[]) => {
+                          if (images) field.handleChange(images);
                         }}
                       />
                       <FieldInfo field={field} />

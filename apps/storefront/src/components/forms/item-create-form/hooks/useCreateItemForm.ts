@@ -5,6 +5,7 @@ import { createDynamicSchema, formOpts } from "../constants";
 import { z } from "zod";
 import { toast } from "sonner";
 import { client } from "#lib/api";
+import imageCompression from "browser-image-compression";
 
 interface Category {
   id: number;
@@ -49,9 +50,28 @@ export function useCreateItemForm({
       const newItem = await itemResponse.json();
 
       if (images.length > 0) {
+        // Compress images before uploading
+        const compressionOptions = {
+          maxSizeMB: 2, // Max file size in MB
+          maxWidthOrHeight: 2000, // Maintain reasonable dimensions
+          useWebWorker: true, // Use web workers for better performance
+          preserveExif: true, // Preserve image metadata
+        };
+
+        const compressedImages = await Promise.all(
+          images.map(async (image) => {
+            try {
+              return await imageCompression(image, compressionOptions);
+            } catch (error) {
+              console.error("Error compressing image:", error);
+              return image; // Fall back to original if compression fails
+            }
+          }),
+        );
+
         const imagesResponse = await client.auth.uploads["images-item"].$post({
           form: {
-            images,
+            images: compressedImages,
             item_id: String(newItem.item_id),
           },
         });

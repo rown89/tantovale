@@ -4,6 +4,7 @@ import {
   multipleImagesSchema,
 } from "@workspace/server/schema";
 import { z } from "zod";
+import { subCatFiltersType } from "./hooks/useCreateItemForm";
 
 export const placeholderImages = [
   {
@@ -32,29 +33,31 @@ export const formOpts = formOptions({
   },
 });
 
-export function createDynamicSchema(subCatFilters: any[] | undefined) {
+export function createDynamicSchema(subCatFilters: subCatFiltersType) {
   return createItemSchema
     .and(z.object({ images: multipleImagesSchema }))
     .superRefine((val, ctx) => {
-      const requiredFilters =
-        subCatFilters?.filter((filter) => filter.on_create_required) || [];
+      if (subCatFilters && Array.isArray(subCatFilters)) {
+        const requiredFilters =
+          subCatFilters?.filter((filter) => filter.on_create_required) || [];
 
-      requiredFilters.forEach((requiredFilter) => {
-        const propertyExists = val.properties?.some(
-          (prop: {
-            id: number;
-            value: string | number | string[] | number[];
-            slug: string;
-          }) => prop.slug === requiredFilter.slug,
-        );
+        requiredFilters.forEach((requiredFilter) => {
+          const propertyExists = val.properties?.some(
+            (prop: {
+              id: number;
+              value: string | number | string[] | number[];
+              slug: string;
+            }) => prop.slug === requiredFilter.slug,
+          );
 
-        if (!propertyExists) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Property for required filter "${requiredFilter.name}" is missing.`,
-            path: ["properties"],
-          });
-        }
-      });
+          if (!propertyExists) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Property for required filter "${requiredFilter.name}" is missing.`,
+              path: ["properties"],
+            });
+          }
+        });
+      }
     });
 }

@@ -1,6 +1,2 @@
-uploads/*
-!uploads/images/items.gitkeep
-!uploads/avatars.gitkeep
-
 # sst
 .sst
