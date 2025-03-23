@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "#/context/AuthProvider";
+import { useTheme } from "#/context/ThemeProvider";
 import { Button } from "@workspace/ui/components/button";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,13 +24,26 @@ import {
   DropdownMenuSubContent,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { User, Settings, Bell, HelpCircle, LogOut } from "lucide-react";
+import {
+  User,
+  Settings,
+  Bell,
+  HelpCircle,
+  LogOut,
+  Moon,
+  Sun,
+} from "lucide-react";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
+
+  const toggleTheme = () => {
+    setTheme(theme === "light" ? "dark" : "light");
+  };
 
   const initials = user?.username
     .split(" ")
@@ -46,6 +60,27 @@ export default function NavBar() {
       </div>
       <div></div>
       <div className="flex ml-auto items-center space-x-4">
+        {!loadingUser && user && (
+          <Button
+            className="mx-12"
+            variant="secondary"
+            onClick={async () => router.push("/auth/item/new")}
+          >
+            Sell
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+        >
+          {theme === "light" ? (
+            <Moon className="h-5 w-5" />
+          ) : (
+            <Sun className="h-5 w-5" />
+          )}
+        </Button>
         {!loadingUser && (
           <>
             {!user ? (
@@ -59,12 +94,6 @@ export default function NavBar() {
               </>
             ) : (
               <div className="flex items-center space-x-4">
-                <Button
-                  variant="secondary"
-                  onClick={async () => router.push("/item/new")}
-                >
-                  Sell
-                </Button>
                 <DropdownMenu open={open} onOpenChange={setOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -77,6 +106,7 @@ export default function NavBar() {
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
+
                   <DropdownMenuContent className="w-56" align="end" forceMount>
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
@@ -86,6 +116,14 @@ export default function NavBar() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+
+                    <DropdownMenuItem
+                      onClick={async () => router.push("/auth/profile/items")}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Items</span>
+                    </DropdownMenuItem>
+
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <User className="mr-2 h-4 w-4" />
@@ -93,21 +131,13 @@ export default function NavBar() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuPortal>
                         <DropdownMenuSubContent>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push("/")}>
                             <User className="mr-2 h-4 w-4" />
-                            <span>View Profile</span>
+                            <span>Info</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push("/")}>
                             <Settings className="mr-2 h-4 w-4" />
                             <span>Settings</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Bell className="mr-2 h-4 w-4" />
-                            <span>Notifications</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <HelpCircle className="mr-2 h-4 w-4" />
-                            <span>Help</span>
                           </DropdownMenuItem>
                         </DropdownMenuSubContent>
                       </DropdownMenuPortal>

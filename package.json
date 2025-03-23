@@ -26,12 +26,13 @@
 		"@aws-sdk/s3-presigned-post": "^3.758.0",
 		"@aws-sdk/s3-request-presigner": "^3.758.0",
 		"aws-cdk-lib": "^2.184.1",
+		"date-fns": "^4.1.0",
 		"dotenv": "^16.4.7",
-		"prettier-plugin-tailwindcss": "^0.6.10",
-		"hono": "^4.7.5",
+		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.3",
 		"drizzle-zod": "^0.7.0",
-		"drizzle-kit": "^0.30.4",
+		"hono": "^4.7.5",
+		"prettier-plugin-tailwindcss": "^0.6.10",
 		"zod": "^3.24.2"
 	},
 	"devDependencies": {

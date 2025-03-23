@@ -29,7 +29,6 @@ export function useCreateItemForm({
     Category,
     "subcategories"
   > | null>(subcategory || null);
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   // Create schema with validation
@@ -139,6 +138,7 @@ export function useCreateItemForm({
   ) {
     setSelectedSubCategory(subcategory);
     const field = form.getFieldValue("commons.subcategory_id");
+
     if (field && typeof field === "object" && "setValue" in field) {
       (field as { setValue: (value: number) => void }).setValue(subcategory.id);
     }
@@ -167,8 +167,9 @@ export function useCreateItemForm({
     };
 
     // Find if the property already exists.
+    // Convert both IDs to strings for comparison to avoid type mismatches
     const existingIndex = currentProperties.findIndex(
-      (prop) => prop.id === filter.id,
+      (prop) => String(prop.id) === String(filter.id),
     );
 
     if (existingIndex !== -1) {
@@ -185,7 +186,11 @@ export function useCreateItemForm({
   // set field default values utility
   function getCurrentValue(field: AnyFieldApi, filterId: string | number) {
     if (!Array.isArray(field.state.value)) return undefined;
-    const prop = field.state.value.find((p) => p.id === filterId.toString());
+
+    // Convert both IDs to strings for comparison
+    const prop = field.state.value.find(
+      (p) => String(p.id) === String(filterId),
+    );
     return prop ? prop.value : undefined;
   }
 
@@ -193,8 +198,6 @@ export function useCreateItemForm({
     form,
     isSubmittingForm,
     selectedSubCategory,
-    fullscreenImage,
-    setFullscreenImage,
     handleSubCategorySelect,
     updatePropertiesArray,
     getCurrentValue,

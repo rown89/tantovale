@@ -31,13 +31,20 @@ function ThumbnailPlugin(mainRef: RefObject<KeenSliderInstance | null>): KeenSli
 
 		slider.on('created', () => {
 			if (!mainRef.current) return;
-			addActive(slider.track.details.rel);
+
+			if (slider.track.details) {
+				addActive(slider.track.details.rel);
+			}
+
 			addClickEvents();
 			mainRef.current.on('animationStarted', (main) => {
 				removeActive();
 				const next = main.animator.targetIdx || 0;
-				addActive(main.track.absToRel(next));
-				slider.moveToIdx(Math.min(slider.track.details.maxIdx, next));
+
+				if (main.track.details) {
+					addActive(main.track.absToRel(next));
+					slider.moveToIdx(Math.min(slider.track.details.maxIdx || 0, next));
+				}
 			});
 		});
 
@@ -65,9 +72,13 @@ export default function Slider({ images, thumbnails }: SliderProps) {
 
 	// Reinitialize slider on images update
 	useEffect(() => {
-		instanceRef.current?.update();
-		thumbnailInstanceRef.current?.update();
-	}, [images]);
+		if (images.length > 0) {
+			setTimeout(() => {
+				instanceRef.current?.update();
+				thumbnailInstanceRef.current?.update();
+			}, 100); // Small delay to ensure DOM is updated
+		}
+	}, [images, instanceRef, thumbnailInstanceRef]);
 
 	return (
 		<>
@@ -79,13 +90,15 @@ export default function Slider({ images, thumbnails }: SliderProps) {
 				))}
 			</div>
 
-			<div ref={thumbnailRef} className='keen-slider thumbnail'>
-				{thumbnails.map((thumb, index) => (
-					<div key={index} className='keen-slider__slide'>
-						{thumb}
-					</div>
-				))}
-			</div>
+			{images.length > 0 && (
+				<div ref={thumbnailRef} className='keen-slider thumbnail'>
+					{thumbnails.map((thumb, index) => (
+						<div key={index} className='keen-slider__slide'>
+							{thumb}
+						</div>
+					))}
+				</div>
+			)}
 		</>
 	);
 }

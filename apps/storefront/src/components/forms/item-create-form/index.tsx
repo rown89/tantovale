@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useField } from "@tanstack/react-form";
-import { motion, AnimatePresence } from "framer-motion";
 import { CategorySelector } from "#components/category-selector";
 import {
   Select,
@@ -12,12 +10,7 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card";
+
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -30,13 +23,13 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
-import Slider from "@workspace/ui/components/carousel/slider";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 
 import { FieldInfo } from "../utils/field-info";
-import { delivery_method_types, placeholderImages } from "./constants";
+import { delivery_method_types } from "./constants";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
+import ItemPreview from "./components/item-preview";
 
 export interface Category {
   id: number;
@@ -68,8 +61,6 @@ export default function CreateItemFormComponent({
     form,
     isSubmittingForm,
     selectedSubCategory,
-    fullscreenImage,
-    setFullscreenImage,
     handleSubCategorySelect,
     updatePropertiesArray,
     getCurrentValue,
@@ -78,7 +69,6 @@ export default function CreateItemFormComponent({
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
   const description = useField({ form, name: "commons.description" });
-  const subcategory_id = useField({ form, name: "commons.subcategory_id" });
   const properties = useField({ form, name: "properties" });
   const images = useField({ form, name: "images" });
 
@@ -128,23 +118,11 @@ export default function CreateItemFormComponent({
     }
   }, [allCategories, allSubcategories]);
 
-  // Close fullscreen image on Escape key
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setFullscreenImage(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
-    <div className="container mx-auto py-6 px-4 h-[calc(100vh-56px)]">
+    <div className="container mx-auto py-6 px-6 h-[calc(100vh-56px)]">
       <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
-        <div className="w-full md:max-w-[400px] h-full break-words">
+        <div className="w-full xl:max-w-[500px] h-full break-words">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -153,7 +131,7 @@ export default function CreateItemFormComponent({
             }}
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
-            <div className="overflow-auto flex gap-4 flex-col">
+            <div className="overflow-auto flex gap-6 flex-col">
               {/* <p className="py-4 text-sm">
                 {JSON.stringify(form.state.errors, null, 4)}
               </p> */}
@@ -168,7 +146,11 @@ export default function CreateItemFormComponent({
                       <Input
                         id={field.name}
                         name={field.name}
-                        value={field.state.value?.toString()}
+                        value={
+                          field.state.value !== undefined
+                            ? field.state.value?.toString()
+                            : ""
+                        }
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         aria-invalid={
@@ -205,11 +187,17 @@ export default function CreateItemFormComponent({
                         min="0.01"
                         step="0.01"
                         placeholder="0.20"
-                        value={((field.state.value as number) / 100).toString()}
+                        value={
+                          field.state.value !== undefined
+                            ? ((field.state.value as number) / 100).toString()
+                            : ""
+                        }
                         onBlur={field.handleBlur}
                         onChange={(e) => {
                           field.handleChange(
-                            Math.round(e.target.valueAsNumber * 100),
+                            e.target.value
+                              ? Math.round(e.target.valueAsNumber * 100)
+                              : 0,
                           );
                         }}
                         aria-invalid={
@@ -234,7 +222,7 @@ export default function CreateItemFormComponent({
               <form.Field name="images">
                 {(field) => {
                   return (
-                    <div className="space-y-2 ">
+                    <div className="space-y-2">
                       <MultiImageUpload
                         maxImages={5}
                         onImagesChange={(images: File[]) => {
@@ -257,9 +245,13 @@ export default function CreateItemFormComponent({
                       <Textarea
                         id={field.name}
                         name={field.name}
-                        rows={4}
+                        rows={6}
                         maxLength={800}
-                        value={field.state.value?.toString()}
+                        value={
+                          field.state.value !== undefined
+                            ? field.state.value?.toString()
+                            : ""
+                        }
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         placeholder="Enter a description for your item"
@@ -337,7 +329,16 @@ export default function CreateItemFormComponent({
                           selectedSubCategory || subcategory
                         }
                         onSelect={(e) => {
-                          form.reset({ properties: [] });
+                          // Store current images before resetting the form
+                          const currentImages = form.getFieldValue("images");
+
+                          // Reset only properties, not the entire form
+                          form.reset({
+                            properties: [],
+                            // Preserve the images when resetting
+                            images: currentImages,
+                          });
+
                           handleSubCategorySelect(e);
                           field.setValue(e.id);
                         }}
@@ -441,16 +442,19 @@ export default function CreateItemFormComponent({
                                   )}
                                   placeholder={`Select ${filter.name}`}
                                   variant="inverted"
-                                  animation={2}
                                   maxCount={3}
                                 />
-                                <FieldInfo field={field} />
+                                {field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(filter.name),
+                                ) ? (
+                                  <FieldInfo field={field} />
+                                ) : null}
                               </>
                             )}
                             {/* boolean */}
                             {filter.type === "boolean" && (
-                              <>
-                                <Label htmlFor={field.name}>
+                              <div className="flex flex-col gap-2">
+                                <Label htmlFor={field.name} className="block">
                                   {filter.name}
                                 </Label>
                                 <Switch
@@ -465,8 +469,12 @@ export default function CreateItemFormComponent({
                                     })
                                   }
                                 />
-                                <FieldInfo field={field} />
-                              </>
+                                {field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(filter.name),
+                                ) ? (
+                                  <FieldInfo field={field} />
+                                ) : null}
+                              </div>
                             )}
                             {/* number */}
                             {filter.type === "number" && (
@@ -478,7 +486,13 @@ export default function CreateItemFormComponent({
                                   type="number"
                                   id={field.name}
                                   value={
-                                    getCurrentValue(field, filter.id) || ""
+                                    getCurrentValue(field, filter.id) !==
+                                    undefined
+                                      ? getCurrentValue(
+                                          field,
+                                          filter.id,
+                                        ).toString()
+                                      : ""
                                   }
                                   onChange={(e) => {
                                     // Convert string to number for number inputs
@@ -493,82 +507,97 @@ export default function CreateItemFormComponent({
                                     });
                                   }}
                                 />
-                                <FieldInfo field={field} />
+                                {field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(filter.name),
+                                ) ? (
+                                  <FieldInfo field={field} />
+                                ) : null}
                               </>
                             )}
                             {/* checkbox */}
                             {filter.type === "checkbox" && (
-                              <div
-                                className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
-                              >
+                              <div className="flex flex-col gap-2">
                                 <Label htmlFor={field.name}>
                                   {filter.name}
                                 </Label>
-                                {filter.options.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center gap-2"
-                                  >
-                                    <Checkbox
-                                      id={`${field.name}-${item.id}`}
-                                      checked={
-                                        Array.isArray(
-                                          getCurrentValue(field, filter.slug),
-                                        ) &&
-                                        getCurrentValue(
-                                          field,
-                                          filter.id,
-                                        ).includes(item.id)
-                                      }
-                                      onCheckedChange={(checked) => {
-                                        const currentValues = Array.isArray(
-                                          getCurrentValue(field, filter.id),
-                                        )
-                                          ? [
-                                              ...getCurrentValue(
-                                                field,
-                                                filter.id,
-                                              ),
-                                            ]
-                                          : [];
+                                <div
+                                  className={`flex gap-4 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
+                                >
+                                  {filter.options.map((item) => (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Checkbox
+                                        id={`${field.name}-${item.id}`}
+                                        checked={
+                                          Array.isArray(
+                                            getCurrentValue(field, filter.id),
+                                          ) &&
+                                          getCurrentValue(
+                                            field,
+                                            filter.id,
+                                          )?.includes(item.id.toString())
+                                        }
+                                        onCheckedChange={(checked) => {
+                                          const currentValues = Array.isArray(
+                                            getCurrentValue(field, filter.id),
+                                          )
+                                            ? [
+                                                ...getCurrentValue(
+                                                  field,
+                                                  filter.id,
+                                                ),
+                                              ]
+                                            : [];
 
-                                        if (checked) {
-                                          // Add the item.id if it's not already in the array
-                                          if (
-                                            !currentValues.includes(item.id)
-                                          ) {
+                                          if (checked) {
+                                            // Add the item.id if it's not already in the array
+                                            if (
+                                              !currentValues.includes(
+                                                item.id.toString(),
+                                              )
+                                            ) {
+                                              updatePropertiesArray({
+                                                value: [
+                                                  ...currentValues,
+                                                  item.id.toString(),
+                                                ],
+                                                filter,
+                                                field,
+                                              });
+                                            }
+                                          } else {
+                                            // Remove the item.id from the array
                                             updatePropertiesArray({
-                                              value: [
-                                                ...currentValues,
-                                                item.id,
-                                              ],
+                                              value: currentValues.filter(
+                                                (id) =>
+                                                  id !== item.id.toString(),
+                                              ),
                                               filter,
                                               field,
                                             });
                                           }
-                                        } else {
-                                          // Remove the item.id from the array
-                                          updatePropertiesArray({
-                                            value: currentValues.filter(
-                                              (id) => id !== item.id,
-                                            ),
-                                            filter,
-                                            field,
-                                          });
-                                        }
-                                      }}
-                                    />
-                                    <Label htmlFor={`${field.name}-${item.id}`}>
-                                      {item.name}
-                                    </Label>
-                                  </div>
-                                ))}
-                                <FieldInfo field={field} />
+                                        }}
+                                      />
+                                      <Label
+                                        htmlFor={`${field.name}-${item.id}`}
+                                      >
+                                        {item.name}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                  {field.state.meta.errors.some((item: any) =>
+                                    item?.message?.includes(filter.name),
+                                  ) ? (
+                                    <FieldInfo field={field} />
+                                  ) : null}
+                                </div>
                               </div>
                             )}
                             {/* radio */}
                             {filter.type === "radio" && (
-                              <>
+                              <div className="flex gap-4 flex-col">
                                 <Label htmlFor={field.name}>
                                   {filter.name}
                                 </Label>
@@ -583,7 +612,7 @@ export default function CreateItemFormComponent({
                                       field,
                                     })
                                   }
-                                  className={`flex gap-2 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
+                                  className={`flex gap-4 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
                                 >
                                   {filter.options.map((item) => (
                                     <div
@@ -602,8 +631,12 @@ export default function CreateItemFormComponent({
                                     </div>
                                   ))}
                                 </RadioGroup>
-                                <FieldInfo field={field} />
-                              </>
+                                {field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(filter.name),
+                                ) ? (
+                                  <FieldInfo field={field} />
+                                ) : null}
+                              </div>
                             )}
                           </div>
                         );
@@ -625,7 +658,12 @@ export default function CreateItemFormComponent({
                   <Button
                     type="submit"
                     //  disabled={!canSubmit}
-                    disabled={isSubmittingForm}
+                    disabled={
+                      isSubmittingForm ||
+                      isLoadingCat ||
+                      isLoadingSubCat ||
+                      isLoadingSubCatFilters
+                    }
                     className="sticky bottom-0"
                   >
                     {isSubmitting ? "..." : "Submit"}
@@ -637,120 +675,26 @@ export default function CreateItemFormComponent({
         </div>
 
         {/* Right Column - Preview */}
-        <div className="w-full overflow-hidden md:inline-block hidden h-full py-5">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>
-                <h1 className="text-2xl font-bold break-all">
-                  {String(title.state.value ?? "") || "Title of the item"}
-                </h1>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col justify-between relative">
-              <div className="flex flex-col gap-4">
-                <p className="text-xl font-semibold ">
-                  €{" "}
-                  {Number(price.state.value)
-                    ? (Number(price.state.value) / 100).toFixed(2)
-                    : "0.00"}
-                </p>
-
-                <div className="min-h-[450px]">
-                  <Slider
-                    images={
-                      images.state.value && Array.isArray(images.state.value)
-                        ? images.state.value.map((file: File, i) => {
-                            const imageUrl = URL.createObjectURL(file);
-
-                            return (
-                              <div
-                                key={i}
-                                onClick={() => {
-                                  setFullscreenImage(imageUrl);
-                                }}
-                              >
-                                <Image
-                                  fill
-                                  className="object-cover hover:cursor-pointer"
-                                  src={imageUrl}
-                                  alt=""
-                                />
-                              </div>
-                            );
-                          })
-                        : placeholderImages.map((item, i) => (
-                            <Image
-                              key={i}
-                              fill
-                              className="object-cover"
-                              src={item.url}
-                              alt={item.alt}
-                            />
-                          ))
-                    }
-                    thumbnails={
-                      images.state.value && Array.isArray(images.state.value)
-                        ? images.state.value.map((file: File, i) => {
-                            const thumbUrl = URL.createObjectURL(file);
-                            return (
-                              <Image
-                                key={i}
-                                fill
-                                className="object-cover hover:cursor-pointer"
-                                src={thumbUrl}
-                                alt=""
-                              />
-                            );
-                          })
-                        : placeholderImages.map((item, i) => (
-                            <Image
-                              key={i}
-                              fill
-                              className="object-cover"
-                              src={item.url}
-                              alt={item.alt}
-                            />
-                          ))
-                    }
-                  />
-
-                  {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
-                  <AnimatePresence>
-                    {fullscreenImage && (
-                      <motion.div
-                        className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setFullscreenImage(null)}
-                      >
-                        <motion.img
-                          src={fullscreenImage}
-                          alt="Fullscreen"
-                          className="h-full p-12 object-contain"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.2, ease: "easeInOut" }}
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <div className="text-gray-200 whitespace-pre-wrap max-h-60 overflow-auto break-all">
-                  {String(description.state.value ?? "") ||
-                    "Your item description will appear here..."}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="bg-gray-100 p-4 rounded-md my-6">
-            <p className="text-sm text-gray-500">
-              This is a preview of how your item will appear to others.
-            </p>
-          </div>
+        <div className="w-full overflow-hidden xl:inline-block hidden h-full">
+          <ItemPreview
+            title={
+              title.state.value !== undefined ? String(title.state.value) : ""
+            }
+            price={
+              price.state.value !== undefined ? Number(price.state.value) : 0
+            }
+            description={
+              description.state.value !== undefined
+                ? String(description.state.value)
+                : ""
+            }
+            images={
+              images.state.value && Array.isArray(images.state.value)
+                ? images.state.value
+                : []
+            }
+            subcategory={selectedSubCategory?.name || ""}
+          />
         </div>
       </div>
     </div>

@@ -63,6 +63,7 @@ export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 
 export const FilterValuesEnum = pgEnum('filter_values_enum', [
 	// CONDITIONS
+	'null',
 	'new',
 	'used-like-new',
 	'used-good',
