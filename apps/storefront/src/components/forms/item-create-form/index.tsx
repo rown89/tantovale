@@ -132,10 +132,7 @@ export default function CreateItemFormComponent({
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
             <div className="overflow-auto flex gap-6 flex-col">
-              {/* <p className="py-4 text-sm">
-                {JSON.stringify(form.state.errors, null, 4)}
-              </p> */}
-
+              {JSON.stringify(form.state.errors, null, 4)}
               <form.Field name="commons.title">
                 {(field) => {
                   return (
@@ -172,7 +169,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field name="commons.price">
                 {(field) => {
                   return (
@@ -218,7 +214,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field name="images">
                 {(field) => {
                   return (
@@ -234,7 +229,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field name="commons.description">
                 {(field) => {
                   return (
@@ -273,7 +267,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field name="commons.delivery_method">
                 {(field) => {
                   return (
@@ -312,7 +305,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field
                 name="commons.subcategory_id"
                 defaultValue={selectedSubCategory?.id}
@@ -347,7 +339,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
                 <Spinner />
               ) : (
@@ -406,11 +397,14 @@ export default function CreateItemFormComponent({
                                     </SelectGroup>
                                   </SelectContent>
                                 </Select>
-
-                                {field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(filter.name),
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
                                 ) ? (
-                                  <FieldInfo field={field} />
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
                                 ) : null}
                               </>
                             )}
@@ -444,10 +438,14 @@ export default function CreateItemFormComponent({
                                   variant="inverted"
                                   maxCount={3}
                                 />
-                                {field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(filter.name),
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
                                 ) ? (
-                                  <FieldInfo field={field} />
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
                                 ) : null}
                               </>
                             )}
@@ -455,11 +453,17 @@ export default function CreateItemFormComponent({
                             {filter.type === "boolean" && (
                               <div className="flex flex-col gap-2">
                                 <Label htmlFor={field.name} className="block">
-                                  {filter.name}
+                                  {filter.name}{" "}
+                                  {filter.on_create_required && (
+                                    <span className="text-red-500">*</span>
+                                  )}
                                 </Label>
                                 <Switch
                                   checked={
-                                    getCurrentValue(field, filter.id) || false
+                                    getCurrentValue(field, filter.id) !==
+                                    undefined
+                                      ? getCurrentValue(field, filter.id)
+                                      : false
                                   }
                                   onCheckedChange={(checked) =>
                                     updatePropertiesArray({
@@ -469,10 +473,14 @@ export default function CreateItemFormComponent({
                                     })
                                   }
                                 />
-                                {field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(filter.name),
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
                                 ) ? (
-                                  <FieldInfo field={field} />
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
                                 ) : null}
                               </div>
                             )}
@@ -480,7 +488,10 @@ export default function CreateItemFormComponent({
                             {filter.type === "number" && (
                               <>
                                 <Label htmlFor={field.name}>
-                                  {filter.name}
+                                  {filter.name}{" "}
+                                  {filter.on_create_required && (
+                                    <span className="text-red-500">*</span>
+                                  )}
                                 </Label>
                                 <Input
                                   type="number"
@@ -507,10 +518,14 @@ export default function CreateItemFormComponent({
                                     });
                                   }}
                                 />
-                                {field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(filter.name),
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
                                 ) ? (
-                                  <FieldInfo field={field} />
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
                                 ) : null}
                               </>
                             )}
@@ -518,7 +533,10 @@ export default function CreateItemFormComponent({
                             {filter.type === "checkbox" && (
                               <div className="flex flex-col gap-2">
                                 <Label htmlFor={field.name}>
-                                  {filter.name}
+                                  {filter.name}{" "}
+                                  {filter.on_create_required && (
+                                    <span className="text-red-500">*</span>
+                                  )}
                                 </Label>
                                 <div
                                   className={`flex gap-4 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
@@ -587,19 +605,27 @@ export default function CreateItemFormComponent({
                                       </Label>
                                     </div>
                                   ))}
-                                  {field.state.meta.errors.some((item: any) =>
-                                    item?.message?.includes(filter.name),
-                                  ) ? (
-                                    <FieldInfo field={field} />
-                                  ) : null}
                                 </div>
+
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
+                                ) ? (
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
+                                ) : null}
                               </div>
                             )}
                             {/* radio */}
                             {filter.type === "radio" && (
                               <div className="flex gap-4 flex-col">
                                 <Label htmlFor={field.name}>
-                                  {filter.name}
+                                  {filter.name}{" "}
+                                  {filter.on_create_required && (
+                                    <span className="text-red-500">*</span>
+                                  )}
                                 </Label>
                                 <RadioGroup
                                   value={(
@@ -631,10 +657,14 @@ export default function CreateItemFormComponent({
                                     </div>
                                   ))}
                                 </RadioGroup>
-                                {field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(filter.name),
+                                {filter.on_create_required &&
+                                field.state.meta.errors.some((item: any) =>
+                                  item?.message?.includes(`${filter.name}`),
                                 ) ? (
-                                  <FieldInfo field={field} />
+                                  <FieldInfo
+                                    field={field}
+                                    filterName={filter.name}
+                                  />
                                 ) : null}
                               </div>
                             )}

@@ -179,6 +179,9 @@ export function useCreateItemForm({
       // Add a new property.
       currentProperties.push(newProperty);
     }
+
+    console.log(currentProperties);
+
     // Update the form field state.
     field.handleChange(currentProperties);
   }

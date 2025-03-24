@@ -33,7 +33,34 @@ export const formOpts = formOptions({
 });
 
 export function createDynamicSchema(subCatFilters: any) {
-  return createItemSchema
+  // Create a modified schema that allows boolean values in properties
+  const modifiedSchema = z.object({
+    commons: z.object({
+      title: z.string().min(1, "Title is required"),
+      description: z.string().min(1, "Description is required"),
+      price: z.number().min(1, "Price must be greater than 0"),
+      delivery_method: z.string().min(1, "Delivery method is required"),
+      subcategory_id: z.number().min(1, "Category is required"),
+    }),
+    properties: z
+      .array(
+        z.object({
+          id: z.number(),
+          slug: z.string(),
+          value: z.union([
+            z.string(),
+            z.number(),
+            z.array(z.string()),
+            z.array(z.number()),
+            z.boolean(), // Add boolean as a valid type
+          ]),
+        }),
+      )
+      .default([]), // Add default empty array
+    serializedProperties: z.string().optional(),
+  });
+
+  return modifiedSchema
     .and(z.object({ images: multipleImagesSchema }))
     .superRefine((val, ctx) => {
       if (subCatFilters && Array.isArray(subCatFilters)) {
@@ -43,11 +70,7 @@ export function createDynamicSchema(subCatFilters: any) {
         requiredFilters.forEach((requiredFilter) => {
           // Find the property in the properties array
           const property = val.properties?.find(
-            (prop: {
-              id: number;
-              value: string | number | string[] | number[];
-              slug: string;
-            }) => prop.slug === requiredFilter.slug,
+            (prop) => prop.slug === requiredFilter.slug,
           );
 
           // Check if property exists
@@ -60,38 +83,18 @@ export function createDynamicSchema(subCatFilters: any) {
             return;
           }
 
-          // Check if property has a valid value based on filter type
-          const value = property.value;
-          let isValid = false;
-
-          switch (requiredFilter.type) {
-            case "select":
-            case "radio":
-              // For select and radio, value should be a non-empty string or number
-              isValid = value !== undefined && value !== null && value !== "";
-              break;
-            case "select_multi":
-            case "checkbox":
-              // For multi-select and checkbox, value should be a non-empty array
-              isValid = Array.isArray(value) && value.length > 0;
-              break;
-            case "boolean":
-              // For boolean, value should be a boolean
-              isValid = typeof value === "boolean";
-              break;
-            case "number":
-              // For number, value should be a number and not NaN
-              isValid = typeof value === "number" && !isNaN(value);
-              break;
-            default:
-              // For any other type, just check if value exists
-              isValid = value !== undefined && value !== null && value !== "";
-          }
-
-          if (!isValid) {
+          // For boolean type, we consider it valid regardless of true/false
+          // For other types, check if the value is empty
+          if (
+            requiredFilter.type !== "boolean" &&
+            (property.value === undefined ||
+              property.value === null ||
+              property.value === "" ||
+              (Array.isArray(property.value) && property.value.length === 0))
+          ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: `Required filter "${requiredFilter.name}" must have a valid value.`,
+              message: `Property for required filter "${requiredFilter.name}" cannot be empty.`,
               path: ["properties"],
             });
           }
