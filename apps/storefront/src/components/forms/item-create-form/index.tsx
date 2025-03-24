@@ -132,7 +132,7 @@ export default function CreateItemFormComponent({
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
             <div className="overflow-auto flex gap-6 flex-col">
-              {JSON.stringify(form.state.errors, null, 4)}
+              {/* JSON.stringify(form.state.errors, null, 4) */}
               <form.Field name="commons.title">
                 {(field) => {
                   return (
@@ -397,15 +397,12 @@ export default function CreateItemFormComponent({
                                     </SelectGroup>
                                   </SelectContent>
                                 </Select>
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </>
                             )}
                             {/* select_multi */}
@@ -438,15 +435,12 @@ export default function CreateItemFormComponent({
                                   variant="inverted"
                                   maxCount={3}
                                 />
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </>
                             )}
                             {/* boolean */}
@@ -473,15 +467,12 @@ export default function CreateItemFormComponent({
                                     })
                                   }
                                 />
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </div>
                             )}
                             {/* number */}
@@ -518,15 +509,12 @@ export default function CreateItemFormComponent({
                                     });
                                   }}
                                 />
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </>
                             )}
                             {/* checkbox */}
@@ -607,15 +595,12 @@ export default function CreateItemFormComponent({
                                   ))}
                                 </div>
 
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </div>
                             )}
                             {/* radio */}
@@ -657,15 +642,12 @@ export default function CreateItemFormComponent({
                                     </div>
                                   ))}
                                 </RadioGroup>
-                                {filter.on_create_required &&
-                                field.state.meta.errors.some((item: any) =>
-                                  item?.message?.includes(`${filter.name}`),
-                                ) ? (
+                                {filter.on_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
                                   />
-                                ) : null}
+                                )}
                               </div>
                             )}
                           </div>
