@@ -20,37 +20,51 @@ export default function ProfileMenu() {
   return (
     <>
       {!isMobile && (
-        <div className="border rounded-lg  shadow-md w-full md:max-w-[300px]">
+        <div className="border rounded-lg shadow-md w-full min-w-[300px] md:max-w-[300px]">
           <Command defaultValue={"-"}>
             <CommandList>
               <CommandGroup heading="Profile">
-                <CommandItem
-                  className={`${params.slug === "items" ? "bg-accent" : "bg-background"}`}
-                  onClickCapture={() => {
-                    console.log("X");
-                    router.push("/auth/profile/items");
-                  }}
-                >
-                  <CreditCard />
-                  <span>Your items</span>
-                </CommandItem>
-                <CommandItem
-                  className={`${params.slug === "settings" ? "bg-accent" : "bg-background"}`}
-                  onClickCapture={() => router.push("/auth/profile/settings")}
-                >
-                  <Settings />
-                  <span>Settings</span>
-                </CommandItem>
+                <div className="flex flex-col gap-2">
+                  <CommandItem
+                    className={`${
+                      params.slug === "items"
+                        ? "bg-accent text-accent-foreground font-bold"
+                        : "bg-background text-foreground"
+                    }`}
+                    onClickCapture={() => {
+                      router.push("/auth/profile/items");
+                    }}
+                  >
+                    <CreditCard
+                      className={`${params.slug === "items" ? "text-accent-foreground" : "text-foreground"}`}
+                    />
+                    <span>Your items</span>
+                  </CommandItem>
+                  <CommandItem
+                    className={`${
+                      params.slug === "settings"
+                        ? "bg-accent text-accent-foreground font-bold"
+                        : "bg-background text-foreground"
+                    }`}
+                    onClickCapture={() => router.push("/auth/profile/settings")}
+                  >
+                    <Settings
+                      className={`${params.slug === "settings" ? "text-accent-foreground" : "text-foreground"}`}
+                    />
+                    <span>Settings</span>
+                  </CommandItem>
 
-                <CommandItem
-                  onClickCapture={() => {
-                    setUser(null);
-                    router.push("/api/logout");
-                  }}
-                >
-                  <LogOut className="mr-2 h-4 w-4 text-red-600" />
-                  <span className="text-red-600">Logout</span>
-                </CommandItem>
+                  <CommandItem
+                    className="my-4 bg-background"
+                    onClickCapture={() => {
+                      setUser(null);
+                      router.push("/api/logout");
+                    }}
+                  >
+                    <LogOut />
+                    <span>Logout</span>
+                  </CommandItem>
+                </div>
               </CommandGroup>
             </CommandList>
           </Command>

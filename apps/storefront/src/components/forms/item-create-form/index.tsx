@@ -136,6 +136,40 @@ export default function CreateItemFormComponent({
           >
             <div className="overflow-auto flex gap-6 flex-col">
               {/* JSON.stringify(form.state.errors, null, 4) */}
+              <form.Field
+                name="commons.subcategory_id"
+                defaultValue={selectedSubCategory?.id}
+              >
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label className="block">
+                        Category <span className="text-red-500">*</span>
+                      </Label>
+                      <CategorySelector
+                        categories={nestedSubcategories}
+                        selectedCategoryControlled={
+                          selectedSubCategory || subcategory
+                        }
+                        onSelect={(e) => {
+                          // Store current images before resetting the form
+                          const currentImages = form.getFieldValue("images");
+
+                          // Reset only properties, not the entire form
+                          form.reset({
+                            properties: [],
+                            // Preserve the images when resetting
+                            images: currentImages,
+                          });
+
+                          handleSubCategorySelect(e);
+                          field.setValue(e.id);
+                        }}
+                      />
+                    </div>
+                  );
+                }}
+              </form.Field>
               <form.Field name="commons.title">
                 {(field) => {
                   return (
@@ -308,40 +342,7 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-              <form.Field
-                name="commons.subcategory_id"
-                defaultValue={selectedSubCategory?.id}
-              >
-                {(field) => {
-                  return (
-                    <div className="space-y-2">
-                      <Label className="block">
-                        Category <span className="text-red-500">*</span>
-                      </Label>
-                      <CategorySelector
-                        categories={nestedSubcategories}
-                        selectedCategoryControlled={
-                          selectedSubCategory || subcategory
-                        }
-                        onSelect={(e) => {
-                          // Store current images before resetting the form
-                          const currentImages = form.getFieldValue("images");
 
-                          // Reset only properties, not the entire form
-                          form.reset({
-                            properties: [],
-                            // Preserve the images when resetting
-                            images: currentImages,
-                          });
-
-                          handleSubCategorySelect(e);
-                          field.setValue(e.id);
-                        }}
-                      />
-                    </div>
-                  );
-                }}
-              </form.Field>
               {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
                 <Spinner />
               ) : (

@@ -12,8 +12,6 @@ export async function middleware(req: NextRequest) {
 
   const hasTokens = accessToken && refreshToken;
 
-  console.log(hasTokens);
-
   try {
     // If the user is authenticated
     if (hasTokens) {

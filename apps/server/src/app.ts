@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-import { handle, type LambdaContext, type LambdaEvent } from "hono/aws-lambda";
 import { createApp } from "#lib/create-app";
 import { configureOpenAPI } from "#lib/configureOpenApi";
 import { authPath } from "#utils/constants";
@@ -27,7 +26,8 @@ import {
 
 const app = createApp();
 
-configureOpenAPI(app); // initiate OpenApi specs
+// OpenApi specs
+configureOpenAPI(app);
 
 const apiRoutes = app
   .route("/signup", signupRoute)
@@ -49,50 +49,5 @@ const apiRoutes = app
   .route(`/${authPath}/password`, passwordResetVerifyToken)
   .route(`/${authPath}/profile`, profileRoute);
 
-export const handler = async (
-  event: LambdaEvent,
-  lambdaContext: LambdaContext,
-) => {
-  try {
-    // console.log("Lambda event:", JSON.stringify(event, null, 2));
-    //  console.log("Lambda context:", lambdaContext);
-
-    // Ensure the app is properly invoked
-    const response = await handle(app)(event, lambdaContext);
-
-    // Manually add cookies to the headers if needed
-    if (response.cookies) {
-      response.headers = {
-        ...response.headers,
-        "Set-Cookie": response.cookies.join(", "),
-      };
-    }
-
-    console.log(":: RESPONSE COOKIES: ", response.cookies);
-
-    return {
-      cookies: [response.cookies ? response.cookies.join(", ") : ""],
-      ...response,
-    };
-  } catch (error) {
-    console.error("Error handling Lambda request:", error);
-
-    // Return a proper error response
-    return {
-      statusCode: 500,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-cookie": "asd",
-        "Access-Control-Allow-Credentials": true,
-      },
-      body: JSON.stringify({
-        message: "Aws lambda Internal Server Error",
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
-    };
-  }
-};
-
-export type ApiRoutesType = typeof apiRoutes;
-
 export { app };
+export type ApiRoutesType = typeof apiRoutes;

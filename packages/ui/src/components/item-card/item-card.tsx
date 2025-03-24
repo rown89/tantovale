@@ -11,7 +11,7 @@ export interface Item {
 	title: string;
 	price: number;
 	image: string;
-	createdAt: Date;
+	created_at: Date;
 }
 
 interface ItemCardProps {
@@ -23,18 +23,18 @@ interface ItemCardProps {
 
 export function ItemCard({ item, onDelete, onEdit, onShare }: ItemCardProps) {
 	return (
-		<Card className='overflow-hidden'>
+		<Card>
 			<div className='flex flex-col sm:flex-row'>
 				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
 					<Image src={item.image || '/placeholder.svg'} alt={item.title} fill className='object-cover' />
 				</div>
-				<div className='flex w-full flex-col justify-between p-4'>
-					<div className='space-y-2'>
-						<div className='flex items-start justify-between'>
-							<h3 className='text-lg font-semibold'>{item.title}</h3>
+				<div className='flex w-full flex-col justify-between gap-4 overflow-auto p-4'>
+					<div>
+						<div className='flex items-start justify-between gap-4'>
+							<h3 className='truncate overflow-ellipsis break-all text-lg font-semibold'>{item.title}</h3>
 							<p className='text-lg font-bold'>€{item.price.toFixed(2)}</p>
 						</div>
-						<p className='text-muted-foreground text-sm'>Created on {format(item.createdAt, 'MMM d, yyyy')}</p>
+						<p className='text-muted-foreground text-sm'>Created on {format(item.created_at, 'MMM d, yyyy')}</p>
 					</div>
 					<div className='mt-4 flex justify-end gap-2'>
 						<Button variant='outline' size='sm' onClick={onEdit}>

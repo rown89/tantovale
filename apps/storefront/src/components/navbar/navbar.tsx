@@ -123,9 +123,12 @@ export default function NavBar() {
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={async () => logout()}>
-                      <LogOut className="mr-2 h-4 w-4 text-red-600" />
-                      <span className="text-red-500">Log out</span>
+                    <DropdownMenuItem
+                      className="hover:cursor-pointer"
+                      onClick={async () => logout()}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
