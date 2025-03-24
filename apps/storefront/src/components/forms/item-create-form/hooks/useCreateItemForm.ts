@@ -121,6 +121,7 @@ export function useCreateItemForm({
         });
       } finally {
         setIsSubmittingForm(false);
+        router.push("/");
       }
     },
   });

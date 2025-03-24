@@ -32,7 +32,6 @@
 		"drizzle-orm": "^0.39.3",
 		"drizzle-zod": "^0.7.0",
 		"hono": "^4.7.5",
-		"prettier-plugin-tailwindcss": "^0.6.10",
 		"zod": "^3.24.2"
 	},
 	"devDependencies": {
@@ -40,7 +39,8 @@
 		"@commitlint/config-conventional": "^19.6.0",
 		"dotenv-cli": "^8.0.0",
 		"husky": "^9.1.7",
-		"prettier": "^3.2.5",
+		"prettier": "^3.5.3",
+		"prettier-plugin-tailwindcss": "^0.6.11",
 		"turbo": "^2.3.3",
 		"typescript": "5.7.3"
 	}

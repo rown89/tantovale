@@ -30,6 +30,7 @@ import { delivery_method_types } from "./constants";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
 import ItemPreview from "./components/item-preview";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
 export interface Category {
   id: number;
@@ -47,6 +48,8 @@ export default function CreateItemFormComponent({
   const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
     [],
   );
+
+  const isMobile = useIsMobile();
 
   const {
     allCategories,
@@ -671,6 +674,7 @@ export default function CreateItemFormComponent({
                     type="submit"
                     //  disabled={!canSubmit}
                     disabled={
+                      !selectedSubCategory ||
                       isSubmittingForm ||
                       isLoadingCat ||
                       isLoadingSubCat ||
@@ -687,27 +691,29 @@ export default function CreateItemFormComponent({
         </div>
 
         {/* Right Column - Preview */}
-        <div className="w-full overflow-hidden xl:inline-block hidden h-full">
-          <ItemPreview
-            title={
-              title.state.value !== undefined ? String(title.state.value) : ""
-            }
-            price={
-              price.state.value !== undefined ? Number(price.state.value) : 0
-            }
-            description={
-              description.state.value !== undefined
-                ? String(description.state.value)
-                : ""
-            }
-            images={
-              images.state.value && Array.isArray(images.state.value)
-                ? images.state.value
-                : []
-            }
-            subcategory={selectedSubCategory?.name || ""}
-          />
-        </div>
+        {!isMobile && (
+          <div className="w-full overflow-hidden  h-full">
+            <ItemPreview
+              title={
+                title.state.value !== undefined ? String(title.state.value) : ""
+              }
+              price={
+                price.state.value !== undefined ? Number(price.state.value) : 0
+              }
+              description={
+                description.state.value !== undefined
+                  ? String(description.state.value)
+                  : ""
+              }
+              images={
+                images.state.value && Array.isArray(images.state.value)
+                  ? images.state.value
+                  : []
+              }
+              subcategory={selectedSubCategory?.name || ""}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

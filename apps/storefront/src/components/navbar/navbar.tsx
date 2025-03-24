@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "#/context/AuthProvider";
-import { useTheme } from "#/context/ThemeProvider";
+import { useAuth } from "#components/providers/AuthProvider";
+import { useTheme } from "next-themes";
 import { Button } from "@workspace/ui/components/button";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -18,32 +18,16 @@ import {
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuPortal,
-  DropdownMenuSubContent,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import {
-  User,
-  Settings,
-  Bell,
-  HelpCircle,
-  LogOut,
-  Moon,
-  Sun,
-} from "lucide-react";
+import { Settings, BadgeDollarSign, LogOut, Moon, Sun } from "lucide-react";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
-
-  const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
-  };
 
   const initials = user?.username
     .split(" ")
@@ -66,21 +50,30 @@ export default function NavBar() {
             variant="secondary"
             onClick={async () => router.push("/auth/item/new")}
           >
+            <BadgeDollarSign />
             Sell
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-        >
-          {theme === "light" ? (
-            <Moon className="h-5 w-5" />
-          ) : (
-            <Sun className="h-5 w-5" />
-          )}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon">
+              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setTheme("light")}>
+              Light
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme("dark")}>
+              Dark
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme("system")}>
+              System
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {!loadingUser && (
           <>
             {!user ? (
@@ -121,31 +114,18 @@ export default function NavBar() {
                       onClick={async () => router.push("/auth/profile/items")}
                     >
                       <LogOut className="mr-2 h-4 w-4" />
-                      <span>Items</span>
+                      <span>Your items</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <User className="mr-2 h-4 w-4" />
-                        <span>Profile</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuPortal>
-                        <DropdownMenuSubContent>
-                          <DropdownMenuItem onClick={() => router.push("/")}>
-                            <User className="mr-2 h-4 w-4" />
-                            <span>Info</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push("/")}>
-                            <Settings className="mr-2 h-4 w-4" />
-                            <span>Settings</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuSubContent>
-                      </DropdownMenuPortal>
-                    </DropdownMenuSub>
+                    <DropdownMenuItem onClick={() => router.push("/")}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={async () => logout()}>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Log out</span>
+                      <LogOut className="mr-2 h-4 w-4 text-red-600" />
+                      <span className="text-red-500">Log out</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

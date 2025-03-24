@@ -2,8 +2,8 @@ import { Nunito_Sans } from "next/font/google";
 import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
-import { ThemeProvider } from "../context/ThemeProvider";
-import { AuthProvider } from "#context/AuthProvider";
+import { ThemeProvider } from "@workspace/ui/components/theme-provider";
+import { AuthProvider } from "#components/providers/AuthProvider";
 import { cookies } from "next/headers";
 import NavBar from "#components/navbar/navbar";
 
@@ -34,7 +34,12 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head />
       <body className={`${font.variable} font`}>
-        <ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <QueryProvider>
             <AuthProvider isLogged={isLogged}>
               <NavBar />

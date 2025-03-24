@@ -1,17 +1,19 @@
-'use client';
+import { useEffect, useState } from 'react';
 
-export function isMobile(): boolean {
-	if (typeof window === 'undefined') return false;
+const MOBILE_BREAKPOINT = 1280;
 
-	// Check for touch capability
-	const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0 || (navigator as any).msMaxTouchPoints > 0;
+export function useIsMobile() {
+	const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
 
-	// Check for small screen
-	const isSmallScreen = window.innerWidth < 768;
+	useEffect(() => {
+		const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+		const onChange = () => {
+			setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+		};
+		mql.addEventListener('change', onChange);
+		setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+		return () => mql.removeEventListener('change', onChange);
+	}, []);
 
-	// Check for mobile user agent (less reliable but can help)
-	const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-	// Consider it mobile if it has touch capability AND either has a small screen or mobile user agent
-	return hasTouch && (isSmallScreen || mobileUserAgent);
+	return !!isMobile;
 }

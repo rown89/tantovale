@@ -12,6 +12,8 @@ export async function middleware(req: NextRequest) {
 
   const hasTokens = accessToken && refreshToken;
 
+  console.log(hasTokens);
+
   try {
     // If the user is authenticated
     if (hasTokens) {
@@ -21,7 +23,7 @@ export async function middleware(req: NextRequest) {
     }
     // If user is not authenticated and tries to access a protected route
     else {
-      if (restrictedPaths.includes(pathname)) {
+      if (restrictedPaths.find((item) => pathname.includes(item))) {
         return NextResponse.redirect(new URL("/login", req.url));
       }
     }

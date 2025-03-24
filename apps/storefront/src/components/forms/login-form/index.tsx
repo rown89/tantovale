@@ -11,7 +11,7 @@ import { submitLogin } from "#app/login/actions";
 import { LoginActionResponse } from "#app/login/types";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
 import { CheckCircle2 } from "lucide-react";
-import { useAuth } from "#context/AuthProvider";
+import { useAuth } from "#components/providers/AuthProvider";
 import { useRouter } from "next/navigation";
 
 const initialState: LoginActionResponse = {

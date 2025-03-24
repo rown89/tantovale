@@ -11,7 +11,7 @@ import { Button } from '../button';
 import { Card } from '../card';
 import { AlertCircle, Upload, X, ImageIcon, Move } from 'lucide-react';
 import { Alert, AlertDescription } from '../alert';
-import { isMobile } from '../../hooks';
+import { useIsMobile } from '../../hooks';
 import { Input } from '../input';
 
 export type UploadedImage = {
@@ -44,6 +44,7 @@ export default function MultiImageUpload({
 	const [error, setError] = useState<string | null>(null);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const isMobile = useIsMobile();
 
 	// Load initial image URLs when component mounts
 	useEffect(() => {
@@ -216,10 +217,10 @@ export default function MultiImageUpload({
 	const backendOptions = useTouchBackend ? { enableMouseEvents: true } : {};
 
 	useEffect(() => {
-		setUseTouchBackend(isMobile());
+		setUseTouchBackend(isMobile);
 
 		const handleResize = () => {
-			setUseTouchBackend(isMobile());
+			setUseTouchBackend(isMobile);
 		};
 
 		window.addEventListener('resize', handleResize);
@@ -232,7 +233,7 @@ export default function MultiImageUpload({
 				}
 			});
 		};
-	}, [images]);
+	}, [images, isMobile]);
 
 	return (
 		<div className={cn('space-y-4', className)}>
@@ -441,7 +442,7 @@ const DraggableImageItem = ({ id, index, preview, filename, moveImage, removeIma
 		<Card
 			ref={ref}
 			className={cn(
-				'group relative aspect-square touch-none overflow-hidden transition-transform select-none',
+				'group relative aspect-square touch-none select-none overflow-hidden transition-transform',
 				isDragging ? 'z-10 scale-95 opacity-50 shadow-lg' : 'opacity-100',
 				isOver ? 'border-primary' : '',
 			)}>
@@ -457,7 +458,7 @@ const DraggableImageItem = ({ id, index, preview, filename, moveImage, removeIma
 					<X className='h-4 w-4' />
 				</Button>
 			</div>
-			<div className='absolute top-2 right-2 left-2 truncate rounded bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100'>
+			<div className='absolute left-2 right-2 top-2 truncate rounded bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100'>
 				{filename}
 			</div>
 			<div className='bg-muted flex h-full w-full items-center justify-center'>

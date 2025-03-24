@@ -7,7 +7,7 @@ import { Edit, Trash2, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export interface Item {
-	id: string;
+	id: number;
 	title: string;
 	price: number;
 	image: string;
@@ -32,7 +32,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare }: ItemCardProps) {
 					<div className='space-y-2'>
 						<div className='flex items-start justify-between'>
 							<h3 className='text-lg font-semibold'>{item.title}</h3>
-							<p className='text-lg font-bold'>${item.price.toFixed(2)}</p>
+							<p className='text-lg font-bold'>€{item.price.toFixed(2)}</p>
 						</div>
 						<p className='text-muted-foreground text-sm'>Created on {format(item.createdAt, 'MMM d, yyyy')}</p>
 					</div>
