@@ -1,5 +1,5 @@
 {
-	"id": "ce259da5-7e42-4d62-9d28-d5f29ab4f199",
+	"id": "0a22c9db-8e96-490f-bf95-413fcb8cd5e9",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
@@ -44,22 +44,65 @@
 					"notNull": true,
 					"default": 0
 				},
-				"isOptionalField": {
-					"name": "isOptionalField",
+				"on_item_create_required": {
+					"name": "on_item_create_required",
 					"type": "boolean",
 					"primaryKey": false,
 					"notNull": true,
 					"default": false
 				},
-				"isEditableField": {
-					"name": "isEditableField",
+				"on_item_update_editable": {
+					"name": "on_item_update_editable",
 					"type": "boolean",
 					"primaryKey": false,
 					"notNull": true,
 					"default": true
+				},
+				"is_searchable": {
+					"name": "is_searchable",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
 				}
 			},
-			"indexes": {},
+			"indexes": {
+				"unique_filter_per_subcategory": {
+					"name": "unique_filter_per_subcategory",
+					"columns": [
+						{
+							"expression": "filter_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "subcategory_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": true,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
 			"foreignKeys": {
 				"subcategory_filters_filter_id_filters_id_fk": {
 					"name": "subcategory_filters_filter_id_filters_id_fk",
@@ -182,14 +225,6 @@
 					"primaryKey": false,
 					"notNull": true
 				},
-				"condition": {
-					"name": "condition",
-					"type": "conditions_enum",
-					"typeSchema": "public",
-					"primaryKey": false,
-					"notNull": true,
-					"default": "'used'"
-				},
 				"status": {
 					"name": "status",
 					"type": "status_enum",
@@ -225,7 +260,7 @@
 					"typeSchema": "public",
 					"primaryKey": false,
 					"notNull": true,
-					"default": "'pickup'"
+					"default": "'shipping'"
 				},
 				"user_id": {
 					"name": "user_id",
@@ -252,6 +287,12 @@
 					"primaryKey": false,
 					"notNull": true,
 					"default": "now()"
+				},
+				"deleted_at": {
+					"name": "deleted_at",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": false
 				}
 			},
 			"indexes": {
@@ -360,8 +401,29 @@
 					"primaryKey": false,
 					"notNull": true
 				},
+				"order_position": {
+					"name": "order_position",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"size": {
+					"name": "size",
+					"type": "item_images_size_enum",
+					"typeSchema": "public",
+					"primaryKey": false,
+					"notNull": true
+				},
 				"created_at": {
 					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
 					"type": "timestamp with time zone",
 					"primaryKey": false,
 					"notNull": true,
@@ -557,7 +619,19 @@
 					"type": "filter_values_enum",
 					"typeSchema": "public",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": false
+				},
+				"boolean_value": {
+					"name": "boolean_value",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"numeric_value": {
+					"name": "numeric_value",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
 				},
 				"icon": {
 					"name": "icon",
@@ -1468,6 +1542,7 @@
 			"name": "filter_values_enum",
 			"schema": "public",
 			"values": [
+				"null",
 				"new",
 				"used-like-new",
 				"used-good",
@@ -1696,7 +1771,7 @@
 		"public.filter_types_enum": {
 			"name": "filter_types_enum",
 			"schema": "public",
-			"values": ["select", "boolean", "text", "number", "range"]
+			"values": ["select", "select_multi", "boolean", "checkbox", "radio", "number"]
 		},
 		"public.filters_enum": {
 			"name": "filters_enum",
@@ -1712,6 +1787,11 @@
 				"size_phone_screen",
 				"size_monitor_screen"
 			]
+		},
+		"public.item_images_size_enum": {
+			"name": "item_images_size_enum",
+			"schema": "public",
+			"values": ["original", "small", "medium", "thumbnail"]
 		},
 		"public.profile_types_enum": {
 			"name": "profile_types_enum",

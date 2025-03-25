@@ -38,7 +38,7 @@ export function useCreateItemForm({
   // Function to submit the item data
   async function submitItemData(formData: any, images: File[]) {
     try {
-      const itemResponse = await client.item.new.$post({
+      const itemResponse = await client.auth.item.new.$post({
         json: formData,
       });
 

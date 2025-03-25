@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { Settings, BadgeDollarSign, LogOut, Moon, Sun } from "lucide-react";
+import { Settings, DollarSign, LogOut, Moon, Sun } from "lucide-react";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
@@ -46,11 +46,11 @@ export default function NavBar() {
       <div className="flex ml-auto items-center space-x-4">
         {!loadingUser && user && (
           <Button
-            className="mx-12"
+            className="w-[90px] mx-12 text-slate-900"
             variant="secondary"
             onClick={async () => router.push("/auth/item/new")}
           >
-            <BadgeDollarSign />
+            <DollarSign />
             Sell
           </Button>
         )}
@@ -117,7 +117,9 @@ export default function NavBar() {
                       <span>Your items</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => router.push("/")}>
+                    <DropdownMenuItem
+                      onClick={() => router.push("/auth/profile/settings")}
+                    >
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
                     </DropdownMenuItem>

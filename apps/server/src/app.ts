@@ -15,7 +15,6 @@ import {
   passwordResetRoute,
   passwordResetVerifyToken,
   verifyRoute,
-  verifyEmailRoute,
   itemRoute,
   subcategoriesRoute,
   subcategoryFiltersRoute,
@@ -32,7 +31,6 @@ configureOpenAPI(app);
 const apiRoutes = app
   .route("/signup", signupRoute)
   .route("/login", loginRoute)
-  .route("/verify", verifyEmailRoute)
   .route(`/verify`, verifyRoute)
   .route("/items", itemsRoute)
   .route("/categories", categoriesRoute)
@@ -40,7 +38,6 @@ const apiRoutes = app
   .route("/subcategories", subcategoriesRoute)
   .route("/subcategory_fitlers", subcategoryFiltersRoute)
   .route("/password", passwordForgotRoute)
-  .route(`/item`, itemRoute)
   .route(`/${authPath}/uploads`, uploadsRoute)
   .route(`/${authPath}/item`, itemRoute)
   .route(`/${authPath}/logout`, logoutRoute)

@@ -58,7 +58,7 @@ export async function submitLogin(
         if (trimmedName === "access_token" || trimmedName === "refresh_token") {
           console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
           if (trimmedValue) {
-            cookieReader.set(trimmedName, trimmedValue, { path: "/" });
+            cookieReader.set(trimmedName, trimmedValue);
           }
         }
       });

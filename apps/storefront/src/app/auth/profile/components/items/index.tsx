@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Input } from "@workspace/ui/components/input";
 import { ItemCard } from "@workspace/ui/components/item-card/item-card";
-import { Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { client } from "#lib/api";
+import { toast } from "sonner";
 
 export interface Item {
   id: number;
@@ -16,10 +14,74 @@ export interface Item {
 }
 
 export default function UserItemsComponent() {
-  const [items, setItems] = useState<Item[]>([]);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["user-items"],
+    queryFn: async () => {
+      const res = await client.items.user_selling_items.$get();
 
-  const handleDelete = (id: number) => {
-    setItems(items?.filter((item) => item.id !== id));
+      if (!res.ok) return [];
+
+      const items = await res.json();
+
+      const reshapedItems = items?.map(({ created_at, ...rest }) => {
+        return {
+          ...rest,
+          created_at: new Date(created_at),
+        };
+      });
+
+      return reshapedItems;
+    },
+  });
+
+  const handleDelete = async (id: number) => {
+    const deleteResponse = await client.auth.item.user_delete_item[":id"].$post(
+      {
+        param: {
+          id: id.toString(),
+        },
+      },
+    );
+
+    if (!deleteResponse.ok) {
+      toast.error(``, {
+        description:
+          "We are encountering technical problems, please retry later.",
+        duration: 4000,
+      });
+    } else {
+      await refetch();
+
+      toast.success(`Success!`, {
+        description: `Item deleted correctly!`,
+        duration: 4000,
+      });
+    }
+  };
+
+  const handleUnpublish = async (id: number) => {
+    const unpublishResponse = await client.auth.item.unpublish_item[
+      ":id"
+    ].$post({
+      param: {
+        id: id.toString(),
+      },
+    });
+
+    if (!unpublishResponse.ok) {
+      toast.error(``, {
+        description:
+          "We are encountering technical problems, please retry later.",
+        duration: 4000,
+      });
+    } else {
+      await refetch();
+
+      toast.success(`Success!`, {
+        description: `Item ${id} unpublished correctly!`,
+        duration: 4000,
+      });
+    }
   };
 
   const handleEdit = (id: number) => {
@@ -28,29 +90,8 @@ export default function UserItemsComponent() {
   };
 
   const handleShare = (id: number) => {
-    // Implement share functionality
     console.log(`Sharing item ${id}`);
   };
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["item-profiles"],
-    queryFn: async () => {
-      const res = await client.auth.profile.items.$get();
-
-      if (!res.ok) return [];
-
-      const items = await res.json();
-
-      const reshapedItems = items?.map((item, i) => {
-        return {
-          ...item,
-          created_at: new Date(item.created_at),
-        };
-      });
-
-      setItems(reshapedItems);
-    },
-  });
 
   return (
     <div className="flex flex-col gap-6 w-full overflow-auto">
@@ -59,17 +100,19 @@ export default function UserItemsComponent() {
       </div>
 
       <div className="flex flex-col gap-6 ">
-        {items && items?.length > 0 ? (
-          items?.map((item, i) => {
+        {isLoading ? (
+          <div className="flex justify-center items-center">Loading..</div>
+        ) : data && data?.length > 0 ? (
+          data?.map((item, i) => {
             return (
-              <div key={i}>
-                <ItemCard
-                  item={item}
-                  onDelete={() => handleDelete(item.id)}
-                  onEdit={() => handleEdit(item.id)}
-                  onShare={() => handleShare(item.id)}
-                />
-              </div>
+              <ItemCard
+                key={i}
+                item={item}
+                onDelete={() => handleDelete(item.id)}
+                onEdit={() => handleEdit(item.id)}
+                onUnpubish={() => handleUnpublish(item.id)}
+                onShare={() => handleShare(item.id)}
+              />
             );
           })
         ) : (

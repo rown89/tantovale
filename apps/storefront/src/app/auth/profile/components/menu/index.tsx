@@ -23,33 +23,41 @@ export default function ProfileMenu() {
         <div className="border rounded-lg shadow-md w-full min-w-[300px] md:max-w-[300px]">
           <Command defaultValue={"-"}>
             <CommandList>
-              <CommandGroup heading="Profile">
+              <CommandGroup heading="Profile" className="flex flex-col gap-1">
                 <div className="flex flex-col gap-2">
                   <CommandItem
                     className={`${
                       params.slug === "items"
                         ? "bg-accent text-accent-foreground font-bold"
-                        : "bg-background text-foreground"
-                    }`}
+                        : "bg-background text-foreground  hover:text-muted-foreground"
+                    } hover:font-bold hover:cursor-pointer`}
                     onClickCapture={() => {
                       router.push("/auth/profile/items");
                     }}
                   >
                     <CreditCard
-                      className={`${params.slug === "items" ? "text-accent-foreground" : "text-foreground"}`}
+                      className={`${
+                        params.slug === "items"
+                          ? "text-accent-foreground"
+                          : "text-foreground"
+                      }`}
                     />
                     <span>Your items</span>
                   </CommandItem>
                   <CommandItem
                     className={`${
                       params.slug === "settings"
-                        ? "bg-accent text-accent-foreground font-bold"
-                        : "bg-background text-foreground"
-                    }`}
+                        ? "bg-accent text-foreground font-bold"
+                        : "bg-background text-foreground  hover:text-muted-foreground"
+                    } hover:font-bold hover:cursor-pointer`}
                     onClickCapture={() => router.push("/auth/profile/settings")}
                   >
                     <Settings
-                      className={`${params.slug === "settings" ? "text-accent-foreground" : "text-foreground"}`}
+                      className={`${
+                        params.slug === "settings"
+                          ? "bg-accent text-foreground font-bold"
+                          : "text-foreground hover:text-muted-foreground"
+                      }`}
                     />
                     <span>Settings</span>
                   </CommandItem>

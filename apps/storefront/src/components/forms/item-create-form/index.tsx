@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useField } from "@tanstack/react-form";
-import { CategorySelector } from "#components/category-selector";
 import {
   Select,
   SelectTrigger,
@@ -10,7 +9,6 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -24,13 +22,14 @@ import {
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
 import { FieldInfo } from "../utils/field-info";
 import { delivery_method_types } from "./constants";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
 import ItemPreview from "./components/item-preview";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
+import { CategorySelector } from "#components/category-selector";
 
 export interface Category {
   id: number;

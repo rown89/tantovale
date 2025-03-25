@@ -1,10 +1,11 @@
-CREATE TYPE "public"."filter_values_enum" AS ENUM('new', 'used-like-new', 'used-good', 'used-fair', 'unisex', 'men', 'women', 'leather', 'cotton', 'wool', 'silk', 'linen', 'polyester', 'nylon', 'rayon', 'spandex', 'acrylic', 'viscose', 'denim', 'suede', 'velvet', 'cashmere', 'corduroy', 'tweed', 'flannel', 'canvas', 'hemp', 'bamboo', 'fleece', 'microfiber', 'modal', 'jacquard', 'chiffon', 'taffeta', 'satin', 'gabardine', 'terrycloth', 'seersucker', 'batiste', 'muslin', 'organza', 'tulle', 'black', 'white', 'red', 'blue', 'yellow', 'green', 'orange', 'purple', 'pink', 'brown', 'gray', 'beige', 'cyan', 'magenta', 'lime', 'olive', 'navy', 'teal', 'maroon', 'turquoise', 'gold', 'silver', 'bronze', 'ivory', 'mustard', 'coral', 'salmon', 'peach', 'lavender', 'charcoal', 'indigo', 'periwinkle', 'burgundy', 'mint', 'ochre', 'plum', 'rust', 'saffron', 'jade', 'violet', 's', 'm', 'l', 'xl', 'xxl', 'xxxl', '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5', '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5', '43', '43.5', '44', '44.5', '45', '45.5', '46', '46.5', '47', '47.5', '48', '48.5', '49', '49.5', '50', '28mm', '30mm', '32mm', '34mm', '36mm', '38mm', '40mm', '41mm', '42mm', '43mm', '44mm', '45mm', '46mm', '47mm', '48mm', '50mm', '52mm', '3.5"', '4.0"', '4.5"', '5.0"', '5.2"', '5.5"', '5.7"', '6.0"', '6.1"', '6.2"', '6.3"', '6.4"', '6.5"', '6.6"', '6.7"', '6.8"', '7.0"', '7.2"', '7.6"', '8.0"', '15"', '17"', '19"', '20"', '21"', '21.5"', '22"', '23"', '23.6"', '24"', '25"', '27"', '28"', '29"', '30"', '32"', '34"', '35"', '37.5"', '38"', '40"', '42"', '43"', '49"', '55"');--> statement-breakpoint
+CREATE TYPE "public"."filter_values_enum" AS ENUM('null', 'new', 'used-like-new', 'used-good', 'used-fair', 'unisex', 'men', 'women', 'leather', 'cotton', 'wool', 'silk', 'linen', 'polyester', 'nylon', 'rayon', 'spandex', 'acrylic', 'viscose', 'denim', 'suede', 'velvet', 'cashmere', 'corduroy', 'tweed', 'flannel', 'canvas', 'hemp', 'bamboo', 'fleece', 'microfiber', 'modal', 'jacquard', 'chiffon', 'taffeta', 'satin', 'gabardine', 'terrycloth', 'seersucker', 'batiste', 'muslin', 'organza', 'tulle', 'black', 'white', 'red', 'blue', 'yellow', 'green', 'orange', 'purple', 'pink', 'brown', 'gray', 'beige', 'cyan', 'magenta', 'lime', 'olive', 'navy', 'teal', 'maroon', 'turquoise', 'gold', 'silver', 'bronze', 'ivory', 'mustard', 'coral', 'salmon', 'peach', 'lavender', 'charcoal', 'indigo', 'periwinkle', 'burgundy', 'mint', 'ochre', 'plum', 'rust', 'saffron', 'jade', 'violet', 's', 'm', 'l', 'xl', 'xxl', 'xxxl', '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5', '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5', '43', '43.5', '44', '44.5', '45', '45.5', '46', '46.5', '47', '47.5', '48', '48.5', '49', '49.5', '50', '28mm', '30mm', '32mm', '34mm', '36mm', '38mm', '40mm', '41mm', '42mm', '43mm', '44mm', '45mm', '46mm', '47mm', '48mm', '50mm', '52mm', '3.5"', '4.0"', '4.5"', '5.0"', '5.2"', '5.5"', '5.7"', '6.0"', '6.1"', '6.2"', '6.3"', '6.4"', '6.5"', '6.6"', '6.7"', '6.8"', '7.0"', '7.2"', '7.6"', '8.0"', '15"', '17"', '19"', '20"', '21"', '21.5"', '22"', '23"', '23.6"', '24"', '25"', '27"', '28"', '29"', '30"', '32"', '34"', '35"', '37.5"', '38"', '40"', '42"', '43"', '49"', '55"');--> statement-breakpoint
 CREATE TYPE "public"."subcategories_enum" AS ENUM('computers', 'desktop_computer', 'phones', 'smartphones_cellulares', 'accessories', 'photography', 'laptops', 'cameras', 'lenses', 'shoes', 'jeans', 'pants', 'toys', 'book_kids', 'cards', 'single_cards', 'uncut_paper_sheet', 'accessories_phones', 'accessories_photography', 'accessories_computers', 'accessories_clothings');--> statement-breakpoint
 CREATE TYPE "public"."categories_enum" AS ENUM('electronics', 'clothings', 'kids', 'collectables');--> statement-breakpoint
 CREATE TYPE "public"."conditions_enum" AS ENUM('new', 'used', 'damaged');--> statement-breakpoint
 CREATE TYPE "public"."delivery_method_enum" AS ENUM('shipping', 'pickup');--> statement-breakpoint
-CREATE TYPE "public"."filter_types_enum" AS ENUM('select', 'boolean', 'text', 'number', 'range');--> statement-breakpoint
+CREATE TYPE "public"."filter_types_enum" AS ENUM('select', 'select_multi', 'boolean', 'checkbox', 'radio', 'number');--> statement-breakpoint
 CREATE TYPE "public"."filters_enum" AS ENUM('condition', 'gender', 'color', 'material_clothing', 'size_clothing', 'size_shoes', 'size_watches', 'size_phone_screen', 'size_monitor_screen');--> statement-breakpoint
+CREATE TYPE "public"."item_images_size_enum" AS ENUM('original', 'small', 'medium', 'thumbnail');--> statement-breakpoint
 CREATE TYPE "public"."profile_types_enum" AS ENUM('private', 'professional');--> statement-breakpoint
 CREATE TYPE "public"."sex_enum" AS ENUM('male', 'female');--> statement-breakpoint
 CREATE TYPE "public"."status_enum" AS ENUM('available', 'sold');--> statement-breakpoint
@@ -13,8 +14,11 @@ CREATE TABLE "subcategory_filters" (
 	"filter_id" integer NOT NULL,
 	"subcategory_id" integer NOT NULL,
 	"position" integer DEFAULT 0 NOT NULL,
-	"isOptionalField" boolean DEFAULT false NOT NULL,
-	"isEditableField" boolean DEFAULT true NOT NULL
+	"on_item_create_required" boolean DEFAULT false NOT NULL,
+	"on_item_update_editable" boolean DEFAULT true NOT NULL,
+	"is_searchable" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "categories" (
@@ -30,23 +34,26 @@ CREATE TABLE "items" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"title" text NOT NULL,
 	"description" text NOT NULL,
-	"condition" "conditions_enum" DEFAULT 'used' NOT NULL,
 	"status" "status_enum" DEFAULT 'available' NOT NULL,
 	"published" boolean DEFAULT false NOT NULL,
 	"price" integer DEFAULT 0 NOT NULL,
 	"shipping_cost" integer DEFAULT 0 NOT NULL,
-	"delivery_method" "delivery_method_enum" DEFAULT 'pickup' NOT NULL,
+	"delivery_method" "delivery_method_enum" DEFAULT 'shipping' NOT NULL,
 	"user_id" integer NOT NULL,
 	"subcategory_id" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"deleted_at" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE "items_images" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "items_images_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"item_id" integer NOT NULL,
 	"url" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"order_position" integer DEFAULT 0 NOT NULL,
+	"size" "item_images_size_enum" NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "items_filters_values" (
@@ -67,7 +74,9 @@ CREATE TABLE "filter_values" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "filter_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"filter_id" integer NOT NULL,
 	"name" text NOT NULL,
-	"value" "filter_values_enum" NOT NULL,
+	"value" "filter_values_enum",
+	"boolean_value" boolean,
+	"numeric_value" integer,
 	"icon" text,
 	"meta" text
 );
@@ -212,6 +221,7 @@ ALTER TABLE "cities" ADD CONSTRAINT "cities_country_id_countries_id_fk" FOREIGN 
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_username_users_username_fk" FOREIGN KEY ("username") REFERENCES "public"."users"("username") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_parent_id_subcategories_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+CREATE UNIQUE INDEX "unique_filter_per_subcategory" ON "subcategory_filters" USING btree ("filter_id","subcategory_id");--> statement-breakpoint
 CREATE INDEX "user_id_idx" ON "items" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "title_idx" ON "items" USING btree ("title");--> statement-breakpoint
 CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> statement-breakpoint

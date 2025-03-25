@@ -8,7 +8,6 @@ export * from "./categories";
 export * from "./subcategories";
 export * from "./subcategory-filters";
 export * from "./verify";
-export * from "./verify/email";
 export * from "./refresh";
 export * from "./logout";
 export * from "./password";

@@ -26,15 +26,16 @@ export async function GET(request: NextRequest) {
   const cookieReader = await cookies();
 
   cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-    const [name, ...rest] = cookie.split("=");
+    const [pair, ...rest] = cookie.split(";");
+    const [name, value] = pair?.split("=") ?? [];
     const trimmedName = name?.trim();
-    const value = rest.join("=").trim();
+    const trimmedValue = value?.trim();
 
     if (trimmedName === "access_token" || trimmedName === "refresh_token") {
-      console.log(`🔑 Sending pure token: ${value}`);
-
-      // Send only the token value without options
-      cookieReader.set(trimmedName, value);
+      console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
+      if (trimmedValue) {
+        cookieReader.set(trimmedName, trimmedValue);
+      }
     }
   });
 

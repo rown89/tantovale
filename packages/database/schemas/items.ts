@@ -1,5 +1,5 @@
 import { z, number, string } from 'zod';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { users } from './users';
@@ -28,6 +28,7 @@ export const items = pgTable(
 			}),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+		deleted_at: timestamp('deleted_at', { mode: 'date' }),
 	},
 	(table) => [
 		index('user_id_idx').on(table.user_id),

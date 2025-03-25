@@ -44,7 +44,7 @@ export const createItemSchema = z.object({
     shipping_cost: true,
     created_at: true,
     updated_at: true,
+    deleted_at: true,
   }),
-
   properties: z.array(propertySchema).optional(),
 });

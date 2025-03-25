@@ -13,42 +13,11 @@ import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 
 export const profileRoute = createRouter()
-  .get("/items", async (c) => {
-    const { ACCESS_TOKEN_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
-    }>(c);
-
-    const accessToken = getCookie(c, "access_token");
-    let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-    const user_id = Number(payload.id);
-
-    const { db } = createClient();
-
-    const profileItems = await db
-      .select({
-        id: items.id,
-        title: items.title,
-        price: items.price,
-        created_at: items.created_at,
-        image: itemsImages.url,
-      })
-      .from(items)
-      .innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
-      .where(
-        and(
-          eq(items.user_id, user_id),
-          eq(itemsImages.size, "thumbnail"),
-          eq(itemsImages.order_position, 0),
-        ),
-      )
-      .orderBy(items.id);
-
-    return c.json(profileItems);
-  })
   .post("/", async (c) => {
     const user = c.var.user;
 
     const { db } = createClient();
+
     const userProfile = await db
       .select()
       .from(profiles)

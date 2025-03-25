@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,6 +12,7 @@ import {
 import Slider from "@workspace/ui/components/carousel/slider";
 import { placeholderImages } from "../constants";
 import { Badge } from "@workspace/ui/components/badge";
+import { X } from "lucide-react";
 
 interface ItemPreviewProps {
   title: string;
@@ -181,12 +183,6 @@ const ItemPreview = React.memo(
             </div>
           </CardContent>
         </Card>
-
-        <div className="bg-gray-100 p-4 rounded-md my-6">
-          <p className="text-sm text-gray-500">
-            This is a preview of how your item will appear to others.
-          </p>
-        </div>
       </div>
     );
   },
