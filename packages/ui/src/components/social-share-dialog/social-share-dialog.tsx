@@ -94,7 +94,7 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 				<DialogHeader>
 					<DialogTitle>Share</DialogTitle>
 					<DialogDescription>
-						"<span className='text-accent'>{item.title}</span>"<p> with your friends</p>
+						"<span className='text-accent'>{item.title}</span>"<span> with your friends</span>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -118,9 +118,9 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 								href={link.url}
 								target='_blank'
 								rel='noopener noreferrer'
-								className={`hover:bg-accent flex flex-col items-center justify-center rounded-lg border p-3 ${link.color} transition-colors`}>
+								className={`hover:bg-foreground/10 flex flex-col items-center justify-center rounded-lg border p-3 transition-colors`}>
 								{link.icon}
-								<span className='mt-1 text-xs'>{link.name}</span>
+								<span className='text-accent-foreground mt-1 text-xs'>{link.name}</span>
 							</a>
 						))}
 					</div>

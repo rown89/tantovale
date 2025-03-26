@@ -10,6 +10,7 @@ import { verify } from "hono/jwt";
 import { itemsFiltersValues } from "@workspace/database/schemas/items_filter_values";
 import { env } from "hono/adapter";
 import { createRouter } from "#lib/create-app";
+import { z } from "zod";
 
 export const itemRoute = createRouter()
   .post("/new", zValidator("json", createItemSchema), async (c) => {
@@ -122,160 +123,173 @@ export const itemRoute = createRouter()
   .put("/edit/:id", async (c) => {
     return c.json({});
   })
-  .post("/user_delete_item/:id", async (c) => {
-    const { ACCESS_TOKEN_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
-    }>(c);
+  .post(
+    "/user_delete_item",
+    zValidator(
+      "json",
+      z.object({
+        id: z.number(),
+      }),
+    ),
+    async (c) => {
+      const { ACCESS_TOKEN_SECRET } = env<{
+        ACCESS_TOKEN_SECRET: string;
+      }>(c);
 
-    const id = Number(c.req.param("id"));
+      const { id } = c.req.valid("json");
 
-    if (!id) return c.json({ error: "item id is required" }, 400);
-    if (isNaN(id)) return c.json({ message: "Invalid item ID" }, 400);
+      const accessToken = getCookie(c, "access_token");
+      let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+      const user_id = Number(payload.id);
 
-    const accessToken = getCookie(c, "access_token");
-    let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-    const user_id = Number(payload.id);
+      if (!user_id) return c.json({ message: "Invalid user id" }, 401);
 
-    if (!user_id) return c.json({ message: "Invalid user id" }, 401);
+      const { db } = createClient();
 
-    const { db } = createClient();
+      try {
+        await db.transaction(async (tx) => {
+          // First check if the item exists and belongs to the user
+          const itemExists = await tx
+            .select({ id: items.id })
+            .from(items)
+            .where(and(eq(items.id, id), eq(items.user_id, user_id)))
+            .limit(1)
+            .then((results) => results[0]);
 
-    try {
-      await db.transaction(async (tx) => {
-        // First check if the item exists and belongs to the user
-        const itemExists = await tx
-          .select({ id: items.id })
-          .from(items)
-          .where(and(eq(items.id, id), eq(items.user_id, user_id)))
-          .limit(1)
-          .then((results) => results[0]);
+          if (!itemExists) {
+            return c.json(
+              {
+                message:
+                  "Item not found or you don't have permission to delete it",
+              },
+              404,
+            );
+          }
 
-        if (!itemExists) {
-          return c.json(
-            {
-              message:
-                "Item not found or you don't have permission to delete it",
-            },
-            404,
-          );
-        }
+          // unpublish and set user_deleted:true item
+          const [updatedItem] = await db
+            .update(items)
+            .set({
+              published: false,
+              deleted_at: new Date(),
+            })
+            .where(eq(items.id, id))
+            .returning();
 
-        // unpublish and set user_deleted:true item
-        const [updatedItem] = await db
-          .update(items)
-          .set({
-            published: false,
-            deleted_at: new Date(),
-          })
-          .where(eq(items.id, id))
-          .returning();
+          if (!updatedItem?.id) {
+            return c.json(
+              {
+                message: `Item ${id} cant be deleted because doesn't exist.`,
+                id,
+              },
+              401,
+            );
+          }
+        });
 
-        if (!updatedItem?.id) {
-          return c.json(
-            {
-              message: `Item ${id} cant be deleted because doesn't exist.`,
-              id,
-            },
-            401,
-          );
-        }
-      });
+        return c.json(
+          {
+            message: "Item deleted successfully",
+            id,
+          },
+          200,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            message:
+              error instanceof Error
+                ? error.message
+                : `Failed to delete item ${id}`,
+          },
+          500,
+        );
+      }
+    },
+  )
+  .post(
+    "/publish_state",
+    zValidator(
+      "json",
+      z.object({
+        id: z.number(),
+        published: z.boolean(),
+      }),
+    ),
+    async (c) => {
+      const { ACCESS_TOKEN_SECRET } = env<{
+        ACCESS_TOKEN_SECRET: string;
+      }>(c);
 
-      return c.json(
-        {
-          message: "Item deleted successfully",
-          id,
-        },
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        {
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to delete item ${id}`,
-        },
-        500,
-      );
-    }
-  })
-  .post("/unpublish_item/:id", async (c) => {
-    const { ACCESS_TOKEN_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
-    }>(c);
+      const { id, published } = c.req.valid("json");
 
-    const id = Number(c.req.param("id"));
+      const accessToken = getCookie(c, "access_token");
+      let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+      const user_id = Number(payload.id);
 
-    if (!id) return c.json({ error: "item id is required" }, 400);
-    if (isNaN(id)) return c.json({ message: "Invalid item ID" }, 400);
+      if (!user_id) return c.json({ message: "Invalid user id" }, 401);
 
-    const accessToken = getCookie(c, "access_token");
-    let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-    const user_id = Number(payload.id);
+      const { db } = createClient();
+      try {
+        await db.transaction(async (tx) => {
+          // First check if the item exists and belongs to the user
+          const itemExists = await tx
+            .select({ id: items.id })
+            .from(items)
+            .where(and(eq(items.id, id), eq(items.user_id, user_id)))
+            .limit(1)
+            .then((results) => results[0]);
 
-    if (!user_id) return c.json({ message: "Invalid user id" }, 401);
+          if (!itemExists) {
+            return c.json(
+              {
+                message:
+                  "Item not found or you don't have permission to delete it",
+              },
+              404,
+            );
+          }
 
-    const { db } = createClient();
-    try {
-      await db.transaction(async (tx) => {
-        // First check if the item exists and belongs to the user
-        const itemExists = await tx
-          .select({ id: items.id })
-          .from(items)
-          .where(and(eq(items.id, id), eq(items.user_id, user_id)))
-          .limit(1)
-          .then((results) => results[0]);
+          // unpublish item
+          const [updatedItem] = await db
+            .update(items)
+            .set({
+              published,
+            })
+            .where(eq(items.id, id))
+            .returning();
 
-        if (!itemExists) {
-          return c.json(
-            {
-              message:
-                "Item not found or you don't have permission to delete it",
-            },
-            404,
-          );
-        }
+          if (!updatedItem?.id) {
+            return c.json(
+              {
+                message: `Item ${id} cant be deleted because doesn't exist.`,
+                id,
+              },
+              401,
+            );
+          }
+        });
 
-        // unpublish item
-        const [updatedItem] = await db
-          .update(items)
-          .set({
-            published: false,
-          })
-          .where(eq(items.id, id))
-          .returning();
-
-        if (!updatedItem?.id) {
-          return c.json(
-            {
-              message: `Item ${id} cant be deleted because doesn't exist.`,
-              id,
-            },
-            401,
-          );
-        }
-      });
-
-      return c.json(
-        {
-          message: "Item deleted successfully",
-          id,
-        },
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        {
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to delete item ${id}`,
-        },
-        500,
-      );
-    }
-  });
+        return c.json(
+          {
+            message: "Item deleted successfully",
+            id,
+          },
+          200,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            message:
+              error instanceof Error
+                ? error.message
+                : `Failed to delete item ${id}`,
+          },
+          500,
+        );
+      }
+    },
+  );
 /*
   // usefull for future admin panel
   .delete("/delete/:id", async (c) => {

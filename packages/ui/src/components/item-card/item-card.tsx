@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -24,10 +24,8 @@ import {
 	AlertDialogTitle,
 } from '@workspace/ui/components/alert-dialog';
 import { useIsMobile } from '../../hooks';
-import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil } from 'lucide-react';
-
+import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil, EyeIcon } from 'lucide-react';
 import { SelectItem } from '@workspace/database/schemas/schema';
-import { ShareSocialModal } from '../social-share-dialog/social-share-dialog';
 
 export type Item = Pick<SelectItem, 'id' | 'price' | 'title' | 'published'> & {
 	image: string;
@@ -39,15 +37,16 @@ interface ItemCardProps {
 	onDelete: () => void;
 	onEdit: () => void;
 	onShare: () => void;
+	onPublish: () => void;
 	onUnpubish: () => void;
 }
 
-export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCardProps) {
+export function ItemCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubish }: ItemCardProps) {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
 		isOpen: boolean;
-		type?: 'delete' | 'edit' | 'unpublish';
+		type?: 'delete' | 'unpublish' | 'publish';
 	}>({
 		isOpen: false,
 		type: undefined,
@@ -75,7 +74,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 			<div className='flex flex-col sm:flex-row'>
 				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
 					<Link href={`/item/${item.id}`}>
-						<Image className='bject-cover' priority src={item.image || '/placeholder.svg'} alt={item.title} fill />
+						<Image className='object-cover' priority src={item.image || '/placeholder.svg'} alt={item.title} fill />
 					</Link>
 				</div>
 				<div className='flex w-full flex-col justify-between gap-4 overflow-auto p-4'>
@@ -114,18 +113,12 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 												</Button>
 											</DropdownMenuTrigger>
 											<DropdownMenuContent className='w-56'>
-												<DropdownMenuItem
-													onClick={() => {
-														setIsDialogOpen({
-															isOpen: true,
-															type: 'edit',
-														});
-													}}>
+												<DropdownMenuItem onClick={() => onEdit()}>
 													<Pencil className='mr-1 h-4 w-4' />
 													Edit
 												</DropdownMenuItem>
 												<DropdownMenuSeparator />
-												{item.published && (
+												{item.published ? (
 													<DropdownMenuItem
 														onClick={() => {
 															setIsDialogOpen({
@@ -135,6 +128,17 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 														}}>
 														<EyeClosed className='mr-1 h-4 w-4' />
 														Unpublish
+													</DropdownMenuItem>
+												) : (
+													<DropdownMenuItem
+														onClick={() => {
+															setIsDialogOpen({
+																isOpen: true,
+																type: 'publish',
+															});
+														}}>
+														<EyeIcon className='mr-1 h-4 w-4' />
+														Publish
 													</DropdownMenuItem>
 												)}
 												<DropdownMenuSeparator />
@@ -164,19 +168,11 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 												<div />
 											)}
 											<div className='flex gap-3'>
-												<Button
-													variant='outline'
-													size='sm'
-													onClick={() => {
-														setIsDialogOpen({
-															isOpen: true,
-															type: 'edit',
-														});
-													}}>
+												<Button variant='outline' size='sm' onClick={() => onEdit()}>
 													<Pencil className='mr-1 h-4 w-4' />
 													Edit
 												</Button>
-												{item.published && (
+												{item.published ? (
 													<Button
 														variant='outline'
 														size='sm'
@@ -188,6 +184,20 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 														}}>
 														<EyeClosed className='mr-1 h-4 w-4' />
 														Unpublish
+													</Button>
+												) : (
+													<Button
+														variant='outline'
+														size='sm'
+														onClick={() => {
+															setIsDialogOpen({
+																isOpen: true,
+																type: 'publish',
+															});
+														}}>
+														{' '}
+														<EyeIcon className='mr-1 h-4 w-4' />
+														Publish
 													</Button>
 												)}
 												<Button
@@ -230,9 +240,14 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 										<AlertDialogAction
 											className={`bg-secondary hover:bg-secondary/80 ${isDialogOpen.type === 'delete' && 'bg-destructive hover:bg-destructive/80'} font-bold text-black`}
 											onClick={() => {
-												if (isDialogOpen.type === 'edit') onEdit();
 												if (isDialogOpen.type === 'unpublish') onUnpubish();
+												if (isDialogOpen.type === 'publish') onPublish();
 												if (isDialogOpen.type === 'delete') onDelete();
+
+												setIsDialogOpen({
+													type: undefined,
+													isOpen: false,
+												});
 											}}>
 											Confirm
 										</AlertDialogAction>

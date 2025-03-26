@@ -15,6 +15,7 @@ import {
 } from "@workspace/ui/components/select";
 import { useState } from "react";
 import { ShareSocialModal } from "#workspace/ui/components/social-share-dialog/social-share-dialog";
+import { useSellingItems } from "./hooks";
 
 export interface Item {
   id: number;
@@ -25,10 +26,11 @@ export interface Item {
 }
 
 export default function UserSellingItemsComponent() {
-  const [filters, setFilters] = useState<{ publishedType: string }>({
+  const [filters, setFilters] = useState<{
+    publishedType: "published" | "unpublished";
+  }>({
     publishedType: "published",
   });
-  const [shareItem, setShareItem] = useState<Item | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["user-selling-items", filters],
@@ -54,59 +56,39 @@ export default function UserSellingItemsComponent() {
     },
   });
 
-  const handleDelete = async (id: number) => {
-    const deleteResponse = await client.auth.item.user_delete_item[":id"].$post(
-      {
-        param: {
-          id: id.toString(),
-        },
-      },
-    );
+  const { shareItem, setShareItem, handleDelete, handleEdit, handlePublish } =
+    useSellingItems(refetch);
 
-    if (!deleteResponse.ok) {
-      toast.error(``, {
-        description:
-          "We are encountering technical problems, please retry later.",
-        duration: 4000,
-      });
-    } else {
-      await refetch();
-
+  const handleDeleteWithToast = async (id: number) => {
+    const success = await handleDelete(id);
+    if (success) {
       toast.success(`Success!`, {
         description: `Item deleted correctly!`,
         duration: 4000,
       });
-    }
-  };
-
-  const handleUnpublish = async (id: number) => {
-    const unpublishResponse = await client.auth.item.unpublish_item[
-      ":id"
-    ].$post({
-      param: {
-        id: id.toString(),
-      },
-    });
-
-    if (!unpublishResponse.ok) {
+    } else {
       toast.error(``, {
         description:
           "We are encountering technical problems, please retry later.",
         duration: 4000,
       });
-    } else {
-      await refetch();
-
-      toast.success(`Success!`, {
-        description: `Item ${id} unpublished correctly!`,
-        duration: 4000,
-      });
     }
   };
 
-  const handleEdit = (id: number) => {
-    // Implement edit functionality
-    console.log(`Editing item ${id}`);
+  const handlePublishWithToast = async (id: number, published: boolean) => {
+    const success = await handlePublish(id, published);
+    if (success) {
+      toast.success(`Success!`, {
+        description: `Item ${id} ${published ? "published" : "unpublished"} correctly!`,
+        duration: 4000,
+      });
+    } else {
+      toast.error(``, {
+        description:
+          "We are encountering technical problems, please retry later.",
+        duration: 4000,
+      });
+    }
   };
 
   const handleShare = (item: Item) => {
@@ -116,13 +98,11 @@ export default function UserSellingItemsComponent() {
   return (
     <div className="flex flex-col gap-6 w-full overflow-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">
-          Your items {isLoading ? "" : `(${data?.length})`}
-        </h1>
+        <h1 className="text-2xl font-bold">Your items</h1>
         {!isLoading && (
           <Select
             defaultValue={filters.publishedType}
-            onValueChange={(e) => {
+            onValueChange={(e: "published" | "unpublished") => {
               setFilters({
                 ...filters,
                 publishedType: e,
@@ -134,8 +114,20 @@ export default function UserSellingItemsComponent() {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value={"published"}>Published</SelectItem>
-                <SelectItem value={"unpublished"}>UnPublished</SelectItem>
+                <SelectItem value={"published"}>
+                  Published{" "}
+                  {isLoading
+                    ? ""
+                    : filters.publishedType === "published" &&
+                      `(${data?.length})`}
+                </SelectItem>
+                <SelectItem value={"unpublished"}>
+                  UnPublished{" "}
+                  {isLoading
+                    ? ""
+                    : filters.publishedType === "unpublished" &&
+                      `(${data?.length})`}
+                </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -144,7 +136,7 @@ export default function UserSellingItemsComponent() {
 
       <div className="flex flex-col gap-6 ">
         {isLoading ? (
-          <div className="flex flex-col gap-10">
+          <div className="flex flex-col gap-10 opacity-50">
             {[...Array(3).keys()].map((item, i) => (
               <div key={i} className="flex space-x-4 w-full">
                 <Skeleton className="h-[125px] w-[250px] rounded-xl bg-foreground" />
@@ -167,15 +159,16 @@ export default function UserSellingItemsComponent() {
           </div>
         ) : data && data?.length > 0 ? (
           <>
-            <div className="grid gap-4">
+            <div className="grid gap-6 xl:gap-4">
               {data?.map((item, i) => {
                 return (
                   <ItemCard
                     key={i}
                     item={item}
-                    onDelete={() => handleDelete(item.id)}
+                    onDelete={() => handleDeleteWithToast(item.id)}
                     onEdit={() => handleEdit(item.id)}
-                    onUnpubish={() => handleUnpublish(item.id)}
+                    onPublish={() => handlePublishWithToast(item.id, true)}
+                    onUnpubish={() => handlePublishWithToast(item.id, false)}
                     onShare={() => handleShare(item)}
                   />
                 );
@@ -193,6 +186,8 @@ export default function UserSellingItemsComponent() {
               />
             )}
           </>
+        ) : isError ? (
+          <p>Something went wrong.</p>
         ) : (
           <p className="text-center py-8 text-muted-foreground">
             No items found
