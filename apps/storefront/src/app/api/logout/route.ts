@@ -1,17 +1,14 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { buildCookieHeader } from "#utils/buildCookieHeader";
-import { logoutAndClearCookies } from "#utils/logoutAndClearCookies";
+import { client } from "#lib/api";
 
 export async function GET(request: NextRequest) {
   const cookieStore = await cookies();
 
-  const accessToken = cookieStore.get("access_token")?.value;
-  const refreshToken = cookieStore.get("refresh_token")?.value;
+  cookieStore.delete("access_token");
+  cookieStore.delete("refresh_token");
 
-  const cookieHeader = buildCookieHeader(accessToken, refreshToken);
-
-  await logoutAndClearCookies({ cookieHeader });
+  await client.auth.logout.$post();
 
   return NextResponse.redirect(new URL("/", request.url));
 }

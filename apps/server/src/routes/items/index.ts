@@ -7,14 +7,23 @@ import { env } from "hono/adapter";
 import { itemsImages } from "@workspace/database/schemas/items_images";
 import { verify } from "hono/jwt";
 import { authMiddleware } from "#middlewares/auth";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 
-export const itemsRoute = createRouter().get(
+export const itemTypeSchema = z.object({
+  published: z.boolean(),
+});
+
+export const itemsRoute = createRouter().post(
   "/user_selling_items",
+  zValidator("json", itemTypeSchema),
   authMiddleware,
   async (c) => {
     const { ACCESS_TOKEN_SECRET } = env<{
       ACCESS_TOKEN_SECRET: string;
     }>(c);
+
+    const params = await c.req.json();
 
     const accessToken = getCookie(c, "access_token");
     let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
@@ -39,6 +48,7 @@ export const itemsRoute = createRouter().get(
         .where(
           and(
             isNull(items.deleted_at),
+            eq(items.published, params.published),
             eq(items.status, "available"),
             eq(items.user_id, user_id),
             eq(itemsImages.size, "thumbnail"),

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth } from "#components/providers/AuthProvider";
 import { useTheme } from "next-themes";
 import { Button } from "@workspace/ui/components/button";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Avatar,
@@ -20,12 +20,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { Settings, DollarSign, LogOut, Moon, Sun } from "lucide-react";
+import { DollarSign, LogOut, Moon, Sun } from "lucide-react";
+import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
 
   const [open, setOpen] = useState(false);
 
@@ -63,13 +65,22 @@ export default function NavBar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setTheme("light")}>
+            <DropdownMenuItem
+              className={`${theme === "light" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("light")}
+            >
               Light
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("dark")}>
+            <DropdownMenuItem
+              className={`${theme === "dark" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("dark")}
+            >
               Dark
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("system")}>
+            <DropdownMenuItem
+              className={`${theme === "system" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("system")}
+            >
               System
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -100,29 +111,44 @@ export default function NavBar() {
                     </Button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">
-                          {user.username}
-                        </p>
-                      </div>
+                  <DropdownMenuContent
+                    className="w-56 mt-1"
+                    align="end"
+                    forceMount
+                  >
+                    <DropdownMenuLabel className="flex gap-1 items-center text-sm font-medium leading-none text-accent mb-1">
+                      <span className="text-foreground/40">Hello,</span>
+                      <p className="overflow-auto text-ellipsis">
+                        {user.username}
+                      </p>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
 
-                    <DropdownMenuItem
-                      onClick={async () => router.push("/auth/profile/items")}
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Your items</span>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      onClick={() => router.push("/auth/profile/settings")}
-                    >
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
+                    <div className="flex flex-col gap-1">
+                      {profileOptions.map((item, i) => (
+                        <DropdownMenuItem
+                          key={i}
+                          className={`hover:font-extrabold hover:cursor-pointer   ${
+                            pathname === item.url
+                              ? "bg-accent text-accent-foreground font-extrabold"
+                              : "text-foreground  hover:text-muted-foreground"
+                          }`}
+                          onClick={async () => router.push(item.url)}
+                        >
+                          {
+                            <item.Icon
+                              className={`
+                                ${
+                                  pathname === item.url
+                                    ? "text-accent-foreground"
+                                    : "text-foreground"
+                                }`}
+                            />
+                          }
+                          <span>{item.label}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
 
                     <DropdownMenuSeparator />
                     <DropdownMenuItem

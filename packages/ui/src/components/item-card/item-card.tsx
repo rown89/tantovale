@@ -24,9 +24,10 @@ import {
 	AlertDialogTitle,
 } from '@workspace/ui/components/alert-dialog';
 import { useIsMobile } from '../../hooks';
-import { Share2, EyeClosed, Ellipsis, DeleteIcon } from 'lucide-react';
+import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil } from 'lucide-react';
 
 import { SelectItem } from '@workspace/database/schemas/schema';
+import { ShareSocialModal } from '../social-share-dialog/social-share-dialog';
 
 export type Item = Pick<SelectItem, 'id' | 'price' | 'title' | 'published'> & {
 	image: string;
@@ -42,16 +43,15 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCardProps) {
+	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
 		isOpen: boolean;
-		type?: 'delete' | 'edit' | 'share' | 'unpublish';
+		type?: 'delete' | 'edit' | 'unpublish';
 	}>({
 		isOpen: false,
 		type: undefined,
 	});
-
-	const dialogRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
@@ -74,15 +74,22 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 		<Card className={`${!item.published ? 'border-2 border-dashed bg-transparent' : ''}`}>
 			<div className='flex flex-col sm:flex-row'>
 				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
-					<Image className='bject-cover' priority src={item.image || '/placeholder.svg'} alt={item.title} fill />
+					<Link href={`/item/${item.id}`}>
+						<Image className='bject-cover' priority src={item.image || '/placeholder.svg'} alt={item.title} fill />
+					</Link>
 				</div>
 				<div className='flex w-full flex-col justify-between gap-4 overflow-auto p-4'>
 					<>
-						<div className='flex items-start justify-between gap-4'>
-							<Link className='hover:text-accent' href={`/item/${item.id}`}>
-								<h3 className='truncate overflow-ellipsis break-all text-lg font-semibold'>{item.title}</h3>
+						<div className='flex flex-col items-start justify-between gap-4 xl:flex-row'>
+							<Link
+								className='hover:text-accent inline-grid w-full hover:underline xl:max-w-[80%]'
+								href={`/item/${item.id}`}>
+								<h3 className='truncate break-all text-lg font-semibold'>{item.title}</h3>
 							</Link>
-							<p className='text-lg font-bold'>€{item.price.toFixed(2)}</p>
+							<p className='flex w-full items-center justify-end gap-1 text-lg font-medium xl:w-auto'>
+								<span className='italic'>€</span>
+								{(item.price / 100).toFixed(2)}
+							</p>
 						</div>
 						<p className='text-muted-foreground text-sm'>Created on {format(item.created_at, 'MMM d, yyyy')}</p>
 					</>
@@ -93,15 +100,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 								{isMobile ? (
 									<>
 										{item.published ? (
-											<Button
-												variant='outline'
-												size='sm'
-												onClick={() => {
-													setIsDialogOpen({
-														isOpen: true,
-														type: 'share',
-													});
-												}}>
+											<Button variant='outline' size='sm' onClick={onShare}>
 												<Share2 className='mr-1 h-4 w-4' />
 												Share
 											</Button>
@@ -122,6 +121,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 															type: 'edit',
 														});
 													}}>
+													<Pencil className='mr-1 h-4 w-4' />
 													Edit
 												</DropdownMenuItem>
 												<DropdownMenuSeparator />
@@ -133,6 +133,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 																type: 'unpublish',
 															});
 														}}>
+														<EyeClosed className='mr-1 h-4 w-4' />
 														Unpublish
 													</DropdownMenuItem>
 												)}
@@ -145,6 +146,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 															type: 'delete',
 														});
 													}}>
+													<DeleteIcon className='mr-1 h-4 w-4' />
 													Delete
 												</DropdownMenuItem>
 											</DropdownMenuContent>
@@ -154,15 +156,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 									<div className='flex w-full justify-end gap-3'>
 										<div className='flex w-full justify-between'>
 											{item.published ? (
-												<Button
-													variant='outline'
-													size='sm'
-													onClick={() =>
-														setIsDialogOpen({
-															isOpen: true,
-															type: 'share',
-														})
-													}>
+												<Button variant='outline' size='sm' onClick={onShare}>
 													<Share2 className='mr-1 h-4 w-4' />
 													Share
 												</Button>
@@ -179,7 +173,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 															type: 'edit',
 														});
 													}}>
-													<EyeClosed className='mr-1 h-4 w-4' />
+													<Pencil className='mr-1 h-4 w-4' />
 													Edit
 												</Button>
 												{item.published && (
@@ -215,14 +209,14 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 
 								<AlertDialogContent ref={dialogRef}>
 									<AlertDialogHeader>
-										<AlertDialogTitle>
-											{isDialogOpen.type !== 'share' ? 'Are you absolutely sure?' : 'Share'}
-										</AlertDialogTitle>
+										<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
 										<AlertDialogDescription>
-											This action cannot be undone. This will permanently delete your account and remove your data from
-											our servers.
+											{isDialogOpen.type === 'delete' &&
+												'This action cannot be undone. This will permanently delete your items.'}
+											{isDialogOpen.type === 'unpublish' && 'You are going to unpublish your items.'}
 										</AlertDialogDescription>
 									</AlertDialogHeader>
+
 									<AlertDialogFooter>
 										<AlertDialogCancel
 											onClick={() =>
@@ -234,7 +228,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onUnpubish }: ItemCa
 											Cancel
 										</AlertDialogCancel>
 										<AlertDialogAction
-											className='bg-secondary hover:bg-secondary/80 font-bold text-black'
+											className={`bg-secondary hover:bg-secondary/80 ${isDialogOpen.type === 'delete' && 'bg-destructive hover:bg-destructive/80'} font-bold text-black`}
 											onClick={() => {
 												if (isDialogOpen.type === 'edit') onEdit();
 												if (isDialogOpen.type === 'unpublish') onUnpubish();

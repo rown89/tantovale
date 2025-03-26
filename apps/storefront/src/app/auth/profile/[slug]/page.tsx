@@ -1,24 +1,17 @@
 import { redirect } from "next/navigation";
-import ProfileMenu from "../components/menu";
-import UserItemsComponent from "../components/items";
+import { profileOptions } from "#shared/profile-options";
+import { ProfileComponent } from "../components";
 
 interface ProfilePageProps {
   params: Promise<{ slug: string }>;
 }
 
-const availablePaths = ["items", "settings"];
-
 export default async function ProfilePage({ params }: ProfilePageProps) {
   const { slug } = await params;
 
-  if (!slug || !availablePaths.includes(slug)) {
-    redirect("/");
-  }
+  const validPage = profileOptions.find((section) => section.slug === slug);
 
-  return (
-    <div className="container px-6 mx-auto py-6 h-[calc(100vh-56px)] flex gap-8">
-      <ProfileMenu />
-      {slug === "items" && <UserItemsComponent />}
-    </div>
-  );
+  if (!validPage) redirect("/404");
+
+  return <ProfileComponent />;
 }

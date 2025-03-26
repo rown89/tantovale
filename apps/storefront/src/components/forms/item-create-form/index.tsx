@@ -216,8 +216,8 @@ export default function CreateItemFormComponent({
                         id={field.name}
                         name={field.name}
                         type="number"
-                        min="0.01"
-                        step="0.01"
+                        min=".01"
+                        step=".01"
                         placeholder="0.20"
                         value={
                           field.state.value !== undefined

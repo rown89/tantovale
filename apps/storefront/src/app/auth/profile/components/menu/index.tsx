@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import {
   Command,
   CommandGroup,
@@ -8,13 +9,14 @@ import {
   CommandList,
 } from "@workspace/ui/components/command";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { CreditCard, LogOut, Settings } from "lucide-react";
+
 import { useAuth } from "#components/providers/AuthProvider";
+import { profileOptions } from "#shared/profile-options";
 
 export default function ProfileMenu() {
-  const router = useRouter();
   const { setUser } = useAuth();
-  const params = useParams<{ slug: string }>();
+  const router = useRouter();
+  const pathname = usePathname();
   const isMobile = useIsMobile();
 
   return (
@@ -24,43 +26,29 @@ export default function ProfileMenu() {
           <Command defaultValue={"-"}>
             <CommandList>
               <CommandGroup heading="Profile" className="flex flex-col gap-1">
-                <div className="flex flex-col gap-2">
-                  <CommandItem
-                    className={`${
-                      params.slug === "items"
-                        ? "bg-accent text-accent-foreground font-bold"
-                        : "bg-background text-foreground  hover:text-muted-foreground"
-                    } hover:font-bold hover:cursor-pointer`}
-                    onClickCapture={() => {
-                      router.push("/auth/profile/items");
-                    }}
-                  >
-                    <CreditCard
-                      className={`${
-                        params.slug === "items"
-                          ? "text-accent-foreground"
-                          : "text-foreground"
+                <div className={`flex flex-col gap-1 font-bold`}>
+                  {profileOptions.map((item, i) => (
+                    <CommandItem
+                      key={i}
+                      className={`hover:font-extrabold hover:cursor-pointer   ${
+                        pathname === item.url
+                          ? "bg-accent text-accent-foreground font-extrabold"
+                          : "text-foreground  hover:text-muted-foreground"
                       }`}
-                    />
-                    <span>Your items</span>
-                  </CommandItem>
-                  <CommandItem
-                    className={`${
-                      params.slug === "settings"
-                        ? "bg-accent text-foreground font-bold"
-                        : "bg-background text-foreground  hover:text-muted-foreground"
-                    } hover:font-bold hover:cursor-pointer`}
-                    onClickCapture={() => router.push("/auth/profile/settings")}
-                  >
-                    <Settings
-                      className={`${
-                        params.slug === "settings"
-                          ? "bg-accent text-foreground font-bold"
-                          : "text-foreground hover:text-muted-foreground"
-                      }`}
-                    />
-                    <span>Settings</span>
-                  </CommandItem>
+                      onClickCapture={() => router.push(item.url)}
+                    >
+                      <item.Icon
+                        className={`
+                          ${
+                            pathname === item.url
+                              ? "text-accent-foreground"
+                              : "text-foreground"
+                          }`}
+                      />
+
+                      <span>{item.label}</span>
+                    </CommandItem>
+                  ))}
 
                   <CommandItem
                     className="my-4 bg-background"
@@ -69,7 +57,7 @@ export default function ProfileMenu() {
                       router.push("/api/logout");
                     }}
                   >
-                    <LogOut />
+                    <LogOut className="hover:text-white" />
                     <span>Logout</span>
                   </CommandItem>
                 </div>
