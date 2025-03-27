@@ -25,7 +25,6 @@ import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-imag
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
 import { FieldInfo } from "../utils/field-info";
-import { delivery_method_types } from "./constants";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
 import ItemPreview from "./components/item-preview";
@@ -71,7 +70,6 @@ export default function CreateItemFormComponent({
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
   const description = useField({ form, name: "commons.description" });
-  const properties = useField({ form, name: "properties" });
   const images = useField({ form, name: "images" });
 
   // Helper function to build nested subcategory hierarchy for CategorySelector
@@ -156,9 +154,14 @@ export default function CreateItemFormComponent({
 
                           // Reset only properties, not the entire form
                           form.reset({
-                            properties: [],
                             // Preserve the images when resetting
+                            commons: {
+                              title: title.state.value,
+                              price: price.state.value,
+                              description: description.state.value,
+                            },
                             images: currentImages,
+                            properties: [],
                           });
 
                           handleSubCategorySelect(e);
@@ -298,44 +301,6 @@ export default function CreateItemFormComponent({
                             : "max-h-52"
                         }
                       />
-                      <FieldInfo field={field} />
-                    </div>
-                  );
-                }}
-              </form.Field>
-              <form.Field name="commons.delivery_method">
-                {(field) => {
-                  return (
-                    <div className="space-y-2">
-                      <Label htmlFor={field.name} className="block">
-                        Delivery method <span className="text-red-500">*</span>
-                      </Label>
-                      <Select
-                        name={field.name}
-                        onValueChange={(value) => field.handleChange(value)}
-                        defaultValue={field.state.value?.toString()}
-                        aria-invalid={
-                          field.state.meta.isTouched &&
-                          field.state.meta.errors?.length
-                            ? "true"
-                            : "false"
-                        }
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue
-                            placeholder={`Select a Delivery method`}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {delivery_method_types?.map((item, i) => (
-                              <SelectItem key={i} value={item.id?.toString()}>
-                                {item.name}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
                       <FieldInfo field={field} />
                     </div>
                   );

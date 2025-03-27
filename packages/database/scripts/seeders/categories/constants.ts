@@ -97,6 +97,7 @@ export const Filters = {
 	SIZE_WATCHES: 'size_watches',
 	SIZE_PHONE_SCREEN: 'size_phone_screen',
 	SIZE_MONITOR_SCREEN: 'size_monitor_screen',
+	DELIVERY_METHOD: 'delivery_method',
 } as const;
 
 export type FiltersTypes = (typeof Filters)[keyof typeof Filters];
@@ -114,6 +115,7 @@ export const FilterTypes = {
 export const FILTER_SEEDS: FilterSeed[] = [
 	// Generic
 	{ name: 'Condition', slug: Filters.CONDITION, type: FilterTypes.SELECT },
+	{ name: 'Delivery Methods', slug: Filters.DELIVERY_METHOD, type: FilterTypes.SELECT_MULTI },
 	{ name: 'Gender', slug: Filters.GENDER, type: FilterTypes.RADIO },
 	{ name: 'Color', slug: Filters.COLOR, type: FilterTypes.SELECT_MULTI },
 	// Clothing
@@ -156,6 +158,10 @@ export const FILTER_VALUES: FilterValues[] = [
 	{ slug: Filters.CONDITION, name: 'Used - Like New', value: 'used-like-new' },
 	{ slug: Filters.CONDITION, name: 'Used - Good', value: 'used-good' },
 	{ slug: Filters.CONDITION, name: 'Used - Fair', value: 'used-fair' },
+
+	// DELIVERY METHOD
+	{ slug: Filters.DELIVERY_METHOD, name: 'Pickup', value: 'pickup' },
+	{ slug: Filters.DELIVERY_METHOD, name: 'Shipping', value: 'shipping' },
 
 	// GENDER
 	{ slug: Filters.GENDER, name: 'Unisex', value: 'unisex' },

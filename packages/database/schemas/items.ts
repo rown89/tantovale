@@ -1,9 +1,9 @@
 import { z, number, string } from 'zod';
-import { relations, sql } from 'drizzle-orm';
+import { relations } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { users } from './users';
-import { deliveryMethodEnum, statusEnum } from './enumerated_types';
+import { statusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 
 export const items = pgTable(
@@ -16,7 +16,6 @@ export const items = pgTable(
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
 		shipping_cost: integer('shipping_cost').notNull().default(0),
-		delivery_method: deliveryMethodEnum('delivery_method').notNull().default('shipping'),
 		user_id: integer('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),

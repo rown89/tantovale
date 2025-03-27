@@ -497,6 +497,14 @@ async function linkFiltersToSubcategories(
 				isEditableField: true,
 			})),
 		},
+		{
+			filterSlug: Filters.DELIVERY_METHOD,
+			subcategories: Object.keys(subcategoryMap).map((slug) => ({
+				slug,
+				isOptionalField: false,
+				isEditableField: true,
+			})),
+		},
 		...SUBCATEGORIES_FILTERS,
 	];
 

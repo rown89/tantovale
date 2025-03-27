@@ -1,16 +1,27 @@
-import { Categories, Filters, Subcategories } from '../scripts/seeders/categories/constants';
 import { pgEnum } from 'drizzle-orm/pg-core';
+import { Categories, Filters, Subcategories } from '../scripts/seeders/categories/constants';
+import {
+	DeliveryMethodValues,
+	ProductConditionValues,
+	GenderCategoryValues,
+	ClothingMaterialValues,
+	ColorValues,
+	ClothingSizeValues,
+	ShoeSizeValues,
+	WatchWristSizeValues,
+	PhoneScreenSizeValues,
+	MonitorScreenSizeValues,
+} from '../scripts/seeders/categories/types';
 
-export const conditionsEnum = pgEnum('conditions_enum', ['new', 'used', 'damaged']);
 export const statusEnum = pgEnum('status_enum', ['available', 'sold']);
-export const deliveryMethodEnum = pgEnum('delivery_method_enum', ['shipping', 'pickup']);
 export const sexEnum = pgEnum('sex_enum', ['male', 'female']);
-export const profileEnum = pgEnum('profile_types_enum', ['private', 'professional']);
+export const profileEnum = pgEnum('profile_types_enum', ['private', 'private_pro', 'shop', 'shop_pro']);
 
 export const itemImagesSizeEnum = pgEnum('item_images_size_enum', ['original', 'small', 'medium', 'thumbnail']);
 
 export const filtersEnum = pgEnum('filters_enum', [
 	Filters.CONDITION,
+	Filters.DELIVERY_METHOD,
 	Filters.GENDER,
 	Filters.COLOR,
 	Filters.MATERIAL_CLOTHING,
@@ -61,9 +72,12 @@ export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 	`${Subcategories.ACCESSORIES}_${Categories.CLOTHINGS}`,
 ]);
 
-export const FilterValuesEnum = pgEnum('filter_values_enum', [
-	// CONDITIONS
+/* export const FilterValuesEnum = pgEnum('filter_values_enum', [
 	'null',
+	// DELIVERY_METHODS
+	'shipping',
+	'pickup',
+	// CONDITIONS
 	'new',
 	'used-like-new',
 	'used-good',
@@ -253,4 +267,29 @@ export const FilterValuesEnum = pgEnum('filter_values_enum', [
 	'43"',
 	'49"',
 	'55"',
+]);
+ */
+
+export const FilterValuesEnum = pgEnum('filter_values_enum', [
+	'null',
+	// DELIVERY_METHODS
+	...DeliveryMethodValues,
+	// CONDITIONS
+	...ProductConditionValues,
+	// GENDER
+	...GenderCategoryValues,
+	// CLOTHING MATERIALS
+	...ClothingMaterialValues,
+	// COLORS
+	...ColorValues,
+	// CLOTH SIZES
+	...ClothingSizeValues,
+	// SHOES SIZES
+	...ShoeSizeValues,
+	// WATCH WIRST SIZES
+	...WatchWristSizeValues,
+	// PHONE SIZE SCREENS
+	...PhoneScreenSizeValues,
+	// MONITOR SIZE SCREENS
+	...MonitorScreenSizeValues,
 ]);

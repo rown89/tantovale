@@ -56,35 +56,7 @@ export default function NavBar() {
             Sell
           </Button>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon">
-              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">Toggle theme</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              className={`${theme === "light" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("light")}
-            >
-              Light
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={`${theme === "dark" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("dark")}
-            >
-              Dark
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={`${theme === "system" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("system")}
-            >
-              System
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
         {!loadingUser && (
           <>
             {!user ? (
@@ -164,6 +136,36 @@ export default function NavBar() {
             )}
           </>
         )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon">
+              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              className={`${theme === "light" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("light")}
+            >
+              Light
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={`${theme === "dark" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("dark")}
+            >
+              Dark
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={`${theme === "system" ? "bg-accent font-bold" : ""}`}
+              onClick={() => setTheme("system")}
+            >
+              System
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

@@ -45,8 +45,6 @@ export const verifyRoute = createRouter()
         // Get the signed access token from cookies
         const accessToken = getCookie(c, "access_token");
 
-        console.log("accessToken: ", accessToken);
-
         if (!accessToken) {
           return c.json({ message: "No token provided" }, 401);
         }
