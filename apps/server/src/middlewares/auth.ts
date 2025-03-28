@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { env } from "hono/adapter";
 
 import type { AppBindings } from "#lib/types";
-import { createClient } from "@workspace/database/db";
+import { createClient, type DrizzleClient } from "@workspace/database/db";
 import { eq } from "drizzle-orm";
 import { users } from "@workspace/database/schemas/users";
 import { refreshTokens } from "@workspace/database/schemas/refreshTokens";
@@ -17,7 +17,10 @@ import {
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 
 // Helper function to clean up and invalidate tokens
-async function invalidateTokens(c: Context<AppBindings>, db: any) {
+async function invalidateTokens(
+  c: Context<AppBindings>,
+  db: DrizzleClient["db"],
+) {
   const refresh_token = getCookie(c, "refresh_token");
 
   if (refresh_token) {
@@ -33,7 +36,10 @@ async function invalidateTokens(c: Context<AppBindings>, db: any) {
 }
 
 // Helper function to verify and get refresh token details
-async function validateRefreshToken(c: Context<AppBindings>, db: any) {
+async function validateRefreshToken(
+  c: Context<AppBindings>,
+  db: DrizzleClient["db"],
+) {
   const refresh_token = getCookie(c, "refresh_token");
 
   if (!refresh_token) {
