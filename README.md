@@ -24,17 +24,37 @@ Built with passion and community collaboration in mind, Tantovale welcomes contr
    cd tantovale
    ```
 
+   Tip: If you install vscode extention [restore-terminals](https://marketplace.visualstudio.com/items?itemName=EthanSK.restore-terminals) the following terminals should appear automatically at project opening:
+
+   - nextjs
+   - database
+   - server
+   - ui
+   - root
+
 2. **Install dependencies:**
 
-   At root folder:
+   To install all the dependencies in apps/_ and packages/_
 
    ```bash
    npm install
    ```
 
-3. **Run in Dev mode:**
+3. **DB Migration:**
 
-   At root folder:
+   ```bash
+   npm run dev-db-push
+   ```
+
+4. **(optional) DB Seeding:**
+
+   With the following command you will automatically seed categories, countries (states, regions, etc..) and 3 different users.
+
+   ```bash
+   npm run dev-seed-all
+   ```
+
+5. **Run storefront and server in Dev mode:**
 
    ```bash
    npm run dev-storefront

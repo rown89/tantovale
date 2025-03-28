@@ -6,6 +6,11 @@
 		"dev": "turbo dev",
 		"dev-server": "npm run --workspace=@workspace/server hono:dev",
 		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
+		"dev-db-push": "npm run --workspace=@workspace/database db:push",
+		"dev-seed-users": "npm run --workspace=@workspace/database seed:users",
+		"dev-seed-categories": "npm run --workspace=@workspace/database seed:categories",
+		"dev-seed-countries": "npm run --workspace=@workspace/database seed:countries",
+		"dev-seed-all": "bash seed-all.sh",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"lint": "turbo lint",
 		"prepare": "husky"
