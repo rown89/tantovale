@@ -49,3 +49,6 @@ yarn-error.log*
 
 # sst
 .sst
+
+#package-lock
+package-lock.json

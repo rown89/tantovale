@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createDynamicSchema, formOpts } from "../constants";
+import { formOpts } from "../constants";
 import { z } from "zod";
 import { toast } from "sonner";
 import { client } from "#lib/api";
@@ -10,6 +10,7 @@ import {
   createItemSchema,
   multipleImagesSchema,
 } from "@workspace/server/schema";
+
 interface Category {
   id: number;
   name: string;
@@ -18,7 +19,20 @@ interface Category {
 
 interface UseItemFormProps {
   subcategory?: Omit<Category, "subcategories">;
-  subCatFilters: any[] | undefined;
+  subCatFilters:
+    | {
+        id: number;
+        name: string;
+        on_item_create_required: boolean;
+        options: {
+          id: number;
+          name: string;
+          value: any;
+        }[];
+        slug: string;
+        type: string;
+      }[]
+    | undefined;
 }
 
 export function useCreateItemForm({
@@ -41,7 +55,8 @@ export function useCreateItemForm({
     .superRefine((val, ctx) => {
       if (subCatFilters && Array.isArray(subCatFilters)) {
         const requiredFilters =
-          subCatFilters?.filter((filter) => filter.on_create_required) || [];
+          subCatFilters.filter((filter) => filter.on_item_create_required) ||
+          [];
 
         requiredFilters.forEach((requiredFilter) => {
           const propertyExists = val.properties?.some(
@@ -66,7 +81,10 @@ export function useCreateItemForm({
   type schemaType = z.infer<typeof schema>;
 
   // Function to submit the item data
-  async function submitItemData(formData: any, images: File[]) {
+  async function submitItemData(
+    formData: Omit<schemaType, "images">,
+    images: File[],
+  ) {
     try {
       const itemResponse = await client.auth.item.new.$post({
         json: formData,
@@ -123,11 +141,11 @@ export function useCreateItemForm({
     validators: {
       onSubmit: schema,
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: schemaType }) => {
       setIsSubmittingForm(true);
 
       try {
-        const { images, ...rest } = value as schemaType;
+        const { images, ...rest } = value;
         const result = await submitItemData(rest, images);
 
         if (result.success) {

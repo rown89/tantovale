@@ -46,7 +46,7 @@ export const getFiltersBySubcategoryFiltersIdService = async (
       fv_number_value: filterValues.numeric_value,
       fv_boolean_value: filterValues.boolean_value,
       // subcategory_filters table
-      on_create_required: subCategoryFilters.on_item_create_required,
+      on_item_create_required: subCategoryFilters.on_item_create_required,
     })
     .from(subCategoryFilters)
     .innerJoin(filters, eq(subCategoryFilters.filter_id, filters.id))
@@ -60,7 +60,7 @@ export const getFiltersBySubcategoryFiltersIdService = async (
     name: FilterRow["filter_name"];
     type: FilterRow["filter_type"];
     slug: FilterRow["filter_slug"];
-    on_create_required: FilterRow["on_create_required"];
+    on_item_create_required: FilterRow["on_item_create_required"];
     options: Array<{
       id: FilterRow["fv_id"];
       name: FilterRow["fv_name"];
@@ -81,7 +81,7 @@ export const getFiltersBySubcategoryFiltersIdService = async (
         name: row.filter_name,
         type: row.filter_type,
         slug: row.filter_slug,
-        on_create_required: row.on_create_required,
+        on_item_create_required: row.on_item_create_required,
         options: [],
       };
     }

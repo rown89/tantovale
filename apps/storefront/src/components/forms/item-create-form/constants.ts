@@ -1,9 +1,4 @@
-import { z } from "zod";
 import { formOptions } from "@tanstack/react-form";
-import {
-  createItemSchema,
-  multipleImagesSchema,
-} from "@workspace/server/schema";
 
 export const placeholderImages = [
   {
@@ -31,33 +26,3 @@ export const formOpts = formOptions({
     properties: [],
   },
 });
-
-export function createDynamicSchema(subCatFilters?: any[]) {
-  return createItemSchema
-    .and(z.object({ images: multipleImagesSchema }))
-    .superRefine((val, ctx) => {
-      console.log("not");
-      if (subCatFilters && Array.isArray(subCatFilters)) {
-        const requiredFilters =
-          subCatFilters?.filter((filter) => filter.on_create_required) || [];
-
-        requiredFilters.forEach((requiredFilter) => {
-          const propertyExists = val.properties?.some(
-            (prop: {
-              id: number;
-              value: string | number | string[] | number[];
-              slug: string;
-            }) => prop.slug === requiredFilter.slug,
-          );
-
-          if (!propertyExists) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Property for required filter "${requiredFilter.name}" is missing.`,
-              path: ["properties"],
-            });
-          }
-        });
-      }
-    });
-}

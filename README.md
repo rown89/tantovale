@@ -24,6 +24,23 @@ Built with passion and community collaboration in mind, Tantovale welcomes contr
    cd tantovale
    ```
 
+2. **Install dependencies:**
+
+   At root folder:
+
+   ```bash
+   npm install
+   ```
+
+3. **Run in Dev mode:**
+
+   At root folder:
+
+   ```bash
+   npm run dev-storefront
+   npm run dev-server
+   ```
+
 ## 🚀 Overview
 
 Tantovale is a modern, platform that leverages cutting-edge technologies and AI to enhance user experience.  

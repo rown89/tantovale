@@ -91,10 +91,11 @@ CREATE TABLE "profiles" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "profiles_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"profile_type" "profile_types_enum" DEFAULT 'private' NOT NULL,
 	"user_id" integer NOT NULL,
-	"fullname" varchar(255) NOT NULL,
-	"vat_number" varchar(255),
+	"fullname" varchar(50) NOT NULL,
+	"vat_number" varchar(50),
 	"birthday" date,
 	"gender" "sex_enum",
+	"city" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "profiles_user_id_unique" UNIQUE("user_id"),
@@ -194,6 +195,7 @@ CREATE TABLE "users" (
 	"password" varchar(255) NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"phone_verified" boolean DEFAULT false NOT NULL,
+	"is_banned" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_username_unique" UNIQUE("username"),
@@ -211,6 +213,7 @@ ALTER TABLE "items_filters_values" ADD CONSTRAINT "items_filters_values_filter_v
 ALTER TABLE "filter_values" ADD CONSTRAINT "filter_values_filter_id_filters_id_fk" FOREIGN KEY ("filter_id") REFERENCES "public"."filters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "profiles" ADD CONSTRAINT "profiles_city_cities_id_fk" FOREIGN KEY ("city") REFERENCES "public"."cities"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "countries" ADD CONSTRAINT "countries_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "countries" ADD CONSTRAINT "countries_subregion_id_sub_regions_id_fk" FOREIGN KEY ("subregion_id") REFERENCES "public"."sub_regions"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "sub_regions" ADD CONSTRAINT "sub_regions_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -227,4 +230,5 @@ CREATE INDEX "title_idx" ON "items" USING btree ("title");--> statement-breakpoi
 CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> statement-breakpoint
 CREATE INDEX "item_id_idx" ON "items_images" USING btree ("item_id");--> statement-breakpoint
 CREATE INDEX "value_id_idx" ON "filter_values" USING btree ("value");--> statement-breakpoint
-CREATE INDEX "profiles_fullname_idx" ON "profiles" USING btree ("fullname");
+CREATE INDEX "profiles_fullname_idx" ON "profiles" USING btree ("fullname");--> statement-breakpoint
+CREATE INDEX "cities_name_idx" ON "cities" USING btree ("name");

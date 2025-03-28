@@ -85,16 +85,27 @@ export default function CreateItemFormComponent({
     getCurrentValue,
   } = useCreateItemForm({ subcategory, subCatFilters });
 
-  const title = useField({ form, name: "commons.title" });
-  const price = useField({ form, name: "commons.price" });
-  const description = useField({ form, name: "commons.description" });
-  const city = useField({ form, name: "commons.city" });
-  const images = useField({ form, name: "images" });
+  // @ts-expect-error tanstack form library bug https://github.com/TanStack/form/issues/891
+  const title = useField({ form, name: "commons.title" }).state.value;
+  const price = useField({ form, name: "commons.price" }).state.value;
+  const description = useField({ form, name: "commons.description" }).state
+    .value;
+  const city = useField({ form, name: "commons.city" }).state.value;
+  const images = useField({ form, name: "images" }).state.value;
 
   // Helper function to build nested subcategory hierarchy for CategorySelector
   function buildNestedSubCatHierarchy() {
     // Convert subcategories array into a nested structure
-    const subcategoryMap = new Map<number, any>();
+    const subcategoryMap = new Map<
+      number,
+      {
+        id: number;
+        name: string;
+        category_id: number;
+        parent_id: number | null;
+        subcategories: Category[];
+      }
+    >();
 
     // Initialize subcategories map
     allSubcategories?.forEach((sub) => {
@@ -106,7 +117,10 @@ export default function CreateItemFormComponent({
       if (sub.parent_id) {
         const parent = subcategoryMap.get(sub.parent_id);
         if (parent) {
-          parent.subcategories.push(subcategoryMap.get(sub.id));
+          const subItem = subcategoryMap.get(sub.id);
+          if (subItem && parent && parent?.subcategories) {
+            parent?.subcategories.push(subItem);
+          }
         }
       }
     });
@@ -117,7 +131,8 @@ export default function CreateItemFormComponent({
         ...category,
         subcategories: allSubcategories
           ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
-          .map((sub) => subcategoryMap.get(sub.id)),
+          .map((sub) => subcategoryMap.get(sub.id))
+          .filter((sub): sub is NonNullable<typeof sub> => sub !== undefined),
       }));
 
       setNestedSubcategories(categoriesWithSubcategories);
@@ -176,10 +191,11 @@ export default function CreateItemFormComponent({
                           form.reset({
                             // Preserve the images when resetting
                             commons: {
-                              title: title.state.value,
-                              price: price.state.value,
-                              description: description.state.value,
-                              city: city.state.value,
+                              title,
+                              price,
+                              description,
+                              city,
+                              subcategory_id: e.id,
                             },
                             images: currentImages,
                             properties: [],
@@ -282,8 +298,10 @@ export default function CreateItemFormComponent({
                     <div className="space-y-2">
                       <MultiImageUpload
                         maxImages={5}
-                        onImagesChange={(images: File[]) => {
-                          if (images) field.handleChange(images);
+                        onImagesChange={(images) => {
+                          if (images) {
+                            field.handleChange(images as [File, ...File[]]);
+                          }
                         }}
                       />
                       <FieldInfo field={field} />
@@ -368,7 +386,7 @@ export default function CreateItemFormComponent({
                                 disabled={isSubmittingForm}
                                 onBlur={field.handleBlur}
                                 onChange={(e) => {
-                                  field.handleChange(e.target.value);
+                                  field.handleChange(e.target.valueAsNumber);
                                   setSearchedCityName(e.target.value);
                                 }}
                                 aria-invalid={
@@ -404,8 +422,9 @@ export default function CreateItemFormComponent({
                                         className="hover:font-bold"
                                         onSelect={(currentValue) => {
                                           field.setValue(
-                                            currentValue === field.state.value
-                                              ? ""
+                                            currentValue ===
+                                              field.state.value.toString()
+                                              ? 0
                                               : Number(currentValue),
                                           );
 
@@ -453,7 +472,7 @@ export default function CreateItemFormComponent({
                               <>
                                 <Label htmlFor={field.name} className="block">
                                   {filter.name}{" "}
-                                  {filter.on_create_required && (
+                                  {filter.on_item_create_required && (
                                     <span className="text-red-500">*</span>
                                   )}
                                 </Label>
@@ -479,7 +498,7 @@ export default function CreateItemFormComponent({
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectGroup>
-                                      {!filter.on_create_required && (
+                                      {!filter.on_item_create_required && (
                                         <SelectItem value="reset">
                                           --
                                         </SelectItem>
@@ -495,7 +514,7 @@ export default function CreateItemFormComponent({
                                     </SelectGroup>
                                   </SelectContent>
                                 </Select>
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -533,7 +552,7 @@ export default function CreateItemFormComponent({
                                   variant="inverted"
                                   maxCount={3}
                                 />
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -546,7 +565,7 @@ export default function CreateItemFormComponent({
                               <div className="flex flex-col gap-2">
                                 <Label htmlFor={field.name} className="block">
                                   {filter.name}{" "}
-                                  {filter.on_create_required && (
+                                  {filter.on_item_create_required && (
                                     <span className="text-red-500">*</span>
                                   )}
                                 </Label>
@@ -565,7 +584,7 @@ export default function CreateItemFormComponent({
                                     })
                                   }
                                 />
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -578,7 +597,7 @@ export default function CreateItemFormComponent({
                               <>
                                 <Label htmlFor={field.name}>
                                   {filter.name}{" "}
-                                  {filter.on_create_required && (
+                                  {filter.on_item_create_required && (
                                     <span className="text-red-500">*</span>
                                   )}
                                 </Label>
@@ -607,7 +626,7 @@ export default function CreateItemFormComponent({
                                     });
                                   }}
                                 />
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -620,7 +639,7 @@ export default function CreateItemFormComponent({
                               <div className="flex flex-col gap-2">
                                 <Label htmlFor={field.name}>
                                   {filter.name}{" "}
-                                  {filter.on_create_required && (
+                                  {filter.on_item_create_required && (
                                     <span className="text-red-500">*</span>
                                   )}
                                 </Label>
@@ -693,7 +712,7 @@ export default function CreateItemFormComponent({
                                   ))}
                                 </div>
 
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -706,7 +725,7 @@ export default function CreateItemFormComponent({
                               <div className="flex gap-4 flex-col">
                                 <Label htmlFor={field.name}>
                                   {filter.name}{" "}
-                                  {filter.on_create_required && (
+                                  {filter.on_item_create_required && (
                                     <span className="text-red-500">*</span>
                                   )}
                                 </Label>
@@ -740,7 +759,7 @@ export default function CreateItemFormComponent({
                                     </div>
                                   ))}
                                 </RadioGroup>
-                                {filter.on_create_required && (
+                                {filter.on_item_create_required && (
                                   <FieldInfo
                                     field={field}
                                     filterName={filter.name}
@@ -790,21 +809,13 @@ export default function CreateItemFormComponent({
           <div className="w-full overflow-hidden  h-full">
             <ItemPreview
               title={
-                title.state.value !== undefined ? String(title.state.value) : ""
-              }
-              price={
-                price.state.value !== undefined ? Number(price.state.value) : 0
-              }
-              description={
-                description.state.value !== undefined
-                  ? String(description.state.value)
+                form.getFieldValue("commons.title") !== undefined
+                  ? String(form.getFieldValue("commons.title"))
                   : ""
               }
-              images={
-                images.state.value && Array.isArray(images.state.value)
-                  ? images.state.value
-                  : []
-              }
+              price={price !== undefined ? Number(price) : 0}
+              description={description !== undefined ? String(description) : ""}
+              images={images && Array.isArray(images) ? images : []}
               subcategory={selectedSubCategory?.name || ""}
             />
           </div>

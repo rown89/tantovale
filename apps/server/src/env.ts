@@ -47,7 +47,7 @@ const EnvSchema = z.object({
   DATABASE_NAME: z.string(),
 });
 
-export function parseEnv(data: any) {
+export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
   const { data: env, error } = EnvSchema.safeParse(data);
 
   if (error) {

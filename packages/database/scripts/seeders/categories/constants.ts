@@ -363,18 +363,18 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.PANTS,
-				isOptionalField: true,
-				isEditableField: false,
+				on_item_create_required: true,
+				on_item_update_editable: false,
 			},
 			{
 				slug: Subcategories.JEANS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
-				isOptionalField: true,
-				isEditableField: true,
+				on_item_create_required: true,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -383,18 +383,18 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.PANTS,
-				isOptionalField: true,
-				isEditableField: false,
+				on_item_create_required: true,
+				on_item_update_editable: false,
 			},
 			{
 				slug: Subcategories.JEANS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
-				isOptionalField: true,
-				isEditableField: true,
+				on_item_create_required: true,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -403,18 +403,18 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.PANTS,
-				isOptionalField: true,
-				isEditableField: false,
+				on_item_create_required: true,
+				on_item_update_editable: false,
 			},
 			{
 				slug: Subcategories.JEANS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
-				isOptionalField: true,
-				isEditableField: true,
+				on_item_create_required: true,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -423,13 +423,13 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.PANTS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 			{
 				slug: Subcategories.JEANS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -438,8 +438,8 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.SHOES,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -448,8 +448,8 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.PHONES,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 		],
 	},
@@ -458,13 +458,13 @@ export const SUBCATEGORIES_FILTERS = [
 		subcategories: [
 			{
 				slug: Subcategories.LAPTOPS,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 			{
 				slug: Subcategories.DESKTOP_COMPUTER,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: false,
+				on_item_update_editable: true,
 			},
 		],
 	},

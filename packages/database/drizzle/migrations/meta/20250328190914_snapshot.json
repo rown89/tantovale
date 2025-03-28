@@ -1,5 +1,5 @@
 {
-	"id": "be46b966-8b80-4c72-bfc8-6c2e844984a1",
+	"id": "28379cea-0243-49e4-ba29-c5535e47cf91",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
@@ -804,13 +804,13 @@
 				},
 				"fullname": {
 					"name": "fullname",
-					"type": "varchar(255)",
+					"type": "varchar(50)",
 					"primaryKey": false,
 					"notNull": true
 				},
 				"vat_number": {
 					"name": "vat_number",
-					"type": "varchar(255)",
+					"type": "varchar(50)",
 					"primaryKey": false,
 					"notNull": false
 				},
@@ -824,6 +824,12 @@
 					"name": "gender",
 					"type": "sex_enum",
 					"typeSchema": "public",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"city": {
+					"name": "city",
+					"type": "integer",
 					"primaryKey": false,
 					"notNull": false
 				},
@@ -865,6 +871,15 @@
 					"tableFrom": "profiles",
 					"tableTo": "users",
 					"columnsFrom": ["user_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				},
+				"profiles_city_cities_id_fk": {
+					"name": "profiles_city_cities_id_fk",
+					"tableFrom": "profiles",
+					"tableTo": "cities",
+					"columnsFrom": ["city"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "cascade"
@@ -1288,7 +1303,23 @@
 					"notNull": false
 				}
 			},
-			"indexes": {},
+			"indexes": {
+				"cities_name_idx": {
+					"name": "cities_name_idx",
+					"columns": [
+						{
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				}
+			},
 			"foreignKeys": {
 				"cities_state_id_states_id_fk": {
 					"name": "cities_state_id_states_id_fk",
@@ -1519,6 +1550,13 @@
 				},
 				"phone_verified": {
 					"name": "phone_verified",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
+				"is_banned": {
+					"name": "is_banned",
 					"type": "boolean",
 					"primaryKey": false,
 					"notNull": true,

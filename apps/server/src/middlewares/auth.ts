@@ -68,7 +68,7 @@ async function validateRefreshToken(
 // Helper function to create a new access token
 async function createNewAccessToken(
   c: Context<AppBindings>,
-  db: any,
+  db: DrizzleClient["db"],
   username: string,
   ACCESS_TOKEN_SECRET: string,
   isProductionMode: boolean,

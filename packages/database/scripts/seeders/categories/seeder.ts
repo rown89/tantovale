@@ -493,16 +493,16 @@ async function linkFiltersToSubcategories(
 			filterSlug: Filters.CONDITION,
 			subcategories: Object.keys(subcategoryMap).map((slug) => ({
 				slug,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: true,
+				on_item_update_editable: true,
 			})),
 		},
 		{
 			filterSlug: Filters.DELIVERY_METHOD,
 			subcategories: Object.keys(subcategoryMap).map((slug) => ({
 				slug,
-				isOptionalField: false,
-				isEditableField: true,
+				on_item_create_required: true,
+				on_item_update_editable: true,
 			})),
 		},
 		...SUBCATEGORIES_FILTERS,
@@ -530,8 +530,8 @@ async function linkFiltersToSubcategories(
 			subCategoryFilterLinks.push({
 				subcategory_id: subcategoryId,
 				filter_id: filterId,
-				isOptionalField: sub.isOptionalField,
-				isEditableField: sub.isEditableField,
+				on_item_create_required: sub.on_item_create_required,
+				on_item_update_editable: sub.on_item_update_editable,
 			});
 		}
 	}

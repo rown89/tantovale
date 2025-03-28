@@ -2,6 +2,7 @@ import { pgTable, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { items } from './items';
 import { filterValues } from './filter_values';
+import { relations } from 'drizzle-orm';
 
 export const itemsFiltersValues = pgTable('items_filters_values', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -18,6 +19,13 @@ export const itemsFiltersValues = pgTable('items_filters_values', {
 			onUpdate: 'cascade',
 		}),
 });
+
+export const itemsFiltersValuesRelations = relations(itemsFiltersValues, ({ one }) => ({
+	filter_value: one(filterValues, {
+		fields: [itemsFiltersValues.filter_value_id],
+		references: [filterValues.id],
+	}),
+}));
 
 export type SelectItemFilterValue = typeof itemsFiltersValues.$inferSelect;
 export type InsertItemFilterValue = typeof itemsFiltersValues.$inferInsert;

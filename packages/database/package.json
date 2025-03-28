@@ -12,7 +12,8 @@
 		"db:push": "npx dotenv -e .env.local drizzle-kit push",
 		"db:studio": "npx drizzle-kit studio",
 		"seed:categories": "npx tsx ./scripts/seeders/categories/index.ts",
-		"seed:countries": "npx tsx ./scripts/seeders/countries/index.ts"
+		"seed:countries": "npx tsx ./scripts/seeders/countries/index.ts",
+		"seed:users": "npx tsx ./scripts/seeders/users/index.ts"
 	},
 	"exports": {
 		"./db": "./index.ts",
