@@ -1,5 +1,5 @@
 {
-	"id": "0a22c9db-8e96-490f-bf95-413fcb8cd5e9",
+	"id": "be46b966-8b80-4c72-bfc8-6c2e844984a1",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
@@ -254,14 +254,6 @@
 					"notNull": true,
 					"default": 0
 				},
-				"delivery_method": {
-					"name": "delivery_method",
-					"type": "delivery_method_enum",
-					"typeSchema": "public",
-					"primaryKey": false,
-					"notNull": true,
-					"default": "'shipping'"
-				},
 				"user_id": {
 					"name": "user_id",
 					"type": "integer",
@@ -270,6 +262,12 @@
 				},
 				"subcategory_id": {
 					"name": "subcategory_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"city": {
+					"name": "city",
 					"type": "integer",
 					"primaryKey": false,
 					"notNull": true
@@ -301,6 +299,21 @@
 					"columns": [
 						{
 							"expression": "user_id",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						}
+					],
+					"isUnique": false,
+					"concurrently": false,
+					"method": "btree",
+					"with": {}
+				},
+				"city_idx": {
+					"name": "city_idx",
+					"columns": [
+						{
+							"expression": "city",
 							"isExpression": false,
 							"asc": true,
 							"nulls": "last"
@@ -357,6 +370,15 @@
 					"tableFrom": "items",
 					"tableTo": "subcategories",
 					"columnsFrom": ["subcategory_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				},
+				"items_city_cities_id_fk": {
+					"name": "items_city_cities_id_fk",
+					"tableFrom": "items",
+					"tableTo": "cities",
+					"columnsFrom": ["city"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "cascade"
@@ -790,7 +812,7 @@
 					"name": "vat_number",
 					"type": "varchar(255)",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": false
 				},
 				"birthday": {
 					"name": "birthday",
@@ -798,8 +820,8 @@
 					"primaryKey": false,
 					"notNull": false
 				},
-				"sex": {
-					"name": "sex",
+				"gender": {
+					"name": "gender",
 					"type": "sex_enum",
 					"typeSchema": "public",
 					"primaryKey": false,
@@ -864,7 +886,7 @@
 				},
 				"sex_check1": {
 					"name": "sex_check1",
-					"value": "\"profiles\".\"profile_type\" != 'private' OR \"profiles\".\"sex\" IS NOT NULL"
+					"value": "\"profiles\".\"profile_type\" != 'private' OR \"profiles\".\"gender\" IS NOT NULL"
 				}
 			},
 			"isRLSEnabled": false
@@ -1543,6 +1565,8 @@
 			"schema": "public",
 			"values": [
 				"null",
+				"shipping",
+				"pickup",
 				"new",
 				"used-like-new",
 				"used-good",
@@ -1758,16 +1782,6 @@
 			"schema": "public",
 			"values": ["electronics", "clothings", "kids", "collectables"]
 		},
-		"public.conditions_enum": {
-			"name": "conditions_enum",
-			"schema": "public",
-			"values": ["new", "used", "damaged"]
-		},
-		"public.delivery_method_enum": {
-			"name": "delivery_method_enum",
-			"schema": "public",
-			"values": ["shipping", "pickup"]
-		},
 		"public.filter_types_enum": {
 			"name": "filter_types_enum",
 			"schema": "public",
@@ -1778,6 +1792,7 @@
 			"schema": "public",
 			"values": [
 				"condition",
+				"delivery_method",
 				"gender",
 				"color",
 				"material_clothing",
@@ -1796,7 +1811,7 @@
 		"public.profile_types_enum": {
 			"name": "profile_types_enum",
 			"schema": "public",
-			"values": ["private", "professional"]
+			"values": ["private", "private_pro", "shop", "shop_pro"]
 		},
 		"public.sex_enum": {
 			"name": "sex_enum",

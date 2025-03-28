@@ -26,7 +26,6 @@ export const itemRoute = createRouter()
 
       let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 
-      console.log("payload", payload);
       const user_id = Number(payload.id);
 
       if (!user_id) return c.json({ message: "Invalid user identifier" }, 400);

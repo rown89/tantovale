@@ -1,16 +1,9 @@
 import { createClient } from "@workspace/database/db";
-import {
-  items,
-  itemsImages,
-  profiles,
-} from "@workspace/database/schemas/schema";
-import { eq, and } from "drizzle-orm";
+import { profiles } from "@workspace/database/schemas/schema";
+import { eq } from "drizzle-orm";
 import { updateProfileSchema } from "#schema/profiles";
 import { z } from "zod";
 import { createRouter } from "#lib/create-app";
-import { env } from "hono/adapter";
-import { getCookie } from "hono/cookie";
-import { verify } from "hono/jwt";
 
 export const profileRoute = createRouter()
   .post("/", async (c) => {

@@ -5,6 +5,7 @@ export * from "./items";
 export * from "./item";
 export * from "./filters";
 export * from "./categories";
+export * from "./cities";
 export * from "./subcategories";
 export * from "./subcategory-filters";
 export * from "./verify";

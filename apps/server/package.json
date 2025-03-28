@@ -5,9 +5,9 @@
   "module": "esnext",
   "type": "module",
   "scripts": {
-    "hono:dev": "NODE_ENV=development dotenv -e ../../packages/database/.env.local tsx watch src/index.ts --turbopack",
-    "hono:build": "NODE_ENV=production dontenv -e ../../packages/database/.env tsc --turbopack",
-    "hono:start": "NODE_ENV=production dontenv -e ../../packages/database/.env node ./dist/src/index.js --turbopack",
+    "hono:dev": "NODE_ENV=development dotenv -e .env.local -e ../../packages/database/.env.local tsx watch src/index.ts --turbopack",
+    "hono:build": "NODE_ENV=production dotenv -e ../../packages/database/.env tsc --turbopack",
+    "hono:start": "NODE_ENV=production dotenv -e ../../packages/database/.env node ./dist/src/index.js --turbopack",
     "typecheck": "npx tsc --noEmit"
   },
   "imports": {

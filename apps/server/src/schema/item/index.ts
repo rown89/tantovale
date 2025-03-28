@@ -32,11 +32,6 @@ export const createItemSchema = z.object({
     description: (schema) =>
       schema.min(100, "Description must be at least 100 characters").max(800),
     price: number().min(0.01, "Price must be greater than 0"),
-    delivery_method: z.enum(["shipping", "pickup"], {
-      errorMap: () => ({
-        message: "Delivery method must be 'shipping' or 'pickup'.",
-      }),
-    }),
   }).omit({
     user_id: true,
     published: true,
@@ -48,3 +43,5 @@ export const createItemSchema = z.object({
   }),
   properties: z.array(propertySchema).optional(),
 });
+
+export type createItemTypes = z.infer<typeof createItemSchema>;

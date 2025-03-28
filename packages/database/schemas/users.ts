@@ -8,6 +8,7 @@ export const users = pgTable('users', {
 	password: varchar('password', { length: 255 }).notNull(),
 	email_verified: boolean('email_verified').default(false).notNull(),
 	phone_verified: boolean('phone_verified').default(false).notNull(),
+	is_banned: boolean('is_banned').default(false).notNull(),
 	created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

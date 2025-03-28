@@ -25,14 +25,52 @@ export const verifyRoute = createRouter()
       description: "User token verifier",
       responses: {
         200: {
-          description: "Token verified succesfully",
-          content: {},
+          description: "Token verified successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  message: { type: "string" },
+                  user: {
+                    type: "object",
+                    properties: {
+                      id: { type: "number" },
+                      username: { type: "string" },
+                      email_verified: { type: "boolean" },
+                      phone_verified: { type: "boolean" },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         401: {
-          description: "No token provided",
+          description: "No token provided or invalid token",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  message: { type: "string" },
+                },
+              },
+            },
+          },
         },
         500: {
           description: "Error processing request",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  message: { type: "string" },
+                },
+              },
+            },
+          },
         },
       },
     }),
@@ -50,22 +88,28 @@ export const verifyRoute = createRouter()
         }
 
         // Verify and decode the token
-        const payload = await verify(accessToken, ACCESS_TOKEN_SECRET);
+        try {
+          const payload = await verify(accessToken, ACCESS_TOKEN_SECRET);
 
-        if (!payload) return c.json({ message: "Invalid token" }, 401);
+          if (!payload) return c.json({ message: "Invalid token" }, 401);
 
-        return c.json(
-          {
-            message: "Token verified succesfully",
-            user: {
-              id: payload.id as number,
-              username: payload.username as string,
-              email_verified: payload.email_verified as boolean,
-              phone_verified: payload.phone_verified as boolean,
+          return c.json(
+            {
+              message: "Token verified successfully",
+              user: {
+                id: payload.id as number,
+                username: payload.username as string,
+                email_verified: payload.email_verified as boolean,
+                phone_verified: payload.phone_verified as boolean,
+              },
             },
-          },
-          200,
-        );
+            200,
+          );
+        } catch (tokenError) {
+          // Specific handling for token verification errors
+          console.error("Token verification failed:", tokenError);
+          return c.json({ message: "Invalid token" }, 401);
+        }
       } catch (err) {
         console.error("Error processing verify token request: ", err);
         return c.json(

@@ -6,7 +6,10 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { client } from "#lib/api";
 import imageCompression from "browser-image-compression";
-
+import {
+  createItemSchema,
+  multipleImagesSchema,
+} from "@workspace/server/schema";
 interface Category {
   id: number;
   name: string;
@@ -29,10 +32,37 @@ export function useCreateItemForm({
     Category,
     "subcategories"
   > | null>(subcategory || null);
+  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   // Create schema with validation
-  const schema = createDynamicSchema(subCatFilters);
+  const schema = createItemSchema
+    .and(z.object({ images: multipleImagesSchema }))
+    .superRefine((val, ctx) => {
+      if (subCatFilters && Array.isArray(subCatFilters)) {
+        const requiredFilters =
+          subCatFilters?.filter((filter) => filter.on_create_required) || [];
+
+        requiredFilters.forEach((requiredFilter) => {
+          const propertyExists = val.properties?.some(
+            (prop: {
+              id: number;
+              value: string | number | string[] | number[];
+              slug: string;
+            }) => prop.slug === requiredFilter.slug,
+          );
+
+          if (!propertyExists) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Property for required filter "${requiredFilter.name}" is missing.`,
+              path: ["properties"],
+            });
+          }
+        });
+      }
+    });
+
   type schemaType = z.infer<typeof schema>;
 
   // Function to submit the item data
@@ -48,8 +78,8 @@ export function useCreateItemForm({
 
       const newItem = await itemResponse.json();
 
+      // Compress images before uploading
       if (images.length > 0) {
-        // Compress images before uploading
         const compressionOptions = {
           maxSizeMB: 2, // Max file size in MB
           maxWidthOrHeight: 2000, // Maintain reasonable dimensions
@@ -200,6 +230,8 @@ export function useCreateItemForm({
     form,
     isSubmittingForm,
     selectedSubCategory,
+    isCityPopoverOpen,
+    setIsCityPopoverOpen,
     handleSubCategorySelect,
     updatePropertiesArray,
     getCurrentValue,

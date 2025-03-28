@@ -4,7 +4,6 @@ import { items } from './items';
 import { profileEnum, sexEnum } from './enumerated_types';
 import { users } from './users';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-import type { countries } from './countries';
 
 export const profiles = pgTable(
 	'profiles',
@@ -16,16 +15,16 @@ export const profiles = pgTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		fullname: varchar('fullname', { length: 255 }).notNull(),
-		vat_number: varchar('vat_number', { length: 255 }).notNull(),
+		vat_number: varchar('vat_number', { length: 255 }),
 		birthday: date('birthday'),
-		sex: sexEnum('sex'),
+		gender: sexEnum('gender'),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		index('profiles_fullname_idx').on(table.fullname),
 		check('birthday_check1', sql`${table.profile_type} != 'private' OR ${table.birthday} IS NOT NULL`),
-		check('sex_check1', sql`${table.profile_type} != 'private' OR ${table.sex} IS NOT NULL`),
+		check('sex_check1', sql`${table.profile_type} != 'private' OR ${table.gender} IS NOT NULL`),
 	],
 );
 

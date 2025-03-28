@@ -21,6 +21,7 @@ import {
   categoriesRoute,
   filtersRoute,
   uploadsRoute,
+  citiesRoute,
 } from "./routes";
 
 const app = createApp();
@@ -34,6 +35,7 @@ const apiRoutes = app
   .route(`/verify`, verifyRoute)
   .route("/items", itemsRoute)
   .route("/categories", categoriesRoute)
+  .route("/cities", citiesRoute)
   .route("/filters", filtersRoute)
   .route("/subcategories", subcategoriesRoute)
   .route("/subcategory_fitlers", subcategoryFiltersRoute)

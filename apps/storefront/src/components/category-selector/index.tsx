@@ -23,6 +23,7 @@ interface MobileCategorySelectorProps {
   onSelect: (category: Category) => void;
   selectedCategoryControlled?: Omit<Category, "subcategories"> | null;
   className?: string;
+  isLoading: boolean;
 }
 
 export function CategorySelector({
@@ -30,6 +31,7 @@ export function CategorySelector({
   onSelect,
   selectedCategoryControlled,
   className,
+  isLoading,
 }: MobileCategorySelectorProps) {
   const [currentCategories, setCurrentCategories] = useState(categories);
   const [breadcrumbs, setBreadcrumbs] = useState<Category[]>([]);
@@ -70,6 +72,7 @@ export function CategorySelector({
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
+          autoFocus
           variant="outline"
           className={cn("w-full justify-between", className)}
         >
@@ -78,51 +81,55 @@ export function CategorySelector({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-full min-w-[300px]" align="start">
-        <div className="flex flex-col space-y-2 p-2">
-          {breadcrumbs.length > 0 && (
-            <Button
-              variant="ghost"
-              onClick={handleBackClick}
-              className="w-full justify-start"
-            >
-              <ChevronLeft className="mr-2 h-4 w-4" />
-              Back to {breadcrumbs[breadcrumbs.length - 1]?.name}
-            </Button>
-          )}
+        {isLoading ? (
+          "--"
+        ) : (
+          <div className="flex flex-col space-y-2 p-2">
+            {breadcrumbs.length > 0 && (
+              <Button
+                variant="ghost"
+                onClick={handleBackClick}
+                className="w-full justify-start"
+              >
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Back to {breadcrumbs[breadcrumbs.length - 1]?.name}
+              </Button>
+            )}
 
-          <div className="flex items-center text-sm text-muted-foreground px-2">
-            {breadcrumbs.map((crumb, index) => (
-              <React.Fragment key={`${crumb.id}-${crumb.name}`}>
-                <span>{crumb.name}</span>
-                {index < breadcrumbs.length - 1 && (
-                  <ChevronRight className="mx-1 h-4 w-4" />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-
-          <ScrollArea className="rounded-md">
-            <div className="p-2">
-              {currentCategories?.length &&
-                currentCategories?.map((category) => (
-                  <Button
-                    key={`${category.id}-${category.name}`}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start mb-1",
-                      selectedCategory?.id === category.id && "bg-muted",
-                    )}
-                    onClick={() => handleCategoryClick(category)}
-                  >
-                    {category.name}
-                    {category.subcategories.length > 0 && (
-                      <ChevronRight className="ml-auto h-4 w-4" />
-                    )}
-                  </Button>
-                ))}
+            <div className="flex items-center text-sm text-muted-foreground px-2">
+              {breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={`${crumb.id}-${crumb.name}`}>
+                  <span>{crumb.name}</span>
+                  {index < breadcrumbs.length - 1 && (
+                    <ChevronRight className="mx-1 h-4 w-4" />
+                  )}
+                </React.Fragment>
+              ))}
             </div>
-          </ScrollArea>
-        </div>
+
+            <ScrollArea className="rounded-md">
+              <div className="p-2">
+                {currentCategories?.length > 0 &&
+                  currentCategories?.map((category) => (
+                    <Button
+                      key={`${category.id}-${category.name}`}
+                      variant="ghost"
+                      className={cn(
+                        "w-full justify-start mb-1",
+                        selectedCategory?.id === category.id && "bg-muted",
+                      )}
+                      onClick={() => handleCategoryClick(category)}
+                    >
+                      {category.name}
+                      {category.subcategories.length > 0 && (
+                        <ChevronRight className="ml-auto h-4 w-4" />
+                      )}
+                    </Button>
+                  ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

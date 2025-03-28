@@ -23,12 +23,26 @@ import {
 } from "@workspace/ui/components/radio-group";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@workspace/ui/components/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@workspace/ui/components/command";
+import { cn } from "@workspace/ui/lib/utils";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./hooks/useCreateItemForm";
 import { useCreateItemData } from "./hooks/useCreateItemData";
 import ItemPreview from "./components/item-preview";
 import { CategorySelector } from "#components/category-selector";
+import { Check, ChevronsUpDown, SearchIcon } from "lucide-react";
 
 export interface Category {
   id: number;
@@ -46,6 +60,7 @@ export default function CreateItemFormComponent({
   const [nestedSubcategories, setNestedSubcategories] = useState<Category[]>(
     [],
   );
+  const [searchedCityName, setSearchedCityName] = useState("");
 
   const isMobile = useIsMobile();
 
@@ -55,13 +70,17 @@ export default function CreateItemFormComponent({
     subCatFilters,
     isLoadingCat,
     isLoadingSubCat,
+    cities,
     isLoadingSubCatFilters,
-  } = useCreateItemData(subcategory);
+    isLoadingCities,
+  } = useCreateItemData(subcategory, searchedCityName);
 
   const {
     form,
     isSubmittingForm,
     selectedSubCategory,
+    isCityPopoverOpen,
+    setIsCityPopoverOpen,
     handleSubCategorySelect,
     updatePropertiesArray,
     getCurrentValue,
@@ -70,6 +89,7 @@ export default function CreateItemFormComponent({
   const title = useField({ form, name: "commons.title" });
   const price = useField({ form, name: "commons.price" });
   const description = useField({ form, name: "commons.description" });
+  const city = useField({ form, name: "commons.city" });
   const images = useField({ form, name: "images" });
 
   // Helper function to build nested subcategory hierarchy for CategorySelector
@@ -131,7 +151,7 @@ export default function CreateItemFormComponent({
             }}
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
-            <div className="overflow-auto flex gap-6 flex-col">
+            <div className="overflow-auto flex gap-6 flex-col p-2">
               {/* JSON.stringify(form.state.errors, null, 4) */}
               <form.Field
                 name="commons.subcategory_id"
@@ -144,6 +164,7 @@ export default function CreateItemFormComponent({
                         Category <span className="text-red-500">*</span>
                       </Label>
                       <CategorySelector
+                        isLoading={isLoadingCat || isLoadingSubCat}
                         categories={nestedSubcategories}
                         selectedCategoryControlled={
                           selectedSubCategory || subcategory
@@ -159,6 +180,7 @@ export default function CreateItemFormComponent({
                               title: title.state.value,
                               price: price.state.value,
                               description: description.state.value,
+                              city: city.state.value,
                             },
                             images: currentImages,
                             properties: [],
@@ -182,6 +204,7 @@ export default function CreateItemFormComponent({
                       <Input
                         id={field.name}
                         name={field.name}
+                        disabled={isSubmittingForm}
                         value={
                           field.state.value !== undefined
                             ? field.state.value?.toString()
@@ -218,6 +241,7 @@ export default function CreateItemFormComponent({
                       <Input
                         id={field.name}
                         name={field.name}
+                        disabled={isSubmittingForm}
                         type="number"
                         min=".01"
                         step=".01"
@@ -278,6 +302,7 @@ export default function CreateItemFormComponent({
                       <Textarea
                         id={field.name}
                         name={field.name}
+                        disabled={isSubmittingForm}
                         rows={6}
                         maxLength={800}
                         value={
@@ -307,6 +332,112 @@ export default function CreateItemFormComponent({
                 }}
               </form.Field>
 
+              <form.Field name="commons.city">
+                {(field) => {
+                  return (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="block">
+                        Item location <span className="text-red-500">*</span>
+                      </Label>
+                      <Popover
+                        open={isCityPopoverOpen}
+                        onOpenChange={setIsCityPopoverOpen}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={isCityPopoverOpen}
+                            className="w-full justify-between"
+                          >
+                            {cities?.find(
+                              (city) => city.id === Number(field.state.value),
+                            )?.name ?? "Location..."}
+                            <ChevronsUpDown className="opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="min-w-[300px] flex p-0"
+                        >
+                          <Command>
+                            <div className="flex items-center gap-2 mx-2">
+                              <SearchIcon width={20} />
+                              <Input
+                                id={field.name}
+                                name={field.name}
+                                disabled={isSubmittingForm}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => {
+                                  field.handleChange(e.target.value);
+                                  setSearchedCityName(e.target.value);
+                                }}
+                                aria-invalid={
+                                  field.state.meta.isTouched &&
+                                  field.state.meta.errors?.length
+                                    ? "true"
+                                    : "false"
+                                }
+                                className={`my-2 ${
+                                  field.state.meta.isTouched &&
+                                  field.state.meta.errors?.length
+                                    ? "border-red-500"
+                                    : ""
+                                }`}
+                                placeholder="Search a city name"
+                              />
+                            </div>
+                            {cities && cities?.length > 0 && (
+                              <CommandList>
+                                {!isLoadingCities &&
+                                  searchedCityName.length > 2 &&
+                                  !cities?.length && (
+                                    <CommandEmpty>
+                                      No places found.
+                                    </CommandEmpty>
+                                  )}
+                                <CommandGroup>
+                                  {cities?.map((city, i) => {
+                                    return (
+                                      <CommandItem
+                                        key={i}
+                                        value={city.id?.toString()}
+                                        className="hover:font-bold"
+                                        onSelect={(currentValue) => {
+                                          field.setValue(
+                                            currentValue === field.state.value
+                                              ? ""
+                                              : Number(currentValue),
+                                          );
+
+                                          setIsCityPopoverOpen(false);
+                                        }}
+                                      >
+                                        {city.name}
+                                        <Check
+                                          className={cn(
+                                            "ml-auto",
+                                            Number(field.state.value) ===
+                                              city.id
+                                              ? "opacity-100"
+                                              : "opacity-0",
+                                          )}
+                                        />
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </CommandList>
+                            )}
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
+
               {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
                 <Spinner />
               ) : (
@@ -314,7 +445,7 @@ export default function CreateItemFormComponent({
                 subCatFilters?.length > 0 &&
                 subCatFilters?.map((filter) => {
                   return (
-                    <form.Field key={filter.id} name={`properties`}>
+                    <form.Field key={filter.id} name="properties">
                       {(field) => {
                         return (
                           <div className="space-y-2">

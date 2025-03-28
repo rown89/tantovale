@@ -4,6 +4,7 @@ import { Category } from "..";
 
 export function useCreateItemData(
   subcategory?: Omit<Category, "subcategories">,
+  cityName?: string,
 ) {
   // Fetch categories
   const {
@@ -59,15 +60,42 @@ export function useCreateItemData(
     enabled: !!subcategory?.id,
   });
 
+  // Fetch cities
+  const {
+    data: cities,
+    isLoading: isLoadingCities,
+    isError: isErrorCities,
+  } = useQuery({
+    queryKey: ["cities-name", cityName],
+    queryFn: async () => {
+      if (cityName && cityName?.length > 2) {
+        const res = await client.cities.search_name[":name"].$get({
+          param: {
+            name: cityName,
+          },
+        });
+
+        if (!res.ok) return [];
+
+        return await res.json();
+      } else {
+        return [];
+      }
+    },
+  });
+
   return {
     allCategories,
     allSubcategories,
     subCatFilters,
+    cities,
     isLoadingCat,
     isLoadingSubCat,
     isLoadingSubCatFilters,
+    isLoadingCities,
     isErrorCat,
     isErrorSubCat,
     isErrorSubCatFilters,
+    isErrorCities,
   };
 }
