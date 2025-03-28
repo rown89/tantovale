@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { DollarSign, LogOut, Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun } from "lucide-react";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
@@ -46,14 +46,19 @@ export default function NavBar() {
       </div>
       <div></div>
       <div className="flex ml-auto items-center space-x-4">
-        {!loadingUser && user && (
+        {!loadingUser && (
           <Button
-            className="w-[90px] mx-12 text-slate-900"
+            className="w-[90px] mx-12 text-slate-900 font-bold"
             variant="secondary"
-            onClick={async () => router.push("/auth/item/new")}
+            onClick={async () => {
+              if (user) {
+                router.push("/auth/item/new");
+              } else {
+                router.push("/login");
+              }
+            }}
           >
-            <DollarSign />
-            Sell
+            Create ad
           </Button>
         )}
 
@@ -136,36 +141,6 @@ export default function NavBar() {
             )}
           </>
         )}
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon">
-              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">Toggle theme</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              className={`${theme === "light" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("light")}
-            >
-              Light
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={`${theme === "dark" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("dark")}
-            >
-              Dark
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={`${theme === "system" ? "bg-accent font-bold" : ""}`}
-              onClick={() => setTheme("system")}
-            >
-              System
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
     </div>
   );

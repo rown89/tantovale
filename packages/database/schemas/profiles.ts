@@ -1,9 +1,10 @@
-import { pgTable, integer, timestamp, date, check, varchar, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, date, check, text, varchar, index } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { items } from './items';
 import { profileEnum, sexEnum } from './enumerated_types';
 import { users } from './users';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { cities } from './cities';
 
 export const profiles = pgTable(
 	'profiles',
@@ -14,10 +15,12 @@ export const profiles = pgTable(
 			.unique()
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		fullname: varchar('fullname', { length: 255 }).notNull(),
-		vat_number: varchar('vat_number', { length: 255 }),
+		fullname: varchar('fullname', { length: 50 }).notNull(),
+		vat_number: varchar('vat_number', { length: 50 }),
 		birthday: date('birthday'),
 		gender: sexEnum('gender'),
+		city: integer('city').references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+		// street_address: text('street_address'),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -30,6 +33,7 @@ export const profiles = pgTable(
 
 export const profilesRelations = relations(profiles, ({ one, many }) => ({
 	user: one(users),
+	city: one(cities),
 	items: many(items),
 }));
 
