@@ -2,13 +2,16 @@
   "extends": "@workspace/typescript-config/base.json",
   "compilerOptions": {
     "strict": true,
+    "target": "ESNext",
     "outDir": "./dist",
-    "rootDir": ".",
-    "moduleResolution": "bundler",
-    "verbatimModuleSyntax": true,
-    "experimentalDecorators": true,
+    "rootDir": "./",
+    "baseUrl": "./",
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ESNext"],
+    "declaration": true,
     "paths": {
       "#*": ["./src/*"],
       "#routes/*": ["./src/routes/*"],
@@ -17,9 +20,15 @@
       "#schema": ["./src/schema/index.ts"],
       "#schema/*": ["./src/schema/*"],
       "#database/*": ["./database/*"],
-      "#mailer/*": ["./mailer/*"]
-    }
+      "#mailer/*": ["./src/mailer/*"]
+    },
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node"],
+    "skipLibCheck": true
   },
-  "include": [".", "src/**/*", "database/**/*", "mailer/**/*"],
-  "exclude": ["node_modules"]
+  "tsc-alias": {
+    "resolveFullPaths": true
+  },
+  "include": [".", "src/**/*", "../packages/database/**/*", "src/mailer/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -2,8 +2,11 @@
 	"name": "workspace",
 	"private": true,
 	"scripts": {
-		"build": "turbo build",
-		"dev": "turbo dev",
+		"build": "turbo run build",
+		"clean": "turbo run clean",
+		"dev": "turbo run dev",
+		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
+		"lint": "turbo lint",
 		"dev-server": "npm run --workspace=@workspace/server hono:dev",
 		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
 		"dev-db-push": "npm run --workspace=@workspace/database db:push",
@@ -11,12 +14,10 @@
 		"dev-seed-categories": "npm run --workspace=@workspace/database seed:categories",
 		"dev-seed-countries": "npm run --workspace=@workspace/database seed:countries",
 		"dev-seed-all": "bash seed-all.sh",
-		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
-		"lint": "turbo lint",
 		"prepare": "husky"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=20.0.0"
 	},
 	"packageManager": "npm@11.2.0",
 	"workspaces": {

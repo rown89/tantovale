@@ -1,50 +1,45 @@
-# Use official Node.js alpine image as base
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
-# Install necessary system dependencies
-RUN apk add --no-cache libc6-compat bash curl
-
-# Build stage
 FROM base AS builder
+
+RUN apk update
+RUN apk add --no-cache libc6-compat bash curl
+# Set working directory
 WORKDIR /app
 
 # Install turbo globally
 RUN npm install -g turbo
-
-# Copy only necessary files for dependency installation
-COPY package-lock.json .
-COPY package.json .
-COPY turbo.json .
-COPY apps/storefront/package.json ./apps/storefront/
-
-# Install dependencies
-RUN npm ci
-
-# Build the application
 COPY . .
-RUN npx turbo run build:next --filter=@workspace/storefront
+RUN turbo prune @workspace/storefront --docker
 
-# Production stage
+# Add lockfile and package.json's of isolated subworkspace
+FROM base AS installer
+RUN apk update
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# First install the dependencies (as they change less often)
+COPY --from=builder /app/out/json/ .
+RUN npm install
+
+# Build the project
+COPY --from=builder /app/out/full/ .
+
+RUN npx turbo build --filter=@workspace/storefront
+
 FROM base AS runner
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-# Copy only necessary files for runtime
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/package.json ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/next.config.js ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/.next/static ./.next/static
-
-# Set user and runtime configurations
+# Don't run production as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 USER nextjs
 
-EXPOSE 3000
-ENV PORT 3000
-ENV HOSTNAME 0.0.0.0
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/standalone ./
+COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/static ./apps/storefront/.next/static
+COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/public ./apps/storefront/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/next.config.js ./apps/storefront/next.config.js
 
-# Updated CMD to match standalone build
-CMD ["node", "apps/storefront/server.js"]
+CMD node apps/storefront/server.js

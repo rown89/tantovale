@@ -12,7 +12,6 @@ import {
 import Slider from "@workspace/ui/components/carousel/slider";
 import { placeholderImages } from "../constants";
 import { Badge } from "@workspace/ui/components/badge";
-import { X } from "lucide-react";
 
 interface ItemPreviewProps {
   title: string;
@@ -42,36 +41,24 @@ const ItemPreview = React.memo(
 
     // Create image URLs for preview - properly formatted for the Slider component
     const imageUrls = useMemo(() => {
-      if (images.length > 0) {
-        return images.map((file, i) => {
-          const imageUrl = URL.createObjectURL(file);
-          return (
-            <div
-              key={i}
-              onClick={() => {
-                setFullscreenImage(imageUrl);
-              }}
-            >
-              <Image
-                fill
-                className="object-cover hover:cursor-pointer"
-                src={imageUrl}
-                alt=""
-              />
-            </div>
-          );
-        });
-      } else {
-        return placeholderImages.map((item, i) => (
-          <Image
+      return images.map((file, i) => {
+        const imageUrl = URL.createObjectURL(file);
+        return (
+          <div
             key={i}
-            fill
-            className="object-cover"
-            src={item.url}
-            alt={item.alt}
-          />
-        ));
-      }
+            onClick={() => {
+              setFullscreenImage(imageUrl);
+            }}
+          >
+            <Image
+              fill
+              className="object-cover hover:cursor-pointer"
+              src={imageUrl}
+              alt=""
+            />
+          </div>
+        );
+      });
     }, [images]);
 
     // Cleanup URLs when component unmounts or images change
@@ -114,35 +101,37 @@ const ItemPreview = React.memo(
                 € {price ? (price / 100).toFixed(2) : "0.00"}
               </p>
 
-              <div className="min-h-[450px] w-full">
-                <Slider
-                  images={imageUrls}
-                  thumbnails={
-                    images && Array.isArray(images)
-                      ? images.map((file: File, i) => {
-                          const thumbUrl = URL.createObjectURL(file);
-                          return (
+              <div className="min-h-[450px] w-full bg-background rounded-t-md">
+                {imageUrls && (
+                  <Slider
+                    images={imageUrls}
+                    thumbnails={
+                      images && Array.isArray(images)
+                        ? images.map((file: File, i) => {
+                            const thumbUrl = URL.createObjectURL(file);
+                            return (
+                              <Image
+                                key={i}
+                                fill
+                                className="object-cover hover:cursor-pointer object-center"
+                                src={thumbUrl}
+                                alt=""
+                              />
+                            );
+                          })
+                        : placeholderImages.map((item, i) => (
                             <Image
                               key={i}
                               fill
-                              className="object-cover hover:cursor-pointer object-center"
-                              src={thumbUrl}
-                              alt=""
+                              priority
+                              className="object-cover"
+                              src={item.url}
+                              alt={item.alt}
                             />
-                          );
-                        })
-                      : placeholderImages.map((item, i) => (
-                          <Image
-                            key={i}
-                            fill
-                            priority
-                            className="object-cover"
-                            src={item.url}
-                            alt={item.alt}
-                          />
-                        ))
-                  }
-                />
+                          ))
+                    }
+                  />
+                )}
 
                 {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
                 <AnimatePresence>

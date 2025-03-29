@@ -1,62 +1,58 @@
 {
 	"$schema": "https://turbo.build/schema.json",
 	"ui": "tui",
+
 	"tasks": {
 		"build": {
-			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": [".next/**", "dist/**", "!.next/cache/**", ".vercel/output/**"]
+			"outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", ".vercel/output/**"],
+			"dependsOn": ["^build"]
 		},
-		"next:dev": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
-			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
-		},
-		"next:build": {
-			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
-			"outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
-		},
-		"db:generate": {
+		"dev": {
 			"cache": false,
-			"inputs": ["$TURBO_DEFAULT$", "./database/drizzle.config.ts", "./database/schema/schema.ts"],
-			"outputs": ["./drizzle/**"]
-		},
-		"db:migrate": {
-			"dependsOn": ["db:generate"],
-			"outputs": ["./drizzle/migrations/**"],
-			"cache": false
-		},
-		"db:push": {
-			"dependsOn": ["db:generate"],
-			"cache": false
-		},
-		"db:check": {
-			"dependsOn": ["db:generate"],
-			"cache": false
-		},
-		"hono:dev": {
-			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
-			"outputs": ["dist/**"],
-			"cache": false,
-			"persistent": true
-		},
-		"hono:build": {
-			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
-			"outputs": ["dist/**"]
-		},
-		"hono:start": {
-			"dependsOn": ["db:push"],
-			"inputs": ["$TURBO_DEFAULT$", ".env*", "tsconfig.json"],
-			"outputs": ["dist/**"]
+			"persistent": true,
+			"inputs": ["$TURBO_DEFAULT$", ".env.local", ".env", "./packages/database/.env.local", "./packages/database/.env"],
+			"env": [
+				"NODE_ENV",
+				"LOG_LEVEL",
+
+				"SERVER_HOSTNAME",
+				"SERVER_PORT",
+
+				"STOREFRONT_HOSTNAME",
+				"STOREFRONT_PORT",
+
+				"ACCESS_TOKEN_SECRET",
+				"REFRESH_TOKEN_SECRET",
+				"EMAIL_VERIFY_TOKEN_SECRET",
+				"RESET_TOKEN_SECRET",
+				"COOKIE_SECRET",
+
+				"AWS_REGION",
+				"AWS_BUCKET_NAME",
+				"AWS_ACCESS_KEY",
+				"AWS_SECRET_ACCESS_KEY",
+
+				"SMTP_HOST",
+				"SMTP_PORT",
+				"SMTP_USER",
+				"SMTP_PASS",
+
+				"DATABASE_HOST",
+				"DATABASE_PORT",
+				"POSTGRES_USER",
+				"POSTGRES_PASSWORD",
+				"POSTGRES_DB"
+			]
 		},
 		"lint": {
-			"dependsOn": ["^lint"]
+			"dependsOn": ["^build"]
 		},
 		"check-types": {
 			"dependsOn": ["^check-types"]
+		},
+		"clean": {
+			"cache": false
 		}
 	}
 }

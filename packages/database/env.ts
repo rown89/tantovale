@@ -11,11 +11,11 @@ expand(
 
 const EnvSchema = z.object({
 	NODE_ENV: z.string().default('development'),
-	DATABASE_USERNAME: z.string(),
-	DATABASE_PASSWORD: z.string(),
+	POSTGRES_USER: z.string(),
+	POSTGRES_PASSWORD: z.string(),
+	POSTGRES_DB: z.string(),
 	DATABASE_HOST: z.string(),
 	DATABASE_PORT: z.coerce.number().default(5432),
-	DATABASE_NAME: z.string(),
 });
 
 export function parseEnv(data: typeof EnvSchema | NodeJS.ProcessEnv) {

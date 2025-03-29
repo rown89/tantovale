@@ -5,9 +5,9 @@
   "module": "esnext",
   "type": "module",
   "scripts": {
-    "hono:dev": "NODE_ENV=development dotenv -e .env.local -e ../../packages/database/.env.local tsx watch src/index.ts --turbopack",
-    "hono:build": "NODE_ENV=production dotenv -e ../../packages/database/.env tsc --turbopack",
-    "hono:start": "NODE_ENV=production dotenv -e ../../packages/database/.env node ./dist/src/index.js --turbopack",
+    "dev": "NODE_ENV=development tsx watch src/index.ts",
+    "build": "NODE_ENV=production rm -rf dist && tsc && tsc-alias",
+    "start": "NODE_ENV=production node ./dist/src/index.js",
     "typecheck": "npx tsc --noEmit"
   },
   "imports": {
@@ -15,7 +15,7 @@
       "./src/*.ts"
     ],
     "#lib/*": "./src/lib/*.ts",
-    "#mailer/*": "./mailer/*.ts",
+    "#mailer/*": "./src/mailer/*.ts",
     "#routes/*": "./src/routes/*.ts",
     "#schema": "./src/schema/index.ts",
     "#schema/*": [
@@ -30,17 +30,19 @@
     "./schema": "./src/schema/index.ts"
   },
   "dependencies": {
-    "@workspace/database": "*",
     "@aws-sdk/client-s3": "^3.772.0",
     "@aws-sdk/s3-request-presigner": "^3.772.0",
     "@hono/node-server": "^1.13.8",
     "@hono/swagger-ui": "^0.5.1",
     "@hono/zod-openapi": "^0.19.2",
     "@hono/zod-validator": "^0.4.3",
+    "@scalar/hono-api-reference": "^0.5.172",
+    "@workspace/database": "*",
+    "bcryptjs": "^3.0.2",
+    "drizzle-orm": "*",
+    "drizzle-zod": "*",
     "hono-openapi": "^0.4.6",
     "hono-pino": "^0.8.0",
-    "@scalar/hono-api-reference": "^0.5.172",
-    "bcryptjs": "^3.0.2",
     "nodemailer": "^6.10.0",
     "pg": "^8.13.1",
     "pino": "^9.6.0",
@@ -48,17 +50,16 @@
     "postgres": "^3.4.5",
     "sharp": "^0.33.5",
     "stoker": "^1.4.2",
-    "zod-openapi": "^4.2.3",
-    "drizzle-orm": "*",
-    "drizzle-zod": "*",
-    "zod": "*"
+    "tsc-alias": "^1.8.11",
+    "zod": "*",
+    "zod-openapi": "^4.2.3"
   },
   "devDependencies": {
-    "@workspace/eslint-config": "*",
-    "@workspace/typescript-config": "*",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.11",
+    "@workspace/eslint-config": "*",
+    "@workspace/typescript-config": "*",
     "dotenv-cli": "^8.0.0",
     "tsx": "^4.19.2"
   }

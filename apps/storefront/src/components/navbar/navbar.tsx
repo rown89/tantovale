@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useAuth } from "#components/providers/AuthProvider";
-import { useTheme } from "next-themes";
 import { Button } from "@workspace/ui/components/button";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -20,12 +19,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { LogOut, Moon, Sun } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
 

@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "next:dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev --port 3000",
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev --port 3000 --turbopack",
     "build": "next build",
-    "next:build": "next build",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
     "check-types": "tsc --noEmit"

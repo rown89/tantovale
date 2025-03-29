@@ -11,7 +11,13 @@ services:
     ports:
       - 5432:5432
     env_file:
-      - ./.env
+      - ./packages/database/.env
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   storefront:
     container_name: tv_storefront

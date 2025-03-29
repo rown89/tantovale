@@ -3,6 +3,8 @@
 	"compilerOptions": {
 		"strict": true,
 		"baseUrl": ".",
+		"outDir": "./dist",
+		"declaration": true,
 		"paths": {
 			"@workspace/database/*": ["./*"]
 		},

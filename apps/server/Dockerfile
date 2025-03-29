@@ -1,48 +1,47 @@
-# Base stage: Use official Node.js alpine image
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
-# Install necessary system dependencies
-RUN apk add --no-cache libc6-compat bash curl
-
-# Build stage
 FROM base AS builder
+
+RUN apk update
+RUN apk add --no-cache libc6-compat bash curl
+# Set working directory
 WORKDIR /app
 
 # Install turbo globally
 RUN npm install -g turbo
+COPY . .
+RUN turbo prune @workspace/server --docker
 
-# Copy essential files for dependency installation
-COPY package-lock.json .
-COPY package.json .
-COPY turbo.json .
-COPY apps/server/package.json ./apps/server/
+# Add lockfile and package.json's of isolated subworkspace
+FROM base AS installer
+RUN apk update
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
 
 # Install dependencies
-RUN npm ci
+COPY --from=builder /app/out/json/ .
+RUN npm install
 
-# Build the Hono.js application
-COPY . .
-RUN npx turbo run build:hono --filter=@workspace/server
+# Build the project
+COPY --from=builder /app/out/full/ .
 
-# Production stage
+# Build the server and its dependencies
+RUN npx turbo build --filter=@workspace/server
+
 FROM base AS runner
 WORKDIR /app
 
-# Create a non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 hono
-
-# Copy runtime files from the builder stage
-COPY --from=builder --chown=hono:nodejs /app/apps/server/package.json ./
-COPY --from=builder --chown=hono:nodejs /app/apps/server/dist ./dist
-
-# Switch to non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 hono
 USER hono
 
-# Expose the server's port
-EXPOSE 4000
-ENV PORT 4000
-ENV HOSTNAME 0.0.0.0
+# Copy only what's needed to run the application
+COPY --from=installer --chown=hono:nodejs /app/node_modules ./node_modules
+COPY --from=installer --chown=hono:nodejs /app/apps/server/dist ./apps/server/dist
+COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json ./apps/server/package.json
+# Copy the database package.json
+COPY --from=installer --chown=hono:nodejs /app/packages/database/package.json ./packages/database/package.json
 
-# Run the server
+EXPOSE 4000
+
 CMD ["node", "apps/server/dist/index.js"]

@@ -3,7 +3,10 @@
 	"private": true,
 	"version": "1.0.0",
 	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
 	"scripts": {
+		"build": "tsc",
 		"db": "npx drizzle-kit",
 		"db:build": "tsx src/index.ts",
 		"db:check": "npx drizzle-kit check",
