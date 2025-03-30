@@ -29,7 +29,7 @@ _storefront_, _server_, _database_, _ui_, _root_
    ```
 
 2. **Environmental variables:**\
-   Each Workspace should have their .env files, currently you can find the followig env.example:
+   Each Workspace should have their .env files, currently you can find the followig _env.examples_:
 
    - [Storefront](https://github.com/rown89/tantovale/blob/main/apps/storefront/env.example)
    - [Server](https://github.com/rown89/tantovale/blob/main/apps/server/env.example)
