@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { serve } from "@hono/node-server";
 
-import { app } from "./app.js";
+import { app } from "./app";
 import { parseEnv } from "./env";
 
 const server_url = parseEnv(process.env).SERVER_HOSTNAME;

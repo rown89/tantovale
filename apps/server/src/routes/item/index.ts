@@ -97,6 +97,23 @@ export const itemRoute = createRouter()
               filter_value_id,
             })),
           );
+        } else {
+          // Check if the selected subcategory has mandatory properties
+          const mandatoryFilters = await tx
+            .select()
+            .from(subCategoryFilters)
+            .where(
+              and(
+                eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
+                eq(subCategoryFilters.on_item_create_required, true),
+              ),
+            );
+
+          if (mandatoryFilters.length > 0) {
+            throw new Error(
+              `This subcategory requires ${mandatoryFilters.length} mandatory properties`,
+            );
+          }
         }
 
         // Return the created item

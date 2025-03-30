@@ -1,26 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useField } from "@tanstack/react-form";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-} from "@workspace/ui/components/select";
+
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Textarea } from "@workspace/ui/components/textarea";
 import { Spinner } from "@workspace/ui/components/spinner";
-import { Switch } from "@workspace/ui/components/switch";
-import { Checkbox } from "@workspace/ui/components/checkbox";
-import { MultiSelect } from "@workspace/ui/components/multi-select";
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@workspace/ui/components/radio-group";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import {
@@ -42,6 +28,7 @@ import { useCreateItemData } from "./hooks/useCreateItemData";
 import ItemPreview from "./components/item-preview";
 import { CategorySelector } from "#components/category-selector";
 import { Check, ChevronsUpDown, SearchIcon } from "lucide-react";
+import { DynamicProperties } from "./components/dynamic-properties";
 
 export interface Category {
   id: number;
@@ -81,8 +68,6 @@ export default function CreateItemFormComponent({
     isCityPopoverOpen,
     setIsCityPopoverOpen,
     handleSubCategorySelect,
-    updatePropertiesArray,
-    getCurrentValue,
   } = useCreateItemForm({ subcategory, subCatFilters });
 
   // @ts-expect-error tanstack form library bug https://github.com/TanStack/form/issues/891
@@ -139,6 +124,22 @@ export default function CreateItemFormComponent({
     }
   }
 
+  function handleResetPartialForm(e: Category) {
+    // Reset only properties, not the entire form
+    form.reset({
+      // Preserve the images when resetting
+      commons: {
+        title,
+        price,
+        description,
+        city,
+        subcategory_id: e.id,
+      },
+      images: form.getFieldValue("images"),
+      properties: [],
+    });
+  }
+
   // Effects
   useEffect(() => {
     // if we have a subcategory already settled in the query params:
@@ -157,6 +158,9 @@ export default function CreateItemFormComponent({
       <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
         <div className="w-full xl:max-w-[500px] h-full break-words">
+          {/* 
+            JSON.stringify(form.state.errors, null, 4) 
+          */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -166,7 +170,6 @@ export default function CreateItemFormComponent({
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
             <div className="overflow-auto flex gap-6 flex-col p-2">
-              {/* JSON.stringify(form.state.errors, null, 4) */}
               <form.Field
                 name="commons.subcategory_id"
                 defaultValue={selectedSubCategory?.id}
@@ -184,23 +187,7 @@ export default function CreateItemFormComponent({
                           selectedSubCategory || subcategory
                         }
                         onSelect={(e) => {
-                          // Store current images before resetting the form
-                          const currentImages = form.getFieldValue("images");
-
-                          // Reset only properties, not the entire form
-                          form.reset({
-                            // Preserve the images when resetting
-                            commons: {
-                              title,
-                              price,
-                              description,
-                              city,
-                              subcategory_id: e.id,
-                            },
-                            images: currentImages,
-                            properties: [],
-                          });
-
+                          handleResetPartialForm(e);
                           handleSubCategorySelect(e);
                           field.setValue(e.id);
                         }}
@@ -348,7 +335,6 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
               <form.Field name="commons.city">
                 {(field) => {
                   return (
@@ -455,325 +441,22 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
-
-              {isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
-                <Spinner />
-              ) : (
-                subCatFilters &&
-                subCatFilters?.length > 0 &&
-                subCatFilters?.map((filter) => {
-                  return (
-                    <form.Field key={filter.id} name="properties">
-                      {(field) => {
-                        return (
-                          <div className="space-y-2">
-                            {/* select */}
-                            {filter.type === "select" && (
-                              <>
-                                <Label htmlFor={field.name} className="block">
-                                  {filter.name}{" "}
-                                  {filter.on_item_create_required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </Label>
-                                <Select
-                                  name={field.name}
-                                  onValueChange={(value) => {
-                                    updatePropertiesArray({
-                                      // If "reset" is selected, clear the selection
-                                      value: value === "reset" ? [] : value,
-                                      filter,
-                                      field,
-                                    });
-                                  }}
-                                  defaultValue={getCurrentValue(
-                                    field,
-                                    filter.id,
-                                  )}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={`Select a ${filter.name}`}
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectGroup>
-                                      {!filter.on_item_create_required && (
-                                        <SelectItem value="reset">
-                                          --
-                                        </SelectItem>
-                                      )}
-                                      {filter.options?.map((item, i) => (
-                                        <SelectItem
-                                          key={i}
-                                          value={item.id?.toString()}
-                                        >
-                                          {item.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </>
-                            )}
-                            {/* select_multi */}
-                            {filter.type === "select_multi" && (
-                              <>
-                                <Label htmlFor={field.name} className="block">
-                                  {filter.name}{" "}
-                                  <span className="text-red-500">*</span>
-                                </Label>
-                                <MultiSelect
-                                  options={filter.options.map(
-                                    ({ id, name: label, value }) => ({
-                                      id,
-                                      label,
-                                      value: value?.toString() ?? "",
-                                    }),
-                                  )}
-                                  onValueChange={(value) =>
-                                    updatePropertiesArray({
-                                      value,
-                                      filter,
-                                      field,
-                                    })
-                                  }
-                                  defaultValue={getCurrentValue(
-                                    field,
-                                    filter.id,
-                                  )}
-                                  placeholder={`Select ${filter.name}`}
-                                  variant="inverted"
-                                  maxCount={3}
-                                />
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </>
-                            )}
-                            {/* boolean */}
-                            {filter.type === "boolean" && (
-                              <div className="flex flex-col gap-2">
-                                <Label htmlFor={field.name} className="block">
-                                  {filter.name}{" "}
-                                  {filter.on_item_create_required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </Label>
-                                <Switch
-                                  checked={
-                                    getCurrentValue(field, filter.id) !==
-                                    undefined
-                                      ? getCurrentValue(field, filter.id)
-                                      : false
-                                  }
-                                  onCheckedChange={(checked) =>
-                                    updatePropertiesArray({
-                                      value: checked,
-                                      filter,
-                                      field,
-                                    })
-                                  }
-                                />
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </div>
-                            )}
-                            {/* number */}
-                            {filter.type === "number" && (
-                              <>
-                                <Label htmlFor={field.name}>
-                                  {filter.name}{" "}
-                                  {filter.on_item_create_required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </Label>
-                                <Input
-                                  type="number"
-                                  id={field.name}
-                                  value={
-                                    getCurrentValue(field, filter.id) !==
-                                    undefined
-                                      ? getCurrentValue(
-                                          field,
-                                          filter.id,
-                                        ).toString()
-                                      : ""
-                                  }
-                                  onChange={(e) => {
-                                    // Convert string to number for number inputs
-                                    const numValue =
-                                      e.target.value === ""
-                                        ? ""
-                                        : Number(e.target.value);
-                                    updatePropertiesArray({
-                                      value: numValue,
-                                      filter,
-                                      field,
-                                    });
-                                  }}
-                                />
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </>
-                            )}
-                            {/* checkbox */}
-                            {filter.type === "checkbox" && (
-                              <div className="flex flex-col gap-2">
-                                <Label htmlFor={field.name}>
-                                  {filter.name}{" "}
-                                  {filter.on_item_create_required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </Label>
-                                <div
-                                  className={`flex gap-4 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
-                                >
-                                  {filter.options.map((item) => (
-                                    <div
-                                      key={item.id}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Checkbox
-                                        id={`${field.name}-${item.id}`}
-                                        checked={
-                                          Array.isArray(
-                                            getCurrentValue(field, filter.id),
-                                          ) &&
-                                          getCurrentValue(
-                                            field,
-                                            filter.id,
-                                          )?.includes(item.id.toString())
-                                        }
-                                        onCheckedChange={(checked) => {
-                                          const currentValues = Array.isArray(
-                                            getCurrentValue(field, filter.id),
-                                          )
-                                            ? [
-                                                ...getCurrentValue(
-                                                  field,
-                                                  filter.id,
-                                                ),
-                                              ]
-                                            : [];
-
-                                          if (checked) {
-                                            // Add the item.id if it's not already in the array
-                                            if (
-                                              !currentValues.includes(
-                                                item.id.toString(),
-                                              )
-                                            ) {
-                                              updatePropertiesArray({
-                                                value: [
-                                                  ...currentValues,
-                                                  item.id.toString(),
-                                                ],
-                                                filter,
-                                                field,
-                                              });
-                                            }
-                                          } else {
-                                            // Remove the item.id from the array
-                                            updatePropertiesArray({
-                                              value: currentValues.filter(
-                                                (id) =>
-                                                  id !== item.id.toString(),
-                                              ),
-                                              filter,
-                                              field,
-                                            });
-                                          }
-                                        }}
-                                      />
-                                      <Label
-                                        htmlFor={`${field.name}-${item.id}`}
-                                      >
-                                        {item.name}
-                                      </Label>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </div>
-                            )}
-                            {/* radio */}
-                            {filter.type === "radio" && (
-                              <div className="flex gap-4 flex-col">
-                                <Label htmlFor={field.name}>
-                                  {filter.name}{" "}
-                                  {filter.on_item_create_required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </Label>
-                                <RadioGroup
-                                  value={(
-                                    getCurrentValue(field, filter.id) || ""
-                                  ).toString()}
-                                  onValueChange={(val) =>
-                                    updatePropertiesArray({
-                                      value: val,
-                                      filter,
-                                      field,
-                                    })
-                                  }
-                                  className={`flex gap-4 ${filter.options.length > 3 ? "flex-col" : "flex-row"}`}
-                                >
-                                  {filter.options.map((item) => (
-                                    <div
-                                      key={item.id}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <RadioGroupItem
-                                        id={`${field.name}-${item.id}`}
-                                        value={item.id?.toString()}
-                                      />
-                                      <Label
-                                        htmlFor={`${field.name}-${item.id}`}
-                                      >
-                                        {item.name}
-                                      </Label>
-                                    </div>
-                                  ))}
-                                </RadioGroup>
-                                {filter.on_item_create_required && (
-                                  <FieldInfo
-                                    field={field}
-                                    filterName={filter.name}
-                                  />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }}
-                    </form.Field>
-                  );
-                })
-              )}
+              {selectedSubCategory &&
+                (isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
+                  <Spinner />
+                ) : (
+                  subCatFilters &&
+                  subCatFilters?.length > 0 &&
+                  subCatFilters?.map((filter) => {
+                    return (
+                      <form.Field key={filter.id} name="properties">
+                        {(field) => (
+                          <DynamicProperties filter={filter} field={field} />
+                        )}
+                      </form.Field>
+                    );
+                  })
+                ))}
             </div>
             <form.Subscribe
               selector={(formState) => [
@@ -792,7 +475,8 @@ export default function CreateItemFormComponent({
                       isSubmittingForm ||
                       isLoadingCat ||
                       isLoadingSubCat ||
-                      isLoadingSubCatFilters
+                      isLoadingSubCatFilters ||
+                      !canSubmit
                     }
                     className="sticky bottom-0"
                   >

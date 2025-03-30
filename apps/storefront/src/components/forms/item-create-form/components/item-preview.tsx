@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import Slider from "@workspace/ui/components/carousel/slider";
-import { placeholderImages } from "../constants";
+import { placeholderImages } from "../utils";
 import { Badge } from "@workspace/ui/components/badge";
 
 interface ItemPreviewProps {

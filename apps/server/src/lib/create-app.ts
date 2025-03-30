@@ -3,11 +3,11 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
-import { authPath } from "../utils/constants.js";
+import { authPath } from "../utils/constants";
 import { notFound, onError, serveEmojiFavicon } from "stoker/middlewares";
-import { pinoLogger } from "../middlewares/pino-loggers.js";
-import { authMiddleware } from "../middlewares/auth.js";
-import { parseEnv } from "../env.js";
+import { pinoLogger } from "../middlewares/pino-loggers";
+import { authMiddleware } from "../middlewares/auth";
+import { parseEnv } from "../env";
 
 import type { AppBindings } from "./types";
 

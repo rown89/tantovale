@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { AnyFieldApi, useForm } from "@tanstack/react-form";
+import { useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formOpts } from "../constants";
+import { FilterType, formOpts } from "../utils";
 import { z } from "zod";
 import { toast } from "sonner";
 import { client } from "#lib/api";
@@ -10,6 +10,7 @@ import {
   createItemSchema,
   multipleImagesSchema,
 } from "@workspace/server/schema";
+import { handleQueryParamChange } from "#utils/handle-qp";
 
 interface Category {
   id: number;
@@ -17,23 +18,13 @@ interface Category {
   subcategories: Category[];
 }
 
-interface UseItemFormProps {
+export interface UseItemFormProps {
   subcategory?: Omit<Category, "subcategories">;
-  subCatFilters:
-    | {
-        id: number;
-        name: string;
-        on_item_create_required: boolean;
-        options: {
-          id: number;
-          name: string;
-          value: any;
-        }[];
-        slug: string;
-        type: string;
-      }[]
-    | undefined;
+  subCatFilters: FilterType[] | undefined;
 }
+
+const schema = createItemSchema.and(z.object({ images: multipleImagesSchema }));
+type schemaType = z.infer<typeof schema>;
 
 export function useCreateItemForm({
   subcategory,
@@ -48,37 +39,6 @@ export function useCreateItemForm({
   > | null>(subcategory || null);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-
-  // Create schema with validation
-  const schema = createItemSchema
-    .and(z.object({ images: multipleImagesSchema }))
-    .superRefine((val, ctx) => {
-      if (subCatFilters && Array.isArray(subCatFilters)) {
-        const requiredFilters =
-          subCatFilters.filter((filter) => filter.on_item_create_required) ||
-          [];
-
-        requiredFilters.forEach((requiredFilter) => {
-          const propertyExists = val.properties?.some(
-            (prop: {
-              id: number;
-              value: string | number | string[] | number[];
-              slug: string;
-            }) => prop.slug === requiredFilter.slug,
-          );
-
-          if (!propertyExists) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `Property for required filter "${requiredFilter.name}" is missing.`,
-              path: ["properties"],
-            });
-          }
-        });
-      }
-    });
-
-  type schemaType = z.infer<typeof schema>;
 
   // Function to submit the item data
   async function submitItemData(
@@ -139,7 +99,36 @@ export function useCreateItemForm({
   const form = useForm({
     ...formOpts.defaultValues,
     validators: {
-      onSubmit: schema,
+      onSubmitAsync: schema.superRefine(async (val, ctx) => {
+        if (
+          subCatFilters &&
+          Array.isArray(subCatFilters) &&
+          subCatFilters?.length > 0
+        ) {
+          const requiredFilters = subCatFilters.filter(
+            (filter) => filter.on_item_create_required,
+          );
+
+          // Check each required filter
+          requiredFilters.forEach((requiredFilter) => {
+            const propertyExists = val.properties?.some(
+              (prop: {
+                id: number;
+                value: string | number | string[] | number[];
+                slug: string;
+              }) => prop.slug === requiredFilter.slug,
+            );
+
+            if (!propertyExists) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Property for required filter "${requiredFilter.name}" is missing.`,
+                path: ["properties"],
+              });
+            }
+          });
+        }
+      }),
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
       setIsSubmittingForm(true);
@@ -174,14 +163,6 @@ export function useCreateItemForm({
     },
   });
 
-  // Helper functions
-  function handleQueryParamChange(qs: string, value: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set(qs, value);
-    const newUrl = `?${params.toString()}`;
-    router.replace(newUrl);
-  }
-
   function handleSubCategorySelect(
     subcategory: Omit<Category, "subcategories">,
   ) {
@@ -191,57 +172,13 @@ export function useCreateItemForm({
     if (field && typeof field === "object" && "setValue" in field) {
       (field as { setValue: (value: number) => void }).setValue(subcategory.id);
     }
-    handleQueryParamChange("cat", subcategory?.id?.toString());
-  }
 
-  // Update the properties array with proper types utility
-  function updatePropertiesArray({
-    value,
-    filter,
-    field,
-  }: {
-    value: string | number | boolean | (string | number)[];
-    filter: NonNullable<typeof subCatFilters>[number];
-    field: AnyFieldApi;
-  }) {
-    // Ensure we have an array from the field state.
-    const currentProperties: { id: number; slug: string; value: any }[] =
-      Array.isArray(field.state.value) ? [...field.state.value] : [];
-
-    // Create the new property object.
-    const newProperty = {
-      id: filter.id,
-      slug: filter.slug,
-      value,
-    };
-
-    // Find if the property already exists.
-    // Convert both IDs to strings for comparison to avoid type mismatches
-    const existingIndex = currentProperties.findIndex(
-      (prop) => String(prop.id) === String(filter.id),
+    handleQueryParamChange(
+      "cat",
+      subcategory?.id?.toString(),
+      searchParams,
+      router,
     );
-
-    if (existingIndex !== -1) {
-      // Update the existing property.
-      currentProperties[existingIndex] = newProperty;
-    } else {
-      // Add a new property.
-      currentProperties.push(newProperty);
-    }
-
-    // Update the form field state.
-    field.handleChange(currentProperties);
-  }
-
-  // set field default values utility
-  function getCurrentValue(field: AnyFieldApi, filterId: string | number) {
-    if (!Array.isArray(field.state.value)) return undefined;
-
-    // Convert both IDs to strings for comparison
-    const prop = field.state.value.find(
-      (p) => String(p.id) === String(filterId),
-    );
-    return prop ? prop.value : undefined;
   }
 
   return {
@@ -251,7 +188,5 @@ export function useCreateItemForm({
     isCityPopoverOpen,
     setIsCityPopoverOpen,
     handleSubCategorySelect,
-    updatePropertiesArray,
-    getCurrentValue,
   };
 }

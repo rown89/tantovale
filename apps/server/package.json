@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/index.ts",
+    "prebuild": "cd ../../packages/database && npm run build",
     "build": "NODE_ENV=production rm -rf dist && tsc && tsc-alias",
     "start": "NODE_ENV=production node ./dist/src/index.js",
     "typecheck": "npx tsc --noEmit"
