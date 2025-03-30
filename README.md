@@ -7,13 +7,13 @@ Built with passion and community collaboration in mind, Tantovale welcomes contr
 
 ## 🛠️ Tech Stack
 
-### General: **[Node.js](https://nodejs.org/en)**, **[Turborepo](https://turbo.build/)**, **[TypeScript](https://www.typescriptlang.org/)**, **[Zod](https://zod.dev/)**, **[Husky](https://typicode.github.io/husky/)**.
+#### General: **[Node.js](https://nodejs.org/en)**, **[Turborepo](https://turbo.build/)**, **[TypeScript](https://www.typescriptlang.org/)**, **[Zod](https://zod.dev/)**, **[Husky](https://typicode.github.io/husky/)**.
 
-### Frontend: **[Next.js](https://nextjs.org/)**, **[Tailwind](https://tailwindcss.com/) ([Shadcn](https://ui.shadcn.com/))**, **[Zustand](https://github.com/pmndrs/zustand)**, **[TanStack Query](https://tanstack.com/query/latest)**, **[HonoJS RPC Client](https://hono.dev/docs/guides/rpc)**
+#### Frontend: **[Next.js](https://nextjs.org/)**, **[Tailwind](https://tailwindcss.com/) ([Shadcn](https://ui.shadcn.com/))**, **[Zustand](https://github.com/pmndrs/zustand)**, **[TanStack Query](https://tanstack.com/query/latest)**, **[HonoJS RPC Client](https://hono.dev/docs/guides/rpc)**
 
-### Backend: **[HonoJS](https://hono.dev/)**, **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)**, **[hono-openapi](https://hono.dev/examples/hono-openapi)**
+#### Backend: **[HonoJS](https://hono.dev/)**, **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)**, **[hono-openapi](https://hono.dev/examples/hono-openapi)**
 
-### Database: - **[Drizzle ORM](https://orm.drizzle.team/)** with **[PostgreSQL](https://www.postgresql.org/)**
+#### Database: - **[Drizzle ORM](https://orm.drizzle.team/)** with **[PostgreSQL](https://www.postgresql.org/)**
 
 ### Installation
 
