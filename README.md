@@ -1,105 +1,51 @@
-# Tantovale
+## 🚀 Overview
 
 **Tantovale** is an open-source marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.  
 Built with passion and community collaboration in mind, Tantovale welcomes contributions from anyone who wants to help shape the future of online marketplaces.
 
-## 🏗️ Getting Started
+- Current Phase: _INITIAL BUILDING BLOCKS_
 
-### Current Phase:
+## 🛠️ Tech Stack
 
-- INITIAL BUILDING BLOCKS
+### General: **[Node.js](https://nodejs.org/en)**, **[Turborepo](https://turbo.build/)**, **[TypeScript](https://www.typescriptlang.org/)**, **[Zod](https://zod.dev/)**, **[Husky](https://typicode.github.io/husky/)**.
 
-### Prerequisites
+### Frontend: **[Next.js](https://nextjs.org/)**, **[Tailwind](https://tailwindcss.com/) ([Shadcn](https://ui.shadcn.com/))**, **[Zustand](https://github.com/pmndrs/zustand)**, **[TanStack Query](https://tanstack.com/query/latest)**, **[HonoJS RPC Client](https://hono.dev/docs/guides/rpc)**
 
-- [Node.js](https://nodejs.org/) (version 16 or higher)
-- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
-- [PostgreSQL](https://www.postgresql.org/)
+### Backend: **[HonoJS](https://hono.dev/)**, **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)**, **[hono-openapi](https://hono.dev/examples/hono-openapi)**
+
+### Database: - **[Drizzle ORM](https://orm.drizzle.team/)** with **[PostgreSQL](https://www.postgresql.org/)**
 
 ### Installation
 
-1. **Clone the repository:**
+Tip: If you install vscode extention [restore-terminals](https://marketplace.visualstudio.com/items?itemName=EthanSK.restore-terminals) the following terminals should appear automatically:\
+_storefront_, _server_, _database_, _ui_, _root_
 
-   ```bash
-   git clone https://github.com/rown89/tantovale.git
-   cd tantovale
-   ```
+1. **Install dependencies:**
 
-   Tip: If you install vscode extention [restore-terminals](https://marketplace.visualstudio.com/items?itemName=EthanSK.restore-terminals) the following terminals should appear automatically at project opening:
-
-   - nextjs
-   - database
-   - server
-   - ui
-   - root
-
-2. **Install dependencies:**
-
-   To install all the dependencies in apps/_ and packages/_
+   To install all the dependencies in _apps/\*_ and _packages/\*_ folders in the root launch:
 
    ```bash
    npm install
    ```
 
+2. **Environmental variables:**\
+   Each Workspace should have their .env files, currently you can find the followig env.example:
+
+   - [Storefront](https://github.com/rown89/tantovale/blob/main/apps/storefront/env.example)
+   - [Server](https://github.com/rown89/tantovale/blob/main/apps/server/env.example)
+   - [Database](https://github.com/rown89/tantovale/blob/main/packages/database/env.example)
+
 3. **DB Migration:**
 
    ```bash
-   npm run dev-db-push
+   npm run seed-all
    ```
 
-4. **(optional) DB Seeding:**
-
-   With the following command you will automatically seed categories, countries (states, regions, etc..) and 3 different users.
+4. **Run storefront and server in Dev mode:**
 
    ```bash
-   npm run dev-seed-all
+   turbo dev
    ```
-
-5. **Run storefront and server in Dev mode:**
-
-   ```bash
-   npm run dev-storefront
-   npm run dev-server
-   ```
-
-## 🚀 Overview
-
-Tantovale is a modern, platform that leverages cutting-edge technologies and AI to enhance user experience.  
-Whether you're looking to buy or sell, our marketplace is designed to be intuitive, fast, and intelligent.
-
-### Key Features
-
-- **Marketplace Functionality:**  
-  A dedicated platform to buy and sell new & used items, collectibles, and bundles.
-- **Community-Driven:**  
-  Open source from the ground up, ensuring that anyone can contribute ideas and features.
-- **AI-Powered Enhancements:**  
-  Artificial intelligence to improve listing experiences and SEO optimization.
-
-## 🛠️ Tech Stack
-
-### General
-
-- **[Node.js](https://nodejs.org/en)**
-- **Monorepo with [Turborepo](https://turbo.build/)**
-- **[TypeScript](https://www.typescriptlang.org/)** & **[Zod](https://zod.dev/)** as a schema validator
-- **[Husky](https://typicode.github.io/husky/)** for Git hooks with **Conventional Commits** enforcement
-
-### Frontend
-
-- **[Next.js](https://nextjs.org/)**
-- **[Tailwind](https://tailwindcss.com/) CSS ([Shadcn](https://ui.shadcn.com/))**
-- **[Zustand](https://github.com/pmndrs/zustand)** for state management
-- **[TanStack Query](https://tanstack.com/query/latest)** for data fetching and caching
-- **[HonoJS RPC Client](https://hono.dev/docs/guides/rpc)**
-
-### Backend
-
-- **[HonoJS](https://hono.dev/)** for a lightweight server framework
-- **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)** & **[hono-openapi](https://hono.dev/examples/hono-openapi)** as middleware for request validation and API documentation
-
-### Database
-
-- **[Drizzle ORM](https://orm.drizzle.team/)** with **PostgreSQL**
 
 ## ✅ Commit Standards
 
@@ -114,12 +60,6 @@ We use **Husky** to enforce commit message linting before changes are committed.
 - `chore(context): setup Husky and commit linting`
 
 For more details, refer to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) guide.
-
-## 🌍 Countries + Cities + Regions + States + Subregions
-
-[countries-states-cities-database](https://github.com/dr5hn/countries-states-cities-database)  
-A zipped version updated at **27/02/2024** is placed [here](https://github.com/rown89/tantovale/tree/main/apps/server/database/scripts/seeders/countries/data).
-This archive should be extracted directly in the data folder.
 
 ## 💡 Why Open Source?
 

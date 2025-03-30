@@ -13,7 +13,7 @@
 		"dev-seed-users": "npm run --workspace=@workspace/database seed:users",
 		"dev-seed-categories": "npm run --workspace=@workspace/database seed:categories",
 		"dev-seed-countries": "npm run --workspace=@workspace/database seed:countries",
-		"dev-seed-all": "bash seed-all.sh",
+		"seed-all": "bash seed-all.sh",
 		"prepare": "husky"
 	},
 	"engines": {
