@@ -35,7 +35,8 @@ _storefront_, _server_, _database_, _ui_, _root_
    - [Server](https://github.com/rown89/tantovale/blob/main/apps/server/env.example)
    - [Database](https://github.com/rown89/tantovale/blob/main/packages/database/env.example)
 
-3. **DB Migration:**
+3. **DB Migration:**\
+   After setting up a postgres database you can launch:
 
    ```bash
    npm run seed-all
