@@ -12,11 +12,14 @@ import {
 import Slider from "@workspace/ui/components/carousel/slider";
 import { placeholderImages } from "../utils";
 import { Badge } from "@workspace/ui/components/badge";
+import { Button } from "#workspace/ui/components/button";
 
 interface ItemPreviewProps {
   title: string;
   price: number;
   description: string;
+  imagesRef: React.RefObject<HTMLInputElement | null>;
+  maxImages: number;
   images: File[];
   subcategory?: string;
 }
@@ -36,7 +39,15 @@ function areImagesEqual(prevImages: File[], nextImages: File[]): boolean {
 }
 
 const ItemPreview = React.memo(
-  ({ title, price, description, images, subcategory }: ItemPreviewProps) => {
+  ({
+    title,
+    price,
+    description,
+    imagesRef,
+    maxImages,
+    images,
+    subcategory,
+  }: ItemPreviewProps) => {
     const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
     // Create image URLs for preview - properly formatted for the Slider component
@@ -101,8 +112,8 @@ const ItemPreview = React.memo(
                 € {price ? (price / 100).toFixed(2) : "0.00"}
               </p>
 
-              <div className="min-h-[450px] w-full bg-background rounded-t-md">
-                {imageUrls && (
+              <div className="min-h-[450px] w-full bg-background rounded-t-md flex items-center justify-center flex-col">
+                {imageUrls && imageUrls.length > 0 ? (
                   <Slider
                     images={imageUrls}
                     thumbnails={
@@ -131,6 +142,15 @@ const ItemPreview = React.memo(
                           ))
                     }
                   />
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <Button onClick={() => imagesRef.current?.click()}>
+                      Upload
+                    </Button>
+                    <p className="text-muted-foreground">
+                      Upload up to {maxImages} images
+                    </p>
+                  </div>
                 )}
 
                 {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}

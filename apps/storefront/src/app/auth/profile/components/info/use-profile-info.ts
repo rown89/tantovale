@@ -6,13 +6,14 @@ import {
   createItemSchema,
   multipleImagesSchema,
 } from "@workspace/server/schema";
+import { formOpts } from "./utils";
 
 const schema = createItemSchema.and(z.object({ images: multipleImagesSchema }));
 type schemaType = z.infer<typeof schema>;
 
-export function useCreateItemForm() {
-  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
+export function useProfileInfoForm() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
 
   // Initialize form
   const form = useForm({
@@ -42,8 +43,8 @@ export function useCreateItemForm() {
 
   return {
     form,
-    isSubmittingForm,
     isCityPopoverOpen,
     setIsCityPopoverOpen,
+    isSubmittingForm,
   };
 }

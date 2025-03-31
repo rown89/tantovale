@@ -1,4 +1,4 @@
-import { useForm } from "@tanstack/react-form";
+"use client";
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
 import { FieldInfo } from "#components/forms/utils/field-info";
@@ -11,27 +11,20 @@ import {
   SelectItem,
 } from "@workspace/ui/components/select";
 import { CitySelector } from "#components/forms/commons/city-selector";
+import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
+import { useProfileInfoForm } from "./use-profile-info";
+import { useState } from "react";
 
 export default function ProfileInfoComponent() {
-  const form = useForm({
-    defaultValues: {
-      fullname: "",
-      username: "",
-      email: "",
-      province: "",
-      city: "",
-      state: "",
-      address: "",
-      phone: "",
-      birthday: "",
-      gender: "",
-    },
-    onSubmit: () => {},
-  });
+  const [searchedCity, setSearchedCityName] = useState("");
+  const { form, isCityPopoverOpen, setIsCityPopoverOpen, isSubmittingForm } =
+    useProfileInfoForm();
+  const { cities, isLoadingCities } = useCitiesData(searchedCity);
 
   return (
     <div className="flex flec-col w-full justify-center">
       <form
+        className="w-full"
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -41,20 +34,19 @@ export default function ProfileInfoComponent() {
         <div className="space-y-4">
           <form.Field name="fullname">
             {(field) => {
+              const { name, state } = field;
+              const { value } = state;
+
               return (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name} className="block">
+                  <Label htmlFor={name} className="block">
                     Full name <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id={field.name}
-                    name={field.name}
+                    id={name}
+                    name={name}
                     disabled={true}
-                    value={
-                      field.state.value !== undefined
-                        ? field.state.value?.toString()
-                        : ""
-                    }
+                    value={value !== undefined ? value?.toString() : ""}
                   />
                 </div>
               );
@@ -63,12 +55,14 @@ export default function ProfileInfoComponent() {
 
           <form.Field name="gender">
             {(field) => {
+              const { name, state } = field;
+
               return (
                 <>
-                  <Label htmlFor={field.name} className="block">
+                  <Label htmlFor={name} className="block">
                     Gender <span className="text-red-500">*</span>
                   </Label>
-                  <Select name={field.name} defaultValue={""}>
+                  <Select name={name} defaultValue={""}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder={`Select your gender`} />
                     </SelectTrigger>
@@ -90,6 +84,9 @@ export default function ProfileInfoComponent() {
 
           <form.Field name="city">
             {(field) => {
+              const { name, state, setValue, handleBlur } = field;
+              const { value, meta } = state;
+              const { isTouched, errors } = meta;
               return (
                 <div className="space-y-2">
                   <Label htmlFor={field.name} className="block">
@@ -97,11 +94,11 @@ export default function ProfileInfoComponent() {
                   </Label>
                   <CitySelector
                     value={Number(field.state.value)}
-                    onChange={field.setValue}
-                    onBlur={field.handleBlur}
-                    name={field.name}
-                    isTouched={field.state.meta.isTouched}
-                    hasErrors={field.state.meta.errors?.length > 0}
+                    onChange={(e) => setValue(e)}
+                    onBlur={handleBlur}
+                    name={name}
+                    isTouched={isTouched}
+                    hasErrors={errors?.length > 0}
                     cities={cities}
                     isLoadingCities={isLoadingCities}
                     isSubmittingForm={isSubmittingForm}

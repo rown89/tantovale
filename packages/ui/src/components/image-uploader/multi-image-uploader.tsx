@@ -23,6 +23,7 @@ export type UploadedImage = {
 };
 
 export type MultiImageUploadProps = {
+	fileInputRef: React.RefObject<HTMLInputElement | null>;
 	onImagesChange?: (images: File[]) => void;
 	maxImages?: number;
 	maxSizeInMB?: number;
@@ -32,6 +33,7 @@ export type MultiImageUploadProps = {
 };
 
 export default function MultiImageUpload({
+	fileInputRef,
 	onImagesChange,
 	maxImages = 5,
 	maxSizeInMB = 5,
@@ -43,7 +45,6 @@ export default function MultiImageUpload({
 	const [images, setImages] = useState<UploadedImage[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
-	const fileInputRef = useRef<HTMLInputElement>(null);
 	const isMobile = useIsMobile();
 
 	// Load initial image URLs when component mounts

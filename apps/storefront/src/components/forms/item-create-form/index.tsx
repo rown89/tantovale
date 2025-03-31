@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useField } from "@tanstack/react-form";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -22,6 +22,8 @@ import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./useCreateItemForm";
 import { nestedSubCatHierarchy } from "#utils/nested-subcat-hierarchy";
 
+const maxImages = 5;
+
 export default function CreateItemFormComponent({
   subcategory,
 }: {
@@ -31,6 +33,7 @@ export default function CreateItemFormComponent({
     [],
   );
   const [searchedCityName, setSearchedCityName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isMobile = useIsMobile();
 
@@ -206,7 +209,8 @@ export default function CreateItemFormComponent({
                   return (
                     <div className="space-y-2">
                       <MultiImageUpload
-                        maxImages={5}
+                        fileInputRef={fileInputRef}
+                        maxImages={maxImages}
                         onImagesChange={(images) => {
                           if (images) handleChange(images as [File, ...File[]]);
                         }}
@@ -335,6 +339,8 @@ export default function CreateItemFormComponent({
               title={title !== undefined ? String(title) : ""}
               price={price !== undefined ? Number(price) : 0}
               description={description !== undefined ? String(description) : ""}
+              imagesRef={fileInputRef}
+              maxImages={maxImages}
               images={images && Array.isArray(images) ? images : []}
               subcategory={selectedSubCategory?.name || ""}
             />
