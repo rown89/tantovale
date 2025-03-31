@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { QueryObserverResult } from "@tanstack/react-query";
-import { client } from "#lib/api";
+import { client } from "@workspace/shared/clients/rpc-client";
 import { Item } from "../index";
 
 export function useSellingItems(refetch: () => Promise<QueryObserverResult>) {

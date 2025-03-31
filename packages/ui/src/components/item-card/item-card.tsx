@@ -73,8 +73,16 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubis
 		<Card className={`${!item.published ? 'border-2 border-dashed bg-transparent' : ''}`}>
 			<div className='flex flex-col sm:flex-row'>
 				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
-					<Link href={`/item/${item.id}`}>
-						<Image className='object-cover' priority src={item.image || '/placeholder.svg'} alt={item.title} fill />
+					<Link href={`/item/${item.id}`} className='relative block h-full min-h-[160px]'>
+						<Image
+							className='h-full object-cover'
+							fill
+							priority
+							src={item.image || '/placeholder.svg'}
+							sizes='(max-width: 720px) 230px,
+							256px'
+							alt={item.title}
+						/>
 					</Link>
 				</div>
 				<div className='flex w-full flex-col justify-between gap-4 overflow-auto p-4'>

@@ -1,5 +1,5 @@
 import CreateItemFormComponent from "#components/forms/item-create-form";
-import { client } from "#lib/api";
+import { client } from "@workspace/shared/clients/rpc-client";
 import { redirect } from "next/navigation";
 
 export default async function CreateItemPage({

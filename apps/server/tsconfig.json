@@ -16,6 +16,7 @@
       "#*": ["./src/*"],
       "#routes/*": ["./src/routes/*"],
       "#lib/*": ["./src/lib/*"],
+      "#rpc-client": ["./src/lib/rpc-client.ts"],
       "#utils/*": ["./src/utils/*"],
       "#schema": ["./src/schema/index.ts"],
       "#schema/*": ["./src/schema/*"],

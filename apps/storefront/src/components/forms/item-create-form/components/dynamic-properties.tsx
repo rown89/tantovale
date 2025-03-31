@@ -74,7 +74,10 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
       {filter.type === "select_multi" && (
         <>
           <Label htmlFor={field.name} className="block">
-            {filter.name} <span className="text-red-500">*</span>
+            {filter.name}{" "}
+            {filter.on_item_create_required && (
+              <span className="text-red-500">*</span>
+            )}
           </Label>
           <MultiSelect
             options={filter.options.map(({ id, name: label, value }) => ({

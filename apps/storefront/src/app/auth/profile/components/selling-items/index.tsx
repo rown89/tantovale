@@ -2,7 +2,7 @@
 
 import { ItemCard } from "@workspace/ui/components/item-card/item-card";
 import { useQuery } from "@tanstack/react-query";
-import { client } from "#lib/api";
+import { client } from "@workspace/shared/clients/rpc-client";
 import { toast } from "sonner";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import {

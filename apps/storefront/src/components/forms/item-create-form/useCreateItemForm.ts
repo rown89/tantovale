@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FilterType, formOpts } from "../utils";
+import { FilterType, formOpts } from "./utils";
 import { z } from "zod";
 import { toast } from "sonner";
-import { client } from "#lib/api";
+import { client } from "@workspace/shared/clients/rpc-client";
 import imageCompression from "browser-image-compression";
 import {
   createItemSchema,
@@ -39,61 +39,6 @@ export function useCreateItemForm({
   > | null>(subcategory || null);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-
-  // Function to submit the item data
-  async function submitItemData(
-    formData: Omit<schemaType, "images">,
-    images: File[],
-  ) {
-    try {
-      const itemResponse = await client.auth.item.new.$post({
-        json: formData,
-      });
-
-      if (itemResponse.status !== 201) {
-        throw new Error("Failed to add new item");
-      }
-
-      const newItem = await itemResponse.json();
-
-      // Compress images before uploading
-      if (images.length > 0) {
-        const compressionOptions = {
-          maxSizeMB: 2, // Max file size in MB
-          maxWidthOrHeight: 2000, // Maintain reasonable dimensions
-          useWebWorker: true, // Use web workers for better performance
-          preserveExif: true, // Preserve image metadata
-        };
-
-        const compressedImages = await Promise.all(
-          images.map(async (image) => {
-            try {
-              return await imageCompression(image, compressionOptions);
-            } catch (error) {
-              console.error("Error compressing image:", error);
-              return image; // Fall back to original if compression fails
-            }
-          }),
-        );
-
-        const imagesResponse = await client.auth.uploads["images-item"].$post({
-          form: {
-            images: compressedImages,
-            item_id: String(newItem.item_id),
-          },
-        });
-
-        if (!imagesResponse.ok) {
-          throw new Error("Failed to upload images");
-        }
-      }
-
-      return { success: true, item: newItem };
-    } catch (error) {
-      console.error(error);
-      return { success: false, error };
-    }
-  }
 
   // Initialize form
   const form = useForm({
@@ -135,22 +80,58 @@ export function useCreateItemForm({
 
       try {
         const { images, ...rest } = value;
-        const result = await submitItemData(rest, images);
 
-        if (result.success) {
-          toast(`Success!`, {
-            description: "Item added correctly!",
-            duration: 4000,
-          });
-        } else {
-          toast(`Error :(`, {
-            description:
-              "We are encountering technical problems, please retry later.",
-            duration: 4000,
-          });
+        const itemResponse = await client.auth.item.new.$post({
+          json: rest,
+        });
+
+        if (itemResponse.status !== 201) {
+          throw new Error("Failed to add new item");
         }
+
+        const newItem = await itemResponse.json();
+
+        // Compress images before uploading
+        if (images.length > 0) {
+          const compressionOptions = {
+            maxSizeMB: 2, // Max file size in MB
+            maxWidthOrHeight: 2000, // Maintain reasonable dimensions
+            useWebWorker: true, // Use web workers for better performance
+            preserveExif: true, // Preserve image metadata
+          };
+
+          const compressedImages = await Promise.all(
+            images.map(async (image) => {
+              try {
+                return await imageCompression(image, compressionOptions);
+              } catch (error) {
+                console.error("Error compressing image:", error);
+                return image; // Fall back to original if compression fails
+              }
+            }),
+          );
+
+          const imagesResponse = await client.auth.uploads["images-item"].$post(
+            {
+              form: {
+                images: compressedImages,
+                item_id: String(newItem.item_id),
+              },
+            },
+          );
+
+          if (!imagesResponse.ok) {
+            throw new Error("Failed to upload images");
+          }
+        }
+
+        toast(`Success!`, {
+          description: "Item added correctly!",
+          duration: 4000,
+        });
+
+        router.push("/");
       } catch (error) {
-        console.error(error);
         toast(`Error :(`, {
           description:
             "We are encountering technical problems, please retry later.",
@@ -158,10 +139,13 @@ export function useCreateItemForm({
         });
       } finally {
         setIsSubmittingForm(false);
-        router.push("/");
       }
     },
   });
+
+  function handlePropertiesReset() {
+    form.setFieldValue("properties", []);
+  }
 
   function handleSubCategorySelect(
     subcategory: Omit<Category, "subcategories">,
@@ -188,5 +172,6 @@ export function useCreateItemForm({
     isCityPopoverOpen,
     setIsCityPopoverOpen,
     handleSubCategorySelect,
+    handlePropertiesReset,
   };
 }

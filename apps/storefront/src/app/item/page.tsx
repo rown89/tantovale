@@ -1,3 +1,3 @@
 export default async function ItemDetailPage() {
-  return <div></div>;
+  return <div>item detail page</div>;
 }

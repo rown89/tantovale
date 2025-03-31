@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { client } from "#lib/api";
+import { client } from "@workspace/shared/clients/rpc-client";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
