@@ -2,30 +2,41 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import {
-  createItemSchema,
-  multipleImagesSchema,
-} from "@workspace/server/schema";
-import { formOpts } from "./utils";
+import { UserSchema } from "@workspace/server/schema";
+import { client } from "#lib/api";
 
-const schema = createItemSchema.and(z.object({ images: multipleImagesSchema }));
+const schema = UserSchema.pick({
+  fullname: true,
+  gender: true,
+  city: true,
+});
 type schemaType = z.infer<typeof schema>;
 
-export function useProfileInfoForm() {
+export function useProfileInfoForm(profiles?: Partial<schemaType>) {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
 
   // Initialize form
   const form = useForm({
-    ...formOpts.defaultValues,
-    validators: {
-      onSubmit: () => {},
+    defaultValues: {
+      fullname: profiles?.fullname ?? "",
+      gender: profiles?.gender ?? "male",
+      city: profiles?.city ?? 0,
     },
-    onSubmit: async ({ value }) => {
+    validators: {
+      onSubmit: schema,
+    },
+    onSubmit: async ({ value }: { value: schemaType }) => {
       setIsSubmittingForm(true);
 
       try {
-        toast(`Success!`, {
+        const response = await client.auth.profile.$put({ json: value });
+
+        if (!response.ok) {
+          throw new Error("update profile error");
+        }
+
+        return toast(`Success!`, {
           description: "Profile edited correctly!",
           duration: 4000,
         });

@@ -18,18 +18,17 @@ export const profiles = pgTable(
 		fullname: varchar('fullname', { length: 50 }).notNull(),
 		vat_number: varchar('vat_number', { length: 50 }),
 		birthday: date('birthday'),
-		gender: sexEnum('gender'),
-		city: integer('city').references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+		gender: sexEnum('gender').notNull(),
+		city: integer('city')
+			.notNull()
+			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		street_address: text('street_address'),
 		privacy_policy: boolean('privacy_policy').default(false),
 		marketing_policy: boolean('marketing_policy').default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [
-		index('profiles_fullname_idx').on(table.fullname),
-		check('gender_check1', sql`${table.profile_type} = 'private' OR ${table.gender} IS NOT NULL`),
-	],
+	(table) => [index('profiles_fullname_idx').on(table.fullname)],
 );
 
 export const profilesRelations = relations(profiles, ({ one, many }) => ({
