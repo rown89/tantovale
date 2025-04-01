@@ -15,7 +15,10 @@ export async function submitLogin(
       password: formData.get("password") as string,
     };
 
-    const validateData = UserSchema.omit({ username: true }).safeParse(rawData);
+    const validateData = UserSchema.pick({
+      email: true,
+      password: true,
+    }).safeParse(rawData);
     if (!validateData.success) {
       return {
         success: false,
