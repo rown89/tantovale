@@ -1,4 +1,4 @@
-import { User } from "#components/providers/AuthProvider";
+import { User } from "#components/providers/auth-provider";
 
 export interface LoginFormData {
   email: string;

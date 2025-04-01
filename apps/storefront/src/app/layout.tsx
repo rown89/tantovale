@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
-import { AuthProvider } from "#components/providers/AuthProvider";
+import { AuthProvider } from "#components/providers/auth-provider";
 import { cookies } from "next/headers";
 import NavBar from "#components/navbar/navbar";
 

@@ -19,7 +19,7 @@ import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
 import ItemPreview from "./components/item-preview";
 import { FieldInfo } from "../utils/field-info";
-import { useCreateItemForm } from "./useCreateItemForm";
+import { useCreateItemForm } from "./use-create-item-form";
 import { nestedSubCatHierarchy } from "#utils/nested-subcat-hierarchy";
 
 const maxImages = 5;
