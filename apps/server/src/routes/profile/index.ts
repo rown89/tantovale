@@ -6,22 +6,25 @@ import { z } from "zod";
 import { createRouter } from "#lib/create-app";
 
 export const profileRoute = createRouter()
-  .post("/", async (c) => {
+  .get("/", async (c) => {
     const user = c.var.user;
 
     const { db } = createClient();
 
-    const userProfile = await db
+    const [userProfile] = await db
       .select()
       .from(profiles)
       .where(eq(profiles.user_id, user.id))
       .limit(1);
 
-    if (!userProfile.length) {
+    if (!userProfile || !user) {
       return c.json({ message: "Profile not found" }, 404);
     }
 
-    return c.json(userProfile[0]);
+    return c.json(userProfile, 200);
+  })
+  .get("/:id", async (c) => {
+    return c.json({});
   })
   .put("/", async (c) => {
     const user = c.var.user;

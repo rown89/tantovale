@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, date, check, text, varchar, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, date, check, text, boolean, varchar, index } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { items } from './items';
 import { profileEnum, sexEnum } from './enumerated_types';
@@ -20,14 +20,15 @@ export const profiles = pgTable(
 		birthday: date('birthday'),
 		gender: sexEnum('gender'),
 		city: integer('city').references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		// street_address: text('street_address'),
+		street_address: text('street_address'),
+		privacy_policy: boolean('privacy_policy').default(false),
+		marketing_policy: boolean('marketing_policy').default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		index('profiles_fullname_idx').on(table.fullname),
-		check('birthday_check1', sql`${table.profile_type} != 'private' OR ${table.birthday} IS NOT NULL`),
-		check('sex_check1', sql`${table.profile_type} != 'private' OR ${table.gender} IS NOT NULL`),
+		check('gender_check1', sql`${table.profile_type} = 'private' OR ${table.gender} IS NOT NULL`),
 	],
 );
 

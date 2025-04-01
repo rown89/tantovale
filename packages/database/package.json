@@ -9,7 +9,7 @@
 		"db:build": "tsx src/index.ts",
 		"db:check": "npx drizzle-kit check",
 		"db:generate": "npx drizzle-kit generate",
-		"db:migrate": "npx tsx ./database/migrate.ts",
+		"db:migrate": "npx tsx ./migrate.ts",
 		"db:push": "npx dotenv -e .env.local drizzle-kit push",
 		"db:studio": "npx drizzle-kit studio",
 		"seed:categories": "npx tsx ./scripts/seeders/categories/index.ts",

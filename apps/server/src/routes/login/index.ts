@@ -1,10 +1,13 @@
 import { eq } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
-import { UserSchema } from "#schema/users";
 import { tokenPayload } from "#lib/tokenPayload";
 import { verifyPassword } from "#lib/password";
 import { createClient } from "@workspace/database/db";
-import { users, refreshTokens } from "@workspace/database/schemas/schema";
+import {
+  users,
+  refreshTokens,
+  selectUsersSchema,
+} from "@workspace/database/schemas/schema";
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES,
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
@@ -15,13 +18,19 @@ import {
 import { sign } from "hono/jwt";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
 import { env } from "hono/adapter";
-
+import { UserSchema } from "#schema/users";
 import { createRouter } from "#lib/create-app";
 import { setCookie } from "hono/cookie";
 
 export const loginRoute = createRouter().post(
   "/",
-  zValidator("json", UserSchema.omit({ username: true })),
+  zValidator(
+    "json",
+    UserSchema.pick({
+      email: true,
+      password: true,
+    }),
+  ),
   async (c) => {
     const { NODE_ENV, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
       NODE_ENV: string;

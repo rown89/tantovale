@@ -5,14 +5,13 @@ import { describeRoute } from "hono-openapi";
 import { validator as zValidator } from "hono-openapi/zod";
 import { checkUser } from "#lib/utils";
 import { hashPassword } from "#lib/password";
-import { UserSchema } from "#schema";
 import {
   DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES,
   DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS,
   getNodeEnvMode,
 } from "#utils/constants";
 import { createClient } from "@workspace/database/db";
-import { users } from "@workspace/database/schemas/schema";
+import { profiles, users } from "@workspace/database/schemas/schema";
 import { sendVerifyEmail } from "#mailer/templates/verify-email";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuthTokenOptions } from "#lib/getAuthTokenOptions";
@@ -20,6 +19,7 @@ import { env } from "hono/adapter";
 
 import { createRouter } from "#lib/create-app";
 import { parseEnv } from "#env";
+import { UserSchema } from "#schema/users";
 
 export const signupRoute = createRouter().post(
   "/",
@@ -41,8 +41,8 @@ export const signupRoute = createRouter().post(
     const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
 
     try {
-      const values = await c.req.json();
-      const { username, email, password } = values;
+      const values = await c.req.valid("json");
+      const { password, username, email, ...rest } = values;
 
       const userAlreadyExist = await checkUser(c, username, "username");
       const emailAlreadyExist = await checkUser(c, email, "email");
@@ -58,24 +58,31 @@ export const signupRoute = createRouter().post(
 
       const { db } = createClient();
       // Create new user
-      const results = await db
+      const [results] = await db
         .insert(users)
         .values({ ...values, password: hashedPassword })
         .returning();
 
-      if (!results || !results.length) {
-        return c.json(
-          {
-            message: "Signup procedure can't create user",
-          },
-          500,
-        );
+      if (!results) {
+        return c.json({ message: "Signup procedure can't create user" }, 500);
+      }
+
+      const [profile] = await db
+        .insert(profiles)
+        .values({
+          user_id: results.id,
+          ...rest,
+        })
+        .returning();
+
+      if (!profile) {
+        return c.json({ message: "Signup procedure can't create user" }, 500);
       }
 
       // Generate JWT token for email verification
       const tmp_token_payload = {
-        id: Number(results?.[0]?.id),
-        username: results?.[0]?.username,
+        id: Number(results?.id),
+        username: results?.username,
         type: "email_verification",
         expiresIn: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS(),
       };

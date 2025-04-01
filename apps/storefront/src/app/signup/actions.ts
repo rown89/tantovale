@@ -11,8 +11,13 @@ export async function signupAction(
   try {
     const rawData: SignupFormData = {
       username: formData.get("username") as string,
+      fullname: formData.get("fullname") as string,
+      gender: formData.get("gender") as "male" | "female",
+      city: Number(formData.get("city")),
       email: formData.get("email") as string,
       password: formData.get("password") as string,
+      privacy_policy: Boolean(formData.get("privacy_policy")) as boolean,
+      marketing_policy: Boolean(formData.get("marketing_policy")) as boolean,
     };
 
     const validatedFields = UserSchema.safeParse(rawData);
@@ -27,7 +32,7 @@ export async function signupAction(
     }
 
     const response = await client?.signup.$post({
-      json: rawData,
+      json: validatedFields.data,
     });
 
     const data = await response?.json();

@@ -35,6 +35,7 @@ interface CitySelectorProps {
   isLoadingCities: boolean;
   isSubmittingForm: boolean;
   onSearchChange: (searchTerm: string) => void;
+  defaultValue?: number;
   isCityPopoverOpen: boolean;
   setIsCityPopoverOpen: (isOpen: boolean) => void;
 }
@@ -50,6 +51,7 @@ export function CitySelector({
   isLoadingCities,
   isSubmittingForm,
   onSearchChange,
+  defaultValue,
   isCityPopoverOpen,
   setIsCityPopoverOpen,
 }: CitySelectorProps) {
@@ -63,19 +65,20 @@ export function CitySelector({
             variant="outline"
             role="combobox"
             aria-expanded={isCityPopoverOpen}
-            className="w-full justify-between"
+            className={`w-full justify-between`}
           >
             {cities?.find((city) => city.id === value)?.name ?? "Location..."}
             <ChevronsUpDown className="opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="min-w-[300px] flex p-0">
+        <PopoverContent align="start" className="min-w-[350px] flex p-0">
           <Command>
-            <div className="flex items-center gap-2 mx-2">
+            <div className="flex items-center gap-2 my-2 mx-4">
               <SearchIcon width={20} />
               <Input
                 id={name}
                 name={name}
+                defaultValue={defaultValue}
                 disabled={isSubmittingForm}
                 onBlur={onBlur}
                 onChange={(e) => {
