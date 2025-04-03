@@ -42,7 +42,7 @@ const defaultValues: Partial<NotificationsFormValues> = {
   securityNotifications: true,
 };
 
-export default function SettingsPage() {
+export default function UserSettingsPage() {
   const { theme, setTheme } = useTheme();
 
   const form = useForm({

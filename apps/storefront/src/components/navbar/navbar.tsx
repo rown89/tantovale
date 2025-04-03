@@ -36,7 +36,7 @@ export default function NavBar() {
     .toUpperCase();
 
   return (
-    <div className="container flex px-6 py-2 justify-between items-center min-h-14 mx-auto">
+    <div className="container flex py-2 justify-between items-center min-h-14 mx-auto">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale

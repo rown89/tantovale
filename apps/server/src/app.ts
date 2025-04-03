@@ -22,6 +22,8 @@ import {
   filtersRoute,
   uploadsRoute,
   citiesRoute,
+  chatRoute,
+  userRoute,
 } from "./routes";
 
 const app = createApp();
@@ -42,11 +44,13 @@ const apiRoutes = app
   .route("/password", passwordForgotRoute)
   .route(`/${authPath}/uploads`, uploadsRoute)
   .route(`/${authPath}/item`, itemRoute)
+  .route(`/${authPath}/chat`, chatRoute)
   .route(`/${authPath}/logout`, logoutRoute)
   .route(`/${authPath}/refresh`, refreshRoute)
   .route(`/${authPath}/password`, passwordResetRoute)
   .route(`/${authPath}/password`, passwordResetVerifyToken)
-  .route(`/${authPath}/profile`, profileRoute);
+  .route(`/${authPath}/profile`, profileRoute)
+  .route(`/${authPath}/user`, userRoute);
 
 export { app };
 export type ApiRoutesType = typeof apiRoutes;

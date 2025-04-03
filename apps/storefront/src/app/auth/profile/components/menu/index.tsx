@@ -22,9 +22,9 @@ export default function ProfileMenu() {
   return (
     <>
       {!isMobile && (
-        <div className="border rounded-lg shadow-md w-full min-w-[300px] md:max-w-[300px]">
+        <div className="border rounded-lg shadow-md w-full min-w-[300px] md:max-w-[300px] h-fit">
           <Command defaultValue={"-"}>
-            <CommandList>
+            <CommandList className="overflow-hidden">
               <CommandGroup heading="Profile" className="flex flex-col gap-1">
                 <div className={`flex flex-col gap-1 font-bold`}>
                   {profileOptions.map((item, i) => (

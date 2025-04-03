@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
 import {
@@ -21,7 +21,7 @@ import { useProfileInfoForm } from "./use-profile-info";
 import { FieldInfo } from "#components/forms/utils/field-info";
 import { Separator } from "#workspace/ui/components/separator";
 
-export default function ProfileInfoComponent() {
+export default function UserInfoComponent() {
   const [searchedCity, setSearchedCityName] = useState("");
 
   const { cities, isLoadingCities } = useCitiesData(searchedCity);

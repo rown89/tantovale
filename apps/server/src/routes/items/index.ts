@@ -6,7 +6,7 @@ import { getCookie } from "hono/cookie";
 import { env } from "hono/adapter";
 import { itemsImages } from "@workspace/database/schemas/items_images";
 import { verify } from "hono/jwt";
-import { authMiddleware } from "#middlewares/auth";
+import { authMiddleware } from "#middlewares/authMiddleware";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 

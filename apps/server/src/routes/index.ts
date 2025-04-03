@@ -14,3 +14,5 @@ export * from "./logout";
 export * from "./password";
 export * from "./uploads";
 export * from "./profile";
+export * from "./chat";
+export * from "./user";

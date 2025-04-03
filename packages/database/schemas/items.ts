@@ -5,6 +5,7 @@ import { users } from './users';
 import { statusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 import { cities } from './cities';
+import { chat_room } from './chat_room';
 
 export const items = pgTable(
 	'items',
@@ -53,6 +54,7 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
 		fields: [items.city],
 		references: [cities.id],
 	}),
+	chatRooms: many(chat_room),
 }));
 
 export type SelectItem = typeof items.$inferSelect;

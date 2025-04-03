@@ -28,19 +28,19 @@ export async function submitLogin(
       };
     }
 
-    const response = await client?.login.$post({
+    const loginResponse = await client?.login.$post({
       json: rawData,
     });
 
-    if (response?.status !== 200) {
-      const data = await response?.json();
+    if (!loginResponse.ok) {
+      const data = await loginResponse?.json();
 
       return {
         success: false,
         message: data?.message || "An error occurred",
       };
     } else {
-      const cookieHeader = response.headers.get("Set-Cookie");
+      const cookieHeader = loginResponse.headers.get("Set-Cookie");
 
       if (!cookieHeader) {
         return {
@@ -66,8 +66,9 @@ export async function submitLogin(
         }
       });
 
-      const data = await response.json();
-      const { user } = data;
+      const loginData = await loginResponse.json();
+
+      const { user } = loginData;
       const { id, username, email_verified, phone_verified } = user;
 
       return {
