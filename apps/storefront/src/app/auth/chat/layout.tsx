@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { client } from "@workspace/shared/clients/rpc-client";
 import { Spinner } from "@workspace/ui/components/spinner";
@@ -14,6 +14,7 @@ export default function ChatLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   // Fetch current user data
   const { data: currentUser, isError: isUserError } = useQuery({
@@ -66,11 +67,23 @@ export default function ChatLayout({
   }
 
   return (
-    <SidebarProvider className="container mx-auto overflow-auto min-h-[calc(100vh-4rem)]">
-      <div className="flex w-full h-[calc(100vh-4rem)] gap-8">
-        <div className="hidden md:block overflow-auto">
-          <ChatSidebar chatRooms={chatRooms} currentUserId={currentUser.id} />
+    <SidebarProvider className="container mx-auto overflow-auto max-h-[calc(100vh-74px)] min-h-[calc(100vh-74px)]">
+      <div className="flex w-full gap-8">
+        <div
+          className={
+            pathname !== "/auth/chat"
+              ? "hidden xl:block xl:w-[450px]"
+              : "w-full xl:w-[450px] block"
+          }
+        >
+          <ChatSidebar
+            id="chat-sidebar"
+            collapsable={pathname !== "/auth/chat" ? "offcanvas" : "none"}
+            chatRooms={chatRooms}
+            currentUserId={currentUser.id}
+          />
         </div>
+
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
     </SidebarProvider>

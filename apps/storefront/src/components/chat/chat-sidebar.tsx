@@ -47,11 +47,18 @@ type ChatRoom = {
 };
 
 interface ChatSidebarProps {
+  id: string;
+  collapsable: "none" | "offcanvas";
   chatRooms: ChatRoom[];
   currentUserId: number;
 }
 
-export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
+export function ChatSidebar({
+  id,
+  collapsable,
+  chatRooms,
+  currentUserId,
+}: ChatSidebarProps) {
   const pathname = usePathname();
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -62,15 +69,19 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
   );
 
   return (
-    <Sidebar className="relative h-[calc(100vh-4rem)] w-[450px]">
+    <Sidebar
+      id={id}
+      collapsible={collapsable}
+      className="relative w-full max-h-[calc(100vh-74px)]"
+    >
       <SidebarHeader className="sticky top-0 bg-background z-10 px-0">
-        <div className="flex items-center justify-between p-3">
+        <div className="flex items-center justify-between px-2 py-3">
           <h2 className="text-lg font-semibold">Messages</h2>
           <Badge variant="outline" className="ml-2">
             {chatRooms.length}
           </Badge>
         </div>
-        <div className="px-2 pb-2">
+        <div className="pb-2 px-2">
           <SidebarInput
             placeholder="Search conversations..."
             value={searchTerm}
@@ -114,7 +125,7 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
                           </Avatar>
                           <div className="flex-1 overflow-hidden">
                             <div className="flex items-center justify-between">
-                              <p className="font-medium truncate">
+                              <p className="font-bold truncate">
                                 {otherUser?.username}
                               </p>
                               {lastMessage && (
@@ -127,8 +138,8 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {formatCurrency(room.item.price)}
+                            <p className="text-sm text-foreground/70 truncate">
+                              {formatCurrency(room.item.price)}€
                             </p>
                             {lastMessage && (
                               <p className="text-sm truncate">

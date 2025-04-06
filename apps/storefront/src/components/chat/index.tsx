@@ -47,7 +47,11 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <ChatHeader chatRoom={chatRoom} currentUserId={currentUserId} />
+      <ChatHeader
+        id="chat-header"
+        chatRoom={chatRoom}
+        currentUserId={currentUserId}
+      />
       <div className="flex-1 overflow-y-auto py-6">
         {messages && messages?.length > 0 ? (
           messages?.map((message) => (

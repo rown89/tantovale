@@ -6,18 +6,22 @@ import { formatCurrency } from "@workspace/ui/lib/utils";
 import { ChatProps } from ".";
 
 interface ChatHeaderProps {
+  id: string;
   chatRoom: ChatProps["chatRoom"];
   currentUserId: number;
 }
 
-export function ChatHeader({ chatRoom, currentUserId }: ChatHeaderProps) {
+export function ChatHeader({ id, chatRoom, currentUserId }: ChatHeaderProps) {
   const isBuyer = chatRoom.buyer.id === currentUserId;
   const otherUser = isBuyer ? chatRoom.author : chatRoom.buyer;
 
   return (
-    <div className="flex items-center justify-between border-b py-4 gap-2">
+    <div
+      id={id}
+      className="flex items-center justify-between border-b py-4 gap-2"
+    >
       <div className="flex items-center gap-3 w-full">
-        <Button variant="ghost" size="icon" asChild className="md:hidden">
+        <Button variant="ghost" size="icon" asChild className="xl:hidden">
           <Link href="/auth/chat">
             <ArrowLeft className="h-5 w-5" />
             <span className="sr-only">Back to messages</span>
@@ -29,7 +33,7 @@ export function ChatHeader({ chatRoom, currentUserId }: ChatHeaderProps) {
           </AvatarFallback>
         </Avatar>
         <div>
-          <h2 className="font-medium">{otherUser.username}</h2>
+          <h2 className="font-medium truncate">{otherUser.username}</h2>
           <p className="text-sm text-muted-foreground">
             {isBuyer ? "Seller" : "Buyer"}
           </p>
@@ -39,7 +43,7 @@ export function ChatHeader({ chatRoom, currentUserId }: ChatHeaderProps) {
         <div className="text-right">
           <p className="font-medium">{chatRoom.item.title}</p>
           <p className="text-sm font-medium">
-            {formatCurrency(chatRoom.item.price)}
+            {formatCurrency(chatRoom.item.price)}€
           </p>
         </div>
         <Button variant="outline" size="icon" asChild>

@@ -5,7 +5,7 @@ import {
   items,
   users,
 } from "@workspace/database/schemas/schema";
-import { eq, and, or, isNull, not } from "drizzle-orm";
+import { eq, and, or, isNull, not, desc, max } from "drizzle-orm";
 import { createRouter } from "#lib/create-app";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -17,6 +17,16 @@ export const chatRoute = createRouter()
     const { db } = createClient();
 
     try {
+      const lastMessagesSubquery = db
+        .select({
+          chat_room_id: chat_messages.chat_room_id,
+          max_id: max(chat_messages.id).as("max_id"),
+        })
+        .from(chat_messages)
+        .groupBy(chat_messages.chat_room_id)
+        .as("latest_messages");
+
+      // Now perform the main query with proper joins
       const chatRooms = await db
         .select({
           id: chat_room.id,
@@ -36,15 +46,25 @@ export const chatRoute = createRouter()
         .from(chat_room)
         .innerJoin(items, eq(chat_room.item_id, items.id))
         .innerJoin(users, eq(chat_room.buyer_id, users.id))
-        .leftJoin(chat_messages, eq(chat_room.id, chat_messages.chat_room_id))
+        .leftJoin(
+          lastMessagesSubquery,
+          eq(chat_room.id, lastMessagesSubquery.chat_room_id),
+        )
+        .leftJoin(
+          chat_messages,
+          and(
+            eq(chat_messages.chat_room_id, chat_room.id),
+            eq(chat_messages.id, lastMessagesSubquery.max_id),
+          ),
+        )
         .where(
           or(
             eq(items.user_id, user.id), // User is the seller
             eq(chat_room.buyer_id, user.id), // User is the buyer
           ),
         )
-        .orderBy(chat_messages.created_at)
-        .limit(1);
+        .orderBy(desc(chat_room.created_at))
+        .limit(100);
 
       // Transform the chatRooms to match the expected shape
       const formattedChatRooms = chatRooms.map((room) => ({

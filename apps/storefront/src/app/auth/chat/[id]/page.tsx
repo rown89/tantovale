@@ -17,22 +17,19 @@ export default function ChatRoomPage() {
     queryKey: ["chatRooms"],
     queryFn: async () => {
       const response = await client.auth.chat.rooms.$get();
-      console.log("porco2");
 
-      if (!response.ok) {
-        console.log("chatRooms error", response);
-      }
+      if (!response.ok) console.log("chatRooms error", response);
 
       return await response.json();
     },
   });
+
   const { data: messages, isError: isMessagesError } = useQuery({
     queryKey: ["messages", id],
     queryFn: async () => {
       const response = await client.auth.chat.rooms[":roomId"].messages.$get({
         param: { roomId: id },
       });
-      console.log("porco3");
 
       if (!response.ok) {
         console.log("chatRooms error", response);

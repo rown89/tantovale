@@ -64,11 +64,11 @@ export default function NavBar() {
           <>
             {!user ? (
               <>
-                <Link href="/signup" className="text-muted-foreground">
-                  Signup
-                </Link>
                 <Link href="/login" className="text-muted-foreground">
                   Login
+                </Link>
+                <Link href="/signup" className="text-muted-foreground">
+                  Signup
                 </Link>
               </>
             ) : (

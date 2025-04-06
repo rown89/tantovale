@@ -33,7 +33,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body className={`${font.variable} font px-2`}>
+      <body className={`${font.variable} font px-4`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
