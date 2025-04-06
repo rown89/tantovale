@@ -67,7 +67,7 @@ export default function ChatLayout({
 
   return (
     <SidebarProvider className="container mx-auto overflow-auto min-h-[calc(100vh-4rem)]">
-      <div className="flex w-full h-[calc(100vh-4rem)]">
+      <div className="flex w-full h-[calc(100vh-4rem)] gap-8">
         <div className="hidden md:block overflow-auto">
           <ChatSidebar chatRooms={chatRooms} currentUserId={currentUser.id} />
         </div>

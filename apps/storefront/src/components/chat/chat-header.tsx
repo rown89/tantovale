@@ -15,8 +15,8 @@ export function ChatHeader({ chatRoom, currentUserId }: ChatHeaderProps) {
   const otherUser = isBuyer ? chatRoom.author : chatRoom.buyer;
 
   return (
-    <div className="flex items-center justify-between border-b py-4">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between border-b py-4 gap-2">
+      <div className="flex items-center gap-3 w-full">
         <Button variant="ghost" size="icon" asChild className="md:hidden">
           <Link href="/auth/chat">
             <ArrowLeft className="h-5 w-5" />

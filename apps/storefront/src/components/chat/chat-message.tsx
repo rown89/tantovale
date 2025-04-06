@@ -1,9 +1,4 @@
 import { formatDistanceToNow } from "date-fns";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@workspace/ui/components/avatar";
 import { cn } from "@workspace/ui/lib/utils";
 
 interface ChatMessageProps {
@@ -28,11 +23,6 @@ export function ChatMessage({ message, isCurrentUser }: ChatMessageProps) {
         isCurrentUser ? "flex-row-reverse" : "flex-row",
       )}
     >
-      <Avatar className="h-8 w-8 mt-0.5">
-        <AvatarFallback>
-          {message.sender.username.substring(0, 2).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
       <div
         className={cn(
           "flex flex-col max-w-[80%]",
@@ -42,7 +32,9 @@ export function ChatMessage({ message, isCurrentUser }: ChatMessageProps) {
         <div
           className={cn(
             "px-3 py-2 rounded-lg",
-            isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted",
+            isCurrentUser
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted/80",
           )}
         >
           <p className="text-sm">{message.message}</p>

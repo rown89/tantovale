@@ -28,7 +28,9 @@ export const chatRoute = createRouter()
           item_price: items.price,
           buyer_username: users.username,
           last_message: chat_messages.message,
+          last_message_id: chat_messages.id,
           last_message_created_at: chat_messages.created_at,
+          last_message_read_at: chat_messages.read_at,
           last_message_sender_id: chat_messages.sender_id,
         })
         .from(chat_room)
@@ -59,6 +61,13 @@ export const chatRoute = createRouter()
         buyer: {
           id: room.buyer_id,
           username: room.buyer_username,
+        },
+        last_message: {
+          id: room.last_message_id,
+          message: room.last_message,
+          read_at: room.last_message_read_at,
+          created_at: room.last_message_created_at,
+          sender_id: room.last_message_sender_id,
         },
       }));
 

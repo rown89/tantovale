@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const UserSchema = z.object({
   fullname: z.string().min(6).max(50).nonempty(),
-  username: z.string().min(3).max(50).nonempty(),
+  username: z.string().min(3).max(30).nonempty(),
   email: z.string().email("L'email non sembra essere valida").nonempty(),
   gender: z.enum(["male", "female"]),
   city: z.number().refine((val) => val !== 0, {

@@ -24,19 +24,25 @@ import { formatCurrency } from "@workspace/ui/lib/utils";
 
 type ChatRoom = {
   id: number;
-  item_id: number;
-  item_title: string;
-  item_price: number;
+  item: {
+    id: number;
+    title: string;
+    price: number;
+  };
+  author: {
+    id: number | null;
+    username: string;
+  };
   buyer: {
     id: number;
     username: string;
   };
   last_message: {
-    id: number;
-    message: string;
-    created_at: string;
+    id: number | null;
+    message: string | null;
+    created_at: string | null;
     read_at: string | null;
-    sender_id: number;
+    sender_id: number | null;
   } | null;
 };
 
@@ -51,14 +57,14 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
 
   const filteredChatRooms = chatRooms.filter(
     (room) =>
-      room?.item_title?.toLowerCase()?.includes(searchTerm.toLowerCase()) ||
+      room?.item.title?.toLowerCase()?.includes(searchTerm.toLowerCase()) ||
       room?.buyer?.username?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
-    <Sidebar className="relative h-[calc(100vh-4rem)]">
-      <SidebarHeader className="sticky top-0 bg-background z-10">
-        <div className="flex items-center justify-between p-2">
+    <Sidebar className="relative h-[calc(100vh-4rem)] w-[450px]">
+      <SidebarHeader className="sticky top-0 bg-background z-10 px-0">
+        <div className="flex items-center justify-between p-3">
           <h2 className="text-lg font-semibold">Messages</h2>
           <Badge variant="outline" className="ml-2">
             {chatRooms.length}
@@ -112,7 +118,7 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
                                 {otherUser?.username}
                               </p>
                               {lastMessage && (
-                                <span className="text-xs text-muted-foreground">
+                                <span className="text-xs text-foreground">
                                   {lastMessage.created_at &&
                                     formatDistanceToNow(
                                       new Date(lastMessage.created_at),
@@ -122,8 +128,7 @@ export function ChatSidebar({ chatRooms, currentUserId }: ChatSidebarProps) {
                               )}
                             </div>
                             <p className="text-sm text-muted-foreground truncate">
-                              {room.item_title} -{" "}
-                              {formatCurrency(room.item_price)}
+                              {formatCurrency(room.item.price)}
                             </p>
                             {lastMessage && (
                               <p className="text-sm truncate">
