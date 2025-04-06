@@ -25,7 +25,7 @@ export default function ChatRoomPage() {
   });
 
   const { data: messages, isError: isMessagesError } = useQuery({
-    queryKey: ["messages", id],
+    queryKey: ["chat-messages", id],
     queryFn: async () => {
       const response = await client.auth.chat.rooms[":roomId"].messages.$get({
         param: { roomId: id },

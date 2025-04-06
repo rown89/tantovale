@@ -10,7 +10,7 @@ import {
 } from "@workspace/ui/components/command";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
-import { useAuth } from "#components/providers/auth-provider";
+import { useAuth } from "../../../../../providers/auth-providers";
 import { profileOptions } from "#shared/profile-options";
 
 export default function ProfileMenu() {

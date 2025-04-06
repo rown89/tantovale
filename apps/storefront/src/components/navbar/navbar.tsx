@@ -1,15 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "#components/providers/auth-provider";
+import { useAuth } from "../../providers/auth-providers";
 import { Button } from "@workspace/ui/components/button";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@workspace/ui/components/avatar";
 
 import {
   DropdownMenu,
@@ -19,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { LogOut } from "lucide-react";
+import { LogOut, MessageSquare, User } from "lucide-react";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
@@ -29,14 +24,8 @@ export default function NavBar() {
 
   const [open, setOpen] = useState(false);
 
-  const initials = user?.username
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
-
   return (
-    <div className="container flex py-4 justify-between items-center min-h-14 mx-auto">
+    <div className="container flex py-4 px-4 justify-between items-center min-h-14 mx-auto">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale
@@ -56,7 +45,7 @@ export default function NavBar() {
               }
             }}
           >
-            Create ad
+            Create
           </Button>
         )}
 
@@ -73,16 +62,20 @@ export default function NavBar() {
               </>
             ) : (
               <div className="flex items-center space-x-4">
+                <Button
+                  variant="ghost"
+                  className="relative h-10 w-10 rounded-full"
+                  onClick={() => router.push("/auth/chat")}
+                >
+                  <MessageSquare />
+                </Button>
                 <DropdownMenu open={open} onOpenChange={setOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
                       className="relative h-10 w-10 rounded-full"
                     >
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={""} alt={user.username} />
-                        <AvatarFallback>{initials}</AvatarFallback>
-                      </Avatar>
+                      <User />
                     </Button>
                   </DropdownMenuTrigger>
 

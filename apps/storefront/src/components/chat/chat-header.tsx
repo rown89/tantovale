@@ -18,7 +18,7 @@ export function ChatHeader({ id, chatRoom, currentUserId }: ChatHeaderProps) {
   return (
     <div
       id={id}
-      className="flex items-center justify-between border-b py-4 gap-2"
+      className="flex items-center justify-between border-b py-4 px-4 gap-2"
     >
       <div className="flex items-center gap-3 w-full">
         <Button variant="ghost" size="icon" asChild className="xl:hidden">

@@ -68,7 +68,7 @@ export default function ChatLayout({
 
   return (
     <SidebarProvider className="container mx-auto overflow-auto max-h-[calc(100vh-74px)] min-h-[calc(100vh-74px)]">
-      <div className="flex w-full gap-8">
+      <div className="flex w-full">
         <div
           className={
             pathname !== "/auth/chat"

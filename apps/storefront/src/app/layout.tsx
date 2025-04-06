@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "@workspace/ui/components/sonner";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
-import { AuthProvider } from "#components/providers/auth-provider";
+import { AuthProvider } from "../providers/auth-providers";
 import { cookies } from "next/headers";
 import NavBar from "#components/navbar/navbar";
 
@@ -33,7 +33,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body className={`${font.variable} font px-4`}>
+      <body className={`${font.variable} font`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

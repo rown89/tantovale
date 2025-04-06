@@ -52,7 +52,7 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
         chatRoom={chatRoom}
         currentUserId={currentUserId}
       />
-      <div className="flex-1 overflow-y-auto py-6">
+      <div className="flex-1 overflow-y-auto py-4 px-8">
         {messages && messages?.length > 0 ? (
           messages?.map((message) => (
             <ChatMessage

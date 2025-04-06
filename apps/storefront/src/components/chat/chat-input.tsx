@@ -6,37 +6,41 @@ import { Button } from "@workspace/ui/components/button";
 import { Textarea } from "@workspace/ui/components/textarea";
 import { useRouter } from "next/navigation";
 import { client } from "@workspace/shared/clients/rpc-client";
-
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 interface ChatInputProps {
   chatRoomId: number;
 }
 
 export function ChatInput({ chatRoomId }: ChatInputProps) {
+  const queryClient = useQueryClient();
+
   const [message, setMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-
-    try {
+  const mutation = useMutation({
+    mutationFn: async (message: string) => {
       await client.auth.chat.rooms[":roomId"].messages.$post({
         param: {
           roomId: chatRoomId?.toString(),
         },
         json: { message },
       });
-
+    },
+    onSuccess: () => {
       setMessage("");
-      router.refresh(); // Refresh the page to get the new message
-    } catch (error) {
+
+      queryClient.invalidateQueries({ queryKey: ["chat-messages"] });
+    },
+    onError: (error) => {
       console.error("Failed to send message:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    },
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || mutation.isPending) return;
+
+    mutation.mutate(message);
   };
 
   return (
@@ -57,7 +61,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
         <Button
           type="submit"
           size="icon"
-          disabled={!message.trim() || isSubmitting}
+          disabled={!message.trim() || mutation.isLoading}
           className="h-10 w-10"
         >
           <SendHorizontal className="h-5 w-5" />
