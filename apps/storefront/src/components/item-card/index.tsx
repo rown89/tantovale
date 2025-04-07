@@ -10,11 +10,11 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import Slider from "@workspace/ui/components/carousel/slider";
-import { placeholderImages } from "../utils";
+import { placeholderImages } from "../../utils/placeholder-images";
 import { Badge } from "@workspace/ui/components/badge";
 import { Button } from "#workspace/ui/components/button";
 
-interface ItemPreviewProps {
+interface ItemCardProps {
   title: string;
   price: number;
   description: string;
@@ -38,7 +38,7 @@ function areImagesEqual(prevImages: File[], nextImages: File[]): boolean {
   });
 }
 
-const ItemPreview = React.memo(
+export const ItemCard = React.memo(
   ({
     title,
     price,
@@ -47,7 +47,7 @@ const ItemPreview = React.memo(
     maxImages,
     images,
     subcategory,
-  }: ItemPreviewProps) => {
+  }: ItemCardProps) => {
     const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
     // Create image URLs for preview - properly formatted for the Slider component
@@ -104,14 +104,13 @@ const ItemPreview = React.memo(
               <h1 className="text-2xl font-bold break-all">
                 {title || "Title of the item"}
               </h1>
+              <p className="text-xl font-semibold text-end">
+                € {price ? (price / 100).toFixed(2) : "0.00"}
+              </p>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col justify-between relative">
             <div className="flex flex-col gap-4">
-              <p className="text-xl font-semibold ">
-                € {price ? (price / 100).toFixed(2) : "0.00"}
-              </p>
-
               <div className="min-h-[450px] w-full bg-background rounded-t-md flex items-center justify-center flex-col">
                 {imageUrls && imageUrls.length > 0 ? (
                   <Slider
@@ -180,7 +179,7 @@ const ItemPreview = React.memo(
               {/* Subcategory Badge */}
               {subcategory && (
                 <div className="mb-2">
-                  <Badge variant="outline" className="text-sm">
+                  <Badge variant="outline" className="text-sm bg-accent px-3">
                     {subcategory}
                   </Badge>
                 </div>
@@ -208,6 +207,4 @@ const ItemPreview = React.memo(
 );
 
 // Add display name for debugging
-ItemPreview.displayName = "ItemPreview";
-
-export default ItemPreview;
+ItemCard.displayName = "ItemCard";

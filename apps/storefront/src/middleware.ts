@@ -29,5 +29,8 @@ export async function middleware(req: NextRequest) {
     console.error("Auth Middleware Error:", error);
   }
 
-  return NextResponse.next();
+  const headers = new Headers(req.headers);
+  headers.set("x-current-path", req.nextUrl.pathname);
+
+  return NextResponse.next({ headers });
 }

@@ -13,14 +13,14 @@ import { CitySelector } from "#components/forms/commons/city-selector";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
 import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
-import type { Category } from "@workspace/shared/types/category";
-
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
-import ItemPreview from "./components/item-preview";
+import { ItemCard } from "#components/item-card";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./use-create-item-form";
 import { nestedSubCatHierarchy } from "#utils/nested-subcat-hierarchy";
+
+import type { Category } from "@workspace/shared/types/category";
 
 const maxImages = 5;
 
@@ -332,10 +332,10 @@ export default function CreateItemFormComponent({
           </form>
         </div>
 
-        {/* Right Column - Preview */}
+        {/* Right Column - Item Preview */}
         {!isMobile && (
           <div className="w-full overflow-hidden  h-full">
-            <ItemPreview
+            <ItemCard
               title={title !== undefined ? String(title) : ""}
               price={price !== undefined ? Number(price) : 0}
               description={description !== undefined ? String(description) : ""}

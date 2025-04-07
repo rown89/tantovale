@@ -13,13 +13,6 @@ export interface FilterType {
   type: string;
 }
 
-export const placeholderImages = [
-  {
-    url: "/placeholder.svg",
-    alt: "",
-  },
-];
-
 export const delivery_method_types = [
   { id: "pickup", name: "Pickup" },
   { id: "shipping", name: "Shipping" },
