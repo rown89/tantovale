@@ -1,1 +1,12 @@
-{}
+{
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@workspace/server": ["@workspace/server"],
+			"@workspace/storefront": ["@workspace/storefront"],
+			"@workspace/database": ["@workspace/database"],
+			"@workspace/ui": ["@workspace/ui"],
+			"@workspace/shared": ["@workspace/shared"]
+		}
+	}
+}

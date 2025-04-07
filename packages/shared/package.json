@@ -1,20 +1,27 @@
 {
 	"name": "@workspace/shared",
 	"version": "1.0.0",
+	"sideEffects": false,
 	"private": true,
+	"imports": {
+		"#*": [
+			"./src/*.ts"
+		]
+	},
 	"exports": {
 		"./hooks/*": "./src/hooks/*.ts",
 		"./types/*": "./src/types/*.ts",
-		"./clients/*": "./src/clients/*.ts"
+		"./clients/*": "./src/clients/*.ts",
+		"./utils/*": "./src/utils/*.ts"
 	},
 	"dependencies": {
-		"hono": "*",
+		"@workspace/eslint-config": "*",
+		"@workspace/typescript-config": "*",
 		"@workspace/server": "*",
+		"hono": "*",
 		"@tanstack/react-query": "*"
 	},
 	"devDependencies": {
-		"@workspace/eslint-config": "*",
-		"@workspace/typescript-config": "*",
 		"@types/react": "^19.0.12",
 		"@types/react-dom": "19.0.3"
 	}

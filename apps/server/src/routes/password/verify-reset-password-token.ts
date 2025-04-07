@@ -2,10 +2,12 @@ import { env } from "hono/adapter";
 import { verify } from "hono/jwt";
 
 import { createRouter } from "#lib/create-app";
+import { authPath } from "#utils/constants";
+import { authMiddleware } from "#middlewares/authMiddleware";
 
 export const passwordResetVerifyToken = createRouter()
   // Verify Reset Token
-  .get("/reset-verify-token", async (c) => {
+  .get(`/${authPath}/reset-verify-token`, authMiddleware, async (c) => {
     const { RESET_TOKEN_SECRET } = env<{
       RESET_TOKEN_SECRET: string;
     }>(c);

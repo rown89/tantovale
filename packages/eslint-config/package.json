@@ -2,6 +2,7 @@
 	"name": "@workspace/eslint-config",
 	"version": "1.0.0",
 	"type": "module",
+	"sideEffects": false,
 	"private": true,
 	"exports": {
 		"./base": "./base.js",

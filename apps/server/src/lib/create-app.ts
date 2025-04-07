@@ -62,7 +62,15 @@ export function createApp() {
   app.onError(onError);
 
   // paths that require authorization starts with authPath
-  app.use(`/${authPath}/*`, authMiddleware);
+  // app.use(`/${authPath}/*`, authMiddleware);
+
+  // Apply authMiddleware to any route containing authPath
+  app.use((c, next) => {
+    if (c.req.path.includes(authPath)) {
+      return authMiddleware(c, next);
+    }
+    return next();
+  });
 
   return app;
 }

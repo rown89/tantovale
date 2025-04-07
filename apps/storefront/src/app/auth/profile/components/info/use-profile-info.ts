@@ -30,7 +30,7 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
       setIsSubmittingForm(true);
 
       try {
-        const response = await client.auth.profile.$put({ json: value });
+        const response = await client.profile.auth.$put({ json: value });
 
         if (!response.ok) {
           throw new Error("update profile error");

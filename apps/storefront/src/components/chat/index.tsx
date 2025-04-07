@@ -13,6 +13,8 @@ export interface ChatProps {
       id: number;
       title: string;
       price: number;
+      published: boolean;
+      status: string;
     };
     author: {
       id: number | null;

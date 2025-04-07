@@ -9,13 +9,15 @@ import { verify } from "hono/jwt";
 import { authMiddleware } from "#middlewares/authMiddleware";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
+import { subcategories } from "@workspace/database/schemas/subcategories";
+import { authPath } from "#utils/constants";
 
 export const itemTypeSchema = z.object({
   published: z.boolean(),
 });
 
 export const itemsRoute = createRouter().post(
-  "/user_selling_items",
+  `${authPath}/user_selling_items`,
   zValidator("json", itemTypeSchema),
   authMiddleware,
   async (c) => {
@@ -41,10 +43,12 @@ export const itemsRoute = createRouter().post(
           price: items.price,
           created_at: items.created_at,
           published: items.published,
+          subcategory_slug: subcategories.slug,
           image: itemsImages.url,
         })
         .from(items)
         .innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
+        .innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
         .where(
           and(
             isNull(items.deleted_at),

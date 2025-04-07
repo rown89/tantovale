@@ -27,10 +27,12 @@
   },
   "exports": {
     "./apiRoutes": "./src/app.ts",
-    "./rpc-client": "./src/lib/rpc-client.ts",
     "./schema": "./src/schema/index.ts"
   },
   "dependencies": {
+    "@workspace/database": "*",
+    "@workspace/eslint-config": "*",
+    "@workspace/typescript-config": "*",
     "@aws-sdk/client-s3": "^3.772.0",
     "@aws-sdk/s3-request-presigner": "^3.772.0",
     "hono": "*",
@@ -41,7 +43,6 @@
     "hono-openapi": "^0.4.6",
     "hono-pino": "^0.8.0",
     "@scalar/hono-api-reference": "^0.5.172",
-    "@workspace/database": "*",
     "bcryptjs": "^3.0.2",
     "drizzle-orm": "*",
     "drizzle-zod": "*",
@@ -60,8 +61,6 @@
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.11",
-    "@workspace/eslint-config": "*",
-    "@workspace/typescript-config": "*",
     "dotenv-cli": "^8.0.0",
     "tsx": "^4.19.2"
   }

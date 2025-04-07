@@ -34,6 +34,11 @@ export function LoginForm({
     }
   }, [state]);
 
+  // Add logging to check the state
+  useEffect(() => {
+    console.log("Current state:", state);
+  }, [state]);
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden">
@@ -64,7 +69,7 @@ export function LoginForm({
                   required
                   aria-describedby="email-error"
                   placeholder="email@example.com"
-                  defaultValue={state.inputs?.email}
+                  defaultValue={state?.inputs?.email}
                   className={state?.errors?.email ? "border-red-500" : ""}
                 />
                 {state?.errors?.email && (
@@ -89,7 +94,7 @@ export function LoginForm({
                   type="password"
                   required
                   aria-describedby="password-error"
-                  defaultValue={state.inputs?.password}
+                  defaultValue={state?.inputs?.password}
                   className={state?.errors?.password ? "border-red-500" : ""}
                 />
                 {state?.errors?.password && (
@@ -126,9 +131,10 @@ export function LoginForm({
           </form>
         </CardContent>
       </Card>
-      <div className="text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary">
-        Cliccando su continua, accetterai i <a href="#">Terms of Service</a> e
-        la <a href="#">Privacy Policy</a>.
+      <div className="text-balance text-center text-xs text-muted-foreground">
+        Cliccando su continua, accetterai i{" "}
+        <a href="/tems-of-service">Terms of Service</a> e la{" "}
+        <a href="/privacy">Privacy Policy</a>.
       </div>
     </div>
   );

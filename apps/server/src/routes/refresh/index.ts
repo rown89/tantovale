@@ -12,13 +12,16 @@ import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
   getNodeEnvMode,
+  authPath,
 } from "#utils/constants";
 import { env } from "hono/adapter";
 
 import { createRouter } from "#lib/create-app";
+import { authMiddleware } from "#middlewares/authMiddleware";
 
 export const refreshRoute = createRouter().post(
-  "/",
+  `/${authPath}`,
+  authMiddleware,
   describeRoute({
     description: "Refresh token verifier",
     responses: {
@@ -104,10 +107,6 @@ export const refreshRoute = createRouter().post(
           expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
         }),
       });
-
-      console.log(
-        `OLD TOKEN:\n ${refresh_token} \n \nNEW TOKEN:\n ${new_refresh_token}\n`,
-      );
 
       // Store new refresh token in DB
       try {

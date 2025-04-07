@@ -1,7 +1,8 @@
 {
 	"name": "@workspace/ui",
-	"private": true,
 	"version": "1.0.0",
+	"sideEffects": false,
+	"private": true,
 	"type": "module",
 	"scripts": {
 		"shadcn": "npx shadcn@canary",
@@ -9,13 +10,15 @@
 	},
 	"exports": {
 		"./globals.css": "./src/styles/globals.css",
-		"./embla.css": "./src/styles/embla.css",
 		"./postcss.config": "./postcss.config.mjs",
 		"./lib/*": "./src/lib/*.ts",
 		"./components/*": "./src/components/*.tsx",
 		"./hooks/*": "./src/hooks/*.ts"
 	},
 	"dependencies": {
+		"@workspace/eslint-config": "*",
+		"@workspace/typescript-config": "*",
+		"@workspace/shared": "*",
 		"@hookform/resolvers": "^4.1.3",
 		"@radix-ui/react-accordion": "^1.2.3",
 		"@radix-ui/react-alert-dialog": "^1.1.6",
@@ -58,8 +61,6 @@
 		"@types/node": "^22.9.0",
 		"@types/react": "^19.0.12",
 		"@types/react-dom": "19.0.3",
-		"@workspace/eslint-config": "*",
-		"@workspace/typescript-config": "*",
 		"autoprefixer": "^10.4.20",
 		"class-variance-authority": "^0.7.1",
 		"react": "^19.0.0",

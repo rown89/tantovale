@@ -19,7 +19,7 @@ import { Button } from "@workspace/ui/components/button";
 
 import { useProfileInfoForm } from "./use-profile-info";
 import { FieldInfo } from "#components/forms/utils/field-info";
-import { Separator } from "#workspace/ui/components/separator";
+import { Separator } from "@workspace/ui/components/separator";
 
 export default function UserInfoComponent() {
   const [searchedCity, setSearchedCityName] = useState("");

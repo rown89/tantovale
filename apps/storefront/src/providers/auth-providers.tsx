@@ -64,7 +64,7 @@ export const AuthProvider = ({
         setUser(data.user);
       } else {
         // If verification still fails, log out.
-        await client.auth.logout.$post({
+        await client.logout.auth.$post({
           credentials: "include",
         });
 

@@ -6,10 +6,12 @@ import { users, passwordResetTokens } from "@workspace/database/schemas/schema";
 import { env } from "hono/adapter";
 
 import { createRouter } from "#lib/create-app";
+import { authPath } from "#utils/constants";
+import { authMiddleware } from "#middlewares/authMiddleware";
 
 export const passwordResetRoute = createRouter()
   // Update Password
-  .post("/reset", async (c) => {
+  .post(`/${authPath}/reset`, authMiddleware, async (c) => {
     const { RESET_TOKEN_SECRET } = env<{
       RESET_TOKEN_SECRET: string;
     }>(c);

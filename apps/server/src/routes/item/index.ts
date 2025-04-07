@@ -11,136 +11,192 @@ import { itemsFiltersValues } from "@workspace/database/schemas/items_filter_val
 import { env } from "hono/adapter";
 import { createRouter } from "#lib/create-app";
 import { z } from "zod";
+import { authPath } from "#utils/constants";
+import { authMiddleware } from "#middlewares/authMiddleware";
+import { itemsImages } from "@workspace/database/schemas/items_images";
 
 export const itemRoute = createRouter()
-  .post("/new", zValidator("json", createItemSchema), async (c) => {
+  .get("/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+
+    if (!id) return c.json({ error: "item id is required" }, 400);
+    if (isNaN(id)) return c.json({ message: "Invalid item ID" }, 400);
+
+    const { db } = createClient();
+
     try {
-      const { ACCESS_TOKEN_SECRET } = env<{
-        ACCESS_TOKEN_SECRET: string;
-      }>(c);
+      const [item] = await db
+        .select({
+          item: {
+            title: items.title,
+            price: items.price,
+            description: items.description,
+            subcategory_name: subcategories.name,
+            subcategory_slug: subcategories.slug,
+          },
+        })
+        .from(items)
+        .innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+        .where(eq(items.id, id));
 
-      const { commons, properties } = c.req.valid("json");
+      const itemImages = await db
+        .select({ url: itemsImages.url })
+        .from(itemsImages)
+        .where(eq(itemsImages.item_id, id));
 
-      // Auth TOKEN
-      const accessToken = getCookie(c, "access_token");
+      let mergedItem = {
+        ...item?.item,
+        subCategory: {
+          name: item?.item.subcategory_name,
+          slug: item?.item.subcategory_slug,
+        },
+        images: itemImages.map((item) => item.url),
+      };
 
-      let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+      delete mergedItem.subcategory_name;
+      delete mergedItem.subcategory_slug;
 
-      const user_id = Number(payload.id);
+      return c.json(mergedItem, 200);
+    } catch (error) {
+      console.log(error);
+      return c.json({ message: "Get item error" }, 500);
+    }
+  })
+  .post(
+    `/${authPath}/new`,
+    authMiddleware,
+    zValidator("json", createItemSchema),
+    async (c) => {
+      try {
+        const { ACCESS_TOKEN_SECRET } = env<{
+          ACCESS_TOKEN_SECRET: string;
+        }>(c);
 
-      if (!user_id) return c.json({ message: "Invalid user identifier" }, 400);
+        const { commons, properties } = c.req.valid("json");
 
-      const { db } = createClient();
+        // Auth TOKEN
+        const accessToken = getCookie(c, "access_token");
 
-      // Validate subcategory exists
-      const availableSubcategory = await db
-        .select()
-        .from(subcategories)
-        .where(eq(subcategories.id, commons.subcategory_id))
-        .limit(1)
-        .then((results) => results[0]);
+        let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 
-      if (!availableSubcategory) {
+        const user_id = Number(payload.id);
+
+        if (!user_id)
+          return c.json({ message: "Invalid user identifier" }, 400);
+
+        const { db } = createClient();
+
+        // Validate subcategory exists
+        const availableSubcategory = await db
+          .select()
+          .from(subcategories)
+          .where(eq(subcategories.id, commons.subcategory_id))
+          .limit(1)
+          .then((results) => results[0]);
+
+        if (!availableSubcategory) {
+          return c.json(
+            {
+              message: `Subcategory with ID ${commons.subcategory_id} doesn't exist`,
+            },
+            400,
+          );
+        }
+
+        // TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INVALID CONTENT
+
+        return await db.transaction(async (tx) => {
+          // Create the new item
+          const [newItem] = await tx
+            .insert(items)
+            .values({
+              ...commons,
+              user_id,
+              status: "available",
+              published: true,
+            })
+            .returning();
+
+          if (!newItem?.id) {
+            throw new Error("Failed to create item");
+          }
+
+          // Handle item properties(filters) if provided
+          if (properties?.length) {
+            // Get valid filters for this subcategory
+            const subcategoryFilters = await tx
+              .select()
+              .from(subCategoryFilters)
+              .where(
+                eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
+              );
+
+            const validFilterIds = new Set(
+              subcategoryFilters.map((f) => f.filter_id),
+            );
+
+            // Validate all properties exist
+            const invalidProperties = properties.filter(
+              (p) => !validFilterIds.has(p.id),
+            );
+
+            if (invalidProperties.length) {
+              throw new Error("Some properties have invalid filter IDs");
+            }
+
+            // Insert filter values
+            await tx.insert(itemsFiltersValues).values(
+              properties.map(({ id: filter_value_id }) => ({
+                item_id: newItem.id,
+                filter_value_id,
+              })),
+            );
+          } else {
+            // Check if the selected subcategory has mandatory properties
+            const mandatoryFilters = await tx
+              .select()
+              .from(subCategoryFilters)
+              .where(
+                and(
+                  eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
+                  eq(subCategoryFilters.on_item_create_required, true),
+                ),
+              );
+
+            if (mandatoryFilters.length > 0) {
+              throw new Error(
+                `This subcategory requires ${mandatoryFilters.length} mandatory properties`,
+              );
+            }
+          }
+
+          // Return the created item
+          return c.json(
+            {
+              message: "Item created successfully",
+              item_id: newItem.id,
+            },
+            201,
+          );
+        });
+      } catch (error) {
+        console.error("Error creating item:", error);
         return c.json(
           {
-            message: `Subcategory with ID ${commons.subcategory_id} doesn't exist`,
+            message:
+              error instanceof Error ? error.message : "Failed to create item",
           },
           400,
         );
       }
-
-      // TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INVALID CONTENT
-
-      return await db.transaction(async (tx) => {
-        // Create the new item
-        const [newItem] = await tx
-          .insert(items)
-          .values({
-            ...commons,
-            user_id,
-            status: "available",
-            published: true,
-          })
-          .returning();
-
-        if (!newItem?.id) {
-          throw new Error("Failed to create item");
-        }
-
-        // Handle item properties(filters) if provided
-        if (properties?.length) {
-          // Get valid filters for this subcategory
-          const subcategoryFilters = await tx
-            .select()
-            .from(subCategoryFilters)
-            .where(
-              eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
-            );
-
-          const validFilterIds = new Set(
-            subcategoryFilters.map((f) => f.filter_id),
-          );
-
-          // Validate all properties exist
-          const invalidProperties = properties.filter(
-            (p) => !validFilterIds.has(p.id),
-          );
-
-          if (invalidProperties.length) {
-            throw new Error("Some properties have invalid filter IDs");
-          }
-
-          // Insert filter values
-          await tx.insert(itemsFiltersValues).values(
-            properties.map(({ id: filter_value_id }) => ({
-              item_id: newItem.id,
-              filter_value_id,
-            })),
-          );
-        } else {
-          // Check if the selected subcategory has mandatory properties
-          const mandatoryFilters = await tx
-            .select()
-            .from(subCategoryFilters)
-            .where(
-              and(
-                eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
-                eq(subCategoryFilters.on_item_create_required, true),
-              ),
-            );
-
-          if (mandatoryFilters.length > 0) {
-            throw new Error(
-              `This subcategory requires ${mandatoryFilters.length} mandatory properties`,
-            );
-          }
-        }
-
-        // Return the created item
-        return c.json(
-          {
-            message: "Item created successfully",
-            item_id: newItem.id,
-          },
-          201,
-        );
-      });
-    } catch (error) {
-      console.error("Error creating item:", error);
-      return c.json(
-        {
-          message:
-            error instanceof Error ? error.message : "Failed to create item",
-        },
-        400,
-      );
-    }
-  })
-  .put("/edit/:id", async (c) => {
+    },
+  )
+  .put(`/${authPath}/edit/:id`, authMiddleware, async (c) => {
     return c.json({});
   })
   .post(
-    "/user_delete_item",
+    `/${authPath}/user_delete_item`,
+    authMiddleware,
     zValidator(
       "json",
       z.object({
@@ -224,7 +280,8 @@ export const itemRoute = createRouter()
     },
   )
   .post(
-    "/publish_state",
+    `/${authPath}/publish_state`,
+    authMiddleware,
     zValidator(
       "json",
       z.object({
@@ -308,7 +365,7 @@ export const itemRoute = createRouter()
   );
 /*
   // usefull for future admin panel
-  .delete("/delete/:id", async (c) => {
+  .delete(`/${authPath}/delete/:id`, authMiddleware, async (c) => {
     const { ACCESS_TOKEN_SECRET } = env<{
       ACCESS_TOKEN_SECRET: string;
     }>(c);

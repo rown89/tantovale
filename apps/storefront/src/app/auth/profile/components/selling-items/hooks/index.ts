@@ -9,7 +9,7 @@ export function useSellingItems(refetch: () => Promise<QueryObserverResult>) {
   const [shareItem, setShareItem] = useState<Item | null>(null);
 
   const handleDelete = async (id: number) => {
-    const deleteResponse = await client.auth.item.user_delete_item.$post({
+    const deleteResponse = await client.item.auth.user_delete_item.$post({
       json: {
         id,
       },
@@ -24,7 +24,7 @@ export function useSellingItems(refetch: () => Promise<QueryObserverResult>) {
   };
 
   const handlePublish = async (id: number, published: boolean) => {
-    const publishResponse = await client.auth.item.publish_state.$post({
+    const publishResponse = await client.item.auth.publish_state.$post({
       json: {
         id,
         published,

@@ -2,9 +2,6 @@
 	"extends": "@workspace/typescript-config/react-library.json",
 	"compilerOptions": {
 		"moduleResolution": "bundler",
-		"paths": {
-			"@workspace/shared/*": ["./src/*"]
-		},
 		"jsx": "react"
 	},
 	"include": ["**/*.ts", "**/*.tsx"],

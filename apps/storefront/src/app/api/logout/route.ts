@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   cookieStore.delete("access_token");
   cookieStore.delete("refresh_token");
 
-  await client.auth.logout.$post();
+  await client.logout.auth.$post();
 
   return NextResponse.redirect(new URL("/", request.url));
 }

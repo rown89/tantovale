@@ -32,25 +32,25 @@ const app = createApp();
 configureOpenAPI(app);
 
 const apiRoutes = app
-  .route("/signup", signupRoute)
-  .route("/login", loginRoute)
+  .route(`/signup`, signupRoute)
+  .route(`/login`, loginRoute)
   .route(`/verify`, verifyRoute)
-  .route("/items", itemsRoute)
-  .route("/categories", categoriesRoute)
-  .route("/cities", citiesRoute)
-  .route("/filters", filtersRoute)
-  .route("/subcategories", subcategoriesRoute)
-  .route("/subcategory_fitlers", subcategoryFiltersRoute)
-  .route("/password", passwordForgotRoute)
-  .route(`/${authPath}/uploads`, uploadsRoute)
-  .route(`/${authPath}/item`, itemRoute)
-  .route(`/${authPath}/chat`, chatRoute)
-  .route(`/${authPath}/logout`, logoutRoute)
-  .route(`/${authPath}/refresh`, refreshRoute)
-  .route(`/${authPath}/password`, passwordResetRoute)
-  .route(`/${authPath}/password`, passwordResetVerifyToken)
-  .route(`/${authPath}/profile`, profileRoute)
-  .route(`/${authPath}/user`, userRoute);
+  .route(`/item`, itemRoute)
+  .route(`/items`, itemsRoute)
+  .route(`/categories`, categoriesRoute)
+  .route(`/cities`, citiesRoute)
+  .route(`/filters`, filtersRoute)
+  .route(`/subcategories`, subcategoriesRoute)
+  .route(`/subcategory_fitlers`, subcategoryFiltersRoute)
+  .route(`/uploads`, uploadsRoute)
+  .route(`/chat`, chatRoute)
+  .route(`/logout`, logoutRoute)
+  .route(`/refresh`, refreshRoute)
+  .route(`/password`, passwordForgotRoute)
+  .route(`/password`, passwordResetRoute)
+  .route(`/password`, passwordResetVerifyToken)
+  .route(`/profile`, profileRoute)
+  .route(`/user`, userRoute);
 
 export { app };
 export type ApiRoutesType = typeof apiRoutes;

@@ -97,10 +97,6 @@ export function ChatSidebar({
                 filteredChatRooms.map((room) => {
                   const isActive = pathname === `/auth/chat/${room.id}`;
                   const lastMessage = room.last_message;
-                  const hasUnread =
-                    lastMessage &&
-                    !lastMessage.read_at &&
-                    lastMessage.sender_id !== currentUserId;
 
                   // Determine if current user is buyer or seller
                   const isBuyer = room?.buyer?.id === currentUserId;
@@ -149,11 +145,6 @@ export function ChatSidebar({
                           </div>
                         </Link>
                       </SidebarMenuButton>
-                      {hasUnread && (
-                        <SidebarMenuBadge className="bg-primary text-primary-foreground">
-                          New
-                        </SidebarMenuBadge>
-                      )}
                     </SidebarMenuItem>
                   );
                 })

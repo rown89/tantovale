@@ -16,7 +16,7 @@ export default function ChatRoomPage() {
   const { data: chatRooms, isError: isChatRoomsError } = useQuery({
     queryKey: ["chatRooms"],
     queryFn: async () => {
-      const response = await client.auth.chat.rooms.$get();
+      const response = await client.chat.auth.rooms.$get();
 
       if (!response.ok) console.log("chatRooms error", response);
 
@@ -27,7 +27,7 @@ export default function ChatRoomPage() {
   const { data: messages, isError: isMessagesError } = useQuery({
     queryKey: ["chat-messages", id],
     queryFn: async () => {
-      const response = await client.auth.chat.rooms[":roomId"].messages.$get({
+      const response = await client.chat.auth.rooms[":roomId"].messages.$get({
         param: { roomId: id },
       });
 

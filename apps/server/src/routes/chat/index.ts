@@ -2,16 +2,18 @@ import { createClient } from "@workspace/database/db";
 import {
   chat_room,
   chat_messages,
-  items,
   users,
+  items,
 } from "@workspace/database/schemas/schema";
 import { eq, and, or, isNull, not, desc, max } from "drizzle-orm";
 import { createRouter } from "#lib/create-app";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
+import { authPath } from "#utils/constants";
+import { authMiddleware } from "#middlewares/authMiddleware";
 
 export const chatRoute = createRouter()
-  .get("/rooms", async (c) => {
+  .get(`/${authPath}/rooms`, authMiddleware, async (c) => {
     const user = c.var.user;
 
     const { db } = createClient();
@@ -36,6 +38,8 @@ export const chatRoute = createRouter()
           updated_at: chat_room.updated_at,
           item_title: items.title,
           item_price: items.price,
+          item_status: items.status,
+          item_published: items.published,
           buyer_username: users.username,
           last_message: chat_messages.message,
           last_message_id: chat_messages.id,
@@ -55,6 +59,8 @@ export const chatRoute = createRouter()
           and(
             eq(chat_messages.chat_room_id, chat_room.id),
             eq(chat_messages.id, lastMessagesSubquery.max_id),
+            eq(items.published, true),
+            eq(items.status, "available"),
           ),
         )
         .where(
@@ -73,6 +79,8 @@ export const chatRoute = createRouter()
           id: room.item_id,
           title: room.item_title,
           price: room.item_price,
+          status: room.item_status,
+          published: room.item_published,
         },
         author: {
           id: room.last_message_sender_id, // Assuming the sender is the author
@@ -99,7 +107,8 @@ export const chatRoute = createRouter()
   })
   // Create a new chat room
   .post(
-    "/rooms",
+    `/${authPath}/rooms`,
+    authMiddleware,
     zValidator(
       "json",
       z.object({
@@ -157,7 +166,7 @@ export const chatRoute = createRouter()
     },
   )
   // Get messages for a specific chat room
-  .get("/rooms/:roomId/messages", async (c) => {
+  .get(`/${authPath}/rooms/:roomId/messages`, authMiddleware, async (c) => {
     const user = c.var.user;
     const roomId = Number(c.req.param("roomId"));
     const { db } = createClient();
@@ -240,7 +249,8 @@ export const chatRoute = createRouter()
   })
   // Send a message in a chat room
   .post(
-    "/rooms/:roomId/messages",
+    `/${authPath}/rooms/:roomId/messages`,
+    authMiddleware,
     zValidator(
       "json",
       z.object({

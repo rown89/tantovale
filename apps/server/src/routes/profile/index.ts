@@ -5,9 +5,11 @@ import { z } from "zod";
 import { createRouter } from "#lib/create-app";
 import { zValidator } from "@hono/zod-validator";
 import { UserSchema } from "#schema/users";
+import { authPath } from "#utils/constants";
+import { authMiddleware } from "#middlewares/authMiddleware";
 
 export const profileRoute = createRouter()
-  .get("/", async (c) => {
+  .get(`/${authPath}`, authMiddleware, async (c) => {
     const user = c.var.user;
 
     const { db } = createClient();
@@ -36,7 +38,8 @@ export const profileRoute = createRouter()
     return c.json(userProfileData, 200);
   })
   .put(
-    "/",
+    `/${authPath}`,
+    authMiddleware,
     zValidator(
       "json",
       UserSchema.pick({

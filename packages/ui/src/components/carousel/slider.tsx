@@ -82,13 +82,15 @@ export default function Slider({ images, thumbnails }: SliderProps) {
 
 	return (
 		<>
-			<div ref={sliderRef} className='keen-slider min-h-[inherit]'>
-				{images.map((image, index) => (
-					<div key={index} className='keen-slider__slide'>
-						{image}
-					</div>
-				))}
-			</div>
+			{images.length > 0 && (
+				<div ref={sliderRef} className='keen-slider min-h-[inherit]'>
+					{images.map((image, index) => (
+						<div key={index} className='keen-slider__slide'>
+							{image}
+						</div>
+					))}
+				</div>
+			)}
 
 			{images.length > 0 && (
 				<div ref={thumbnailRef} className='keen-slider thumbnail'>

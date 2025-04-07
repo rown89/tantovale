@@ -6,7 +6,7 @@ import { Button } from "@workspace/ui/components/button";
 import { Textarea } from "@workspace/ui/components/textarea";
 import { useRouter } from "next/navigation";
 import { client } from "@workspace/shared/clients/rpc-client";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 interface ChatInputProps {
   chatRoomId: number;
 }
@@ -19,7 +19,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
 
   const mutation = useMutation({
     mutationFn: async (message: string) => {
-      await client.auth.chat.rooms[":roomId"].messages.$post({
+      await client.chat.auth.rooms[":roomId"].messages.$post({
         param: {
           roomId: chatRoomId?.toString(),
         },
@@ -44,7 +44,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="py-4">
+    <form onSubmit={handleSubmit} className="p-4">
       <div className="flex items-center gap-2 ">
         <Textarea
           value={message}
@@ -61,7 +61,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
         <Button
           type="submit"
           size="icon"
-          disabled={!message.trim() || mutation.isLoading}
+          disabled={!message.trim() || mutation.isPending}
           className="h-10 w-10"
         >
           <SendHorizontal className="h-5 w-5" />

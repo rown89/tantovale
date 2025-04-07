@@ -12,16 +12,21 @@ import {
 import Slider from "@workspace/ui/components/carousel/slider";
 import { placeholderImages } from "../../utils/placeholder-images";
 import { Badge } from "@workspace/ui/components/badge";
-import { Button } from "#workspace/ui/components/button";
+import { Button } from "@workspace/ui/components/button";
+import Link from "next/link";
 
-interface ItemCardProps {
+interface ItemDetailCardrops {
+  isPreview: boolean;
   title: string;
   price: number;
   description: string;
   imagesRef: React.RefObject<HTMLInputElement | null>;
   maxImages: number;
   images: File[];
-  subcategory?: string;
+  subcategory?: {
+    name: string;
+    slug?: string;
+  };
 }
 
 // Helper function to compare two arrays of images
@@ -38,8 +43,9 @@ function areImagesEqual(prevImages: File[], nextImages: File[]): boolean {
   });
 }
 
-export const ItemCard = React.memo(
+export const ItemDetailCard = React.memo(
   ({
+    isPreview = false,
     title,
     price,
     description,
@@ -47,7 +53,7 @@ export const ItemCard = React.memo(
     maxImages,
     images,
     subcategory,
-  }: ItemCardProps) => {
+  }: ItemDetailCardrops) => {
     const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
     // Create image URLs for preview - properly formatted for the Slider component
@@ -141,7 +147,7 @@ export const ItemCard = React.memo(
                           ))
                     }
                   />
-                ) : (
+                ) : isPreview ? (
                   <div className="flex flex-col gap-2">
                     <Button onClick={() => imagesRef.current?.click()}>
                       Upload
@@ -150,7 +156,7 @@ export const ItemCard = React.memo(
                       Upload up to {maxImages} images
                     </p>
                   </div>
-                )}
+                ) : null}
 
                 {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
                 <AnimatePresence>
@@ -179,9 +185,11 @@ export const ItemCard = React.memo(
               {/* Subcategory Badge */}
               {subcategory && (
                 <div className="mb-2">
-                  <Badge variant="outline" className="text-sm bg-accent px-3">
-                    {subcategory}
-                  </Badge>
+                  <Link href={subcategory.slug ?? "#"} target="_blank">
+                    <Badge variant="outline" className="text-sm bg-accent px-3">
+                      {subcategory.name}
+                    </Badge>
+                  </Link>
                 </div>
               )}
 
@@ -207,4 +215,4 @@ export const ItemCard = React.memo(
 );
 
 // Add display name for debugging
-ItemCard.displayName = "ItemCard";
+ItemDetailCard.displayName = "ItemDetailCard";

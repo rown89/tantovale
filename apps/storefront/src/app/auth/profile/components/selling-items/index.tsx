@@ -1,6 +1,6 @@
 "use client";
 
-import { ItemCard } from "@workspace/ui/components/item-card/item-card";
+import { ItemPreviewCard } from "@workspace/ui/components/item-preview-card/item-preview-card";
 import { useQuery } from "@tanstack/react-query";
 import { client } from "@workspace/shared/clients/rpc-client";
 import { toast } from "sonner";
@@ -14,7 +14,8 @@ import {
   SelectItem,
 } from "@workspace/ui/components/select";
 import { useState } from "react";
-import { ShareSocialModal } from "#workspace/ui/components/social-share-dialog/social-share-dialog";
+import { ShareSocialModal } from "@workspace/ui/components/social-share-dialog/social-share-dialog";
+import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 import { useSellingItems } from "./hooks";
 
 export interface Item {
@@ -35,7 +36,7 @@ export default function UserSellingItemsComponent() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["user-selling-items", filters],
     queryFn: async () => {
-      const res = await client.items.user_selling_items.$post({
+      const res = await client.items.auth.user_selling_items.$post({
         json: {
           published: filters.publishedType === "published" ? true : false,
         },
@@ -96,8 +97,8 @@ export default function UserSellingItemsComponent() {
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full overflow-auto">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col w-full overflow-auto">
+      <div className="flex items-center justify-between sticky top-0 bg-background z-1 px-2 pb-4">
         <h1 className="text-3xl font-bold">Your items</h1>
         {!isLoading && (
           <Select
@@ -134,10 +135,10 @@ export default function UserSellingItemsComponent() {
         )}
       </div>
 
-      <div className="flex flex-col gap-6 ">
+      <div className="flex flex-col gap-6 p-2">
         {isLoading ? (
           <div className="flex flex-col gap-10 opacity-50">
-            {[...Array(3).keys()].map((item, i) => (
+            {[...Array(4).keys()].map((item, i) => (
               <div key={i} className="flex space-x-4 w-full">
                 <Skeleton className="h-[125px] w-[250px] rounded-xl bg-foreground" />
                 <div className="flex flex-col gap-3 space-y-2 w-full">
@@ -161,10 +162,20 @@ export default function UserSellingItemsComponent() {
           <>
             <div className="grid gap-6 xl:gap-4">
               {data?.map((item, i) => {
+                const link = `/item/${linkBuilder({
+                  id: item.id,
+                  title: item.title,
+                })}`;
+
+                const itemWithLink = {
+                  ...item,
+                  link,
+                };
+
                 return (
-                  <ItemCard
+                  <ItemPreviewCard
                     key={i}
-                    item={item}
+                    item={itemWithLink}
                     onDelete={() => handleDeleteWithToast(item.id)}
                     onEdit={() => handleEdit(item.id)}
                     onPublish={() => handlePublishWithToast(item.id, true)}

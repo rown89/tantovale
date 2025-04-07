@@ -20,7 +20,7 @@ export default function ChatLayout({
   const { data: currentUser, isError: isUserError } = useQuery({
     queryKey: ["currentUser"],
     queryFn: async () => {
-      const response = await client.auth.user.$get();
+      const response = await client.user.auth.$get();
       if (!response.ok) {
         throw new Error("Failed to fetch user");
       }
@@ -33,7 +33,7 @@ export default function ChatLayout({
   const { data: chatRooms, isError: isRoomsError } = useQuery({
     queryKey: ["chatRooms"],
     queryFn: async () => {
-      const response = await client.auth.chat.rooms.$get();
+      const response = await client.chat.auth.rooms.$get();
 
       if (!response.ok) {
         console.log("Failed to fetch chat rooms");

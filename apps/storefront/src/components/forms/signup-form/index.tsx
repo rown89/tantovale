@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { CitySelector } from "../commons/city-selector";
 import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
-import { Separator } from "#workspace/ui/components/separator";
+import { Separator } from "@workspace/ui/components/separator";
 import {
   Select,
   SelectTrigger,
@@ -29,7 +29,7 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import { Checkbox } from "#workspace/ui/components/checkbox";
+import { Checkbox } from "@workspace/ui/components/checkbox";
 
 const initialState: SignupActionResponse = {
   success: false,
@@ -57,7 +57,7 @@ export default function SignupForm() {
 
       router.replace("/");
     }
-  }, [state.inputs?.username, state.success]);
+  }, [state]);
 
   return (
     <div className="container h-full sm:h-[calc(100vh-56px)] flex items-center justify-center p-2 xl:p-0 mx-auto">
@@ -68,26 +68,28 @@ export default function SignupForm() {
             <CardDescription>Crea il tuo account per iniziare</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Label htmlFor="username">
-              Username <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="username"
-              name="username"
-              type="text"
-              placeholder="Pick a cool username :)"
-              required
-              defaultValue={state.inputs?.username}
-              className={state?.errors?.username ? "border-red-500" : ""}
-            />
-            {state.errors?.username && (
-              <p className="text-sm text-red-500 flex items-center">
-                <AlertCircle className="w-4 h-4 mr-1" />
-                {state.errors.username}
-              </p>
-            )}
+            <div className="flex flex-col gap-4">
+              <Label htmlFor="username">
+                Username <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="username"
+                name="username"
+                type="text"
+                placeholder="Pick a cool username :)"
+                required
+                defaultValue={state.inputs?.username}
+                className={state?.errors?.username ? "border-red-500" : ""}
+              />
+              {state.errors?.username && (
+                <p className="text-sm text-red-500 flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  {state.errors.username}
+                </p>
+              )}
+            </div>
             <Separator className="mt-7 mb-6" />
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               <Label htmlFor="fullname">
                 {" "}
                 Full name <span className="text-red-500">*</span>
@@ -160,7 +162,7 @@ export default function SignupForm() {
               )}
             </div>
             <Separator className="mt-7 mb-6" />
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               <Label htmlFor="email">
                 Email <span className="text-red-500">*</span>
               </Label>
@@ -190,7 +192,7 @@ export default function SignupForm() {
                 placeholder="********"
                 required
                 aria-describedby="password-error"
-                defaultValue={state.inputs?.password}
+                defaultValue={state?.inputs?.password}
                 className={state?.errors?.password ? "border-red-500" : ""}
               />
               {state.errors?.password && (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Button } from "@workspace/ui/components/button";
 import { formatCurrency } from "@workspace/ui/lib/utils";
@@ -41,17 +41,22 @@ export function ChatHeader({ id, chatRoom, currentUserId }: ChatHeaderProps) {
       </div>
       <div className="flex items-center gap-3">
         <div className="text-right">
-          <p className="font-medium">{chatRoom.item.title}</p>
-          <p className="text-sm font-medium">
-            {formatCurrency(chatRoom.item.price)}€
-          </p>
+          {chatRoom.item.status === "available" && chatRoom.item.published ? (
+            <>
+              <Link
+                href={`/items/${chatRoom.item.id}`}
+                className="font-medium hover:underline"
+              >
+                {chatRoom.item.title}
+              </Link>
+              <p className="text-sm font-medium">
+                {formatCurrency(chatRoom.item.price)}€
+              </p>
+            </>
+          ) : (
+            <p>Annuncio non disponibile</p>
+          )}
         </div>
-        <Button variant="outline" size="icon" asChild>
-          <Link href={`/items/${chatRoom.item.id}`}>
-            <ExternalLink className="h-4 w-4" />
-            <span className="sr-only">View item</span>
-          </Link>
-        </Button>
       </div>
     </div>
   );

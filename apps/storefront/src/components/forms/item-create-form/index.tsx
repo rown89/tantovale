@@ -15,7 +15,7 @@ import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
 import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
-import { ItemCard } from "#components/item-card";
+import { ItemDetailCard } from "#components/item-card";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./use-create-item-form";
 import { nestedSubCatHierarchy } from "#utils/nested-subcat-hierarchy";
@@ -335,14 +335,15 @@ export default function CreateItemFormComponent({
         {/* Right Column - Item Preview */}
         {!isMobile && (
           <div className="w-full overflow-hidden  h-full">
-            <ItemCard
+            <ItemDetailCard
+              isPreview
               title={title !== undefined ? String(title) : ""}
               price={price !== undefined ? Number(price) : 0}
               description={description !== undefined ? String(description) : ""}
               imagesRef={fileInputRef}
               maxImages={maxImages}
               images={images && Array.isArray(images) ? images : []}
-              subcategory={selectedSubCategory?.name || ""}
+              subcategory={{ name: selectedSubCategory?.name || "" }}
             />
           </div>
         )}

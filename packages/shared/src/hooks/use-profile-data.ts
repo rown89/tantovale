@@ -9,7 +9,7 @@ export function useProfileData() {
 	} = useQuery({
 		queryKey: ['profile-data'],
 		queryFn: async () => {
-			const res = await client.auth.profile.$get();
+			const res = await client.profile.auth.$get();
 
 			if (!res.ok) return undefined;
 

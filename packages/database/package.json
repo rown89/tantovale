@@ -1,6 +1,7 @@
 {
 	"name": "@workspace/database",
 	"private": true,
+	"sideEffects": false,
 	"version": "1.0.0",
 	"type": "module",
 	"scripts": {

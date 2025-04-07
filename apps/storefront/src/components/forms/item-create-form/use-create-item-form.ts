@@ -81,7 +81,7 @@ export function useCreateItemForm({
       try {
         const { images, ...rest } = value;
 
-        const itemResponse = await client.auth.item.new.$post({
+        const itemResponse = await client.item.auth.new.$post({
           json: rest,
         });
 
@@ -111,7 +111,7 @@ export function useCreateItemForm({
             }),
           );
 
-          const imagesResponse = await client.auth.uploads["images-item"].$post(
+          const imagesResponse = await client.uploads.auth["images-item"].$post(
             {
               form: {
                 images: compressedImages,

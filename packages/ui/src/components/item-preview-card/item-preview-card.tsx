@@ -25,10 +25,14 @@ import {
 } from '@workspace/ui/components/alert-dialog';
 import { useIsMobile } from '../../hooks';
 import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil, EyeIcon } from 'lucide-react';
-import { SelectItem } from '@workspace/database/schemas/schema';
 
-export type Item = Pick<SelectItem, 'id' | 'price' | 'title' | 'published'> & {
+export type Item = {
+	id: number;
+	price: number;
+	title: string;
+	published: boolean;
 	image: string;
+	link: string;
 	created_at: Date;
 };
 
@@ -41,7 +45,7 @@ interface ItemCardProps {
 	onUnpubish: () => void;
 }
 
-export function ItemCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubish }: ItemCardProps) {
+export function ItemPreviewCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubish }: ItemCardProps) {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
@@ -73,7 +77,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubis
 		<Card className={`${!item.published ? 'border-2 border-dashed bg-transparent' : ''}`}>
 			<div className='flex flex-col sm:flex-row'>
 				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
-					<Link href={`/item/${item.id}`} className='relative block h-full min-h-[160px]'>
+					<Link href={`${item.link}`} className='relative block h-full min-h-[160px]'>
 						<Image
 							className='h-full object-cover'
 							fill
@@ -90,7 +94,7 @@ export function ItemCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubis
 						<div className='flex flex-col items-start justify-between gap-4 xl:flex-row'>
 							<Link
 								className='hover:text-accent inline-grid w-full hover:underline xl:max-w-[80%]'
-								href={`/item/${item.id}`}>
+								href={`${item.link}`}>
 								<h3 className='truncate break-all text-lg font-semibold'>{item.title}</h3>
 							</Link>
 							<p className='flex w-full items-center justify-end gap-1 text-lg font-medium xl:w-auto'>
