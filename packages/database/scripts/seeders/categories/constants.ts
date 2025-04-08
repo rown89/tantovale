@@ -248,12 +248,12 @@ export const FILTER_VALUES: FilterValues[] = [
 	{ slug: Filters.COLOR, name: 'Violet', value: 'violet' },
 
 	// CLOTH SIZES
-	{ slug: Filters.COLOR, name: 'S', value: 's' },
-	{ slug: Filters.COLOR, name: 'M', value: 'm' },
-	{ slug: Filters.COLOR, name: 'L', value: 'l' },
-	{ slug: Filters.COLOR, name: 'XL', value: 'xl' },
-	{ slug: Filters.COLOR, name: 'XXL', value: 'xxl' },
-	{ slug: Filters.COLOR, name: 'XXXL', value: 'xxxl' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'S', value: 's' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'M', value: 'm' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'L', value: 'l' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'XL', value: 'xl' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'XXL', value: 'xxl' },
+	{ slug: Filters.SIZE_CLOTHING, name: 'XXXL', value: 'xxxl' },
 
 	// SHOE SIZES
 	{ slug: Filters.SIZE_SHOES, name: '35', value: '35' },
