@@ -115,6 +115,21 @@ export default function CreateItemFormComponent({
     });
   }, [images]);
 
+  const thumbImagesUrls = useMemo(() => {
+    return images?.map((file, i) => {
+      const imageUrl = URL.createObjectURL(file);
+      return (
+        <Image
+          key={i}
+          className="object-cover hover:cursor-pointer"
+          fill
+          src={imageUrl}
+          alt=""
+        />
+      );
+    });
+  }, [images]);
+
   return (
     <div className="container mx-auto py-6 px-6 h-[calc(100vh-56px)]">
       <div className="flex gap-6 h-full">
@@ -378,9 +393,11 @@ export default function CreateItemFormComponent({
               item={{
                 title: title !== undefined ? String(title) : "",
                 price: price !== undefined ? Number(price) : 0,
+                city: cities?.find((item) => item.id === city)?.name || "",
                 description:
                   description !== undefined ? String(description) : "",
                 images: imageUrls?.length ? imageUrls : [],
+                imagesThumbs: thumbImagesUrls,
                 subcategory: { name: selectedSubCategory?.name || "" },
               }}
             />

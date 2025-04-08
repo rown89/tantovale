@@ -22,6 +22,7 @@ export interface ItemDetailCardrops {
     title: string;
     price: number;
     description: string;
+    city: string;
     images: ReactNode[];
     imagesThumbs?: ReactNode[];
     subcategory?: {
@@ -33,25 +34,35 @@ export interface ItemDetailCardrops {
 
 export const ItemDetailCard = React.memo(
   ({ isPreview = false, item, imagesRef, maxImages }: ItemDetailCardrops) => {
-    const { title, price, description, images, imagesThumbs, subcategory } =
-      item;
+    const {
+      title,
+      price,
+      description,
+      city,
+      images,
+      imagesThumbs,
+      subcategory,
+    } = item;
 
     return (
       <div className="w-full overflow-hidden h-full py-5">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>
+            <CardTitle className="flex flex-col gap-2">
               <h1 className="text-2xl font-bold break-all">
                 {title || "Your item title..."}
               </h1>
-              <p className="text-xl font-semibold text-end">
-                € {price ? (price / 100).toFixed(2) : "0.00"}
-              </p>
+              <div className="flex flex-col gap-2 items-start md:items-center md:flex-row md:justify-between">
+                <p className="w-full text-accent">{city}</p>
+                <p className="text-xl font-semibold text-end w-full">
+                  € {price ? (price / 100).toFixed(2) : "0.00"}
+                </p>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col justify-between relative">
             <div className="flex flex-col gap-4">
-              <div className="min-h-[450px] w-full bg-background rounded-t-md flex items-center justify-center flex-col">
+              <div className="min-h-[450px] w-full bg-background/50 rounded-t-md flex items-center justify-center flex-col">
                 {isPreview ? (
                   images && images.length > 0 ? (
                     <Slider

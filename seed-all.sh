@@ -2,13 +2,7 @@
 
 echo "Starting database seeding process..."
 
-# Run seed users
-echo "Seeding users..."
-npm run dev-seed-users
-if [ $? -ne 0 ]; then
-  echo "Error seeding users. Exiting."
-  exit 1
-fi
+
 
 # Run seed categories
 echo "Seeding categories..."
@@ -43,5 +37,13 @@ fi
 # Clean up - remove all files except countries.zip
 echo "Cleaning up countries data directory..."
 find "$COUNTRIES_DIR" -type f -not -name "countries.zip" -delete
+
+# Run seed users
+echo "Seeding users..."
+npm run dev-seed-users
+if [ $? -ne 0 ]; then
+  echo "Error seeding users. Exiting."
+  exit 1
+fi
 
 echo "Database seeding completed successfully!" 

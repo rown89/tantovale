@@ -14,6 +14,7 @@ import { z } from "zod";
 import { authPath } from "#utils/constants";
 import { authMiddleware } from "#middlewares/authMiddleware";
 import { itemsImages } from "@workspace/database/schemas/items_images";
+import { cities } from "@workspace/database/schemas/cities";
 
 export const itemRoute = createRouter()
   .get("/:id", async (c) => {
@@ -31,12 +32,14 @@ export const itemRoute = createRouter()
             title: items.title,
             price: items.price,
             description: items.description,
+            city: cities.name,
             subcategory_name: subcategories.name,
             subcategory_slug: subcategories.slug,
           },
         })
         .from(items)
         .innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+        .innerJoin(cities, eq(cities.id, items.city))
         .where(eq(items.id, id));
 
       const itemImages = await db
@@ -46,17 +49,19 @@ export const itemRoute = createRouter()
           and(eq(itemsImages.item_id, id), eq(itemsImages.size, "original")),
         );
 
-      let mergedItem = {
-        ...item?.item,
-        subCategory: {
+      if (!item) throw new Error("No item found");
+
+      const mergedItem = {
+        title: item.item.title,
+        price: item.item.price,
+        description: item.item.description,
+        city: item.item.city,
+        subcategory: {
           name: item?.item.subcategory_name,
           slug: item?.item.subcategory_slug,
         },
         images: itemImages.map((item) => item.url),
       };
-
-      delete mergedItem.subcategory_name;
-      delete mergedItem.subcategory_slug;
 
       return c.json(mergedItem, 200);
     } catch (error) {

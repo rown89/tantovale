@@ -1,19 +1,20 @@
 "use client";
 
 import Image from "next/image";
-import {
-  ItemDetailCard,
-  ItemDetailCardrops,
-} from "#components/item-card/index";
+import { ItemDetailCard } from "#components/item-card/index";
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { SelectItemImage } from "@workspace/database/schemas/items_images";
 
 interface ItemWrapperProps {
-  item: Pick<ItemDetailCardrops["item"], "title" | "description" | "price"> & {
-    images: string;
+  item: {
+    title: string;
+    description: string;
+    price: number;
+    city: string;
+    images: string[];
     subcategory: {
-      name: string | undefined;
+      name: string;
+      slug: string;
     };
   };
 }
@@ -26,28 +27,37 @@ export default function ItemWrapper({ item }: ItemWrapperProps) {
 
   const imageUrls = images?.map((file, i) => {
     return (
-      <div
+      <Image
         key={i}
         onClick={() => {
           setFullscreenImage(file);
         }}
-      >
-        <Image
-          className="object-cover hover:cursor-pointer"
-          fill
-          src={file}
-          alt=""
-        />
-      </div>
+        className="object-cover hover:cursor-pointer"
+        fill
+        src={file}
+        alt=""
+      />
+    );
+  });
+
+  const imageTumbsUrls = images?.map((file, i) => {
+    return (
+      <Image
+        key={i}
+        className="object-cover hover:cursor-pointer"
+        fill
+        src={file}
+        alt=""
+      />
     );
   });
 
   return (
-    <div className="container mx-auto max-w-[900px]">
+    <div className="container mx-auto max-w-[900px] px-4">
       <ItemDetailCard
         isPreview
         imagesRef={fileInputRef}
-        item={{ ...item, images: imageUrls }}
+        item={{ ...item, images: imageUrls, imagesThumbs: imageTumbsUrls }}
       />
 
       {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}

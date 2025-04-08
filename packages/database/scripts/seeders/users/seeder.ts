@@ -1,6 +1,6 @@
 import { createClient, DrizzleClient } from '../../../';
-import { users } from '@workspace/database/schemas/users';
 import { hashPassword } from '../../../../../apps/server/src/lib/password';
+import { users } from '@workspace/database/schemas/users';
 
 export const seedDatabase = async (): Promise<void> => {
 	console.log('🌱 Starting database seeding...');
@@ -52,5 +52,5 @@ async function seedUsers(db: DrizzleClient['db']) {
 		])
 		.returning();
 
-	console.log('🔍 Seed Users: SubCategory-Filter Relationships:', users_response.length);
+	console.log('🔍 Seed Users:', users_response.length);
 }
