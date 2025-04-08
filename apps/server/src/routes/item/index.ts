@@ -42,7 +42,9 @@ export const itemRoute = createRouter()
       const itemImages = await db
         .select({ url: itemsImages.url })
         .from(itemsImages)
-        .where(eq(itemsImages.item_id, id));
+        .where(
+          and(eq(itemsImages.item_id, id), eq(itemsImages.size, "original")),
+        );
 
       let mergedItem = {
         ...item?.item,

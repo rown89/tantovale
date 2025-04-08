@@ -1,8 +1,9 @@
 "use client";
 
-import * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useField } from "@tanstack/react-form";
+import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
@@ -33,8 +34,9 @@ export default function CreateItemFormComponent({
     [],
   );
   const [searchedCityName, setSearchedCityName] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   const {
@@ -64,7 +66,7 @@ export default function CreateItemFormComponent({
   const description = useField({ form, name: "commons.description" }).state
     .value;
   const city = useField({ form, name: "commons.city" }).state.value;
-  const images = useField({ form, name: "images" }).state.value;
+  const images = useField({ form, name: "images" }).state.value as File[];
 
   useEffect(() => {
     // if on mount we have a subcategory already settled in query params:
@@ -78,6 +80,40 @@ export default function CreateItemFormComponent({
       setNestedSubcategories(nestedMenu);
     }
   }, [allCategories, allSubcategories]);
+
+  // Close fullscreen image on Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFullscreenImage(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Create image URLs for preview - properly formatted for the Slider component
+  const imageUrls = useMemo(() => {
+    return images?.map((file, i) => {
+      const imageUrl = URL.createObjectURL(file);
+      return (
+        <div
+          key={i}
+          onClick={() => {
+            setFullscreenImage(imageUrl);
+          }}
+        >
+          <Image
+            className="object-cover hover:cursor-pointer"
+            fill
+            src={imageUrl}
+            alt=""
+          />
+        </div>
+      );
+    });
+  }, [images]);
 
   return (
     <div className="container mx-auto py-6 px-6 h-[calc(100vh-56px)]">
@@ -334,17 +370,43 @@ export default function CreateItemFormComponent({
 
         {/* Right Column - Item Preview */}
         {!isMobile && (
-          <div className="w-full overflow-hidden  h-full">
+          <div className="w-full overflow-hidden h-full">
             <ItemDetailCard
               isPreview
-              title={title !== undefined ? String(title) : ""}
-              price={price !== undefined ? Number(price) : 0}
-              description={description !== undefined ? String(description) : ""}
               imagesRef={fileInputRef}
               maxImages={maxImages}
-              images={images && Array.isArray(images) ? images : []}
-              subcategory={{ name: selectedSubCategory?.name || "" }}
+              item={{
+                title: title !== undefined ? String(title) : "",
+                price: price !== undefined ? Number(price) : 0,
+                description:
+                  description !== undefined ? String(description) : "",
+                images: imageUrls?.length ? imageUrls : [],
+                subcategory: { name: selectedSubCategory?.name || "" },
+              }}
             />
+
+            {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
+            <AnimatePresence>
+              {fullscreenImage && (
+                <motion.div
+                  className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setFullscreenImage(null)}
+                >
+                  <motion.img
+                    src={fullscreenImage}
+                    alt="Fullscreen"
+                    className="h-full p-12 object-contain"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
       </div>

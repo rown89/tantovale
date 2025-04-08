@@ -1,7 +1,7 @@
-import { ItemDetailCard } from "#components/item-card";
 import { client } from "@workspace/shared/clients/rpc-client";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import ItemWrapper from "./components/wrapper";
 
 export default async function ItemSlugPage() {
   const headerList = await headers();
@@ -23,13 +23,5 @@ export default async function ItemSlugPage() {
 
   const item = await itemResponse.json();
 
-  // Create a dummy ref object since we can't use useRef in a Server Component
-  const dummyRef = { current: null };
-
-  console.log(item);
-  return (
-    <div className="container mx-auto max-w-[800px]">
-      <ItemDetailCard isPreview={false} imagesRef={dummyRef} {...item} />
-    </div>
-  );
+  return <ItemWrapper item={item} />;
 }
