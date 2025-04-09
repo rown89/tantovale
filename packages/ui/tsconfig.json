@@ -1,9 +1,10 @@
 {
 	"extends": "@workspace/typescript-config/react-library.json",
 	"compilerOptions": {
-		"moduleResolution": "node",
+		"moduleResolution": "bundler",
 		"paths": {
-			"@workspace/ui/*": ["./src/*"]
+			"@workspace/ui/*": ["./src/*"],
+			"react": ["./node_modules/@types/react"]
 		},
 		"jsx": "react"
 	},

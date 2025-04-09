@@ -25,7 +25,7 @@ _storefront_, _server_, _database_, _ui_, _root_
    To install all the dependencies in _apps/\*_ and _packages/\*_ folders in the root launch:
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 2. **Environmental variables:**\
@@ -39,7 +39,7 @@ _storefront_, _server_, _database_, _ui_, _root_
    After setting up a postgres database you can launch:
 
    ```bash
-   npm run seed-all
+   pnpm run seed-all
    ```
 
 4. **Run storefront and server in Dev mode:**

@@ -1,5 +1,8 @@
 FROM node:20-alpine AS base
 
+# Install pnpm
+RUN npm install -g pnpm
+
 FROM base AS builder
 
 RUN apk update
@@ -8,7 +11,7 @@ RUN apk add --no-cache libc6-compat bash curl
 WORKDIR /app
 
 # Install turbo globally
-RUN npm install -g turbo
+RUN pnpm install -g turbo
 COPY . .
 RUN turbo prune @workspace/storefront --docker
 
@@ -20,12 +23,13 @@ WORKDIR /app
 
 # First install the dependencies (as they change less often)
 COPY --from=builder /app/out/json/ .
-RUN npm install
+# Use --no-frozen-lockfile to ensure pnpm can resolve workspace dependencies properly
+RUN pnpm install --no-frozen-lockfile
 
 # Build the project
 COPY --from=builder /app/out/full/ .
 
-RUN npx turbo build --filter=@workspace/storefront
+RUN pnpm turbo build --filter=@workspace/storefront
 
 FROM base AS runner
 WORKDIR /app

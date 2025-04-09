@@ -7,19 +7,20 @@
 		"dev": "turbo run dev",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"lint": "turbo lint",
-		"dev-server": "npm run --workspace=@workspace/server hono:dev",
-		"dev-storefront": "npm run --workspace=@workspace/storefront next:dev",
-		"dev-db-push": "npm run --workspace=@workspace/database db:push",
-		"dev-seed-users": "npm run --workspace=@workspace/database seed:users",
-		"dev-seed-categories": "npm run --workspace=@workspace/database seed:categories",
-		"dev-seed-countries": "npm run --workspace=@workspace/database seed:countries",
+		"dev-server": "pnpm run --filter=@workspace/server hono:dev",
+		"dev-storefront": "pnpm run --filter=@workspace/storefront next:dev",
+		"dev-db-push": "pnpm run --filter=@workspace/database db:push",
+		"dev-seed-users": "pnpm run --filter=@workspace/database seed:users",
+		"dev-seed-categories": "pnpm run --filter=@workspace/database seed:categories",
+		"dev-seed-countries": "pnpm run --filter=@workspace/database seed:countries",
 		"seed-all": "bash seed-all.sh",
+		"clean-all": "bash clean-project.sh",
 		"prepare": "husky"
 	},
 	"engines": {
 		"node": ">=22.0.0"
 	},
-	"packageManager": "npm@11.2.0",
+	"packageManager": "pnpm@8.15.5",
 	"workspaces": {
 		"packages": [
 			"apps/*",
@@ -35,6 +36,7 @@
 		"aws-cdk-lib": "^2.184.1",
 		"date-fns": "^4.1.0",
 		"dotenv": "^16.4.7",
+		"dotenv-expand": "^12.0.1",
 		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.3",
 		"drizzle-zod": "^0.7.0",

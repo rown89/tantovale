@@ -6,7 +6,7 @@ echo "Starting database seeding process..."
 
 # Run seed categories
 echo "Seeding categories..."
-npm run dev-seed-categories
+pnpm run dev-seed-categories
 if [ $? -ne 0 ]; then
   echo "Error seeding categories. Exiting."
   exit 1
@@ -28,7 +28,7 @@ fi
 
 # Run seed countries
 echo "Seeding countries..."
-npm run dev-seed-countries
+pnpm run dev-seed-countries
 if [ $? -ne 0 ]; then
   echo "Error seeding countries. Exiting."
   exit 1
@@ -40,7 +40,7 @@ find "$COUNTRIES_DIR" -type f -not -name "countries.zip" -delete
 
 # Run seed users
 echo "Seeding users..."
-npm run dev-seed-users
+pnpm run dev-seed-users
 if [ $? -ne 0 ]; then
   echo "Error seeding users. Exiting."
   exit 1

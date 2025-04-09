@@ -24,9 +24,12 @@
 	"dependencies": {
 		"pg": "^8.13.1",
 		"drizzle-orm": "*",
-		"drizzle-zod": "*"
+		"drizzle-zod": "*",
+		"dotenv": "*",
+		"dotenv-expand": "*"
 	},
 	"devDependencies": {
+		"dotenv-cli": "*",
 		"drizzle-kit": "*",
 		"tsx": "^4.19.2"
 	}
