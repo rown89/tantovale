@@ -45,9 +45,9 @@ if [ -d "apps" ]; then
     rm -rf apps/storefront/.next
   fi
   
-  # Remove build folders from apps subdirectories
-  echo "Removing build folders from apps subdirectories"
-  find apps -name "build" -type d -exec rm -rf {} +
+  # Remove dist folders from apps subdirectories
+  echo "Removing dist folders from apps subdirectories"
+  find apps -name "dist" -type d -exec rm -rf {} +
 fi
 
 # Remove node_modules from packages subdirectories

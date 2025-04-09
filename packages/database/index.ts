@@ -1,11 +1,9 @@
 import 'dotenv/config';
 
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
-import pkg from 'pg';
+import { Pool } from 'pg';
 import * as schema from './schemas/schema';
 import { parseEnv } from './env';
-
-const { Pool } = pkg;
 
 export type DrizzleClient = {
 	db: NodePgDatabase<typeof schema>;

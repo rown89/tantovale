@@ -31,6 +31,7 @@
 	"devDependencies": {
 		"dotenv-cli": "*",
 		"drizzle-kit": "*",
-		"tsx": "^4.19.2"
+		"tsx": "^4.19.2",
+		"@types/pg": "^8.10.9"
 	}
 }
