@@ -4,11 +4,17 @@ export async function sendForgotPasswordEmail(
   to: string,
   verificationLink: string,
 ) {
-  const transporter = createMailer();
+  const transporter = createMailer(process);
+
   await transporter.sendMail({
     from: `"Tantovale" <${process.env.SMTP_USER}>`,
     to,
-    subject: "Tantovale - Password Reset",
-    text: `Clicca sul seguente link per il reset della password: ${verificationLink}`,
+    subject: "Password Reset",
+    html: `
+    <div>
+      <p>Clicca sul seguente link per il reset della password:</p>
+      <p><a href="${verificationLink}">Reset password</a></p>
+    </div>
+  `,
   });
 }

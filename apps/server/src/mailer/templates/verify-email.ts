@@ -1,11 +1,17 @@
 import { createMailer } from "../lib/createMailer";
 
 export async function sendVerifyEmail(to: string, verificationLink: string) {
-  const transporter = createMailer();
+  const transporter = createMailer(process);
+
   await transporter.sendMail({
     from: `"Tantovale" <${process.env.SMTP_USER}>`,
     to,
-    subject: "Tantovale - Codice attivazione account",
-    text: `Clicca sul seguente link per attivare l'account: ${verificationLink}`,
+    subject: "Attivazione account",
+    html: `
+      <div>
+        <p>Clicca sul seguente link per attivare l'account:</p>
+        <p><a href="${verificationLink}">Attiva</a></p>
+      </div>
+    `,
   });
 }

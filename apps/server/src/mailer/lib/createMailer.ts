@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer";
 
-export const createMailer = () => {
+export function createMailer(process: NodeJS.Process) {
+  console.log(process.env);
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT),
@@ -9,4 +11,4 @@ export const createMailer = () => {
       pass: process.env.SMTP_PASS,
     },
   });
-};
+}
