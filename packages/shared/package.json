@@ -5,13 +5,15 @@
 	"private": true,
 	"imports": {
 		"#*": [
-			"./src/*.ts"
+			"./src/*.ts",
+			"./src/*.tsx"
 		]
 	},
 	"exports": {
 		"./hooks/*": "./src/hooks/*.ts",
 		"./types/*": "./src/types/*.ts",
 		"./clients/*": "./src/clients/*.ts",
+		"./schema/*": "./src/schema/*.ts",
 		"./utils/*": "./src/utils/*.ts"
 	},
 	"dependencies": {
@@ -19,6 +21,7 @@
 		"@workspace/typescript-config": "*",
 		"@workspace/server": "*",
 		"hono": "*",
+		"zod": "*",
 		"@tanstack/react-query": "*"
 	},
 	"devDependencies": {

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import { UserSchema } from "@workspace/server/schema";
-import { client } from "#lib/api";
+import { UserSchema } from "@workspace/server/extended_schemas";
+import { client } from "@workspace/shared/clients/rpc-client";
 
 const schema = UserSchema.pick({
   fullname: true,

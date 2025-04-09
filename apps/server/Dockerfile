@@ -1,7 +1,11 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install pnpm
 RUN npm install -g pnpm
+# Setup pnpm environment manually
+ENV PNPM_HOME=/root/.local/share/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+RUN mkdir -p ${PNPM_HOME}
 
 FROM base AS builder
 
@@ -31,22 +35,34 @@ RUN pnpm install --no-frozen-lockfile
 COPY --from=builder /app/out/full/ .
 
 # Build the server and its dependencies
-RUN pnpm turbo build --filter=@workspace/server
+RUN pnpm turbo build --filter=@workspace/server...
 
 FROM base AS runner
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 hono
-USER hono
 
-# Copy only what's needed to run the application
-COPY --from=installer --chown=hono:nodejs /app/node_modules ./node_modules
+# Copy package files
+COPY --from=installer --chown=hono:nodejs /app/package.json ./
+COPY --from=installer --chown=hono:nodejs /app/pnpm-lock.yaml ./
+COPY --from=installer --chown=hono:nodejs /app/pnpm-workspace.yaml ./
+
+# Copy all workspace packages
+COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json ./apps/server/
 COPY --from=installer --chown=hono:nodejs /app/apps/server/dist ./apps/server/dist
-COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json ./apps/server/package.json
-# Copy the database package.json
-COPY --from=installer --chown=hono:nodejs /app/packages/database/package.json ./packages/database/package.json
+COPY --from=installer --chown=hono:nodejs /app/packages ./packages
+
+# Create .npmrc to prevent registry fetch for workspace packages
+RUN echo "node-linker=hoisted" > .npmrc && \
+    echo "shamefully-hoist=true" >> .npmrc
+
+# Install dependencies with workspace option
+USER root
+RUN pnpm install --workspace-root --no-frozen-lockfile
+USER hono
 
 EXPOSE 4000
 
-CMD ["node", "apps/server/dist/index.js"]
+# Use tsx to run the server (can handle TS files)
+CMD ["node", "apps/server/dist/src/index.js"]

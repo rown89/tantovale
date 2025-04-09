@@ -1,4 +1,4 @@
-import { createClient } from '../../../';
+import { createClient } from '../../..';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -6,7 +6,7 @@ import path from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { countries, states, cities, regions, subRegions } from '@workspace/database/schemas/schema';
+import { countries, states, cities, regions, subRegions } from '#database/schemas/schema';
 
 // Configuration
 const BATCH_SIZE = 1000;

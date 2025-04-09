@@ -1,35 +1,37 @@
 {
-  "extends": "@workspace/typescript-config/base.json",
-  "compilerOptions": {
-    "strict": true,
-    "target": "ESNext",
-    "outDir": "./dist",
-    "rootDir": "./",
-    "baseUrl": "./",
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "lib": ["ESNext"],
-    "declaration": true,
-    "paths": {
-      "#*": ["./src/*"],
-      "#routes/*": ["./src/routes/*"],
-      "#lib/*": ["./src/lib/*"],
-      "#rpc-client": ["./src/lib/rpc-client.ts"],
-      "#utils/*": ["./src/utils/*"],
-      "#schema": ["./src/schema/index.ts"],
-      "#schema/*": ["./src/schema/*"],
-      "#database/*": ["./database/*"],
-      "#mailer/*": ["./src/mailer/*"]
-    },
-    "typeRoots": ["./node_modules/@types"],
-    "types": ["node"],
-    "skipLibCheck": true
-  },
-  "tsc-alias": {
-    "resolveFullPaths": true
-  },
-  "include": [".", "src/**/*", "../packages/database/**/*", "src/mailer/**/*"],
-  "exclude": ["node_modules", "dist"]
+	"extends": "@workspace/typescript-config/base.json",
+	"compilerOptions": {
+		"strict": true,
+		"target": "ESNext",
+		"outDir": "./dist",
+		"rootDir": ".",
+		"baseUrl": ".",
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"noEmit": true,
+		"allowJs": true,
+		"lib": ["ESNext"],
+		"declaration": true,
+		"paths": {
+			"#*": ["./src/*"],
+			"#database/*": ["./src/database/*"],
+			"#lib/*": ["./src/lib/*"],
+			"#utils/*": ["./src/utils/*"],
+			"#schema": ["./src/schema/index.ts"],
+			"#schema/*": ["./src/schema/*"],
+			"#mailer/*": ["./src/mailer/*"]
+		},
+		"typeRoots": ["./node_modules/@types"],
+		"types": ["node"],
+		"skipLibCheck": true
+	},
+	"tsc-alias": {
+		"resolveFullPaths": true
+	},
+	"include": [".", "src/**/*"],
+	"exclude": ["node_modules", "dist"]
 }

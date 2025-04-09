@@ -72,7 +72,7 @@ CREATE TABLE "filter_values" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "filter_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"filter_id" integer NOT NULL,
 	"name" text NOT NULL,
-	"value" "filter_values_enum",
+	"value" text,
 	"boolean_value" boolean,
 	"numeric_value" integer,
 	"icon" text,
@@ -94,13 +94,14 @@ CREATE TABLE "profiles" (
 	"fullname" varchar(50) NOT NULL,
 	"vat_number" varchar(50),
 	"birthday" date,
-	"gender" "sex_enum",
-	"city" integer,
+	"gender" "sex_enum" NOT NULL,
+	"city" integer NOT NULL,
+	"street_address" text,
+	"privacy_policy" boolean DEFAULT false,
+	"marketing_policy" boolean DEFAULT false,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "profiles_user_id_unique" UNIQUE("user_id"),
-	CONSTRAINT "birthday_check1" CHECK ("profiles"."profile_type" != 'private' OR "profiles"."birthday" IS NOT NULL),
-	CONSTRAINT "sex_check1" CHECK ("profiles"."profile_type" != 'private' OR "profiles"."gender" IS NOT NULL)
+	CONSTRAINT "profiles_user_id_unique" UNIQUE("user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "countries" (
@@ -192,6 +193,7 @@ CREATE TABLE "users" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "users_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"username" varchar(50) NOT NULL,
 	"email" varchar(255) NOT NULL,
+	"phone" varchar(30),
 	"password" varchar(255) NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"phone_verified" boolean DEFAULT false NOT NULL,
@@ -200,6 +202,23 @@ CREATE TABLE "users" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_username_unique" UNIQUE("username"),
 	CONSTRAINT "users_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
+CREATE TABLE "chat_room" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "chat_room_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"item_id" integer NOT NULL,
+	"buyer_id" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "chat_messages" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "chat_messages_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"chat_room_id" integer NOT NULL,
+	"sender_id" integer NOT NULL,
+	"message" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"read_at" timestamp with time zone
 );
 --> statement-breakpoint
 ALTER TABLE "subcategory_filters" ADD CONSTRAINT "subcategory_filters_filter_id_filters_id_fk" FOREIGN KEY ("filter_id") REFERENCES "public"."filters"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -223,6 +242,10 @@ ALTER TABLE "cities" ADD CONSTRAINT "cities_country_id_countries_id_fk" FOREIGN 
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_username_users_username_fk" FOREIGN KEY ("username") REFERENCES "public"."users"("username") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_parent_id_subcategories_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "chat_room" ADD CONSTRAINT "chat_room_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "chat_room" ADD CONSTRAINT "chat_room_buyer_id_users_id_fk" FOREIGN KEY ("buyer_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_chat_room_id_chat_room_id_fk" FOREIGN KEY ("chat_room_id") REFERENCES "public"."chat_room"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 CREATE UNIQUE INDEX "unique_filter_per_subcategory" ON "subcategory_filters" USING btree ("filter_id","subcategory_id");--> statement-breakpoint
 CREATE INDEX "user_id_idx" ON "items" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "city_idx" ON "items" USING btree ("city");--> statement-breakpoint

@@ -9,7 +9,7 @@ import imageCompression from "browser-image-compression";
 import {
   createItemSchema,
   multipleImagesSchema,
-} from "@workspace/server/schema";
+} from "@workspace/server/extended_schemas";
 import { handleQueryParamChange } from "#utils/handle-qp";
 
 interface Category {

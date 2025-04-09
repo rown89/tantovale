@@ -3,7 +3,7 @@
 import { client } from "@workspace/shared/clients/rpc-client";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
-import { UserSchema } from "@workspace/server/schema";
+import { UserSchema } from "@workspace/server/extended_schemas";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,

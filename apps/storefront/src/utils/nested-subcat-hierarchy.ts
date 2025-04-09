@@ -1,5 +1,5 @@
-import { SelectCategory } from "@workspace/database/schemas/categories";
-import { SelectSubCategories } from "@workspace/database/schemas/subcategories";
+import { SelectCategory } from "@workspace/server/database";
+import { SelectSubCategories } from "@workspace/server/database";
 import type { Category } from "@workspace/shared/types/category";
 
 export function nestedSubCatHierarchy(

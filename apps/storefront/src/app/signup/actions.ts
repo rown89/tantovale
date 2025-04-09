@@ -1,6 +1,6 @@
 "use server";
 
-import { UserSchema } from "@workspace/server/schema";
+import { UserSchema } from "@workspace/server/extended_schemas";
 import { SignupActionResponse, SignupFormData } from "./types";
 import { client } from "@workspace/shared/clients/rpc-client";
 

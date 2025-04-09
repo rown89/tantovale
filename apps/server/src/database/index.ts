@@ -1,13 +1,13 @@
 import 'dotenv/config';
 
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import pg from 'pg';
 import * as schema from './schemas/schema';
-import { parseEnv } from './env';
+import { parseEnv } from '../env';
 
 export type DrizzleClient = {
 	db: NodePgDatabase<typeof schema>;
-	client: typeof Pool;
+	client: typeof pg.Pool;
 };
 
 export const dbConnection = {
@@ -18,7 +18,7 @@ export const dbConnection = {
 	database: parseEnv(process.env).POSTGRES_DB,
 };
 
-const pool = new Pool(dbConnection);
+const pool = new pg.Pool(dbConnection);
 
 export function createClient() {
 	const client = pool;

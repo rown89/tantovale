@@ -4,8 +4,8 @@ import { dbConnection } from '.';
 
 export default defineConfig({
 	dialect: 'postgresql',
-	out: './drizzle/migrations',
-	schema: './schemas/schema*.ts',
+	out: './src/database/drizzle/migrations',
+	schema: './src/database/schemas/schema*.ts',
 	dbCredentials: { ...dbConnection, ssl: false },
 	extensionsFilters: ['postgis'],
 	schemaFilter: 'public',
