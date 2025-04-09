@@ -1,4 +1,4 @@
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 
 export default async function refreshTokens() {
   const refreshedRequest = await client.refresh.auth.$post({

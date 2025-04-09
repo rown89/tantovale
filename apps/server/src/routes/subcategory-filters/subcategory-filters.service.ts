@@ -1,9 +1,9 @@
-import { createClient } from '#database';
 import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
-import { filters, subCategoryFilters } from '#database/schemas/schema';
 
-import type { AppBindings } from '#lib/types';
+import { createClient } from '../../database';
+import { filters, subCategoryFilters } from '../../database/schemas/schema';
+import type { AppBindings } from '../../lib/types';
 
 export const getSubcategoryFiltersById = async (c: Context<AppBindings>, id: number) => {
 	const { db } = createClient();

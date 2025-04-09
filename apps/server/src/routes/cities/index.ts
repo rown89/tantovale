@@ -1,7 +1,7 @@
-import { createRouter } from '#lib/create-app';
-import { createClient } from '#database';
-import { cities } from '#database/schemas/cities';
-import { states } from '#database/schemas/states';
+import { createRouter } from '../../lib/create-app';
+import { createClient } from '../../database';
+import { cities } from '../../database/schemas/cities';
+import { states } from '../../database/schemas/states';
 import { ilike, eq, and } from 'drizzle-orm';
 
 export const citiesRoute = createRouter()

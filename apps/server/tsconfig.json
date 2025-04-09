@@ -2,32 +2,17 @@
 	"extends": "@workspace/typescript-config/base.json",
 	"compilerOptions": {
 		"strict": true,
-		"target": "ESNext",
-		"outDir": "./dist",
 		"rootDir": ".",
 		"baseUrl": ".",
-		"jsx": "react-jsx",
-		"jsxImportSource": "hono/jsx",
+		"outDir": "./dist",
 		"module": "ESNext",
-		"moduleResolution": "Bundler",
-		"esModuleInterop": true,
+		"moduleResolution": "bundler",
 		"resolveJsonModule": true,
-		"noEmit": true,
-		"allowJs": true,
-		"lib": ["ESNext"],
-		"declaration": true,
-		"paths": {
-			"#*": ["./src/*"],
-			"#database/*": ["./src/database/*"],
-			"#lib/*": ["./src/lib/*"],
-			"#utils/*": ["./src/utils/*"],
-			"#schema": ["./src/schema/index.ts"],
-			"#schema/*": ["./src/schema/*"],
-			"#mailer/*": ["./src/mailer/*"]
-		},
-		"typeRoots": ["./node_modules/@types"],
-		"types": ["node"],
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"lib": ["esnext"],
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx"
 	},
 	"tsc-alias": {
 		"resolveFullPaths": true

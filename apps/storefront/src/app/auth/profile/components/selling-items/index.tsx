@@ -2,7 +2,7 @@
 
 import { ItemPreviewCard } from "@workspace/ui/components/item-preview-card/item-preview-card";
 import { useQuery } from "@tanstack/react-query";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { toast } from "sonner";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import {
@@ -17,6 +17,8 @@ import { useState } from "react";
 import { ShareSocialModal } from "@workspace/ui/components/social-share-dialog/social-share-dialog";
 import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 import { useSellingItems } from "./hooks";
+import Link from "next/link";
+import Image from "next/image";
 
 export interface Item {
   id: number;
@@ -167,15 +169,39 @@ export default function UserSellingItemsComponent() {
                   title: item.title,
                 })}`;
 
-                const itemWithLink = {
-                  ...item,
-                  link,
-                };
+                const TitleLink = (
+                  <Link
+                    className="hover:text-accent inline-grid w-full hover:underline xl:max-w-[80%]"
+                    href={`${link}`}
+                  >
+                    <h3 className="truncate break-all text-lg font-semibold">
+                      {item.title}
+                    </h3>
+                  </Link>
+                );
+
+                const ThumbLink = (
+                  <Link
+                    href={`${link}`}
+                    className="relative block h-full min-h-[160px]"
+                  >
+                    <Image
+                      className="h-full object-cover"
+                      fill
+                      priority
+                      src={item.image || "/placeholder.svg"}
+                      sizes="(max-width: 720px) 230px, 256px"
+                      alt={item.title}
+                    />
+                  </Link>
+                );
 
                 return (
                   <ItemPreviewCard
                     key={i}
-                    item={itemWithLink}
+                    TitleLink={TitleLink}
+                    ThumbLink={ThumbLink}
+                    item={item}
                     onDelete={() => handleDeleteWithToast(item.id)}
                     onEdit={() => handleEdit(item.id)}
                     onPublish={() => handlePublishWithToast(item.id, true)}

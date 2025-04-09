@@ -1,15 +1,16 @@
-import { createRouter } from '#lib/create-app';
 import { env } from 'hono/adapter';
 import { getCookie } from 'hono/cookie';
 import { verify } from 'hono/jwt';
-import { s3Client } from '#lib/s3client';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { parseEnv } from '#env';
 import sharp from 'sharp';
-import { createClient } from '#database';
-import { itemsImages, type InsertItemImage } from '#database/schemas/schema';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
+
+import { createRouter } from '../../lib/create-app';
+import { s3Client } from '../../lib/s3client';
+import { parseEnv } from '../../env';
+import { createClient } from '../../database';
+import { itemsImages, type InsertItemImage } from '../../database/schemas/schema';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, authMiddleware, async (c) => {
 	const { ACCESS_TOKEN_SECRET } = env<{

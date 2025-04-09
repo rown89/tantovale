@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { client } from '@workspace/shared/clients/rpc-client';
+import { client } from '@workspace/server/client-rpc';
 
 export function useProfileData() {
 	const {

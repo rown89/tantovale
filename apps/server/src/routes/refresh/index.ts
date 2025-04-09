@@ -2,10 +2,12 @@ import { eq } from 'drizzle-orm';
 import { getCookie, setCookie } from 'hono/cookie';
 import { sign, verify } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
-import { createClient } from '#database';
-import { refreshTokens } from '#database/schemas/schema';
-import { tokenPayload } from '#lib/tokenPayload';
-import { getAuthTokenOptions } from '#lib/getAuthTokenOptions';
+import { env } from 'hono/adapter';
+
+import { createClient } from '../../database/index';
+import { refreshTokens } from '../../database/schemas/schema';
+import { tokenPayload } from '../../lib/tokenPayload';
+import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import {
 	DEFAULT_REFRESH_TOKEN_EXPIRES,
 	DEFAULT_ACCESS_TOKEN_EXPIRES,
@@ -13,11 +15,9 @@ import {
 	DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 	getNodeEnvMode,
 	authPath,
-} from '#utils/constants';
-import { env } from 'hono/adapter';
-
-import { createRouter } from '#lib/create-app';
-import { authMiddleware } from '#middlewares/authMiddleware';
+} from '../../utils/constants';
+import { createRouter } from '../../lib/create-app';
+import { authMiddleware } from '../../middlewares/authMiddleware/index';
 
 export const refreshRoute = createRouter().post(
 	`/${authPath}`,

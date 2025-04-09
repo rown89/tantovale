@@ -4,13 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FilterType, formOpts } from "./utils";
 import { z } from "zod";
 import { toast } from "sonner";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import imageCompression from "browser-image-compression";
 import {
   createItemSchema,
   multipleImagesSchema,
 } from "@workspace/server/extended_schemas";
-import { handleQueryParamChange } from "#utils/handle-qp";
+import { handleQueryParamChange } from "../../../utils/handle-qp";
 
 interface Category {
   id: number;

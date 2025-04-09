@@ -3,7 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { toast } from "sonner";
 import { UserSchema } from "@workspace/server/extended_schemas";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 
 const schema = UserSchema.pick({
   fullname: true,

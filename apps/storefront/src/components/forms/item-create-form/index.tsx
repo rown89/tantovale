@@ -19,7 +19,7 @@ import { DynamicProperties } from "./components/dynamic-properties";
 import { ItemDetailCard } from "#components/item-card";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./use-create-item-form";
-import { nestedSubCatHierarchy } from "#utils/nested-subcat-hierarchy";
+import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 
 import type { Category } from "@workspace/shared/types/category";
 
@@ -60,7 +60,6 @@ export default function CreateItemFormComponent({
     handlePropertiesReset,
   } = useCreateItemForm({ subcategory, subCatFilters });
 
-  // @ts-expect-error library bug (deeply nested types)
   const title = useField({ form, name: "commons.title" }).state.value;
   const price = useField({ form, name: "commons.price" }).state.value;
   const description = useField({ form, name: "commons.description" }).state

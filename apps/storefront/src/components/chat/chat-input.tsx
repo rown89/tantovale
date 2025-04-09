@@ -5,7 +5,7 @@ import { SendHorizontal } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Textarea } from "@workspace/ui/components/textarea";
 import { useRouter } from "next/navigation";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 interface ChatInputProps {
   chatRoomId: number;

@@ -1,22 +1,23 @@
 import { sign, verify } from 'hono/jwt';
 import { eq } from 'drizzle-orm';
+import { getCookie } from 'hono/cookie';
+import { setCookie } from 'hono/cookie';
+import { env } from 'hono/adapter';
 import { describeRoute } from 'hono-openapi';
-import { tokenPayload } from '#lib/tokenPayload';
+
+import { tokenPayload } from '../../lib/tokenPayload';
 import {
 	DEFAULT_ACCESS_TOKEN_EXPIRES,
 	DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
 	DEFAULT_REFRESH_TOKEN_EXPIRES,
 	DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 	getNodeEnvMode,
-} from '#utils/constants';
-import { createClient } from '#database';
-import { refreshTokens, users } from '#database/schemas/schema';
-import { getCookie } from 'hono/cookie';
-import { setCookie } from 'hono/cookie';
-import { getAuthTokenOptions } from '#lib/getAuthTokenOptions';
-import { env } from 'hono/adapter';
+} from '../../utils/constants';
+import { createClient } from '../../database';
+import { refreshTokens, users } from '../../database/schemas/schema';
 
-import { createRouter } from '#lib/create-app';
+import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
+import { createRouter } from '../../lib/create-app';
 
 export const verifyRoute = createRouter()
 	.get(

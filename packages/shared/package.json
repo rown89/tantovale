@@ -12,7 +12,6 @@
 	"exports": {
 		"./hooks/*": "./src/hooks/*.ts",
 		"./types/*": "./src/types/*.ts",
-		"./clients/*": "./src/clients/*.ts",
 		"./schema/*": "./src/schema/*.ts",
 		"./utils/*": "./src/utils/*.ts"
 	},
@@ -20,7 +19,6 @@
 		"@workspace/eslint-config": "*",
 		"@workspace/typescript-config": "*",
 		"@workspace/server": "*",
-		"hono": "*",
 		"zod": "*",
 		"@tanstack/react-query": "*"
 	},

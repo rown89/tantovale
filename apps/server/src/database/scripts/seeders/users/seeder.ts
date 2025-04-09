@@ -1,6 +1,6 @@
 import { createClient, DrizzleClient } from '../../..';
 import { hashPassword } from '../../../../lib/password';
-import { users } from '#database/schemas/users';
+import { users } from '../../../../database/schemas/users';
 
 export const seedDatabase = async (): Promise<void> => {
 	console.log('🌱 Starting database seeding...');

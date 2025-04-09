@@ -1,7 +1,6 @@
-import { createClient } from '#database';
-import { categories } from '#database/schemas/categories';
-
-import { createRouter } from '#lib/create-app';
+import { createClient } from '../../database';
+import { categories } from '../../database/schemas/categories';
+import { createRouter } from '../../lib/create-app';
 
 export const categoriesRoute = createRouter().get('/', async (c) => {
 	try {

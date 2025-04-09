@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { client } from '@workspace/shared/clients/rpc-client';
+import { client } from '@workspace/server/client-rpc';
 import { Category } from '../types/category';
 
 export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>) {

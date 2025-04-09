@@ -1,8 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Button } from '../button';
 import { Card } from '../card';
@@ -32,12 +30,13 @@ export type Item = {
 	title: string;
 	published: boolean;
 	image: string;
-	link: string;
 	created_at: Date;
 };
 
 interface ItemCardProps {
 	item: Item;
+	ThumbLink: ReactNode;
+	TitleLink: ReactNode;
 	onDelete: () => void;
 	onEdit: () => void;
 	onShare: () => void;
@@ -45,7 +44,16 @@ interface ItemCardProps {
 	onUnpubish: () => void;
 }
 
-export function ItemPreviewCard({ item, onDelete, onEdit, onShare, onPublish, onUnpubish }: ItemCardProps) {
+export function ItemPreviewCard({
+	item,
+	ThumbLink,
+	TitleLink,
+	onDelete,
+	onEdit,
+	onShare,
+	onPublish,
+	onUnpubish,
+}: ItemCardProps) {
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
@@ -76,27 +84,11 @@ export function ItemPreviewCard({ item, onDelete, onEdit, onShare, onPublish, on
 	return (
 		<Card className={`${!item.published ? 'border-2 border-dashed bg-transparent' : ''}`}>
 			<div className='flex flex-col sm:flex-row'>
-				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>
-					<Link href={`${item.link}`} className='relative block h-full min-h-[160px]'>
-						<Image
-							className='h-full object-cover'
-							fill
-							priority
-							src={item.image || '/placeholder.svg'}
-							sizes='(max-width: 720px) 230px,
-							256px'
-							alt={item.title}
-						/>
-					</Link>
-				</div>
+				<div className='relative h-48 flex-shrink-0 sm:h-auto sm:w-48 md:w-64'>{ThumbLink}</div>
 				<div className='flex w-full flex-col justify-between gap-4 overflow-auto p-4'>
 					<>
 						<div className='flex flex-col items-start justify-between gap-4 xl:flex-row'>
-							<Link
-								className='hover:text-accent inline-grid w-full hover:underline xl:max-w-[80%]'
-								href={`${item.link}`}>
-								<h3 className='truncate break-all text-lg font-semibold'>{item.title}</h3>
-							</Link>
+							{TitleLink}
 							<p className='flex w-full items-center justify-end gap-1 text-lg font-medium xl:w-auto'>
 								<span className='italic'>€</span>
 								{(item.price / 100).toFixed(2)}

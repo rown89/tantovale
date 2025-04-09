@@ -1,24 +1,25 @@
 import 'dotenv/config';
 
+import { env } from 'hono/adapter';
 import { sign } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
 import { validator as zValidator } from 'hono-openapi/zod';
-import { checkUser } from '#lib/utils';
-import { hashPassword } from '#lib/password';
+
+import { checkUser } from '../../lib/utils';
+import { hashPassword } from '../../lib/password';
 import {
 	DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES,
 	DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS,
 	getNodeEnvMode,
-} from '#utils/constants';
-import { createClient } from '#database';
-import { profiles, users } from '#database/schemas/schema';
-import { sendVerifyEmail } from '#mailer/templates/verify-email';
+} from '../../utils/constants';
+import { createClient } from '../../database';
+import { profiles, users } from '../../database/schemas/schema';
+import { sendVerifyEmail } from '../../mailer/templates/verify-email';
 import { deleteCookie, setCookie } from 'hono/cookie';
-import { getAuthTokenOptions } from '#lib/getAuthTokenOptions';
-import { env } from 'hono/adapter';
+import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 
-import { createRouter } from '#lib/create-app';
-import { parseEnv } from '#env';
+import { createRouter } from '../../lib/create-app';
+import { parseEnv } from '../../env';
 import { UserSchema } from '../../extended_schemas/users';
 
 export const signupRoute = createRouter().post(

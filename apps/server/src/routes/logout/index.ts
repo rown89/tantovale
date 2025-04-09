@@ -1,12 +1,12 @@
 import { deleteCookie, getCookie } from 'hono/cookie';
 import { verify } from 'hono/jwt';
-import { createClient } from '#database';
-import { refreshTokens } from '#database/schemas/refreshTokens';
 import { eq } from 'drizzle-orm';
 import { env } from 'hono/adapter';
-import { createRouter } from '#lib/create-app';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
+import { createClient } from '../../database';
+import { refreshTokens } from '../../database/schemas/refreshTokens';
+import { createRouter } from '../../lib/create-app';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const logoutRoute = createRouter().post(`/${authPath}`, authMiddleware, async (c) => {
 	const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{

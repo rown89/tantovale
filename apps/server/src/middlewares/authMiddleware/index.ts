@@ -2,13 +2,13 @@ import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { eq } from 'drizzle-orm';
-import { users } from '#database/schemas/users';
-import { createClient } from '#database/index';
-import { createNewAccessToken, invalidateTokens, validateRefreshToken } from './utils';
-import { getNodeEnvMode } from '#utils/constants';
-
-import type { AppBindings } from '#lib/types';
 import type { Context, Next } from 'hono';
+
+import { users } from '../../database/schemas/users';
+import { createClient } from '../../database';
+import { createNewAccessToken, invalidateTokens, validateRefreshToken } from './utils';
+import { getNodeEnvMode } from '../../utils/constants';
+import type { AppBindings } from '../../lib/types';
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 	const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{

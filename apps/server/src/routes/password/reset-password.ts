@@ -1,13 +1,12 @@
 import { verify } from 'hono/jwt';
-import { eq } from 'drizzle-orm';
-import { hashPassword } from '#lib/password';
-import { createClient } from '#database';
-import { users, passwordResetTokens } from '#database/schemas/schema';
 import { env } from 'hono/adapter';
-
-import { createRouter } from '#lib/create-app';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
+import { eq } from 'drizzle-orm';
+import { hashPassword } from '../../lib/password';
+import { createClient } from '../../database';
+import { users, passwordResetTokens } from '../../database/schemas/schema';
+import { createRouter } from '../../lib/create-app';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const passwordResetRoute = createRouter()
 	// Update Password

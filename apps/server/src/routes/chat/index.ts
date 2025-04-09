@@ -1,11 +1,11 @@
-import { createClient } from '#database/index';
-import { chat_room, chat_messages, users, items } from '#database/schemas/schema';
 import { eq, and, or, isNull, not, desc, max } from 'drizzle-orm';
-import { createRouter } from '#lib/create-app';
-import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
+import { z } from 'zod';
+import { createClient } from '../../database';
+import { chat_room, chat_messages, users, items } from '../../database/schemas/schema';
+import { createRouter } from '../../lib/create-app';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const chatRoute = createRouter()
 	.get(`/${authPath}/rooms`, authMiddleware, async (c) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Chat } from "#components/chat";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { notFound, useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 

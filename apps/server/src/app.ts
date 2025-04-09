@@ -1,7 +1,7 @@
 import 'dotenv/config';
 
-import { createApp } from '#lib/create-app';
-import { configureOpenAPI } from '#lib/configureOpenApi';
+import { createApp } from './lib/create-app';
+import { configureOpenAPI } from './lib/configureOpenApi';
 
 import {
 	itemsRoute,

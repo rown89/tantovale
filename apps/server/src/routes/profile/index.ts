@@ -1,12 +1,13 @@
-import { createClient } from '#database';
-import { cities, profiles, users } from '#database/schemas/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createRouter } from '#lib/create-app';
 import { zValidator } from '@hono/zod-validator';
+
+import { createClient } from '../../database';
+import { cities, profiles, users } from '../../database/schemas/schema';
+import { createRouter } from '../../lib/create-app';
 import { UserSchema } from '../../extended_schemas/users';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const profileRoute = createRouter()
 	.get(`/${authPath}`, authMiddleware, async (c) => {

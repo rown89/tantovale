@@ -1,20 +1,20 @@
 import { zValidator } from '@hono/zod-validator';
-import { eq, and } from 'drizzle-orm';
-import { createClient } from '#database';
-import { subcategories } from '#database/schemas/subcategories';
-import { subCategoryFilters } from '#database/schemas/subcategory_filters';
-import { createItemSchema } from '#extended_schemas';
-import { items } from '#database/schemas/items';
-import { getCookie } from 'hono/cookie';
-import { verify } from 'hono/jwt';
-import { itemsFiltersValues } from '#database/schemas/items_filter_values';
-import { env } from 'hono/adapter';
-import { createRouter } from '#lib/create-app';
 import { z } from 'zod';
-import { authPath } from '#utils/constants';
-import { authMiddleware } from '#middlewares/authMiddleware';
-import { itemsImages } from '#database/schemas/items_images';
-import { cities } from '#database/schemas/cities';
+import { env } from 'hono/adapter';
+import { verify } from 'hono/jwt';
+import { getCookie } from 'hono/cookie';
+import { eq, and } from 'drizzle-orm';
+import { createClient } from '../../database';
+import { subcategories } from '../../database/schemas/subcategories';
+import { subCategoryFilters } from '../../database/schemas/subcategory_filters';
+import { createItemSchema } from '../../extended_schemas';
+import { items } from '../../database/schemas/items';
+import { itemsFiltersValues } from '../../database/schemas/items_filter_values';
+import { createRouter } from '../../lib/create-app';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from '../../middlewares/authMiddleware';
+import { itemsImages } from '../../database/schemas/items_images';
+import { cities } from '../../database/schemas/cities';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {

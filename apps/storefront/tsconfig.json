@@ -19,7 +19,8 @@
     "next-env.d.ts",
     "next.config.js",
     ".next/types/**/*.ts",
-    "../../packages/ui/"
+    "../../packages/ui/",
+    "../server/"
   ],
   "exclude": ["node_modules"]
 }

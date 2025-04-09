@@ -1,6 +1,6 @@
 "use server";
 
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
 import { UserSchema } from "@workspace/server/extended_schemas";

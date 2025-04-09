@@ -1,7 +1,7 @@
 "use client";
 
-import { client } from "@workspace/shared/clients/rpc-client";
-import refreshTokens from "#utils/refreshTokens";
+import { client } from "@workspace/server/client-rpc";
+import refreshTokens from "../utils/refreshTokens";
 import { useRouter } from "next/navigation";
 import React, {
   createContext,

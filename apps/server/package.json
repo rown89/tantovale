@@ -19,22 +19,9 @@
 		"seed:users": "npx tsx ./src/database/scripts/seeders/users/index.ts",
 		"typecheck": "npx tsc --noEmit"
 	},
-	"imports": {
-		"#*": [
-			"./src/*.ts"
-		],
-		"#database/*": "./src/database/*.ts",
-		"#lib/*": "./src/lib/*.ts",
-		"#mailer/*": "./src/mailer/*.ts",
-		"#extended_schemas": "./src/extended_schemas/index.ts",
-		"#schema/*": [
-			"./src/schema/*.ts",
-			"./src/schema/index.ts"
-		],
-		"#utils/*": "./src/utils/*.ts"
-	},
 	"exports": {
 		"./apiRoutes": "./src/app.ts",
+		"./client-rpc": "./src/lib/client-rpc.ts",
 		"./extended_schemas": "./src/extended_schemas/index.ts",
 		"./database": "./src/database/schemas/schema.ts"
 	},

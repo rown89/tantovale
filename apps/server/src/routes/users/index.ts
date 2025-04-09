@@ -1,8 +1,8 @@
-import { createClient } from '#database';
-import { users } from '#database/schemas/schema';
 import { eq } from 'drizzle-orm';
 
-import { createRouter } from '#lib/create-app';
+import { createClient } from '../../database';
+import { users } from '../../database/schemas/schema';
+import { createRouter } from '../../lib/create-app';
 
 export const usersRoute = createRouter().get('/:id{[0-9]+}', (c) => {
 	const id = c.req.param('id');

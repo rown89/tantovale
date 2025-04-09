@@ -1,9 +1,9 @@
 {
-	"extends": "@workspace/typescript-config/base.json",
+	"extends": "@workspace/typescript-config/nextjs.json",
 	"compilerOptions": {
 		"moduleResolution": "bundler",
 		"jsx": "react"
 	},
-	"include": ["**/*.ts", "**/*.tsx", "../../apps/server/*.ts"],
+	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"]
 }

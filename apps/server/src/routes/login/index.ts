@@ -1,21 +1,21 @@
 import { eq } from 'drizzle-orm';
+import { sign } from 'hono/jwt';
+import { setCookie } from 'hono/cookie';
+import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
-import { tokenPayload } from '#lib/tokenPayload';
-import { verifyPassword } from '#lib/password';
-import { createClient } from '#database';
-import { users, refreshTokens } from '#database/schemas/schema';
+import { tokenPayload } from '../../lib/tokenPayload';
+import { verifyPassword } from '../../lib/password';
+import { createClient } from '../../database';
+import { users, refreshTokens } from '../../database/schemas/schema';
 import {
 	DEFAULT_ACCESS_TOKEN_EXPIRES,
 	DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
 	DEFAULT_REFRESH_TOKEN_EXPIRES,
 	DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 	getNodeEnvMode,
-} from '#utils/constants';
-import { sign } from 'hono/jwt';
-import { getAuthTokenOptions } from '#lib/getAuthTokenOptions';
-import { env } from 'hono/adapter';
-import { createRouter } from '#lib/create-app';
-import { setCookie } from 'hono/cookie';
+} from '../../utils/constants';
+import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
+import { createRouter } from '../../lib/create-app';
 import { UserSchema } from '../../extended_schemas/users';
 
 export const loginRoute = createRouter().post(

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { SidebarProvider } from "@workspace/ui/components/sidebar";
 import { ChatSidebar } from "#components/chat/chat-sidebar";

@@ -1,4 +1,4 @@
-import { client } from "@workspace/shared/clients/rpc-client";
+import { client } from "@workspace/server/client-rpc";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import ItemWrapper from "./components/wrapper";
