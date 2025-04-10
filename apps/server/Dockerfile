@@ -34,6 +34,9 @@ RUN pnpm install --no-frozen-lockfile
 # Build the project
 COPY --from=builder /app/out/full/ .
 
+# Clean the dist directory first
+RUN rm -rf /app/apps/server/dist
+
 # Build the server and its dependencies
 RUN pnpm turbo build --filter=@workspace/server...
 
@@ -53,9 +56,6 @@ COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json ./apps/s
 COPY --from=installer --chown=hono:nodejs /app/apps/server/dist ./apps/server/dist
 COPY --from=installer --chown=hono:nodejs /app/packages ./packages
 
-# Create .npmrc to prevent registry fetch for workspace packages
-RUN echo "node-linker=hoisted" > .npmrc && \
-    echo "shamefully-hoist=true" >> .npmrc
 
 # Install dependencies with workspace option
 USER root

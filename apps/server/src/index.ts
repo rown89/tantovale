@@ -1,9 +1,7 @@
-import "dotenv/config";
+import { serve } from '@hono/node-server';
 
-import { serve } from "@hono/node-server";
-
-import { app } from "./app";
-import { parseEnv } from "./env";
+import { app } from './app';
+import { parseEnv } from './env';
 
 const server_url = parseEnv(process.env).SERVER_HOSTNAME;
 const port = parseEnv(process.env).SERVER_PORT;
@@ -11,6 +9,6 @@ const port = parseEnv(process.env).SERVER_PORT;
 console.log(`Server is running on port ${server_url}:${port}`);
 
 serve({
-  fetch: app.fetch,
-  port,
+	fetch: app.fetch,
+	port,
 });

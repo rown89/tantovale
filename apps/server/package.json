@@ -5,8 +5,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "NODE_ENV=development tsx watch src/index.ts",
-		"build": "NODE_ENV=production tsc && tsc-alias",
-		"start": "NODE_ENV=production node ./dist/src/index.js",
+		"build": "tsc && tsc-alias",
+		"start": "node ./dist/src/index.js",
 		"db": "npx drizzle-kit",
 		"db:build": "tsx ./src/database/index.ts",
 		"db:check": "npx drizzle-kit check --config ./src/database/drizzle.config.ts",
@@ -20,10 +20,22 @@
 		"typecheck": "npx tsc --noEmit"
 	},
 	"exports": {
-		"./apiRoutes": "./src/app.ts",
-		"./client-rpc": "./src/lib/client-rpc.ts",
-		"./extended_schemas": "./src/extended_schemas/index.ts",
-		"./database": "./src/database/schemas/schema.ts"
+		"./apiRoutes": {
+			"development": "./src/app.ts",
+			"default": "./dist/src/app.js"
+		},
+		"./client-rpc": {
+			"development": "./src/lib/client-rpc.ts",
+			"default": "./dist/src/lib/client-rpc.js"
+		},
+		"./extended_schemas": {
+			"development": "./src/extended_schemas/index.ts",
+			"default": "./dist/src/extended_schemas/index.js"
+		},
+		"./database": {
+			"development": "./src/database/schemas/schema.ts",
+			"default": "./dist/src/database/schemas/schema.js"
+		}
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.772.0",
@@ -33,13 +45,13 @@
 		"@hono/zod-openapi": "0.19.2",
 		"@hono/zod-validator": "^0.4.3",
 		"@scalar/hono-api-reference": "^0.5.172",
-		"@workspace/eslint-config": "*",
-		"@workspace/typescript-config": "*",
+		"@workspace/eslint-config": "workspace:*",
+		"@workspace/typescript-config": "workspace:*",
 		"bcryptjs": "^3.0.2",
-		"drizzle-orm": "*",
-		"drizzle-zod": "*",
 		"dotenv": "*",
 		"dotenv-expand": "*",
+		"drizzle-orm": "*",
+		"drizzle-zod": "*",
 		"hono": "*",
 		"hono-openapi": "^0.4.6",
 		"hono-pino": "^0.8.0",
@@ -59,6 +71,7 @@
 		"@types/nodemailer": "^6.4.17",
 		"@types/pg": "^8.11.11",
 		"dotenv-cli": "*",
-		"tsx": "^4.19.2"
+		"tsx": "^4.19.2",
+		"typescript": "^5.8.3"
 	}
 }

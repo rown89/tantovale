@@ -16,9 +16,9 @@
 		"./utils/*": "./src/utils/*.ts"
 	},
 	"dependencies": {
-		"@workspace/eslint-config": "*",
-		"@workspace/typescript-config": "*",
-		"@workspace/server": "*",
+		"@workspace/eslint-config": "workspace:*",
+		"@workspace/typescript-config": "workspace:*",
+		"@workspace/server": "workspace:*",
 		"zod": "*",
 		"@tanstack/react-query": "*"
 	},

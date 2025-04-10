@@ -1,5 +1,3 @@
-import 'dotenv/config';
-
 import { createApp } from './lib/create-app';
 import { configureOpenAPI } from './lib/configureOpenApi';
 

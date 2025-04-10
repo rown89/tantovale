@@ -1,5 +1,3 @@
-import 'dotenv/config';
-
 import { env } from 'hono/adapter';
 import { sign } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
