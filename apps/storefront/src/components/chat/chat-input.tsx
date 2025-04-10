@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SendHorizontal } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Textarea } from "@workspace/ui/components/textarea";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 import { client } from "@workspace/server/client-rpc";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 interface ChatInputProps {
@@ -15,7 +15,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
   const queryClient = useQueryClient();
 
   const [message, setMessage] = useState("");
-  const router = useRouter();
+  // const router = useRouter();
 
   const mutation = useMutation({
     mutationFn: async (message: string) => {

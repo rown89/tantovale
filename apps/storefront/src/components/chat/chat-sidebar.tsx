@@ -15,7 +15,6 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarMenuBadge,
   SidebarInput,
 } from "@workspace/ui/components/sidebar";
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";

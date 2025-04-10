@@ -52,6 +52,7 @@ export default function UserSettingsPage() {
     },
   });
 
+  /*
   function onNotificationsSubmit(data: NotificationsFormValues) {
     toast("Notification preferences updated", {
       description:
@@ -59,6 +60,7 @@ export default function UserSettingsPage() {
     });
     console.log(data);
   }
+    */
 
   return (
     <div className="container mx-auto">

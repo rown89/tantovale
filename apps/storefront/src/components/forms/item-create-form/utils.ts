@@ -44,8 +44,11 @@ export function updatePropertiesArray({
   field: AnyFieldApi;
 }) {
   // Ensure we have an array from the field state.
-  const currentProperties: { id: number; slug: string; value: any }[] =
-    Array.isArray(field.state.value) ? [...field.state.value] : [];
+  const currentProperties: {
+    id: number;
+    slug: string;
+    value: unknown;
+  }[] = Array.isArray(field.state.value) ? [...field.state.value] : [];
 
   // Create the new property object.
   const newProperty = {

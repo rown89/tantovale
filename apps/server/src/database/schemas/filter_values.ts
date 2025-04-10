@@ -13,7 +13,7 @@ export const filterValues = pgTable(
 			.references(() => filters.id, { onDelete: 'cascade' }),
 		name: text('name').notNull(),
 		// Constraint Reminder: value & is_boolean can't both co-exist, only one is allowed.
-		value: text('value'),
+		value: FilterValuesEnum('value'),
 		boolean_value: boolean('boolean_value'),
 		numeric_value: integer('numeric_value'),
 		icon: text('icon'),
