@@ -65,7 +65,8 @@ export default function CreateItemFormComponent({
   const description = useField({ form, name: "commons.description" }).state
     .value;
   const city = useField({ form, name: "commons.city" }).state.value;
-  const images = useField({ form, name: "images" }).state.value as File[];
+  const images = useField({ form, name: "images" }).state
+    .value as unknown as File[];
 
   useEffect(() => {
     // if on mount we have a subcategory already settled in query params:
@@ -262,7 +263,7 @@ export default function CreateItemFormComponent({
                         fileInputRef={fileInputRef}
                         maxImages={maxImages}
                         onImagesChange={(images) => {
-                          if (images) handleChange(images as [File, ...File[]]);
+                          if (images) handleChange(images as any);
                         }}
                       />
                       <FieldInfo field={field} />

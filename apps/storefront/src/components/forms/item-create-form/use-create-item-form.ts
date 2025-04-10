@@ -103,6 +103,7 @@ export function useCreateItemForm({
           const compressedImages = await Promise.all(
             images.map(async (image) => {
               try {
+                // @ts-expect-error need to fix it
                 return await imageCompression(image, compressionOptions);
               } catch (error) {
                 console.error("Error compressing image:", error);

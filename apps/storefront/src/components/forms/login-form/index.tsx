@@ -2,17 +2,18 @@
 
 import { useActionState, useEffect } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { CheckCircle2 } from "lucide-react";
 import { cn } from "@workspace/ui/lib/utils";
 import { Button } from "@workspace/ui/components/button";
 import { Card, CardContent } from "@workspace/ui/components/card";
 import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
-import { submitLogin } from "#app/login/actions";
-import { LoginActionResponse } from "#app/login/types";
 import { Alert, AlertDescription } from "@workspace/ui/components/alert";
-import { CheckCircle2 } from "lucide-react";
+import { Label } from "@workspace/ui/components/label";
+
+import { submitLogin } from "../../../app/login/actions";
+import { LoginActionResponse } from "../../../app/login/types";
 import { useAuth } from "../../../providers/auth-providers";
-import { useRouter } from "next/navigation";
 
 const initialState: LoginActionResponse = {
   success: false,
@@ -32,11 +33,6 @@ export function LoginForm({
       setUser(state?.user);
       router.push("/");
     }
-  }, [state]);
-
-  // Add logging to check the state
-  useEffect(() => {
-    console.log("Current state:", state);
   }, [state]);
 
   return (

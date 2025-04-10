@@ -69,18 +69,22 @@ export async function submitLogin(
     const loginData = await loginResponse.json();
     const { user } = loginData;
 
-    return {
+    const result = {
       success: true,
       message: "Correctly logged-in",
       user,
     };
+
+    return result;
   } catch (error) {
     console.error(error);
 
-    return {
+    const result = {
       success: false,
       inputs: rawData,
       message: "An unexpected error occurred with login form",
     };
+
+    return result;
   }
 }
