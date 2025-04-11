@@ -1,3 +1,8 @@
+.navigation-wrapper {
+	width: 100%; /* Make the slider take full width of parent */
+	position: relative;
+}
+
 [class^='number-slide'],
 [class*=' number-slide'] {
 	background: grey;
@@ -12,21 +17,30 @@
 }
 
 .keen-slider {
-	width: 100%; /* Make the slider take full width of parent */
-	overflow: hidden; /* Prevent overflow */
-	border-radius: 12px;
+	height: 100%;
 }
 
-.thumbnail .keen-slider__slide {
-	font-size: 30px;
-	margin-top: 10px;
-	height: 100px;
+.dots {
+	display: flex;
+	padding: 10px 0;
+	justify-content: center;
+}
+
+.dot {
+	border: none;
+	width: 10px;
+	height: 10px;
+	background: #c5c5c5;
+	border-radius: 50%;
+	margin: 0 5px;
+	padding: 5px;
 	cursor: pointer;
-	border-radius: 12px;
-	max-width: 120px !important;
-	min-width: 120px !important;
 }
 
-.thumbnail .keen-slider__slide.active {
-	border: 2px dashed rgb(48, 170, 241);
+.dot:focus {
+	outline: none;
+}
+
+.dot.active {
+	background: #000;
 }
