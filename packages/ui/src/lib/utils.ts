@@ -6,5 +6,5 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number) {
-	return `${(amount / 1000).toFixed(2)}`;
+	return `${(amount / 100).toFixed(2)}`;
 }

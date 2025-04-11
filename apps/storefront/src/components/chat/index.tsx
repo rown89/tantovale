@@ -51,7 +51,7 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
     <div className="flex flex-col h-full">
       <ChatHeader
         id="chat-header"
-        chatRoom={chatRoom}
+        room={chatRoom}
         currentUserId={currentUserId}
       />
       <div className="flex-1 overflow-y-auto py-4 px-8">
@@ -64,10 +64,9 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
             />
           ))
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-center text-muted-foreground">
-              No messages yet. Start the conversation!
-            </p>
+          <div className="flex h-full items-center justify-center flex-col text-muted-foreground">
+            <p>No messages yet.</p>
+            <p>Start the conversation!</p>
           </div>
         )}
         <div ref={messagesEndRef} />

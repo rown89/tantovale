@@ -45,9 +45,6 @@ export function ChatMessage({ message, isCurrentUser }: ChatMessageProps) {
               addSuffix: true,
             })}
           </span>
-          {isCurrentUser && message.read_at && (
-            <span className="ml-1">• Read</span>
-          )}
         </div>
       </div>
     </div>

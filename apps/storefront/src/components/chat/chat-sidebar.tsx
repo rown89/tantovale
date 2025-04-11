@@ -99,9 +99,7 @@ export function ChatSidebar({
 
                   // Determine if current user is buyer or seller
                   const isBuyer = room?.buyer?.id === currentUserId;
-                  const otherUser = isBuyer
-                    ? { id: room.buyer.id, username: room.buyer.username }
-                    : room.buyer;
+                  const otherUser = isBuyer ? room.author : room.buyer;
 
                   return (
                     <SidebarMenuItem key={room.id}>

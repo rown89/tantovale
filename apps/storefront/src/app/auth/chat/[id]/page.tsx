@@ -13,12 +13,29 @@ export default function ChatRoomPage() {
 
   if (isNaN(chatRoomId)) notFound();
 
+  const { data: currentUser, isError: isCurrentUserError } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: async () => {
+      const response = await client.user.auth.$get();
+
+      if (!response.ok) {
+        console.log("currentUser error", response);
+        return undefined;
+      }
+
+      return await response.json();
+    },
+  });
+
   const { data: chatRooms, isError: isChatRoomsError } = useQuery({
     queryKey: ["chatRooms"],
     queryFn: async () => {
       const response = await client.chat.auth.rooms.$get();
 
-      if (!response.ok) console.log("chatRooms error", response);
+      if (!response.ok) {
+        console.log("chatRooms error", response);
+        return undefined;
+      }
 
       return await response.json();
     },
@@ -33,7 +50,6 @@ export default function ChatRoomPage() {
 
       if (!response.ok) {
         console.log("chatRooms error", response);
-
         return [];
       }
 
@@ -47,7 +63,7 @@ export default function ChatRoomPage() {
 
   if (!chatRoom) notFound();
 
-  const currentUserId = chatRoom.buyer.id;
+  const currentUserId = Number(currentUser?.id);
 
   return (
     <Chat

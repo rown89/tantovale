@@ -7,13 +7,14 @@ import { ChatProps } from ".";
 
 interface ChatHeaderProps {
   id: string;
-  chatRoom: ChatProps["chatRoom"];
+  room: ChatProps["chatRoom"];
   currentUserId: number;
 }
 
-export function ChatHeader({ id, chatRoom, currentUserId }: ChatHeaderProps) {
-  const isBuyer = chatRoom.buyer.id === currentUserId;
-  const otherUser = isBuyer ? chatRoom.author : chatRoom.buyer;
+export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
+  // Determine if current user is buyer or seller
+  const isBuyer = room?.buyer?.id === currentUserId;
+  const otherUser = isBuyer ? room.author : room.buyer;
 
   return (
     <div
@@ -34,23 +35,20 @@ export function ChatHeader({ id, chatRoom, currentUserId }: ChatHeaderProps) {
         </Avatar>
         <div>
           <h2 className="font-medium truncate">{otherUser.username}</h2>
-          <p className="text-sm text-muted-foreground">
-            {isBuyer ? "Seller" : "Buyer"}
-          </p>
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <div className="text-right">
-          {chatRoom.item.status === "available" && chatRoom.item.published ? (
+        <div className="flex flex-col text-right w-[200px]">
+          {room.item.status === "available" && room.item.published ? (
             <>
               <Link
-                href={`/items/${chatRoom.item.id}`}
-                className="font-medium hover:underline"
+                href={`/item/${room.item.id}`}
+                className="font-medium hover:underline break-all"
               >
-                {chatRoom.item.title}
+                {room.item.title}
               </Link>
               <p className="text-sm font-medium">
-                {formatCurrency(chatRoom.item.price)}€
+                {formatCurrency(room.item.price)}€
               </p>
             </>
           ) : (

@@ -1,18 +1,20 @@
 import { eq, and, or, isNull, not, desc, max } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { differenceInMinutes } from 'date-fns';
+
 import { createClient } from '../../database';
 import { chat_room, chat_messages, users, items } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
+import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
+import { alias } from 'drizzle-orm/pg-core';
 
 export const chatRoute = createRouter()
 	.get(`/${authPath}/rooms`, authMiddleware, async (c) => {
 		const user = c.var.user;
-
 		const { db } = createClient();
-
 		try {
 			const lastMessagesSubquery = db
 				.select({
@@ -22,6 +24,9 @@ export const chatRoute = createRouter()
 				.from(chat_messages)
 				.groupBy(chat_messages.chat_room_id)
 				.as('latest_messages');
+
+			const usersBuyer = alias(users, 'users_buyer');
+			const usersSeller = alias(users, 'users_seller');
 
 			// Now perform the main query with proper joins
 			const chatRooms = await db
@@ -35,7 +40,9 @@ export const chatRoute = createRouter()
 					item_price: items.price,
 					item_status: items.status,
 					item_published: items.published,
-					buyer_username: users.username,
+					buyer_username: usersBuyer.username,
+					seller_id: items.user_id,
+					seller_username: usersSeller.username,
 					last_message: chat_messages.message,
 					last_message_id: chat_messages.id,
 					last_message_created_at: chat_messages.created_at,
@@ -44,7 +51,8 @@ export const chatRoute = createRouter()
 				})
 				.from(chat_room)
 				.innerJoin(items, eq(chat_room.item_id, items.id))
-				.innerJoin(users, eq(chat_room.buyer_id, users.id))
+				.innerJoin(usersBuyer, eq(chat_room.buyer_id, usersBuyer.id))
+				.innerJoin(usersSeller, eq(items.user_id, usersSeller.id))
 				.leftJoin(lastMessagesSubquery, eq(chat_room.id, lastMessagesSubquery.chat_room_id))
 				.leftJoin(
 					chat_messages,
@@ -75,8 +83,8 @@ export const chatRoute = createRouter()
 					published: room.item_published,
 				},
 				author: {
-					id: room.last_message_sender_id, // Assuming the sender is the author
-					username: room.buyer_username, // Assuming the buyer is the author
+					id: room.seller_id, // The seller is the author (item owner)
+					username: room.seller_username, // Using seller's username
 				},
 				buyer: {
 					id: room.buyer_id,
@@ -109,8 +117,9 @@ export const chatRoute = createRouter()
 		),
 		async (c) => {
 			const user = c.var.user;
+			const body = await c.req.valid('json');
+
 			const { db } = createClient();
-			const body = await c.req.json();
 
 			// Check if the item exists and user is not the owner
 			const itemResult = await db.select().from(items).where(eq(items.id, body.item_id));
@@ -153,6 +162,7 @@ export const chatRoute = createRouter()
 	.get(`/${authPath}/rooms/:roomId/messages`, authMiddleware, async (c) => {
 		const user = c.var.user;
 		const roomId = Number(c.req.param('roomId'));
+
 		const { db } = createClient();
 
 		try {
@@ -242,7 +252,9 @@ export const chatRoute = createRouter()
 		async (c) => {
 			const user = c.var.user;
 			const roomId = Number(c.req.param('roomId'));
-			const body = await c.req.json();
+
+			const body = await c.req.valid('json');
+
 			const { db } = createClient();
 
 			// Verify the user has access to this chat room
@@ -264,6 +276,79 @@ export const chatRoute = createRouter()
 			const room = roomResult[0];
 			if (room?.buyer_id !== user.id && room?.seller_id !== user.id) {
 				return c.json({ error: 'Unauthorized access to chat room' }, 403);
+			}
+
+			const recentMessagesResult = await db
+				.select({
+					sender_id: chat_messages.sender_id,
+					created_at: chat_messages.created_at,
+				})
+				.from(chat_messages)
+				.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.sender_id, user.id)))
+
+				.orderBy(desc(chat_messages.created_at))
+				.limit(1);
+
+			// Get the first message from the result (if any)
+			const recentMessage = recentMessagesResult[0];
+
+			// Check if there's a recent message and if we need to send an alert
+			if (recentMessage) {
+				const maxMinutes = 5;
+
+				// If last message date is over maxMinutes then we send the email
+				const shouldSendEmailAlert = differenceInMinutes(new Date(), recentMessage.created_at) > maxMinutes;
+
+				if (shouldSendEmailAlert) {
+					// Determine recipient (the one who is NOT sending the message)
+					const recipientId = user.id === room.buyer_id ? room.seller_id : room.buyer_id;
+
+					// Get recipient email
+					const [recipient] = await db
+						.select({
+							email: users.email,
+							username: users.username,
+						})
+						.from(users)
+						.where(eq(users.id, recipientId));
+
+					if (recipient) {
+						// Send email notification
+						await sendNewMessageWarning({
+							to: recipient.email,
+							roomId,
+							username: user.username,
+							message: body.message,
+						});
+
+						// Log that notification was sent
+						console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
+					}
+				}
+			} else {
+				// No previous messages in this room, we should send an email
+				const recipientId = user.id === room.buyer_id ? room.seller_id : room.buyer_id;
+
+				// Get recipient email
+				const [recipient] = await db
+					.select({
+						email: users.email,
+						username: users.username,
+					})
+					.from(users)
+					.where(eq(users.id, recipientId));
+
+				if (recipient) {
+					// Send email notification
+					await sendNewMessageWarning({
+						to: recipient.email,
+						roomId,
+						username: user.username,
+						message: body.message,
+					});
+
+					console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
+				}
 			}
 
 			// Send the message

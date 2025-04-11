@@ -10,7 +10,10 @@ import NavBar from "#components/navbar/navbar";
 import "@workspace/ui/globals.css";
 
 const font = Nunito_Sans({
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
   subsets: ["latin"],
+  display: "swap",
   variable: "--font",
 });
 
@@ -21,9 +24,9 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get("access_token");
   const refreshToken = cookieStore.get("refresh_token");
