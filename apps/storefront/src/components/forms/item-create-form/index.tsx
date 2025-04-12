@@ -397,7 +397,6 @@ export default function CreateItemFormComponent({
                 description:
                   description !== undefined ? String(description) : "",
                 images: imageUrls?.length ? imageUrls : [],
-                imagesThumbs: thumbImagesUrls,
                 subcategory: { name: selectedSubCategory?.name || "" },
               }}
             />

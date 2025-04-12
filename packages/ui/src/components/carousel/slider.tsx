@@ -6,10 +6,9 @@ import './slider.css';
 
 interface SliderProps {
 	images: ReactNode[];
-	thumbnails: ReactNode[];
 }
 
-export default function Slider({ images, thumbnails }: SliderProps) {
+export default function Slider({ images }: SliderProps) {
 	const [currentSlide, setCurrentSlide] = React.useState(0);
 	const [loaded, setLoaded] = useState(false);
 

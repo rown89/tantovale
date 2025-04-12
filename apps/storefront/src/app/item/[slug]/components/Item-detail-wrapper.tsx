@@ -19,7 +19,7 @@ interface ItemWrapperProps {
   };
 }
 
-export default function ItemWrapper({ item }: ItemWrapperProps) {
+export default function ItemWDetailrapper({ item }: ItemWrapperProps) {
   const { title, price, description, images, subcategory } = item;
 
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -40,24 +40,12 @@ export default function ItemWrapper({ item }: ItemWrapperProps) {
     );
   });
 
-  const imageTumbsUrls = images?.map((file, i) => {
-    return (
-      <Image
-        key={i}
-        className="object-cover hover:cursor-pointer"
-        fill
-        src={file}
-        alt=""
-      />
-    );
-  });
-
   return (
     <div className="container mx-auto max-w-[900px] px-4">
       <ItemDetailCard
         isPreview
         imagesRef={fileInputRef}
-        item={{ ...item, images: imageUrls, imagesThumbs: imageTumbsUrls }}
+        item={{ ...item, images: imageUrls }}
       />
 
       {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}

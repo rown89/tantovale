@@ -1,9 +1,9 @@
 import { client } from "@workspace/server/client-rpc";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import ItemWrapper from "./components/wrapper";
+import ItemWDetailrapper from "./components/Item-detail-wrapper";
 
-export default async function ItemSlugPage() {
+export default async function ItemDetailPage() {
   const headerList = await headers();
   const pathname = headerList.get("x-current-path");
 
@@ -23,5 +23,5 @@ export default async function ItemSlugPage() {
 
   const item = await itemResponse.json();
 
-  return <ItemWrapper item={item} />;
+  return <ItemWDetailrapper item={item} />;
 }

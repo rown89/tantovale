@@ -24,7 +24,6 @@ export interface ItemDetailCardrops {
     description: string;
     city: string;
     images: ReactNode[];
-    imagesThumbs?: ReactNode[];
     subcategory?: {
       name: string;
       slug?: string;
@@ -34,15 +33,7 @@ export interface ItemDetailCardrops {
 
 export const ItemDetailCard = React.memo(
   ({ isPreview = false, item, imagesRef, maxImages }: ItemDetailCardrops) => {
-    const {
-      title,
-      price,
-      description,
-      city,
-      images,
-      imagesThumbs,
-      subcategory,
-    } = item;
+    const { title, price, description, city, images, subcategory } = item;
 
     return (
       <div className="w-full overflow-hidden h-full py-5">
@@ -79,22 +70,6 @@ export const ItemDetailCard = React.memo(
                                 alt={item.alt}
                               />
                             ))
-                      }
-                      thumbnails={
-                        imagesThumbs?.length
-                          ? imagesThumbs
-                          : images?.length
-                            ? images
-                            : placeholderImages.map((item, i) => (
-                                <Image
-                                  key={i}
-                                  fill
-                                  priority
-                                  className="object-cover"
-                                  src={item.url}
-                                  alt={item.alt}
-                                />
-                              ))
                       }
                     />
                   ) : (
