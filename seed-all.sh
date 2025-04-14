@@ -14,7 +14,7 @@ fi
 
 # Handle countries seeding with zip extraction
 echo "Preparing countries data..."
-COUNTRIES_DIR="packages/database/scripts/seeders/countries/data"
+COUNTRIES_DIR="apps/server/src/database/scripts/seeders/countries/data"
 
 # Create data directory if it doesn't exist
 mkdir -p "$COUNTRIES_DIR"

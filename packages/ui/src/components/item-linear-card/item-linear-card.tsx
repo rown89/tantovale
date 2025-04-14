@@ -44,7 +44,7 @@ interface ItemCardProps {
 	onUnpubish: () => void;
 }
 
-export function ItemPreviewCard({
+export function ItemLinearCard({
 	item,
 	ThumbLink,
 	TitleLink,

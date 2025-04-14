@@ -16,12 +16,14 @@ import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
 import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
-import { ItemDetailCard } from "#components/item-card";
+import { ItemDetailCard } from "#components/item-detail-card";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./use-create-item-form";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 
 import type { Category } from "@workspace/shared/types/category";
+import Link from "next/link";
+import { Badge } from "@workspace/ui/components/badge";
 
 const maxImages = 5;
 
@@ -35,6 +37,9 @@ export default function CreateItemFormComponent({
   );
   const [searchedCityName, setSearchedCityName] = useState("");
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [selectedCondition, setSelectedCondition] = useState<
+    { id: number; name: string; slug: string } | undefined
+  >();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
@@ -47,7 +52,6 @@ export default function CreateItemFormComponent({
     isLoadingSubCat,
     isLoadingSubCatFilters,
   } = useCategoriesData(subcategory);
-
   const { cities, isLoadingCities } = useCitiesData(searchedCityName);
 
   const {
@@ -67,6 +71,31 @@ export default function CreateItemFormComponent({
   const city = useField({ form, name: "commons.city" }).state.value;
   const images = useField({ form, name: "images" }).state
     .value as unknown as File[];
+  const properties = useField({ form, name: "properties" }).state.value;
+
+  useEffect(() => {
+    const selectedConditionId = properties?.find(
+      (item) => item.slug === "condition",
+    )?.value;
+
+    if (properties?.length && selectedConditionId) {
+      const conditionProperty = subCatFilters?.filter(
+        (item) => item.slug === "condition",
+      )?.[0];
+
+      const extractCondition = conditionProperty?.options.find((item) => {
+        return item.id === Number(selectedConditionId);
+      });
+
+      if (extractCondition) {
+        setSelectedCondition({
+          id: extractCondition.id,
+          name: extractCondition.name,
+          slug: String(extractCondition.value),
+        });
+      }
+    }
+  }, [properties, subCatFilters]);
 
   useEffect(() => {
     // if on mount we have a subcategory already settled in query params:
@@ -111,21 +140,6 @@ export default function CreateItemFormComponent({
             alt=""
           />
         </div>
-      );
-    });
-  }, [images]);
-
-  const thumbImagesUrls = useMemo(() => {
-    return images?.map((file, i) => {
-      const imageUrl = URL.createObjectURL(file);
-      return (
-        <Image
-          key={i}
-          className="object-cover hover:cursor-pointer"
-          fill
-          src={imageUrl}
-          alt=""
-        />
       );
     });
   }, [images]);
@@ -287,7 +301,7 @@ export default function CreateItemFormComponent({
                         name={name}
                         disabled={isSubmittingForm}
                         rows={6}
-                        maxLength={800}
+                        maxLength={2000}
                         value={value !== undefined ? value?.toString() : ""}
                         onBlur={handleBlur}
                         onChange={(e) => handleChange(e.target.value)}
@@ -397,7 +411,35 @@ export default function CreateItemFormComponent({
                 description:
                   description !== undefined ? String(description) : "",
                 images: imageUrls?.length ? imageUrls : [],
-                subcategory: { name: selectedSubCategory?.name || "" },
+                subcategory: selectedSubCategory && (
+                  <Link
+                    href={`/items/condition/${selectedSubCategory.slug ?? "#"}`}
+                    target="_blank"
+                    className="mb-2"
+                  >
+                    <Badge variant="outline" className="text-sm bg-accent px-3">
+                      {selectedSubCategory.name}
+                    </Badge>
+                  </Link>
+                ),
+                condition: selectedCondition && (
+                  <Link
+                    href={`/items/category/${selectedCondition.slug ?? "#"}`}
+                    target="_blank"
+                    className="mb-2"
+                  >
+                    <Badge
+                      variant="outline"
+                      className="text-sm bg-primary px-3"
+                    >
+                      {selectedCondition.name}
+                    </Badge>
+                  </Link>
+                ),
+                /*    deliveryMethods:
+                  properties
+                    ?.find((item) => item.slug === "delivery_method")
+                    ?.value?.map((item) => item.toString()) ?? [], */
               }}
             />
 

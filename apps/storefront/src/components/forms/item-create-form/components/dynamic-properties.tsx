@@ -83,15 +83,16 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
             options={filter.options.map(({ id, name: label, value }) => ({
               id,
               label,
-              value: value?.toString() ?? "",
+              value: id?.toString() ?? "",
             }))}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
+              console.log(value);
               updatePropertiesArray({
                 value,
                 filter,
                 field,
-              })
-            }
+              });
+            }}
             defaultValue={getCurrentValue(field, filter.id)}
             placeholder={`Select ${filter.name}`}
             variant="inverted"

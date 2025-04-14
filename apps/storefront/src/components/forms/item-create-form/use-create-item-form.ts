@@ -15,6 +15,7 @@ import { handleQueryParamChange } from "../../../utils/handle-qp";
 interface Category {
   id: number;
   name: string;
+  slug?: string;
   subcategories: Category[];
 }
 

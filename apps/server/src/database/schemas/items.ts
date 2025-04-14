@@ -29,6 +29,7 @@ export const items = pgTable(
 		city: integer('city')
 			.notNull()
 			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+		is_payable: boolean('is_payable').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 		deleted_at: timestamp('deleted_at', { mode: 'date' }),

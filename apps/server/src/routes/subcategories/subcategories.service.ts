@@ -26,6 +26,7 @@ export const getSubcategoriesById = async (c: Context<AppBindings>, id: number) 
 		.select({
 			id: subcategories.id,
 			name: subcategories.name,
+			slug: subcategories.slug,
 		})
 		.from(subcategories)
 		.where(eq(subcategories.id, Number(id)));

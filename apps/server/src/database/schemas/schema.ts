@@ -19,3 +19,4 @@ export * from './subcategories';
 export * from './users';
 export * from './chat_room';
 export * from './chat_messages';
+export * from './user_item_favorites';

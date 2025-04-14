@@ -1,7 +1,6 @@
 "use client";
 
 import React, { ReactNode } from "react";
-import Image from "next/image";
 import {
   Card,
   CardContent,
@@ -9,42 +8,73 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import Slider from "@workspace/ui/components/carousel/slider";
-import { placeholderImages } from "../../utils/placeholder-images";
 import { Badge } from "@workspace/ui/components/badge";
 import { Button } from "@workspace/ui/components/button";
 import Link from "next/link";
+import { Heart, MapPin } from "lucide-react";
 
 export interface ItemDetailCardrops {
   isPreview: boolean;
+  isCompact?: boolean;
   imagesRef: React.RefObject<HTMLInputElement | null>;
   maxImages?: number;
   item: {
+    id?: number;
     title: string;
     price: number;
     description: string;
     city: string;
     images: ReactNode[];
-    subcategory?: {
-      name: string;
-      slug?: string;
-    };
+    subcategory?: ReactNode;
+    condition?: ReactNode;
+    deliveryMethods?: string[];
   };
+  isFavorite?: boolean;
+  handleFavorite?: (id: number) => void;
 }
 
 export const ItemDetailCard = React.memo(
-  ({ isPreview = false, item, imagesRef, maxImages }: ItemDetailCardrops) => {
-    const { title, price, description, city, images, subcategory } = item;
+  ({
+    isPreview = false,
+    isCompact = false,
+    item,
+    imagesRef,
+    maxImages,
+    isFavorite,
+    handleFavorite,
+  }: ItemDetailCardrops) => {
+    const { title, price, description, city, images, condition, subcategory } =
+      item;
 
     return (
-      <div className="w-full overflow-hidden h-full py-5">
+      <div className="w-full overflow-hidden h-full">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="flex flex-col gap-2">
-              <h1 className="text-2xl font-bold break-all">
-                {title || "Your item title..."}
-              </h1>
+            <CardTitle className="flex flex-col gap-1">
+              <div className="flex gap-5 justify-between items-start">
+                <h1 className="text-2xl font-bold break-all">
+                  {title || "Your item title..."}
+                </h1>
+
+                {isCompact && (
+                  <Heart
+                    className={`${isFavorite ? "text-secondary" : ""}`}
+                    onClick={async () => {
+                      if (!isPreview && item?.id && handleFavorite) {
+                        handleFavorite(item?.id);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+
               <div className="flex flex-col gap-2 items-start md:items-center md:flex-row md:justify-between">
-                <p className="w-full text-accent">{city}</p>
+                {city && (
+                  <p className="w-full text-accent flex gap-1 items-center">
+                    <MapPin size={15} />
+                    {city}
+                  </p>
+                )}
                 <p className="text-xl font-semibold text-end w-full">
                   € {price ? (price / 100).toFixed(2) : "0.00"}
                 </p>
@@ -56,22 +86,7 @@ export const ItemDetailCard = React.memo(
               <div className="min-h-[450px] w-full bg-background/50 rounded-t-md flex items-center justify-center flex-col">
                 {isPreview ? (
                   images && images.length > 0 ? (
-                    <Slider
-                      images={
-                        images?.length
-                          ? images
-                          : placeholderImages.map((item, i) => (
-                              <Image
-                                key={i}
-                                fill
-                                priority
-                                className="object-cover"
-                                src={item.url}
-                                alt={item.alt}
-                              />
-                            ))
-                      }
-                    />
+                    <Slider images={images} />
                   ) : (
                     <div className="flex flex-col gap-2">
                       <Button onClick={() => imagesRef.current?.click()}>
@@ -85,29 +100,21 @@ export const ItemDetailCard = React.memo(
                 ) : null}
               </div>
 
-              {/* Subcategory Badge */}
-              {subcategory?.name && (
-                <div className="mb-2">
-                  {subcategory.slug ? (
-                    <Link href={subcategory.slug} target="_blank">
-                      <Badge
-                        variant="outline"
-                        className="text-sm bg-accent px-3"
-                      >
-                        {subcategory.name}
-                      </Badge>
-                    </Link>
-                  ) : (
-                    <Badge variant="outline" className="text-sm bg-accent px-3">
-                      {subcategory.name}
-                    </Badge>
-                  )}
+              <div className="flex justify-between gap-2">
+                <div className="flex gap-2">
+                  {/* Subcategory Badge */}
+                  {subcategory && subcategory}
+                  {/* Condition */}
+                  {condition && condition}
+                </div>
+              </div>
+              {!isCompact && (
+                <div
+                  className={`whitespace-pre-wrap ${isPreview ? "max-h-80" : ""} dark:text-slate-400 text-slate-600 overflow-auto break-all`}
+                >
+                  {description || "Your item description will appear here..."}
                 </div>
               )}
-
-              <div className="whitespace-pre-wrap max-h-60 dark:text-slate-400 text-slate-600 overflow-auto break-all">
-                {description || "Your item description will appear here..."}
-              </div>
             </div>
           </CardContent>
         </Card>

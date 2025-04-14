@@ -9,12 +9,13 @@ import { subcategories } from '../../database/schemas/subcategories';
 import { subCategoryFilters } from '../../database/schemas/subcategory_filters';
 import { createItemSchema } from '../../extended_schemas';
 import { items } from '../../database/schemas/items';
-import { itemsFiltersValues } from '../../database/schemas/items_filter_values';
+import { itemsFiltersValues, InsertItemFilterValue } from '../../database/schemas/items_filter_values';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { itemsImages } from '../../database/schemas/items_images';
 import { cities } from '../../database/schemas/cities';
+import { filterValues } from 'src/database/schemas/filter_values';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -29,18 +30,27 @@ export const itemRoute = createRouter()
 			const [item] = await db
 				.select({
 					item: {
+						id: items.id,
 						title: items.title,
 						price: items.price,
 						description: items.description,
 						city: cities.name,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
+						property_name: filterValues.name,
+						property_value: filterValues.value,
+						property_boolean_value: filterValues.boolean_value,
+						property_numeric_value: filterValues.numeric_value,
 					},
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
 				.innerJoin(cities, eq(cities.id, items.city))
+				.innerJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
+				.innerJoin(filterValues, eq(itemsFiltersValues.filter_value_id, filterValues.id))
 				.where(eq(items.id, id));
+
+			console.log('item', item);
 
 			const itemImages = await db
 				.select({ url: itemsImages.url })
@@ -50,6 +60,7 @@ export const itemRoute = createRouter()
 			if (!item) throw new Error('No item found');
 
 			const mergedItem = {
+				id: item.item.id,
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,
@@ -138,13 +149,33 @@ export const itemRoute = createRouter()
 						throw new Error('Some properties have invalid filter IDs');
 					}
 
+					const reshapedProperties: InsertItemFilterValue[] = [];
+
+					// Reshape properties to match the database schema
+
+					properties.map((p) => {
+						// Check if the filter contains an array of values
+						// If so, map through the values and create an object for each
+						// Otherwise, create a single object
+						if (Array.isArray(p.value)) {
+							p.value.map((v) => {
+								reshapedProperties.push({
+									item_id: newItem.id,
+									filter_value_id: Number(v),
+								});
+							});
+						} else {
+							reshapedProperties.push({
+								item_id: newItem.id,
+								filter_value_id: Number(p.value),
+							});
+						}
+					});
+
+					console.log(reshapedProperties);
+
 					// Insert filter values
-					await tx.insert(itemsFiltersValues).values(
-						properties.map(({ id: filter_value_id }) => ({
-							item_id: newItem.id,
-							filter_value_id,
-						})),
-					);
+					await tx.insert(itemsFiltersValues).values(reshapedProperties);
 				} else {
 					// Check if the selected subcategory has mandatory properties
 					const mandatoryFilters = await tx

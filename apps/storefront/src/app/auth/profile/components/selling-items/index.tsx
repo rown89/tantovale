@@ -1,6 +1,6 @@
 "use client";
 
-import { ItemPreviewCard } from "@workspace/ui/components/item-preview-card/item-preview-card";
+import { ItemLinearCard } from "@workspace/ui/components/item-linear-card/item-linear-card";
 import { useQuery } from "@tanstack/react-query";
 import { client } from "@workspace/server/client-rpc";
 import { toast } from "sonner";
@@ -197,7 +197,7 @@ export default function UserSellingItemsComponent() {
                 );
 
                 return (
-                  <ItemPreviewCard
+                  <ItemLinearCard
                     key={i}
                     TitleLink={TitleLink}
                     ThumbLink={ThumbLink}
