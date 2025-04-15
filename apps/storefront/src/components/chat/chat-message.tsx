@@ -19,7 +19,7 @@ export function ChatMessage({ message, isCurrentUser }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        "flex items-start gap-2 mb-4",
+        "flex items-start gap-2 mb-4 break-all",
         isCurrentUser ? "flex-row-reverse" : "flex-row",
       )}
     >

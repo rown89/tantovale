@@ -1,21 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { SendHorizontal } from "lucide-react";
 import { Button } from "@workspace/ui/components/button";
 import { Textarea } from "@workspace/ui/components/textarea";
-// import { useRouter } from "next/navigation";
 import { client } from "@workspace/server/client-rpc";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useForm } from "@tanstack/react-form";
+import { ChatMessageSchema } from "@workspace/server/extended_schemas";
+import { z } from "zod";
+import { FieldInfo } from "../forms/utils/field-info";
+
 interface ChatInputProps {
   chatRoomId: number;
 }
 
 export function ChatInput({ chatRoomId }: ChatInputProps) {
   const queryClient = useQueryClient();
-
-  const [message, setMessage] = useState("");
-  // const router = useRouter();
 
   const mutation = useMutation({
     mutationFn: async (message: string) => {
@@ -27,7 +26,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
       });
     },
     onSuccess: () => {
-      setMessage("");
+      form.reset();
 
       queryClient.invalidateQueries({ queryKey: ["chat-messages"] });
     },
@@ -36,37 +35,78 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
     },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || mutation.isPending) return;
+  type schemaType = z.infer<typeof ChatMessageSchema>;
 
-    mutation.mutate(message);
-  };
+  const form = useForm({
+    defaultValues: {
+      message: "",
+    },
+    validators: {
+      onSubmit: ChatMessageSchema,
+    },
+    onSubmit: async ({ value }: { value: schemaType }) => {
+      mutation.mutate(value.message);
+    },
+  });
 
   return (
-    <form onSubmit={handleSubmit} className="p-4">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        form.handleSubmit();
+      }}
+      className="p-4"
+    >
       <div className="flex items-center gap-2 ">
-        <Textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type your message..."
-          className=" flex-1 resize-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit(e);
-            }
+        <form.Field name="message">
+          {(field) => {
+            const { name, handleBlur, handleChange, state } = field;
+            const { value } = state;
+
+            return (
+              <div className="flex flex-col gap-2 w-full">
+                <FieldInfo field={field} />
+                <Textarea
+                  id={name}
+                  name={name}
+                  value={value !== undefined ? value?.toString() : ""}
+                  onBlur={handleBlur}
+                  onChange={(e) => handleChange(e.target.value)}
+                  placeholder="Type your message..."
+                  className=" flex-1 resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      form.handleSubmit();
+                    }
+                  }}
+                />
+              </div>
+            );
           }}
-        />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={!message.trim() || mutation.isPending}
-          className="h-10 w-10"
+        </form.Field>
+
+        <form.Subscribe
+          selector={(formState) => ({
+            canSubmit: formState.canSubmit,
+            isSubmitting: formState.isSubmitting,
+            isDirty: formState.isDirty,
+          })}
         >
-          <SendHorizontal className="h-5 w-5" />
-          <span className="sr-only">Send message</span>
-        </Button>
+          {(state) => {
+            const { canSubmit, isSubmitting } = state;
+            return (
+              <Button
+                type="submit"
+                disabled={!canSubmit}
+                className="sticky bottom-0"
+              >
+                {isSubmitting ? "..." : "Send"}
+              </Button>
+            );
+          }}
+        </form.Subscribe>
       </div>
     </form>
   );

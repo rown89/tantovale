@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "../../providers/auth-providers";
-import { Button } from "@workspace/ui/components/button";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { Button } from "@workspace/ui/components/button";
+import { useAuth } from "../../providers/auth-providers";
 
 import {
   DropdownMenu,

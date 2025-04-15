@@ -43,7 +43,7 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
             <>
               <Link
                 href={`/item/${room.item.id}`}
-                className="font-medium hover:underline break-all"
+                className="font-medium hover:text-accent hover:underline break-all underline"
               >
                 {room.item.title}
               </Link>

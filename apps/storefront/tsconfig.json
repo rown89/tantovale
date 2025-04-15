@@ -2,6 +2,10 @@
   "extends": "@workspace/typescript-config/nextjs.json",
   "compilerOptions": {
     "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "incremental": true,
+    "composite": true,
     "baseUrl": ".",
     "paths": {
       "#*": ["./src/*"]
@@ -12,6 +16,10 @@
       }
     ]
   },
+  "paths": {
+    "@workspace/server/*": ["./packages/server/src/*"]
+  },
+  "references": [{ "path": "../server/" }],
   "include": [
     ".",
     "**/*.ts",
@@ -20,7 +28,7 @@
     "next.config.js",
     ".next/types/**/*.ts",
     "../../packages/ui/",
-    "../server/"
+    "../server/*.ts"
   ],
   "exclude": ["node_modules"]
 }

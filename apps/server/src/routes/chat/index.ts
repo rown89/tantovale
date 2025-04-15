@@ -10,6 +10,7 @@ import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
 import { alias } from 'drizzle-orm/pg-core';
+import { ChatMessageSchema } from 'src/extended_schemas';
 
 export const chatRoute = createRouter()
 	.get(`/${authPath}/rooms`, authMiddleware, async (c) => {
@@ -240,93 +241,58 @@ export const chatRoute = createRouter()
 		}
 	})
 	// Send a message in a chat room
-	.post(
-		`/${authPath}/rooms/:roomId/messages`,
-		authMiddleware,
-		zValidator(
-			'json',
-			z.object({
-				message: z.string(),
-			}),
-		),
-		async (c) => {
-			const user = c.var.user;
-			const roomId = Number(c.req.param('roomId'));
+	.post(`/${authPath}/rooms/:roomId/messages`, authMiddleware, zValidator('json', ChatMessageSchema), async (c) => {
+		const user = c.var.user;
+		const roomId = Number(c.req.param('roomId'));
 
-			const body = await c.req.valid('json');
+		const body = await c.req.valid('json');
 
-			const { db } = createClient();
+		const { db } = createClient();
 
-			// Verify the user has access to this chat room
-			const roomResult = await db
-				.select({
-					id: chat_room.id,
-					buyer_id: chat_room.buyer_id,
-					seller_id: items.user_id,
-				})
-				.from(chat_room)
-				.innerJoin(items, eq(chat_room.item_id, items.id))
-				.where(eq(chat_room.id, roomId));
+		// Verify the user has access to this chat room
+		const roomResult = await db
+			.select({
+				id: chat_room.id,
+				buyer_id: chat_room.buyer_id,
+				seller_id: items.user_id,
+			})
+			.from(chat_room)
+			.innerJoin(items, eq(chat_room.item_id, items.id))
+			.where(eq(chat_room.id, roomId));
 
-			if (roomResult.length === 0) {
-				return c.json({ error: 'Chat room not found' }, 404);
-			}
+		if (roomResult.length === 0) {
+			return c.json({ error: 'Chat room not found' }, 404);
+		}
 
-			// Check if user is either the buyer or the seller
-			const room = roomResult[0];
-			if (room?.buyer_id !== user.id && room?.seller_id !== user.id) {
-				return c.json({ error: 'Unauthorized access to chat room' }, 403);
-			}
+		// Check if user is either the buyer or the seller
+		const room = roomResult[0];
+		if (room?.buyer_id !== user.id && room?.seller_id !== user.id) {
+			return c.json({ error: 'Unauthorized access to chat room' }, 403);
+		}
 
-			const recentMessagesResult = await db
-				.select({
-					sender_id: chat_messages.sender_id,
-					created_at: chat_messages.created_at,
-				})
-				.from(chat_messages)
-				.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.sender_id, user.id)))
+		const recentMessagesResult = await db
+			.select({
+				sender_id: chat_messages.sender_id,
+				created_at: chat_messages.created_at,
+			})
+			.from(chat_messages)
+			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.sender_id, user.id)))
 
-				.orderBy(desc(chat_messages.created_at))
-				.limit(1);
+			.orderBy(desc(chat_messages.created_at))
+			.limit(1);
 
-			// Get the first message from the result (if any)
-			const recentMessage = recentMessagesResult[0];
+		// Get the first message from the result (if any)
+		const recentMessage = recentMessagesResult[0];
 
-			// Check if there's a recent message and if we need to send an alert
-			if (recentMessage) {
-				const maxMinutes = 5;
+		// Check if there's a recent message and if we need to send an alert
+		if (recentMessage) {
+			const maxMinutes = 5;
 
-				// If last message date is over maxMinutes then we send the email
-				const shouldSendEmailAlert = differenceInMinutes(new Date(), recentMessage.created_at) > maxMinutes;
+			// If last message date is over maxMinutes then we send the email
+			const shouldSendEmailAlert = differenceInMinutes(new Date(), recentMessage.created_at) > maxMinutes;
 
-				if (shouldSendEmailAlert) {
-					// Determine recipient (the one who is NOT sending the message)
-					const recipientId = user.id === room.buyer_id ? room.seller_id : room.buyer_id;
-
-					// Get recipient email
-					const [recipient] = await db
-						.select({
-							email: users.email,
-							username: users.username,
-						})
-						.from(users)
-						.where(eq(users.id, recipientId));
-
-					if (recipient) {
-						// Send email notification
-						await sendNewMessageWarning({
-							to: recipient.email,
-							roomId,
-							username: user.username,
-							message: body.message,
-						});
-
-						// Log that notification was sent
-						console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
-					}
-				}
-			} else {
-				// No previous messages in this room, we should send an email
+			if (shouldSendEmailAlert) {
+				// Determine recipient (the one who is NOT sending the message)
 				const recipientId = user.id === room.buyer_id ? room.seller_id : room.buyer_id;
 
 				// Get recipient email
@@ -347,23 +313,48 @@ export const chatRoute = createRouter()
 						message: body.message,
 					});
 
+					// Log that notification was sent
 					console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
 				}
 			}
+		} else {
+			// No previous messages in this room, we should send an email
+			const recipientId = user.id === room.buyer_id ? room.seller_id : room.buyer_id;
 
-			// Send the message
-			const newMessageResult = await db
-				.insert(chat_messages)
-				.values({
-					chat_room_id: roomId,
-					sender_id: user.id,
-					message: body.message,
+			// Get recipient email
+			const [recipient] = await db
+				.select({
+					email: users.email,
+					username: users.username,
 				})
-				.returning();
+				.from(users)
+				.where(eq(users.id, recipientId));
 
-			// Update the chat room's updated_at timestamp
-			await db.update(chat_room).set({ updated_at: new Date() }).where(eq(chat_room.id, roomId));
+			if (recipient) {
+				// Send email notification
+				await sendNewMessageWarning({
+					to: recipient.email,
+					roomId,
+					username: user.username,
+					message: body.message,
+				});
 
-			return c.json(newMessageResult[0]);
-		},
-	);
+				console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
+			}
+		}
+
+		// Send the message
+		const newMessageResult = await db
+			.insert(chat_messages)
+			.values({
+				chat_room_id: roomId,
+				sender_id: user.id,
+				message: body.message,
+			})
+			.returning();
+
+		// Update the chat room's updated_at timestamp
+		await db.update(chat_room).set({ updated_at: new Date() }).where(eq(chat_room.id, roomId));
+
+		return c.json(newMessageResult[0]);
+	});

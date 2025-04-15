@@ -1,6 +1,5 @@
 import {
   LucideProps,
-  MessageCircleReply,
   Save,
   Settings,
   StretchHorizontal,

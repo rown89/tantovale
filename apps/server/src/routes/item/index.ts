@@ -16,6 +16,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 import { itemsImages } from '../../database/schemas/items_images';
 import { cities } from '../../database/schemas/cities';
 import { filterValues } from 'src/database/schemas/filter_values';
+import { users } from 'src/database/schemas/users';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -31,6 +32,7 @@ export const itemRoute = createRouter()
 				.select({
 					item: {
 						id: items.id,
+						username: users.username,
 						title: items.title,
 						price: items.price,
 						description: items.description,
@@ -48,9 +50,8 @@ export const itemRoute = createRouter()
 				.innerJoin(cities, eq(cities.id, items.city))
 				.innerJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
 				.innerJoin(filterValues, eq(itemsFiltersValues.filter_value_id, filterValues.id))
+				.innerJoin(users, eq(users.id, items.user_id))
 				.where(eq(items.id, id));
-
-			console.log('item', item);
 
 			const itemImages = await db
 				.select({ url: itemsImages.url })
@@ -61,6 +62,7 @@ export const itemRoute = createRouter()
 
 			const mergedItem = {
 				id: item.item.id,
+				username: item.item.username,
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,

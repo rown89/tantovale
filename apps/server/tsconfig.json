@@ -2,15 +2,19 @@
 	"extends": "@workspace/typescript-config/base.json",
 	"compilerOptions": {
 		"strict": true,
+		"declaration": true,
+		"composite": true,
+		"incremental": true,
+		"declarationMap": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
 		"rootDir": ".",
 		"baseUrl": ".",
 		"outDir": "./dist",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"declaration": true,
+
 		"lib": ["esnext"],
 		"jsx": "react-jsx",
 		"jsxImportSource": "hono/jsx"

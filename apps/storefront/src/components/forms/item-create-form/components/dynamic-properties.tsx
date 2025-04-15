@@ -83,6 +83,7 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
             options={filter.options.map(({ id, name: label, value }) => ({
               id,
               label,
+              // Multiselect requires id as a value instead of the original value variable
               value: id?.toString() ?? "",
             }))}
             onValueChange={(value) => {

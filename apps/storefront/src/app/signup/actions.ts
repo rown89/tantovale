@@ -1,8 +1,9 @@
 "use server";
 
 import { UserSchema } from "@workspace/server/extended_schemas";
-import { SignupActionResponse, SignupFormData } from "./types";
 import { client } from "@workspace/server/client-rpc";
+
+import { SignupActionResponse, SignupFormData } from "./types";
 
 export async function signupAction(
   prevState: SignupActionResponse | null,

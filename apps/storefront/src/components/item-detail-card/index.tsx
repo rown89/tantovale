@@ -84,19 +84,17 @@ export const ItemDetailCard = React.memo(
           <CardContent className="flex flex-col justify-between relative">
             <div className="flex flex-col gap-4">
               <div className="min-h-[450px] w-full bg-background/50 rounded-t-md flex items-center justify-center flex-col">
-                {isPreview ? (
-                  images && images.length > 0 ? (
-                    <Slider images={images} />
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <Button onClick={() => imagesRef.current?.click()}>
-                        Upload
-                      </Button>
-                      <p className="text-muted-foreground">
-                        Upload up to {maxImages} images
-                      </p>
-                    </div>
-                  )
+                {images && images.length ? (
+                  <Slider images={images} />
+                ) : isPreview ? (
+                  <div className="flex flex-col gap-2">
+                    <Button onClick={() => imagesRef.current?.click()}>
+                      Upload
+                    </Button>
+                    <p className="text-muted-foreground">
+                      Upload up to {maxImages} images
+                    </p>
+                  </div>
                 ) : null}
               </div>
 

@@ -12,20 +12,28 @@
     "typecheck": "tsc --noEmit"
   },
   "imports": {
-    "#*": [
-      "./src/*.ts",
-      "./src/*.tsx"
+    "#components*": [
+      "./src/components*.ts",
+      "./src/components*.tsx"
+    ],
+    "#shared*": [
+      "./src/shared*.ts",
+      "./src/shared*.tsx"
+    ],
+    "#utils*": [
+      "./src/utils*.ts",
+      "./src/utils*.tsx"
     ]
   },
   "dependencies": {
+    "@workspace/ui": "workspace:*",
+    "@workspace/server": "workspace:*",
+    "@workspace/shared": "workspace:*",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
     "@edge-runtime/cookies": "^6.0.0",
     "@tanstack/react-form": "^1.2.1",
     "@tanstack/react-query": "*",
-    "@workspace/eslint-config": "workspace:*",
-    "@workspace/server": "workspace:*",
-    "@workspace/shared": "workspace:*",
-    "@workspace/typescript-config": "workspace:*",
-    "@workspace/ui": "workspace:*",
     "browser-image-compression": "^2.0.2",
     "framer-motion": "^12.6.3",
     "lucide-react": "0.456.0",

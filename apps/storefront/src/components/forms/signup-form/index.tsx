@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
-import { signupAction } from "#app/signup/actions";
 import {
   Card,
   CardContent,
@@ -15,7 +14,6 @@ import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Button } from "@workspace/ui/components/button";
 import { AlertCircle } from "lucide-react";
-import { SignupActionResponse } from "#app/signup/types";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { CitySelector } from "../commons/city-selector";
@@ -30,6 +28,9 @@ import {
   SelectItem,
 } from "@workspace/ui/components/select";
 import { Checkbox } from "@workspace/ui/components/checkbox";
+
+import { signupAction } from "../../../app/signup/actions";
+import { SignupActionResponse } from "../../../app/signup/types";
 
 const initialState: SignupActionResponse = {
   success: false,

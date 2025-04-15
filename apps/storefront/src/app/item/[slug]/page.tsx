@@ -23,5 +23,15 @@ export default async function ItemDetailPage() {
 
   const item = await itemResponse.json();
 
-  return <ItemWDetailrapper item={item} />;
+  const ownerDataResponse = await client.profile.compact[":username"].$get({
+    param: {
+      username: item.username,
+    },
+  });
+
+  if (!ownerDataResponse.ok) return notFound();
+
+  const ownerData = await ownerDataResponse.json();
+
+  return <ItemWDetailrapper item={item} ownerData={ownerData} />;
 }
