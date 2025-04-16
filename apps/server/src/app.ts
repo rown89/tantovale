@@ -21,6 +21,7 @@ import {
 	citiesRoute,
 	chatRoute,
 	userRoute,
+	favoritesRoute,
 } from './routes';
 
 const app = createApp();
@@ -47,6 +48,7 @@ const apiRoutes = app
 	.route(`/password`, passwordResetRoute)
 	.route(`/password`, passwordResetVerifyToken)
 	.route(`/profile`, profileRoute)
+	.route(`/favorites`, favoritesRoute)
 	.route(`/user`, userRoute);
 
 export { app };

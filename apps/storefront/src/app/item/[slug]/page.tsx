@@ -1,7 +1,7 @@
 import { client } from "@workspace/server/client-rpc";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import ItemWDetailrapper from "./components/Item-detail-wrapper";
+import ItemWDetailrapper from "./components/item-detail-wrapper";
 
 export default async function ItemDetailPage() {
   const headerList = await headers();
@@ -13,6 +13,7 @@ export default async function ItemDetailPage() {
 
   if (!id || !Number(id)) return notFound();
 
+  // get item
   const itemResponse = await client.item[":id"].$get({
     param: {
       id,
@@ -23,15 +24,16 @@ export default async function ItemDetailPage() {
 
   const item = await itemResponse.json();
 
-  const ownerDataResponse = await client.profile.compact[":username"].$get({
+  // get profile compact data
+  const itemOwnerDataResponse = await client.profile.compact[":username"].$get({
     param: {
-      username: item.username,
+      username: item.user.username,
     },
   });
 
-  if (!ownerDataResponse.ok) return notFound();
+  if (!itemOwnerDataResponse.ok) return notFound();
 
-  const ownerData = await ownerDataResponse.json();
+  const itemOwnerData = await itemOwnerDataResponse.json();
 
-  return <ItemWDetailrapper item={item} ownerData={ownerData} />;
+  return <ItemWDetailrapper item={item} itemOwnerData={itemOwnerData} />;
 }

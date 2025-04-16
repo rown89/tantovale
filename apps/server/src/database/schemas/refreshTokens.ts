@@ -1,7 +1,8 @@
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
-import { users } from './users';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { sql } from 'drizzle-orm';
+
+import { users } from './users';
 
 export const refreshTokens = pgTable('refresh_tokens', {
 	id: uuid('id')

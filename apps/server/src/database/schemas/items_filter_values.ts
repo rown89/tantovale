@@ -1,8 +1,9 @@
+import { relations } from 'drizzle-orm';
 import { pgTable, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+
 import { items } from './items';
 import { filterValues } from './filter_values';
-import { relations } from 'drizzle-orm';
 
 export const itemsFiltersValues = pgTable('items_filters_values', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

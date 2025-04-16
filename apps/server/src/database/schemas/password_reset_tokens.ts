@@ -1,8 +1,8 @@
 import { pgTable, integer, timestamp, text } from 'drizzle-orm/pg-core';
-import { users } from './users';
-import { relations } from 'drizzle-orm';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-import type { countries } from './countries';
+import { relations } from 'drizzle-orm';
+
+import { users } from './users';
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

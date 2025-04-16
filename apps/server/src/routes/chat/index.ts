@@ -1,4 +1,5 @@
 import { eq, and, or, isNull, not, desc, max } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { differenceInMinutes } from 'date-fns';
@@ -9,13 +10,15 @@ import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
-import { alias } from 'drizzle-orm/pg-core';
 import { ChatMessageSchema } from 'src/extended_schemas';
+import { createRoom, sendChatRoomMessage } from './utils';
 
 export const chatRoute = createRouter()
+	// get all user chat rooms
 	.get(`/${authPath}/rooms`, authMiddleware, async (c) => {
 		const user = c.var.user;
 		const { db } = createClient();
+
 		try {
 			const lastMessagesSubquery = db
 				.select({
@@ -106,63 +109,44 @@ export const chatRoute = createRouter()
 			return c.json([], 500);
 		}
 	})
-	// Create a new chat room
-	.post(
-		`/${authPath}/rooms`,
-		authMiddleware,
-		zValidator(
-			'json',
-			z.object({
-				item_id: z.number(),
-			}),
-		),
-		async (c) => {
-			const user = c.var.user;
-			const body = await c.req.valid('json');
+	// get chat room id by item_id
+	.get(`/${authPath}/rooms/id/:item_id`, authMiddleware, async (c) => {
+		const user = c.var.user;
+		const item_id = Number(c.req.param('item_id'));
 
-			const { db } = createClient();
+		if (!item_id) return c.json({ error: 'Item id is required' }, 400);
+		if (isNaN(item_id)) return c.json({ message: 'Invalid Item ID' }, 400);
 
-			// Check if the item exists and user is not the owner
-			const itemResult = await db.select().from(items).where(eq(items.id, body.item_id));
+		const { db } = createClient();
 
-			const item = itemResult[0];
-
-			if (!item) {
-				return c.json({ error: 'Item not found' }, 404);
-			}
-
-			if (item.user_id === user.id) {
-				return c.json({ error: 'You cannot chat about your own item' }, 400);
-			}
-
-			// Check if a chat room already exists for this item and buyer
-			const existingRoomResult = await db
-				.select({ id: chat_room.id })
-				.from(chat_room)
-				.where(and(eq(chat_room.item_id, body.item_id), eq(chat_room.buyer_id, user.id)));
-
-			const existingRoom = existingRoomResult[0];
-
-			if (existingRoom) {
-				return c.json({ id: existingRoom.id });
-			}
-
-			// Create a new chat room
-			const newRoomResult = await db
-				.insert(chat_room)
-				.values({
-					item_id: body.item_id,
-					buyer_id: user.id,
+		try {
+			const existingRoom = await db
+				.select({
+					id: chat_room.id,
 				})
-				.returning({ id: chat_room.id });
+				.from(chat_room)
+				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
+				.limit(1);
 
-			return c.json({ id: newRoomResult[0]?.id });
-		},
-	)
+			const id = existingRoom?.[0]?.id;
+
+			return c.json({ id }, 200);
+		} catch (error) {
+			return c.json(
+				{
+					message: error instanceof Error ? error.message : 'Error retrieving chat_id by item id',
+				},
+				500,
+			);
+		}
+	})
 	// Get messages for a specific chat room
 	.get(`/${authPath}/rooms/:roomId/messages`, authMiddleware, async (c) => {
 		const user = c.var.user;
 		const roomId = Number(c.req.param('roomId'));
+
+		if (!roomId) return c.json({ error: 'room id is required' }, 400);
+		if (isNaN(roomId)) return c.json({ message: 'Invalid room ID' }, 400);
 
 		const { db } = createClient();
 
@@ -240,12 +224,62 @@ export const chatRoute = createRouter()
 			return c.json({ error: 'Failed to fetch messages' }, 500);
 		}
 	})
+	// Create a new chat room
+	.post(
+		`/${authPath}/rooms`,
+		authMiddleware,
+		zValidator(
+			'json',
+			z.object({
+				item_id: z.number(),
+			}),
+		),
+		async (c) => {
+			const user = c.var.user;
+			const { item_id } = c.req.valid('json');
+
+			const { db } = createClient();
+
+			// Check if the item exists and user is not the owner
+			const itemResult = await db.select().from(items).where(eq(items.id, item_id));
+
+			const item = itemResult[0];
+
+			if (!item) {
+				return c.json({ error: 'Item not found' }, 404);
+			}
+
+			if (item.user_id === user.id) {
+				return c.json({ error: 'You cannot chat about your own item' }, 400);
+			}
+
+			// Check if a chat room already exists for this item and buyer
+			const existingRoomResult = await db
+				.select({ id: chat_room.id })
+				.from(chat_room)
+				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)));
+
+			const existingRoom = existingRoomResult[0];
+
+			if (existingRoom) {
+				return c.json({ id: existingRoom.id });
+			}
+
+			// Create a new chat room
+			const newRoomResult = await createRoom({
+				item_id,
+				buyer_id: user.id,
+			});
+
+			return c.json({ id: newRoomResult[0]?.id });
+		},
+	)
 	// Send a message in a chat room
 	.post(`/${authPath}/rooms/:roomId/messages`, authMiddleware, zValidator('json', ChatMessageSchema), async (c) => {
 		const user = c.var.user;
 		const roomId = Number(c.req.param('roomId'));
 
-		const body = await c.req.valid('json');
+		const { message } = await c.req.valid('json');
 
 		const { db } = createClient();
 
@@ -310,7 +344,7 @@ export const chatRoute = createRouter()
 						to: recipient.email,
 						roomId,
 						username: user.username,
-						message: body.message,
+						message,
 					});
 
 					// Log that notification was sent
@@ -336,25 +370,22 @@ export const chatRoute = createRouter()
 					to: recipient.email,
 					roomId,
 					username: user.username,
-					message: body.message,
+					message,
 				});
 
 				console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);
 			}
 		}
 
-		// Send the message
-		const newMessageResult = await db
-			.insert(chat_messages)
-			.values({
-				chat_room_id: roomId,
-				sender_id: user.id,
-				message: body.message,
-			})
-			.returning();
+		// Send message
+		const newMessageResult = await sendChatRoomMessage({
+			chat_room_id: roomId,
+			sender_id: user.id,
+			message,
+		});
 
 		// Update the chat room's updated_at timestamp
 		await db.update(chat_room).set({ updated_at: new Date() }).where(eq(chat_room.id, roomId));
 
-		return c.json(newMessageResult[0]);
+		return c.json(newMessageResult?.[0]);
 	});

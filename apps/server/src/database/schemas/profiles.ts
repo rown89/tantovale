@@ -1,9 +1,10 @@
-import { pgTable, integer, timestamp, date, check, text, boolean, varchar, index } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { pgTable, integer, timestamp, date, text, boolean, varchar, index } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
+
 import { items } from './items';
 import { profileEnum, sexEnum } from './enumerated_types';
 import { users } from './users';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { cities } from './cities';
 
 export const profiles = pgTable(

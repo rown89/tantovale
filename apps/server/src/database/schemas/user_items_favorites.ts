@@ -1,11 +1,12 @@
 import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
-import { users } from './users';
-import { items } from './items';
 import { relations } from 'drizzle-orm';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
-export const userFavorites = pgTable(
-	'user_favorites',
+import { users } from './users';
+import { items } from './items';
+
+export const userItemsFavorites = pgTable(
+	'user_items_favorites',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 		user_id: integer('user_id')
@@ -24,22 +25,22 @@ export const userFavorites = pgTable(
 	],
 );
 
-export const userFavoritesRelations = relations(userFavorites, ({ one }) => ({
+export const userItemsFavoritesRelations = relations(userItemsFavorites, ({ one }) => ({
 	user: one(users, {
-		fields: [userFavorites.user_id],
+		fields: [userItemsFavorites.user_id],
 		references: [users.id],
 	}),
 	item: one(items, {
-		fields: [userFavorites.item_id],
+		fields: [userItemsFavorites.item_id],
 		references: [items.id],
 	}),
 }));
 
-export type SelectUserFavorite = typeof userFavorites.$inferSelect;
-export type InsertUserFavorite = typeof userFavorites.$inferInsert;
+export type SelectUserFavorite = typeof userItemsFavorites.$inferSelect;
+export type InsertUserFavorite = typeof userItemsFavorites.$inferInsert;
 
-export const selectUserFavoritesSchema = createSelectSchema(userFavorites);
+export const selectUserItemsFavoritesSchema = createSelectSchema(userItemsFavorites);
 
-export const insertUserFavoritesSchema = createInsertSchema(userFavorites);
+export const insertUserItemsFavoritesSchema = createInsertSchema(userItemsFavorites);
 
-export const patchUserFavoritesSchema = insertUserFavoritesSchema.partial();
+export const patchUserFavoritesSchema = insertUserItemsFavoritesSchema.partial();

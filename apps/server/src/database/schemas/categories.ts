@@ -1,8 +1,9 @@
 import { pgTable, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { subcategories } from './subcategories';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+
 import { categoriesEnum } from './enumerated_types';
+import { subcategories } from './subcategories';
 
 export const categories = pgTable('categories', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

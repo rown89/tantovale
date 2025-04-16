@@ -1,4 +1,5 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
+
 import { Categories, Filters, Subcategories } from '../scripts/seeders/categories/constants';
 import {
 	DeliveryMethodValues,

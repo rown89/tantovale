@@ -2,6 +2,7 @@ import { relations } from 'drizzle-orm';
 import { pgTable, varchar, json, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import type { ZodSchema } from 'zod';
+
 import { countries } from './countries';
 import { subRegions } from './subRegions';
 

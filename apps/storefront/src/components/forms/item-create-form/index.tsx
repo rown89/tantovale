@@ -301,6 +301,8 @@ export default function CreateItemFormComponent({
                         name={name}
                         disabled={isSubmittingForm}
                         rows={6}
+                        minLength={50}
+                        maxLength={2500}
                         value={value !== undefined ? value?.toString() : ""}
                         onBlur={handleBlur}
                         onChange={(e) => handleChange(e.target.value)}

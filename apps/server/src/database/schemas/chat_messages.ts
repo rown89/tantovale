@@ -1,5 +1,6 @@
 import { pgTable, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+
 import { chat_room } from './chat_room';
 import { users } from './users';
 

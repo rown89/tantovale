@@ -1,8 +1,9 @@
 import { pgTable, integer, timestamp } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+
 import { items } from './items';
 import { users } from './users';
-import { relations } from 'drizzle-orm';
 import { chat_messages } from './chat_messages';
 
 export const chat_room = pgTable('chat_room', {

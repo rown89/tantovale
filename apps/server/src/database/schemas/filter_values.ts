@@ -1,8 +1,9 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, integer, text, index, boolean } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+
 import { filters } from './filters';
 import { FilterValuesEnum } from './enumerated_types';
-import { sql } from 'drizzle-orm';
 
 export const filterValues = pgTable(
 	'filter_values',

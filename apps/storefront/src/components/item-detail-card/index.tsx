@@ -8,13 +8,11 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card";
 import Slider from "@workspace/ui/components/carousel/slider";
-import { Badge } from "@workspace/ui/components/badge";
 import { Button } from "@workspace/ui/components/button";
-import Link from "next/link";
 import { Heart, MapPin } from "lucide-react";
 
 export interface ItemDetailCardrops {
-  isPreview: boolean;
+  isPreview?: boolean;
   isCompact?: boolean;
   imagesRef: React.RefObject<HTMLInputElement | null>;
   maxImages?: number;
@@ -52,7 +50,7 @@ export const ItemDetailCard = React.memo(
           <CardHeader className="pb-2">
             <CardTitle className="flex flex-col gap-1">
               <div className="flex gap-5 justify-between items-start">
-                <h1 className="text-2xl font-bold break-all">
+                <h1 className="text-3xl font-bold break-all">
                   {title || "Your item title..."}
                 </h1>
 
@@ -70,12 +68,12 @@ export const ItemDetailCard = React.memo(
 
               <div className="flex flex-col gap-2 items-start md:items-center md:flex-row md:justify-between">
                 {city && (
-                  <p className="w-full text-accent flex gap-1 items-center">
+                  <p className="w-full text-accent flex gap-1 items-center text">
                     <MapPin size={15} />
                     {city}
                   </p>
                 )}
-                <p className="text-xl font-semibold text-end w-full">
+                <p className="text-xl font-semibold text-end w-full text-balance">
                   € {price ? (price / 100).toFixed(2) : "0.00"}
                 </p>
               </div>
@@ -108,7 +106,7 @@ export const ItemDetailCard = React.memo(
               </div>
               {!isCompact && (
                 <div
-                  className={`whitespace-pre-wrap ${isPreview ? "max-h-80" : ""} dark:text-slate-400 text-slate-600 overflow-auto break-all`}
+                  className={`text-[17px] whitespace-pre-wrap ${isPreview ? "max-h-80" : ""} dark:text-slate-400 text-slate-600 overflow-auto break-all`}
                 >
                   {description || "Your item description will appear here..."}
                 </div>

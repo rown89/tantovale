@@ -4,6 +4,7 @@ import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 import { eq, and } from 'drizzle-orm';
+
 import { createClient } from '../../database';
 import { subcategories } from '../../database/schemas/subcategories';
 import { subCategoryFilters } from '../../database/schemas/subcategory_filters';
@@ -32,11 +33,13 @@ export const itemRoute = createRouter()
 				.select({
 					item: {
 						id: items.id,
+						user_id: users.id,
 						username: users.username,
 						title: items.title,
 						price: items.price,
 						description: items.description,
 						city: cities.name,
+						is_payable: items.is_payable,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
 						property_name: filterValues.name,
@@ -51,7 +54,7 @@ export const itemRoute = createRouter()
 				.innerJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
 				.innerJoin(filterValues, eq(itemsFiltersValues.filter_value_id, filterValues.id))
 				.innerJoin(users, eq(users.id, items.user_id))
-				.where(eq(items.id, id));
+				.where(and(eq(items.id, id), eq(items.published, true)));
 
 			const itemImages = await db
 				.select({ url: itemsImages.url })
@@ -62,11 +65,15 @@ export const itemRoute = createRouter()
 
 			const mergedItem = {
 				id: item.item.id,
-				username: item.item.username,
+				user: {
+					id: item.item.user_id,
+					username: item.item.username,
+				},
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,
 				city: item.item.city,
+				is_payable: item.item.is_payable,
 				subcategory: {
 					name: item?.item.subcategory_name,
 					slug: item?.item.subcategory_slug,

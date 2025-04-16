@@ -1,7 +1,8 @@
+import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { pgTable, integer, boolean, uniqueIndex, timestamp } from 'drizzle-orm/pg-core';
+
 import { filters } from './filters';
 import { subcategories } from './subcategories';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 export const subCategoryFilters = pgTable(
 	'subcategory_filters',

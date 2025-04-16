@@ -1,11 +1,12 @@
+import type { ZodSchema } from 'zod';
 import { relations } from 'drizzle-orm';
 import { pgTable, varchar, numeric, json, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+
 import { regions } from './regions';
 import { subRegions } from './subRegions';
 import { states } from './states';
 import { cities } from './cities';
-import type { ZodSchema } from 'zod';
 
 export const countries = pgTable('countries', {
 	id: integer('id').primaryKey().notNull(),

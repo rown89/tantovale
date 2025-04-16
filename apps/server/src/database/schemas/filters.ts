@@ -1,5 +1,6 @@
 import { integer, pgTable, text } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+
 import { filtersEnum, filterTypeEnum } from './enumerated_types';
 
 export const filters = pgTable('filters', {

@@ -1,8 +1,9 @@
 import { pgTable, varchar, numeric, integer } from 'drizzle-orm/pg-core';
-import { countries } from './countries';
-import { relations } from 'drizzle-orm';
-import { cities } from './cities';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { relations } from 'drizzle-orm';
+
+import { countries } from './countries';
+import { cities } from './cities';
 
 export const states = pgTable('states', {
 	id: integer('id').primaryKey().notNull(),

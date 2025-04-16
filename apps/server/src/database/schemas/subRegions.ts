@@ -1,9 +1,10 @@
 import { pgTable, text, varchar, json, integer } from 'drizzle-orm/pg-core';
-import { regions } from './regions';
 import { relations } from 'drizzle-orm';
-import { countries } from './countries';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import type { ZodSchema } from 'zod';
+
+import { regions } from './regions';
+import { countries } from './countries';
 
 export const subRegions = pgTable('sub_regions', {
 	id: integer('id').primaryKey().notNull(),

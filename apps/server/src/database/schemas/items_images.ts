@@ -1,6 +1,7 @@
 import { pgTable, integer, text, timestamp, index, pgEnum } from 'drizzle-orm/pg-core';
-import { items } from './items';
 import { relations } from 'drizzle-orm';
+
+import { items } from './items';
 import { itemImagesSizeEnum } from './enumerated_types';
 
 export const itemsImages = pgTable(
