@@ -6,16 +6,9 @@ import { createClient } from 'src/database';
 import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
 import { createRouter } from 'src/lib/create-app';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
-import { users } from 'src/database/schemas/users';
 import { authPath } from 'src/utils/constants';
 
 export const favoritesRoute = createRouter()
-	// get all user favorite items
-	.get('/', authMiddleware, async (c) => {
-		const user = c.var.user;
-
-		return c.json({});
-	})
 	// Check if item is an user favorite
 	.get(`${authPath}/check/:item_id`, authMiddleware, async (c) => {
 		const user = c.var.user;
@@ -46,7 +39,7 @@ export const favoritesRoute = createRouter()
 		zValidator(
 			'json',
 			z.object({
-				action: z.string(),
+				action: z.enum(['add', 'remove']),
 				item_id: z.number(),
 			}),
 		),

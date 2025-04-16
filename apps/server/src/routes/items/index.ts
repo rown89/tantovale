@@ -11,16 +11,15 @@ import { itemsImages } from '../../database/schemas/items_images';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { subcategories } from '../../database/schemas/subcategories';
 import { authPath } from '../../utils/constants';
+import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
 });
 
-export const itemsRoute = createRouter().post(
-	`${authPath}/user_selling_items`,
-	zValidator('json', itemTypeSchema),
-	authMiddleware,
-	async (c) => {
+export const itemsRoute = createRouter()
+	// get user selling items
+	.post(`${authPath}/user_selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
 		const { ACCESS_TOKEN_SECRET } = env<{
 			ACCESS_TOKEN_SECRET: string;
 		}>(c);
@@ -72,5 +71,51 @@ export const itemsRoute = createRouter().post(
 				500,
 			);
 		}
-	},
-);
+	})
+	// get all user favorite items
+	.get(`${authPath}/favorites`, authMiddleware, async (c) => {
+		const user = c.var.user;
+
+		const { db } = createClient();
+
+		try {
+			const favorites = await db
+				.select({
+					id: items.id,
+					title: items.title,
+					price: items.price,
+					published: items.published,
+					subcategory_slug: subcategories.slug,
+					image: itemsImages.url,
+				})
+				.from(userItemsFavorites)
+				.innerJoin(items, eq(items.id, userItemsFavorites.item_id))
+				.innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
+				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.where(
+					and(
+						isNull(items.deleted_at),
+						eq(items.published, true),
+						eq(items.status, 'available'),
+						eq(userItemsFavorites.user_id, user.id),
+						eq(itemsImages.size, 'thumbnail'),
+						eq(itemsImages.order_position, 0),
+					),
+				)
+				.orderBy(items.id);
+
+			console.log(favorites);
+
+			if (!favorites.length) return c.json([], 404);
+
+			return c.json(favorites, 200);
+		} catch (error) {
+			console.log(error);
+			return c.json(
+				{
+					message: 'Get user favorites error',
+				},
+				500,
+			);
+		}
+	});

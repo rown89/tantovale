@@ -46,6 +46,7 @@ export default function ItemWDetailrapper({
   item,
   itemOwnerData,
 }: ItemWrapperProps) {
+  const { phone_verified, email_verified } = itemOwnerData;
   const { images } = item;
 
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -174,29 +175,28 @@ export default function ItemWDetailrapper({
                       href={`/user/${item.user.username}`}
                       className="hover:underline hover:text-accent item-center flex gap-2"
                     >
-                      {itemOwnerData.phone_verified &&
-                        itemOwnerData.email_verified && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <BadgeCheck color="green" />
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-background outline-1 outline-green">
-                                <span className="flex flex-col gap-2 text-primary">
-                                  <span className="flex gap-2 item-center">
-                                    <Mail size={15} />
-                                    <p>Email verified</p>
-                                  </span>
-
-                                  <span className="flex gap-2 item-center">
-                                    <Phone size={15} />
-                                    <p>Pone verified</p>
-                                  </span>
+                      {phone_verified && email_verified && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <BadgeCheck color="green" />
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-background outline-1 outline-green">
+                              <span className="flex flex-col gap-2 text-primary">
+                                <span className="flex gap-2 item-center">
+                                  <Mail size={15} />
+                                  <p>Email verified</p>
                                 </span>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}{" "}
+
+                                <span className="flex gap-2 item-center">
+                                  <Phone size={15} />
+                                  <p>Pone verified</p>
+                                </span>
+                              </span>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       <p className="text-xl">{item.user.username}</p>
                     </Link>
                   </div>

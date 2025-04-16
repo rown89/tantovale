@@ -19,6 +19,7 @@ import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 import { useSellingItems } from "./hooks";
 import Link from "next/link";
 import Image from "next/image";
+import { Separator } from "@workspace/ui/components/separator";
 
 export interface Item {
   id: number;
@@ -99,9 +100,16 @@ export default function UserSellingItemsComponent() {
   };
 
   return (
-    <div className="flex flex-col w-full overflow-auto">
-      <div className="flex items-center justify-between sticky top-0 bg-background z-1 px-2 pb-4">
-        <h1 className="text-3xl font-bold">Your items</h1>
+    <div className="flex flex-col w-full overflow-auto px-4">
+      <div className="flex items-center justify-between sticky top-0 bg-background z-1 pb-4">
+        <div className="space-y-6 w-full">
+          <h1 className="text-3xl font-bold">Selling items</h1>
+
+          <p className="text-muted-foreground">Manage your selling items.</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
         {!isLoading && (
           <Select
             defaultValue={filters.publishedType}
@@ -112,7 +120,7 @@ export default function UserSellingItemsComponent() {
               });
             }}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -135,9 +143,6 @@ export default function UserSellingItemsComponent() {
             </SelectContent>
           </Select>
         )}
-      </div>
-
-      <div className="flex flex-col gap-6 p-2">
         {isLoading ? (
           <div className="flex flex-col gap-10 opacity-50">
             {[...Array(4).keys()].map((item, i) => (

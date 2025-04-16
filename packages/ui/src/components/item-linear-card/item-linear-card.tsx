@@ -2,15 +2,8 @@
 
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Button } from '../button';
-import { Card } from '../card';
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from '../dropdown-menu';
+import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil, EyeIcon } from 'lucide-react';
+
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -21,8 +14,18 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@workspace/ui/components/alert-dialog';
+
+import { Button } from '../button';
+import { Card } from '../card';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '../dropdown-menu';
+
 import { useIsMobile } from '../../hooks';
-import { Share2, EyeClosed, Ellipsis, DeleteIcon, Pencil, EyeIcon } from 'lucide-react';
 
 export type Item = {
 	id: number;
@@ -30,18 +33,18 @@ export type Item = {
 	title: string;
 	published: boolean;
 	image: string;
-	created_at: Date;
+	created_at?: Date;
 };
 
 interface ItemCardProps {
 	item: Item;
 	ThumbLink: ReactNode;
 	TitleLink: ReactNode;
-	onDelete: () => void;
-	onEdit: () => void;
+	onDelete?: () => void;
+	onEdit?: () => void;
 	onShare: () => void;
-	onPublish: () => void;
-	onUnpubish: () => void;
+	onPublish?: () => void;
+	onUnpubish?: () => void;
 }
 
 export function ItemLinearCard({
@@ -54,6 +57,7 @@ export function ItemLinearCard({
 	onPublish,
 	onUnpubish,
 }: ItemCardProps) {
+	console.log(item.created_at);
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
@@ -94,7 +98,9 @@ export function ItemLinearCard({
 								{(item.price / 100).toFixed(2)}
 							</p>
 						</div>
-						<p className='text-muted-foreground text-sm'>Created on {format(item.created_at, 'MMM d, yyyy')}</p>
+						{item.created_at && (
+							<p className='text-muted-foreground text-sm'>Created on {format(item.created_at, 'MMM d, yyyy')}</p>
+						)}
 					</>
 
 					<div className='mt-4 flex justify-between gap-2'>
@@ -110,55 +116,62 @@ export function ItemLinearCard({
 										) : (
 											<div />
 										)}
-										<DropdownMenu>
-											<DropdownMenuTrigger asChild>
-												<Button variant='outline'>
-													<Ellipsis />
-												</Button>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent className='w-56'>
-												<DropdownMenuItem onClick={() => onEdit()}>
-													<Pencil className='mr-1 h-4 w-4' />
-													Edit
-												</DropdownMenuItem>
-												<DropdownMenuSeparator />
-												{item.published ? (
+										{onPublish && onUnpubish && onEdit && onDelete && (
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<Button variant='outline'>
+														<Ellipsis />
+													</Button>
+												</DropdownMenuTrigger>
+
+												<DropdownMenuContent className='w-56'>
+													{
+														<DropdownMenuItem onClick={() => onEdit()}>
+															<Pencil className='mr-1 h-4 w-4' />
+															Edit
+														</DropdownMenuItem>
+													}
+													<DropdownMenuSeparator />
+													{item.published && (
+														<DropdownMenuItem
+															onClick={() => {
+																setIsDialogOpen({
+																	isOpen: true,
+																	type: 'unpublish',
+																});
+															}}>
+															<EyeClosed className='mr-1 h-4 w-4' />
+															Unpublish
+														</DropdownMenuItem>
+													)}
+
+													{!item.published && (
+														<DropdownMenuItem
+															onClick={() => {
+																setIsDialogOpen({
+																	isOpen: true,
+																	type: 'publish',
+																});
+															}}>
+															<EyeIcon className='mr-1 h-4 w-4' />
+															Publish
+														</DropdownMenuItem>
+													)}
+													<DropdownMenuSeparator />
 													<DropdownMenuItem
+														variant='destructive'
 														onClick={() => {
 															setIsDialogOpen({
 																isOpen: true,
-																type: 'unpublish',
+																type: 'delete',
 															});
 														}}>
-														<EyeClosed className='mr-1 h-4 w-4' />
-														Unpublish
+														<DeleteIcon className='mr-1 h-4 w-4' />
+														Delete
 													</DropdownMenuItem>
-												) : (
-													<DropdownMenuItem
-														onClick={() => {
-															setIsDialogOpen({
-																isOpen: true,
-																type: 'publish',
-															});
-														}}>
-														<EyeIcon className='mr-1 h-4 w-4' />
-														Publish
-													</DropdownMenuItem>
-												)}
-												<DropdownMenuSeparator />
-												<DropdownMenuItem
-													variant='destructive'
-													onClick={() => {
-														setIsDialogOpen({
-															isOpen: true,
-															type: 'delete',
-														});
-													}}>
-													<DeleteIcon className='mr-1 h-4 w-4' />
-													Delete
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
+												</DropdownMenuContent>
+											</DropdownMenu>
+										)}
 									</>
 								) : (
 									<div className='flex w-full justify-end gap-3'>
@@ -171,52 +184,54 @@ export function ItemLinearCard({
 											) : (
 												<div />
 											)}
-											<div className='flex gap-3'>
-												<Button variant='outline' size='sm' onClick={() => onEdit()}>
-													<Pencil className='mr-1 h-4 w-4' />
-													Edit
-												</Button>
-												{item.published ? (
+											{onPublish && onUnpubish && onEdit && onDelete && (
+												<div className='flex gap-3'>
+													<Button variant='outline' size='sm' onClick={() => onEdit && onEdit()}>
+														<Pencil className='mr-1 h-4 w-4' />
+														Edit
+													</Button>
+													{item.published ? (
+														<Button
+															variant='outline'
+															size='sm'
+															onClick={() => {
+																setIsDialogOpen({
+																	isOpen: true,
+																	type: 'unpublish',
+																});
+															}}>
+															<EyeClosed className='mr-1 h-4 w-4' />
+															Unpublish
+														</Button>
+													) : (
+														<Button
+															variant='outline'
+															size='sm'
+															onClick={() => {
+																setIsDialogOpen({
+																	isOpen: true,
+																	type: 'publish',
+																});
+															}}>
+															{' '}
+															<EyeIcon className='mr-1 h-4 w-4' />
+															Publish
+														</Button>
+													)}
 													<Button
-														variant='outline'
+														variant='destructive'
 														size='sm'
 														onClick={() => {
 															setIsDialogOpen({
 																isOpen: true,
-																type: 'unpublish',
+																type: 'delete',
 															});
 														}}>
-														<EyeClosed className='mr-1 h-4 w-4' />
-														Unpublish
+														<DeleteIcon className='mr-1 h-4 w-4' />
+														Delete
 													</Button>
-												) : (
-													<Button
-														variant='outline'
-														size='sm'
-														onClick={() => {
-															setIsDialogOpen({
-																isOpen: true,
-																type: 'publish',
-															});
-														}}>
-														{' '}
-														<EyeIcon className='mr-1 h-4 w-4' />
-														Publish
-													</Button>
-												)}
-												<Button
-													variant='destructive'
-													size='sm'
-													onClick={() => {
-														setIsDialogOpen({
-															isOpen: true,
-															type: 'delete',
-														});
-													}}>
-													<DeleteIcon className='mr-1 h-4 w-4' />
-													Delete
-												</Button>
-											</div>
+												</div>
+											)}
 										</div>
 									</div>
 								)}
@@ -244,9 +259,9 @@ export function ItemLinearCard({
 										<AlertDialogAction
 											className={`bg-secondary hover:bg-secondary/80 ${isDialogOpen.type === 'delete' && 'bg-destructive hover:bg-destructive/80'} font-bold text-black`}
 											onClick={() => {
-												if (isDialogOpen.type === 'unpublish') onUnpubish();
-												if (isDialogOpen.type === 'publish') onPublish();
-												if (isDialogOpen.type === 'delete') onDelete();
+												if (onUnpubish && isDialogOpen.type === 'unpublish') onUnpubish();
+												if (onPublish && isDialogOpen.type === 'publish') onPublish();
+												if (onDelete && isDialogOpen.type === 'delete') onDelete();
 
 												setIsDialogOpen({
 													type: undefined,

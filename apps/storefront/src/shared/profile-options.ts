@@ -23,7 +23,7 @@ export const profileOptions: ProfileOptionsProps[] = [
   },
   {
     Icon: StretchHorizontal,
-    label: "Your items",
+    label: "Selling items",
     url: "/auth/profile/selling-items",
     slug: "selling-items",
   },
