@@ -72,7 +72,6 @@ export function updatePropertiesArray({
     // Don't add empty array properties
   } else {
     if (existingIndex !== -1) {
-      console.log("here2", newProperty);
       // Update the existing property.
       currentProperties[existingIndex] = newProperty;
     } else {
@@ -80,8 +79,6 @@ export function updatePropertiesArray({
       currentProperties.push(newProperty);
     }
   }
-
-  console.log(currentProperties);
 
   // Update the form field state.
   field.handleChange(currentProperties);

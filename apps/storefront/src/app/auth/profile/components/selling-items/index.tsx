@@ -1,10 +1,15 @@
 "use client";
 
-import { ItemLinearCard } from "@workspace/ui/components/item-linear-card/item-linear-card";
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
-import { client } from "@workspace/server/client-rpc";
+import { Drama } from "lucide-react";
 import { toast } from "sonner";
+
 import { Skeleton } from "@workspace/ui/components/skeleton";
+import { client } from "@workspace/server/client-rpc";
+import { ItemLinearCard } from "@workspace/ui/components/item-linear-card/item-linear-card";
 import {
   Select,
   SelectTrigger,
@@ -13,13 +18,10 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import { useState } from "react";
 import { ShareSocialModal } from "@workspace/ui/components/social-share-dialog/social-share-dialog";
 import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
+
 import { useSellingItems } from "./hooks";
-import Link from "next/link";
-import Image from "next/image";
-import { Separator } from "@workspace/ui/components/separator";
 
 export interface Item {
   id: number;
@@ -101,7 +103,7 @@ export default function UserSellingItemsComponent() {
 
   return (
     <div className="flex flex-col w-full overflow-auto px-4">
-      <div className="flex items-center justify-between sticky top-0 bg-background z-1 pb-4">
+      <div className="flex items-center justify-between sticky top-0 bg-background z-1">
         <div className="space-y-6 w-full">
           <h1 className="text-3xl font-bold">Selling items</h1>
 
@@ -109,40 +111,45 @@ export default function UserSellingItemsComponent() {
         </div>
       </div>
 
+      <div className="flex w-full items-end justify-end my-2">
+        <span>
+          {!isLoading && (
+            <Select
+              defaultValue={filters.publishedType}
+              onValueChange={(e: "published" | "unpublished") => {
+                setFilters({
+                  ...filters,
+                  publishedType: e,
+                });
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={"published"}>
+                    Published{" "}
+                    {isLoading
+                      ? ""
+                      : filters.publishedType === "published" &&
+                        `(${data?.length})`}
+                  </SelectItem>
+                  <SelectItem value={"unpublished"}>
+                    UnPublished{" "}
+                    {isLoading
+                      ? ""
+                      : filters.publishedType === "unpublished" &&
+                        `(${data?.length})`}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
+        </span>
+      </div>
+
       <div className="flex flex-col gap-4">
-        {!isLoading && (
-          <Select
-            defaultValue={filters.publishedType}
-            onValueChange={(e: "published" | "unpublished") => {
-              setFilters({
-                ...filters,
-                publishedType: e,
-              });
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value={"published"}>
-                  Published{" "}
-                  {isLoading
-                    ? ""
-                    : filters.publishedType === "published" &&
-                      `(${data?.length})`}
-                </SelectItem>
-                <SelectItem value={"unpublished"}>
-                  UnPublished{" "}
-                  {isLoading
-                    ? ""
-                    : filters.publishedType === "unpublished" &&
-                      `(${data?.length})`}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        )}
         {isLoading ? (
           <div className="flex flex-col gap-10 opacity-50">
             {[...Array(4).keys()].map((item, i) => (
@@ -231,9 +238,12 @@ export default function UserSellingItemsComponent() {
         ) : isError ? (
           <p>Something went wrong.</p>
         ) : (
-          <p className="text-center py-8 text-muted-foreground">
-            No items found
-          </p>
+          <div className="flex gap-2 w-full justify-center items-center">
+            <Drama />
+            <p className="text-center py-8 text-muted-foreground">
+              No items found
+            </p>
+          </div>
         )}
       </div>
     </div>

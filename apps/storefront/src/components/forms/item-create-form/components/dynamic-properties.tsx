@@ -87,7 +87,6 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
               value: id?.toString() ?? "",
             }))}
             onValueChange={(value) => {
-              console.log(value);
               updatePropertiesArray({
                 value,
                 filter,

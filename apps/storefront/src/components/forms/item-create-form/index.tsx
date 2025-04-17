@@ -40,6 +40,8 @@ export default function CreateItemFormComponent({
   const [selectedCondition, setSelectedCondition] = useState<
     { id: number; name: string; slug: string } | undefined
   >();
+  const [selectedDeliveryMethod, setSelectedDeliveryMethod] =
+    useState<string[]>();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
@@ -74,26 +76,58 @@ export default function CreateItemFormComponent({
   const properties = useField({ form, name: "properties" }).state.value;
 
   useEffect(() => {
-    const selectedConditionId = properties?.find(
+    if (!properties?.length) return;
+
+    // Handle condition selection
+    const conditionProperty = properties.find(
       (item) => item.slug === "condition",
-    )?.value;
+    );
+    const selectedConditionId = conditionProperty?.value;
 
-    if (properties?.length && selectedConditionId) {
-      const conditionProperty = subCatFilters?.filter(
+    if (selectedConditionId) {
+      const conditionFilter = subCatFilters?.find(
         (item) => item.slug === "condition",
-      )?.[0];
+      );
+      const extractedCondition = conditionFilter?.options.find(
+        (item) => item.id === Number(selectedConditionId),
+      );
 
-      const extractCondition = conditionProperty?.options.find((item) => {
-        return item.id === Number(selectedConditionId);
-      });
-
-      if (extractCondition) {
+      if (extractedCondition) {
         setSelectedCondition({
-          id: extractCondition.id,
-          name: extractCondition.name,
-          slug: String(extractCondition.value),
+          id: extractedCondition.id,
+          name: extractedCondition.name,
+          slug: String(extractedCondition.value),
         });
       }
+    }
+
+    // Handle delivery methods selection
+    const deliveryProperty = properties.find(
+      (item) => item.slug === "delivery_method",
+    );
+    const selectedDeliveryMethodsIds = deliveryProperty?.value;
+
+    if (
+      Array.isArray(selectedDeliveryMethodsIds) &&
+      selectedDeliveryMethodsIds.length
+    ) {
+      const deliveryMethodFilter = subCatFilters?.find(
+        (item) => item.slug === "delivery_method",
+      );
+
+      const extractedDeliveryMethods = selectedDeliveryMethodsIds
+        .map(
+          (methodId) =>
+            deliveryMethodFilter?.options.find(
+              (option) => option.id === Number(methodId),
+            )?.value,
+        )
+        .filter(Boolean)
+        .map(String);
+
+      setSelectedDeliveryMethod(extractedDeliveryMethods);
+    } else {
+      setSelectedDeliveryMethod([]);
     }
   }, [properties, subCatFilters]);
 
@@ -400,7 +434,7 @@ export default function CreateItemFormComponent({
 
         {/* Right Column - Item Preview */}
         {!isMobile && (
-          <div className="w-full overflow-hidden h-full">
+          <div className="w-full overflow-hidden h-full max-w-[760px] mx-auto">
             <ItemDetailCard
               isPreview
               imagesRef={fileInputRef}
@@ -437,10 +471,7 @@ export default function CreateItemFormComponent({
                     </Badge>
                   </Link>
                 ),
-                /*    deliveryMethods:
-                  properties
-                    ?.find((item) => item.slug === "delivery_method")
-                    ?.value?.map((item) => item.toString()) ?? [], */
+                deliveryMethods: selectedDeliveryMethod,
               }}
             />
 

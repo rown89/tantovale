@@ -1,15 +1,11 @@
 "use client";
 
 import React, { ReactNode } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@workspace/ui/components/card";
+import { Card, CardContent } from "@workspace/ui/components/card";
 import Slider from "@workspace/ui/components/carousel/slider";
 import { Button } from "@workspace/ui/components/button";
-import { Heart, MapPin } from "lucide-react";
+import { MapPin, Truck } from "lucide-react";
+import { Badge } from "@workspace/ui/components/badge";
 
 export interface ItemDetailCardrops {
   isPreview?: boolean;
@@ -27,8 +23,6 @@ export interface ItemDetailCardrops {
     condition?: ReactNode;
     deliveryMethods?: string[];
   };
-  isFavorite?: boolean;
-  handleFavorite?: (id: number) => void;
 }
 
 export const ItemDetailCard = React.memo(
@@ -38,50 +32,18 @@ export const ItemDetailCard = React.memo(
     item,
     imagesRef,
     maxImages,
-    isFavorite,
-    handleFavorite,
   }: ItemDetailCardrops) => {
     const { title, price, description, city, images, condition, subcategory } =
       item;
 
+    const formattedPrice = price ? (price / 100).toFixed(2) : "0.00";
+
     return (
       <div className="w-full overflow-hidden h-full">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex flex-col gap-1">
-              <div className="flex gap-5 justify-between items-start">
-                <h1 className="text-3xl font-bold break-all">
-                  {title || "Your item title..."}
-                </h1>
-
-                {isCompact && (
-                  <Heart
-                    className={`${isFavorite ? "text-secondary" : ""}`}
-                    onClick={async () => {
-                      if (!isPreview && item?.id && handleFavorite) {
-                        handleFavorite(item?.id);
-                      }
-                    }}
-                  />
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2 items-start md:items-center md:flex-row md:justify-between">
-                {city && (
-                  <p className="w-full text-accent flex gap-1 items-center text">
-                    <MapPin size={15} />
-                    {city}
-                  </p>
-                )}
-                <p className="text-xl font-semibold text-end w-full text-balance">
-                  € {price ? (price / 100).toFixed(2) : "0.00"}
-                </p>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col justify-between relative">
-            <div className="flex flex-col gap-4">
-              <div className="min-h-[450px] w-full bg-background/50 rounded-t-md flex items-center justify-center flex-col">
+        <Card className="border-2 shadow-md transition-all duration-300 hover:shadow-lg">
+          <CardContent className="flex flex-col justify-between relative p-6">
+            <div className="flex flex-col gap-2">
+              <div className="min-h-[450px] w-full bg-background/50 rounded-t-md flex items-center justify-center flex-col mb-3">
                 {images && images.length ? (
                   <Slider images={images} />
                 ) : isPreview ? (
@@ -94,6 +56,53 @@ export const ItemDetailCard = React.memo(
                     </p>
                   </div>
                 ) : null}
+              </div>
+
+              <div className="flex gap-5 justify-between items-start">
+                <h1 className="text-3xl font-bold break-all">
+                  {title || "Your item title..."}
+                </h1>
+              </div>
+
+              <div className="flex flex-col gap-2 items-start md:items-center md:flex-row md:justify-between">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    {city || "Location"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {item.deliveryMethods?.length ? (
+                    item.deliveryMethods.map((method, i) => (
+                      <>
+                        <Badge
+                          key={i}
+                          variant="outline"
+                          className="font-normal"
+                        >
+                          <span className="flex items-center gap-1">
+                            <Truck className="h-3 w-3" /> {method}
+                          </span>
+                        </Badge>
+                        {item.deliveryMethods &&
+                          item.deliveryMethods.length > 1 &&
+                          i === 0 &&
+                          "/"}
+                      </>
+                    ))
+                  ) : (
+                    <Badge variant="outline" className="font-normal">
+                      <span className="flex items-center gap-1">
+                        Delivery mode
+                      </span>
+                    </Badge>
+                  )}
+
+                  <Badge className="text-lg font-semibold px-3 py-1">
+                    €{formattedPrice}
+                  </Badge>
+                </div>
               </div>
 
               <div className="flex justify-between gap-2">
