@@ -1,11 +1,8 @@
-import { eq } from 'drizzle-orm';
 import { env } from 'hono/adapter';
 
 import { createRouter } from '../../lib/create-app';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { authPath } from '../../utils/constants';
-import { createClient } from 'src/database';
-import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
 
 export const userRoute = createRouter().get(`/${authPath}`, authMiddleware, async (c) => {
 	const { ACCESS_TOKEN_SECRET } = env<{

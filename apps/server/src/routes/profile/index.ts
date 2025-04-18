@@ -94,6 +94,7 @@ export const profileRoute = createRouter()
 			);
 		}
 	})
+	// update profile
 	.put(
 		`/${authPath}`,
 		authMiddleware,

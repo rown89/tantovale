@@ -10,7 +10,7 @@ import { Badge } from '@workspace/ui/components/badge';
 export interface ItemDetailCardrops {
 	isPreview?: boolean;
 	isCompact?: boolean;
-	imagesRef: React.RefObject<HTMLInputElement | null>;
+	imagesRef?: React.RefObject<HTMLInputElement | null>;
 	maxImages?: number;
 	item: {
 		id?: number;
@@ -69,11 +69,11 @@ export const ItemDetailCard = React.memo(
 												{item.deliveryMethods && item.deliveryMethods.length > 1 && i === 0 && '/'}
 											</>
 										))
-									) : (
+									) : isPreview ? (
 										<Badge variant='outline' className='font-normal'>
 											<span className='flex items-center gap-1'>Delivery mode</span>
 										</Badge>
-									)}
+									) : null}
 
 									<Badge className='px-3 py-1 text-lg font-semibold'>€{formattedPrice}</Badge>
 								</div>

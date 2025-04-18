@@ -75,7 +75,7 @@ export function UserInfoBox({
                 <div className="flex flex-col w-full items-center gap-4">
                   <Button
                     variant="secondary"
-                    className="w-full max-w-[280px] font-bold text-slate-900 shadow-md"
+                    className="w-full font-bold text-slate-900 shadow-md"
                     onClick={() => {
                       if (!user) {
                         router.push("/login");
@@ -87,9 +87,9 @@ export function UserInfoBox({
                     <ShoppingCart />
                     <p>Acquista</p>
                   </Button>
-                  <Button
+                  {/*      <Button
                     variant="outline"
-                    className="w-full max-w-[280px] shadow-accent"
+                    className="w-full shadow-accent"
                     onClick={() => {
                       if (!user) {
                         router.push("/login");
@@ -100,16 +100,16 @@ export function UserInfoBox({
                   >
                     <ArrowLeftRight />
                     <p> Fai una proposta</p>
-                  </Button>
+                  </Button>*/}
                 </div>
               )}
 
-              <div className="mt-6 w-full flex justify-center">
+              <div className="mt-2 w-full flex justify-center">
                 {isFavoriteLoading ? (
                   <Spinner />
                 ) : (
                   <Button
-                    className="hover:bg-amber-300 w-full max-w-[250px]"
+                    className="hover:bg-amber-300 w-full"
                     variant={!isFavorite ? "outline" : "destructive"}
                     onClick={() => {
                       if (isFavorite) {

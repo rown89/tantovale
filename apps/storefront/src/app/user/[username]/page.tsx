@@ -1,14 +1,15 @@
+import { createRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { Badge, Tag, User } from "lucide-react";
+import { User } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
-import { Card, CardContent } from "@workspace/ui/components/card";
 import { Separator } from "@workspace/ui/components/separator";
 import { client } from "@workspace/server/client-rpc";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
+import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 
 export default async function UserDetailPage({
   params,
@@ -40,7 +41,7 @@ export default async function UserDetailPage({
     <div className="container mx-auto py-8 px-4">
       <div className="grid gap-8">
         {/* User Profile Section */}
-        <div className="flex flex-col md:flex-row gap-6 items-center">
+        <div className="flex flex-row gap-6 ">
           <Avatar className="w-24 h-24">
             <AvatarFallback>
               {username.substring(0, 2).toUpperCase()}
@@ -60,11 +61,14 @@ export default async function UserDetailPage({
 
         <Separator />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {items.map((item) => {
             return (
               <Link
-                href={`/items/${item.id}`}
+                href={`/item/${linkBuilder({
+                  id: item.id,
+                  title: item.title,
+                })}`}
                 key={item.id}
                 className="group hover:shadow-md hover:shadow-accent/20 transition-all rounded-xl overflow-hidden"
               >
@@ -82,7 +86,8 @@ export default async function UserDetailPage({
                         className="object-cover"
                       />,
                     ],
-                    category: <div>item.category</div>,
+                    subcategory: <div>{item.subcategory}</div>,
+                    city: item.city || "Location",
                   }}
                 />
               </Link>

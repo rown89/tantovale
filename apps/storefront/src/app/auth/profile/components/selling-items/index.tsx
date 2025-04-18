@@ -41,15 +41,15 @@ export default function UserSellingItemsComponent() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["user-selling-items", filters],
     queryFn: async () => {
-      const res = await client.items.auth.user_selling_items.$post({
+      const response = await client.items.auth.user.selling_items.$post({
         json: {
           published: filters.publishedType === "published" ? true : false,
         },
       });
 
-      if (!res.ok) return [];
+      if (!response.ok) return [];
 
-      const items = await res.json();
+      const items = await response.json();
 
       const reshapedItems = items?.map(({ created_at, ...rest }) => {
         return {

@@ -1,4 +1,4 @@
-import { eq, and, isNull, or } from 'drizzle-orm';
+import { eq, and, isNull, or, inArray } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
@@ -16,6 +16,8 @@ import { users } from 'src/database/schemas/users';
 import { filterValues } from 'src/database/schemas/filter_values';
 import { itemsFiltersValues } from 'src/database/schemas/items_filter_values';
 import { filters } from 'src/database/schemas/filters';
+import { cities } from 'src/database/schemas/cities';
+import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -23,7 +25,7 @@ export const itemTypeSchema = z.object({
 
 export const itemsRoute = createRouter()
 	// get logged user selling items
-	.post(`${authPath}/user_selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
+	.post(`${authPath}/user/selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
 		const { ACCESS_TOKEN_SECRET } = env<{
 			ACCESS_TOKEN_SECRET: string;
 		}>(c);
@@ -76,6 +78,46 @@ export const itemsRoute = createRouter()
 			);
 		}
 	})
+	// get all user favorite items
+	.get(`${authPath}/user/favorites`, authMiddleware, async (c) => {
+		const user = c.var.user;
+
+		const { db } = createClient();
+
+		try {
+			const userFavorites = await db.select().from(userItemsFavorites).where(eq(userItemsFavorites.user_id, user.id));
+
+			const userFavoritesItems = await db
+				.select({
+					id: items.id,
+					title: items.title,
+					price: items.price,
+					image: itemsImages.url,
+					published: items.published,
+					created_at: items.created_at,
+				})
+				.from(items)
+				.innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
+				.where(
+					and(
+						inArray(
+							items.id,
+							userFavorites.map((favorite) => favorite.item_id),
+						),
+						eq(itemsImages.size, 'thumbnail'),
+						eq(itemsImages.order_position, 0),
+						eq(items.status, 'available'),
+						eq(items.published, true),
+					),
+				);
+
+			if (!userFavoritesItems.length) return c.json([], 200);
+
+			return c.json(userFavoritesItems, 200);
+		} catch {
+			return c.json({}, 500);
+		}
+	})
 	// get specific user published selling items
 	.get(`/:username`, async (c) => {
 		const username = c.req.param('username');
@@ -93,12 +135,13 @@ export const itemsRoute = createRouter()
 
 			const userId = Number(existingUsername?.[0]?.id);
 
-			const userItemsWithFilters = await db
+			const userItems = await db
 				.select({
 					id: items.id,
 					title: items.title,
 					price: items.price,
 					category: subcategories.slug,
+					city: cities.name,
 					filter_id: filters.id,
 					filter_slug: filters.slug,
 					filter_name: filters.name,
@@ -107,6 +150,7 @@ export const itemsRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(cities, eq(cities.id, items.city))
 				.leftJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
 				.leftJoin(filterValues, eq(filterValues.id, itemsFiltersValues.filter_value_id))
 				.leftJoin(filters, eq(filters.id, filterValues.filter_id))
@@ -121,7 +165,8 @@ export const itemsRoute = createRouter()
 				id: number;
 				title: string;
 				price: number;
-				category: string;
+				subcategory: string;
+				city: string;
 				imageUrl: string | null;
 				properties: Record<string, string[]>;
 			}
@@ -129,14 +174,15 @@ export const itemsRoute = createRouter()
 			// Group properties by item and organize by filter_slug
 			const itemsMap: Map<number, ItemWithProperties> = new Map();
 
-			userItemsWithFilters.forEach((row) => {
+			userItems.forEach((row) => {
 				if (!itemsMap.has(row.id)) {
 					// Initialize the item with empty properties object
 					itemsMap.set(row.id, {
 						id: row.id,
 						title: row.title,
 						price: row.price,
-						category: row.category,
+						subcategory: row.category,
+						city: row.city,
 						imageUrl: row.imageUrl,
 						properties: {},
 					});
@@ -160,9 +206,9 @@ export const itemsRoute = createRouter()
 				}
 			});
 
-			const itemsArray = Array.from(itemsMap.values());
+			const userItemsReshaped = Array.from(itemsMap.values());
 
-			return c.json(itemsArray, 200);
+			return c.json(userItemsReshaped, 200);
 		} catch (error) {
 			console.log(error);
 

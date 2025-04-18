@@ -20,8 +20,12 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 	const [copied, setCopied] = useState(false);
 
 	// In a real app, this would be your actual domain
-	const baseUrl = 'https://tantovale.it/item';
-	const shareUrl = `${baseUrl}/${item.id}`;
+	const baseUrl = `https://tantovale.it/item`;
+
+	const shareUrl = `${baseUrl}/${linkBuilder({
+		id: item.id,
+		title: item.title,
+	})}}`;
 
 	const shareText = `Check out this item: ${item.title}`;
 
@@ -128,4 +132,7 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 			</DialogContent>
 		</Dialog>
 	);
+}
+function linkBuilder(arg0: { id: string; title: string }) {
+	throw new Error('Function not implemented.');
 }

@@ -33,6 +33,7 @@ export const favoritesRoute = createRouter()
 			return c.json({ message: 'Get item error' }, 500);
 		}
 	})
+	// handle favorite (add or remove)
 	.post(
 		`${authPath}/handle`,
 		authMiddleware,
