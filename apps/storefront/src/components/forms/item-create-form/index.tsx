@@ -16,7 +16,7 @@ import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
 import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
-import { ItemDetailCard } from "#components/item-detail-card";
+import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { FieldInfo } from "../utils/field-info";
 import { useCreateItemForm } from "./use-create-item-form";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";

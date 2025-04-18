@@ -1,9 +1,9 @@
-import { count, eq } from 'drizzle-orm';
+import { count, eq, and, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '../../database';
-import { cities, items, profiles, users } from '../../database/schemas/schema';
+import { cities, items, itemsImages, profiles, users } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { UserSchema } from '../../extended_schemas/users';
 import { authPath } from '../../utils/constants';
@@ -51,13 +51,12 @@ export const profileRoute = createRouter()
 					id: users.id,
 					phone_verified: users.phone_verified,
 					email_verified: users.email_verified,
+					created_at: users.created_at,
 				})
 				.from(users)
 				.innerJoin(profiles, eq(users.id, profiles.user_id))
 				.where(eq(users.username, username))
 				.limit(1);
-
-			console.log(userData);
 
 			if (!userData) return c.json({ message: 'User not found' }, 404);
 

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { Badge } from "@workspace/ui/components/badge";
 
-import { ItemDetailCard } from "#components/item-detail-card";
+import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { useItemDetail } from "./hooks/use-item-detail";
 import { ItemWrapperProps } from "./types";
 import { UserInfoBox } from "./components/right-sidebar";

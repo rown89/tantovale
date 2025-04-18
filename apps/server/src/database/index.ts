@@ -23,6 +23,7 @@ export function createClient() {
 
 	const db = drizzle(client, {
 		schema,
+		// logger: new DefaultLogger({ writer: new ConsoleLogWriter() }),
 	});
 
 	return { db, client };

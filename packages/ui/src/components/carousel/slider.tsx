@@ -47,7 +47,7 @@ export default function Slider({ images }: SliderProps) {
 				</div>
 			</div>
 
-			{loaded && instanceRef.current && (
+			{loaded && images.length > 1 && instanceRef.current && (
 				<div className='dots'>
 					{[...Array(instanceRef.current.track.details.slides.length).keys()].map((idx) => {
 						return (
