@@ -110,12 +110,11 @@ export default function SignupForm() {
                   {state.errors.fullname}
                 </p>
               )}
-              <Label htmlFor="gender" className="block">
+              <Label htmlFor="gender">
                 Gender <span className="text-red-500">*</span>
               </Label>
               <Select
-                name={"gender"}
-                onValueChange={(value) => {}}
+                name="gender"
                 required
                 defaultValue={state.inputs?.gender}
               >

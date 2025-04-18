@@ -137,49 +137,42 @@ export function UserInfoBox({
             <Separator className="mb-4" />
 
             <Label className="mb-1">Venditore:</Label>
-            <div className="outline-1 p-3 rounded-2xl outline-foreground/10 bg-background/90">
-              <div className="flex items-start gap-2 text-accent w-full justify-between">
-                <Link
-                  href={`/user/${item?.user?.username || "user"}`}
-                  className="hover:underline hover:text-accent item-center flex gap-2"
-                >
-                  {phone_verified && email_verified && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <BadgeCheck color="green" />
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-background outline-1 outline-green">
-                          <span className="flex flex-col gap-2 text-primary">
-                            <span className="flex gap-2 item-center">
-                              <Mail size={15} />
-                              <p>Email verified</p>
-                            </span>
-
-                            <span className="flex gap-2 item-center">
-                              <Phone size={15} />
-                              <p>Phone verified</p>
-                            </span>
+            <div className="flex items-start text-accent w-full justify-between">
+              <Link
+                href={`/user/${item?.user?.username || "user"}`}
+                className="hover:underline hover:text-accent item-center flex gap-2"
+              >
+                {phone_verified && email_verified && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <BadgeCheck color="green" />
+                      </TooltipTrigger>
+                      <TooltipContent className="bg-background outline-1 outline-green">
+                        <div className="flex flex-col gap-2 text-primary p-2">
+                          <span className="flex gap-2 item-center">
+                            <Mail size={20} />
+                            <p>Email verified</p>
                           </span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                  <p className="text-xl">{item?.user?.username || "User"}</p>
-                </Link>
-              </div>
+                          <Separator />
+                          <span className="flex gap-2 item-center">
+                            <Phone size={20} />
+                            <p>Phone verified</p>
+                          </span>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <p className="text-xl">{item?.user?.username || "User"}</p>
+              </Link>
+            </div>
 
-              <div className="grid grid-cols-2 mt-4">
-                <span className="flex gap-2">
-                  <FileSpreadsheet /> Annunci online:{" "}
-                  {itemOwnerData?.selling_items || 0}
-                </span>
-
-                <span className="flex gap-2">
-                  <FileSpreadsheet /> Annunci pubblicati:{" "}
-                  {itemOwnerData?.selling_items || 0}
-                </span>
-              </div>
+            <div className="grid grid-cols-2 mb-2">
+              <span className="flex gap-2">
+                <FileSpreadsheet /> Annunci online:{" "}
+                {itemOwnerData?.selling_items || 0}
+              </span>
             </div>
           </div>
         </CardContent>

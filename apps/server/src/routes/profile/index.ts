@@ -60,26 +60,32 @@ export const profileRoute = createRouter()
 
 			if (!userData) return c.json({ message: 'User not found' }, 404);
 
-			const [profileData] = await db
+			// Get the user's city information
+			const [cityData] = await db
 				.select({
-					selling_items: count(),
 					city_id: cities.id,
 					city_name: cities.name,
 				})
-				.from(items)
-				.innerJoin(profiles, eq(profiles.user_id, userData.id))
+				.from(profiles)
 				.innerJoin(cities, eq(cities.id, profiles.city))
-				.where(eq(profiles.user_id, userData.id))
-				.groupBy(cities.id);
+				.where(eq(profiles.user_id, userData.id));
 
-			if (!profileData) return c.json({ message: 'Profile not found' }, 404);
+			// Get the count of selling items separately
+			const [sellingItemsCount] = await db
+				.select({
+					count: count(),
+				})
+				.from(items)
+				.where(and(eq(items.user_id, userData.id), eq(items.published, true)));
+
+			if (!cityData) return c.json({ message: 'Profile not found' }, 404);
 
 			const data = {
 				...userData,
-				...profileData,
+				selling_items: sellingItemsCount?.count || 0,
 				city: {
-					id: profileData.city_id,
-					name: profileData.city_name,
+					id: cityData.city_id,
+					name: cityData.city_name,
 				},
 			};
 
