@@ -3,6 +3,8 @@
 import React from 'react';
 import { useState } from 'react';
 import { Check, Copy, Mail } from 'lucide-react';
+
+import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../dialog';
 import { Button } from '../button';
 import { Input } from '../input';
@@ -23,7 +25,7 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 	const baseUrl = `https://tantovale.it/item`;
 
 	const shareUrl = `${baseUrl}/${linkBuilder({
-		id: item.id,
+		id: Number(item.id),
 		title: item.title,
 	})}}`;
 
@@ -98,7 +100,8 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 				<DialogHeader>
 					<DialogTitle>Share</DialogTitle>
 					<DialogDescription>
-						"<span className='text-accent'>{item.title}</span>"<span> with your friends</span>
+						<span className='text-accent'>{item.title}</span>
+						<span> with your friends!</span>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -124,7 +127,7 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 								rel='noopener noreferrer'
 								className={`hover:bg-foreground/10 flex flex-col items-center justify-center rounded-lg border p-3 transition-colors`}>
 								{link.icon}
-								<span className='text-accent-foreground mt-1 text-xs'>{link.name}</span>
+								<span className='text-foreground mt-1 text-xs'>{link.name}</span>
 							</a>
 						))}
 					</div>
@@ -132,7 +135,4 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 			</DialogContent>
 		</Dialog>
 	);
-}
-function linkBuilder(arg0: { id: string; title: string }) {
-	throw new Error('Function not implemented.');
 }

@@ -78,6 +78,7 @@ export default function ProfileFavorites() {
 
               const TitleLink = (
                 <Link
+                  key={item.id}
                   className="hover:text-accent inline-grid w-full hover:underline xl:max-w-[80%]"
                   href={`${link}`}
                 >
@@ -89,10 +90,12 @@ export default function ProfileFavorites() {
 
               const ThumbLink = (
                 <Link
+                  key={item.id}
                   href={`${link}`}
                   className="relative block h-full min-h-[160px]"
                 >
                   <Image
+                    key={item.id}
                     className="h-full object-cover"
                     fill
                     priority
@@ -104,15 +107,13 @@ export default function ProfileFavorites() {
               );
 
               return (
-                <>
-                  <ItemLinearCard
-                    key={i}
-                    TitleLink={TitleLink}
-                    ThumbLink={ThumbLink}
-                    item={item}
-                    onShare={() => handleShare(item)}
-                  />
-                </>
+                <ItemLinearCard
+                  key={i}
+                  TitleLink={TitleLink}
+                  ThumbLink={ThumbLink}
+                  item={item}
+                  onShare={() => handleShare(item)}
+                />
               );
             })
           )}

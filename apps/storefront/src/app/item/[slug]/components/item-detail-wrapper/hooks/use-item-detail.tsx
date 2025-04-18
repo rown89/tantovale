@@ -14,7 +14,8 @@ interface useItemDetailProps {
 type schemaType = z.infer<typeof ChatMessageSchema>;
 
 export function useItemDetail({ item_id }: useItemDetailProps) {
-  const [isFavorite, setIsFavorite] = useState(false);
+  // Initialize with null to match server-side rendering
+  const [isFavorite, setIsFavorite] = useState<boolean | null>(null);
   const queryClient = useQueryClient();
 
   // get chat id from item_id
@@ -25,6 +26,9 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
   } = useQuery({
     queryKey: ["get_chat_id_by_item"],
     queryFn: async () => {
+      // Defer actual data fetching to client-side only
+      if (typeof window === "undefined") return null;
+
       const response = await client.chat.auth.rooms.id[":item_id"].$get({
         param: {
           item_id: String(item_id),
@@ -37,6 +41,8 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
 
       return chat.id ?? 0;
     },
+    // Skip running this query during SSR
+    enabled: typeof window !== "undefined",
   });
 
   // Check if item_id is a user favorite
@@ -47,6 +53,9 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
   } = useQuery({
     queryKey: ["get_is_favorite_item"],
     queryFn: async () => {
+      // Defer actual data fetching to client-side only
+      if (typeof window === "undefined") return null;
+
       const response = await client.favorites.auth.check[":item_id"].$get({
         param: {
           item_id: String(item_id),
@@ -57,10 +66,15 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
 
       const isFavorite = await response.json();
 
-      setIsFavorite(isFavorite);
+      // Only update state on client side
+      if (typeof window !== "undefined") {
+        setIsFavorite(isFavorite);
+      }
 
       return isFavorite;
     },
+    // Skip running this query during SSR
+    enabled: typeof window !== "undefined",
   });
 
   // Add item to favorites
@@ -139,7 +153,7 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
 
   return {
     messageBoxForm,
-    isFavorite,
+    isFavorite: isFavorite === null ? false : isFavorite,
     isFavoriteLoading,
     chatId,
     isChatIdLoading,

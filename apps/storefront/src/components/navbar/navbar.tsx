@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { LogOut, MessageSquare, User } from "lucide-react";
+import { LogOut, MessageSquare, Plus, User } from "lucide-react";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
@@ -33,11 +33,11 @@ export default function NavBar() {
         </Link>
       </div>
       <div></div>
-      <div className="flex ml-auto items-center space-x-4">
+      <div className="flex ml-auto items-center">
         {!loadingUser && (
           <Button
-            className="w-[90px] mx-12 text-slate-900 font-bold"
-            variant="secondary"
+            className="w-[90px] mx-2 text-foreground font-bold"
+            variant="ghost"
             onClick={async () => {
               if (user) {
                 router.push("/auth/item/new");
@@ -46,6 +46,7 @@ export default function NavBar() {
               }
             }}
           >
+            <Plus />
             Create
           </Button>
         )}

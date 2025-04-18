@@ -41,7 +41,7 @@ export const ItemDetailCard = React.memo(
 									<Slider images={images} />
 								) : isPreview ? (
 									<div className='flex flex-col gap-2'>
-										<Button onClick={() => imagesRef.current?.click()}>Upload</Button>
+										<Button onClick={() => imagesRef && imagesRef?.current?.click()}>Upload</Button>
 										<p className='text-muted-foreground'>Upload up to {maxImages} images</p>
 									</div>
 								) : null}

@@ -57,7 +57,6 @@ export function ItemLinearCard({
 	onPublish,
 	onUnpubish,
 }: ItemCardProps) {
-	console.log(item.created_at);
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const isMobile = useIsMobile();
 	const [isDialogOpen, setIsDialogOpen] = useState<{
