@@ -13,12 +13,12 @@ Built with passion and community collaboration in mind, Tantovale welcomes contr
 
 #### Backend: **[HonoJS](https://hono.dev/)**, **[zod-validator](https://www.npmjs.com/package/@hono/zod-validator)**, **[hono-openapi](https://hono.dev/examples/hono-openapi)**
 
-#### Database: - **[Drizzle ORM](https://orm.drizzle.team/)** with **[PostgreSQL](https://www.postgresql.org/)**
+#### Database: - **[PostgreSQL](https://www.postgresql.org/)** with **[Drizzle ORM](https://orm.drizzle.team/)**
 
 ### Installation
 
 Tip: If you install vscode extention [restore-terminals](https://marketplace.visualstudio.com/items?itemName=EthanSK.restore-terminals) the following terminals should appear automatically:\
-_storefront_, _server_, _database_, _ui_, _root_
+_storefront_, _server_, _shared_, _database_, _ui_, _root_
 
 1. **Install dependencies:**
 
@@ -33,7 +33,6 @@ _storefront_, _server_, _database_, _ui_, _root_
 
    - [Storefront](https://github.com/rown89/tantovale/blob/main/apps/storefront/env.example)
    - [Server](https://github.com/rown89/tantovale/blob/main/apps/server/env.example)
-   - [Database](https://github.com/rown89/tantovale/blob/main/packages/database/env.example)
 
 3. **DB Migration:**\
    After setting up a postgres database you can launch:
