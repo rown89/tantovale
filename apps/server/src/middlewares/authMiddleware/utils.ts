@@ -68,6 +68,7 @@ export async function createNewAccessToken(
 
 	const access_token_payload = tokenPayload({
 		id: existingUser.id,
+		email: existingUser.email,
 		username: existingUser.username,
 		email_verified: existingUser.email_verified,
 		phone_verified: existingUser.phone_verified,
@@ -87,6 +88,7 @@ export async function createNewAccessToken(
 	return {
 		user: {
 			id: existingUser.id,
+			email: existingUser.email,
 			username: existingUser.username,
 			email_verified: existingUser.email_verified,
 			phone_verified: existingUser.phone_verified,

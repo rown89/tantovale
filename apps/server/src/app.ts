@@ -1,5 +1,6 @@
 import { createApp } from './lib/create-app';
 import { configureOpenAPI } from './lib/configureOpenApi';
+import { serveStatic } from '@hono/node-server/serve-static';
 
 import {
 	itemsRoute,
@@ -22,12 +23,16 @@ import {
 	chatRoute,
 	userRoute,
 	favoritesRoute,
+	paymentRoute,
 } from './routes';
 
 const app = createApp();
 
 // OpenApi specs
 configureOpenAPI(app);
+
+// Serve static files
+app.use('/*', serveStatic({ root: './dist' }));
 
 const apiRoutes = app
 	.route(`/signup`, signupRoute)
@@ -49,7 +54,8 @@ const apiRoutes = app
 	.route(`/password`, passwordResetVerifyToken)
 	.route(`/profile`, profileRoute)
 	.route(`/favorites`, favoritesRoute)
-	.route(`/user`, userRoute);
+	.route(`/user`, userRoute)
+	.route(`/payment`, paymentRoute);
 
 export { app };
 export type ApiRoutesType = typeof apiRoutes;

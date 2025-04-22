@@ -26,7 +26,7 @@ export default function NavBar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="container flex py-4 px-4 justify-between items-center min-h-14 mx-auto">
+    <div className="container flex py-4 px-4 xl:px-0 justify-between items-center min-h-14 mx-auto">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale
@@ -36,7 +36,7 @@ export default function NavBar() {
       <div className="flex ml-auto items-center">
         {!loadingUser && (
           <Button
-            className="w-[90px] mx-2 text-foreground font-bold"
+            className="ml-2 mr-3 text-foreground font-bold"
             variant="ghost"
             onClick={async () => {
               if (user) {
@@ -47,23 +47,36 @@ export default function NavBar() {
             }}
           >
             <Plus />
-            Create
+            Sell
           </Button>
         )}
 
         {!loadingUser && (
           <>
             {!user ? (
-              <>
-                <Link href="/login" className="text-muted-foreground">
-                  Login
-                </Link>
-                <Link href="/signup" className="text-muted-foreground">
-                  Signup
-                </Link>
-              </>
+              <div className="flex items-center">
+                <div className="bg-card rounded-lg overflow-hidden border border-border flex">
+                  <Link href="/login">
+                    <Button
+                      variant="ghost"
+                      className="px-4 py-2 rounded-none hover:bg-primary hover:text-primary-foreground transition-colors"
+                    >
+                      Login
+                    </Button>
+                  </Link>
+                  <div className="h-8 self-center w-px bg-border"></div>
+                  <Link href="/signup">
+                    <Button
+                      variant="ghost"
+                      className="px-4 py-2 rounded-none hover:bg-accent hover:text-accent-foreground transition-colors"
+                    >
+                      Signup
+                    </Button>
+                  </Link>
+                </div>
+              </div>
             ) : (
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
                 <Button
                   variant="ghost"
                   className="relative h-10 w-10 rounded-full"

@@ -17,3 +17,4 @@ export * from './profile';
 export * from './chat';
 export * from './user';
 export * from './favorites';
+export * from './payment';

@@ -14,7 +14,38 @@ import {
 	MonitorScreenSizeValues,
 } from '../scripts/seeders/categories/types';
 
-export const statusEnum = pgEnum('status_enum', ['available', 'sold']);
+export const itemStatusEnum = pgEnum('status_enum', ['available', 'sold', 'pending', 'archived']);
+export const itemProposalStatusEnum = pgEnum('proposal_status_enum', ['pending', 'accepted', 'rejected']);
+export const orderStatusEnum = pgEnum('order_status_enum', [
+	'pending',
+	'confirmed',
+	'shipped',
+	'delivered',
+	'cancelled',
+]);
+export const paymentStatusEnum = pgEnum('payment_status_enum', ['pending', 'paid', 'failed']);
+export const paymentCurrencyEnum = pgEnum('payment_currency_enum', [
+	'USD',
+	'EUR',
+	'GBP',
+	'CAD',
+	'AUD',
+	'JPY',
+	'CNY',
+	'INR',
+	'BRL',
+	'ARS',
+	'CLP',
+	'COP',
+	'MXN',
+	'PEN',
+	'PYG',
+	'UYU',
+	'VEF',
+	'VND',
+	'ZAR',
+]);
+
 export const sexEnum = pgEnum('sex_enum', ['male', 'female']);
 export const profileEnum = pgEnum('profile_types_enum', ['private', 'private_pro', 'shop', 'shop_pro']);
 

@@ -3,7 +3,7 @@ import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/p
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 import { users } from './users';
-import { statusEnum } from './enumerated_types';
+import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 import { cities } from './cities';
 import { chat_room } from './chat_room';
@@ -14,10 +14,9 @@ export const items = pgTable(
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 		title: text('title').notNull(),
 		description: text('description').notNull(),
-		status: statusEnum('status').notNull().default('available'),
+		status: itemStatusEnum('status').notNull().default('available'),
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
-		shipping_cost: integer('shipping_cost').notNull().default(0),
 		user_id: integer('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),

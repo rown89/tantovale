@@ -38,6 +38,7 @@ export const verifyRoute = createRouter()
 										properties: {
 											id: { type: 'number' },
 											username: { type: 'string' },
+											email: { type: 'string' },
 											email_verified: { type: 'boolean' },
 											phone_verified: { type: 'boolean' },
 										},
@@ -100,6 +101,7 @@ export const verifyRoute = createRouter()
 							user: {
 								id: payload.id as number,
 								username: payload.username as string,
+								email: payload.email as string,
 								email_verified: payload.email_verified as boolean,
 								phone_verified: payload.phone_verified as boolean,
 							},
@@ -152,7 +154,7 @@ export const verifyRoute = createRouter()
 				return c.json({ error: 'User not found' }, 404);
 			}
 
-			const { id: userId, username, email_verified, phone_verified } = user;
+			const { id: userId, username, email_verified, phone_verified, email } = user;
 
 			if (user.email_verified) {
 				return c.json({ message: 'User already verified' });
@@ -172,6 +174,7 @@ export const verifyRoute = createRouter()
 			const access_token_payload = tokenPayload({
 				id: userId,
 				username,
+				email,
 				email_verified,
 				phone_verified,
 				exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
@@ -180,6 +183,7 @@ export const verifyRoute = createRouter()
 			const refresh_token_payload = tokenPayload({
 				id: userId,
 				username,
+				email,
 				email_verified,
 				phone_verified,
 				exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),

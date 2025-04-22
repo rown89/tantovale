@@ -35,6 +35,7 @@ const EnvSchema = z.object({
 	DATABASE_HOST: z.string(),
 	POSTGRES_DB: z.string(),
 	DATABASE_PORT: z.coerce.number().default(5432),
+	STRIPE_SECRET_KEY: z.string(),
 });
 
 export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {

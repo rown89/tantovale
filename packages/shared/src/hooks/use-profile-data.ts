@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { client } from '@workspace/server/client-rpc';
+import { useState } from 'react';
 
 export function useProfileData() {
+	const [isPaymentProviderConnected, setIsPaymentProviderConnected] = useState(false);
+
 	const {
 		data: profile,
 		isLoading: isLoadingProfile,
@@ -21,5 +24,6 @@ export function useProfileData() {
 		profile,
 		isLoadingProfile,
 		isErrorProfile,
+		isPaymentProviderConnected,
 	};
 }

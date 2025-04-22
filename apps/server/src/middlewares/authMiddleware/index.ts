@@ -80,6 +80,7 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 			// Set user in context
 			c.set('user', {
 				id: existingUser.id,
+				email: existingUser.email,
 				username: existingUser.username,
 				email_verified: existingUser.email_verified,
 				phone_verified: existingUser.phone_verified,
