@@ -4,9 +4,9 @@ import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { users } from './users';
 import { items } from './items';
-import { itemProposalStatusEnum } from './enumerated_types';
+import { ordersProposalStatusEnum } from './enumerated_types';
 
-export const itemsProposals = pgTable('items_proposals', {
+export const ordersProposals = pgTable('orders_proposals', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 	item_id: integer('item_id').references(() => items.id, {
 		onDelete: 'cascade',
@@ -16,22 +16,22 @@ export const itemsProposals = pgTable('items_proposals', {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
-	proposal_amount: integer('price').notNull(),
-	proposal_status: itemProposalStatusEnum('proposal_status').notNull().default('pending'),
+	price: integer('price').notNull(),
+	status: ordersProposalStatusEnum('status').notNull().default('pending'),
 	created_at: timestamp('created_at').notNull().defaultNow(),
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const itemsProposalsRelations = relations(itemsProposals, ({ one }) => ({
+export const ordersProposalsRelations = relations(ordersProposals, ({ one }) => ({
 	item: one(items, {
-		fields: [itemsProposals.item_id],
+		fields: [ordersProposals.item_id],
 		references: [items.id],
 	}),
 	user: one(users, {
-		fields: [itemsProposals.user_id],
+		fields: [ordersProposals.user_id],
 		references: [users.id],
 	}),
 }));
 
-export const itemsProposalsSelectSchema = createSelectSchema(itemsProposals);
-export const itemsProposalsInsertSchema = createInsertSchema(itemsProposals);
+export const ordersProposalsSelectSchema = createSelectSchema(ordersProposals);
+export const ordersProposalsInsertSchema = createInsertSchema(ordersProposals);

@@ -5,6 +5,6 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number) {
+export function formatPrice(amount: number) {
 	return `${(amount / 100).toFixed(2)}`;
 }

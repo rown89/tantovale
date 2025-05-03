@@ -3,6 +3,7 @@ import { sign } from 'hono/jwt';
 import { setCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
+
 import { tokenPayload } from '../../lib/tokenPayload';
 import { verifyPassword } from '../../lib/password';
 import { createClient } from '../../database';
@@ -67,6 +68,7 @@ export const loginRoute = createRouter().post(
 			const access_token_payload = tokenPayload({
 				id,
 				username,
+				email,
 				email_verified,
 				phone_verified,
 				exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
@@ -75,6 +77,7 @@ export const loginRoute = createRouter().post(
 			const refresh_token_payload = tokenPayload({
 				id,
 				username,
+				email,
 				email_verified,
 				phone_verified,
 				exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),

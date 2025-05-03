@@ -4,18 +4,21 @@ import { useEffect, useRef } from "react";
 import { ChatHeader } from "./chat-header";
 import { ChatMessage } from "./chat-message";
 import { ChatInput } from "./chat-input";
+import { ItemStatus } from "@workspace/server/enumerated_values";
+
+export interface ChatItem {
+  id: number;
+  title: string;
+  price: number;
+  published: boolean;
+  status: ItemStatus;
+}
 
 export interface ChatProps {
   currentUserId: number;
   chatRoom: {
     id: number;
-    item: {
-      id: number;
-      title: string;
-      price: number;
-      published: boolean;
-      status: string;
-    };
+    item: ChatItem;
     author: {
       id: number | null;
       username: string;
@@ -30,6 +33,9 @@ export interface ChatProps {
     | {
         id: number;
         message: string;
+        message_type: "text" | "proposal";
+        order_proposal_id: number | null;
+        item: ChatItem;
         created_at: string;
         read_at: string | null;
         sender: {
@@ -60,6 +66,7 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
             <ChatMessage
               key={message.id}
               message={message}
+              item={chatRoom.item}
               isCurrentUser={message.sender.id === currentUserId}
             />
           ))

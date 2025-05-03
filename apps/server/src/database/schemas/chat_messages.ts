@@ -3,6 +3,8 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 import { chat_room } from './chat_room';
 import { users } from './users';
+import { chatMessageTypeEnum } from './enumerated_types';
+import { ordersProposals } from './orders_proposals';
 
 export const chat_messages = pgTable('chat_messages', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
@@ -13,8 +15,13 @@ export const chat_messages = pgTable('chat_messages', {
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 	message: text('message').notNull(),
-	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	message_type: chatMessageTypeEnum('message_type').notNull().default('text'),
+	order_proposal_id: integer('order_proposal_id').references(() => ordersProposals.id, {
+		onDelete: 'cascade',
+		onUpdate: 'cascade',
+	}),
 	read_at: timestamp('read_at', { withTimezone: true }),
+	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type SelectChatMessage = typeof chat_messages.$inferSelect;

@@ -19,7 +19,7 @@ import {
 } from "@workspace/ui/components/sidebar";
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Badge } from "@workspace/ui/components/badge";
-import { formatCurrency } from "@workspace/ui/lib/utils";
+import { formatPrice } from "@workspace/ui/lib/utils";
 
 type ChatRoom = {
   id: number;
@@ -132,7 +132,7 @@ export function ChatSidebar({
                               )}
                             </div>
                             <p className="text-sm text-foreground/70 truncate">
-                              {formatCurrency(room.item.price)}€
+                              {formatPrice(room.item.price)}€
                             </p>
                             {lastMessage && (
                               <p className="text-sm truncate">

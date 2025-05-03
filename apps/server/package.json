@@ -35,6 +35,10 @@
 		"./database": {
 			"development": "./src/database/schemas/schema.ts",
 			"default": "./dist/src/database/schemas/schema.js"
+		},
+		"./enumerated_values": {
+			"development": "./src/database/schemas/enumerated_values.ts",
+			"default": "./dist/src/database/schemas/enumerated_values.js"
 		}
 	},
 	"dependencies": {

@@ -20,3 +20,6 @@ export * from './users';
 export * from './chat_room';
 export * from './chat_messages';
 export * from './user_items_favorites';
+export * from './transactions';
+export * from './orders_proposals';
+export * from './orders';

@@ -17,4 +17,6 @@ export * from './profile';
 export * from './chat';
 export * from './user';
 export * from './favorites';
-export * from './payment';
+export * from './transaction';
+export * from './webhooks';
+export * from './orders-proposals';

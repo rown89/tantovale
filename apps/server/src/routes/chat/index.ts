@@ -179,6 +179,8 @@ export const chatRoute = createRouter()
 					.select({
 						id: chat_messages.id,
 						message: chat_messages.message,
+						message_type: chat_messages.message_type,
+						order_proposal_id: chat_messages.order_proposal_id,
 						created_at: chat_messages.created_at,
 						read_at: chat_messages.read_at,
 						sender_id: users.id,
@@ -192,6 +194,8 @@ export const chatRoute = createRouter()
 				const messages = messagesResult.map((msg) => ({
 					id: msg.id,
 					message: msg.message,
+					message_type: msg.message_type,
+					order_proposal_id: msg.order_proposal_id,
 					created_at: msg.created_at,
 					read_at: msg.read_at,
 					sender: {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Button } from "@workspace/ui/components/button";
-import { formatCurrency } from "@workspace/ui/lib/utils";
+import { formatPrice } from "@workspace/ui/lib/utils";
 import { ChatProps } from ".";
 
 interface ChatHeaderProps {
@@ -48,7 +48,7 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
                 {room.item.title}
               </Link>
               <p className="text-sm font-medium">
-                {formatCurrency(room.item.price)}€
+                {formatPrice(room.item.price)}€
               </p>
             </>
           ) : (
