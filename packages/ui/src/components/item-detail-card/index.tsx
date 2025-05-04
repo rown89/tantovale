@@ -33,7 +33,7 @@ export const ItemDetailCard = React.memo(
 
 		return (
 			<div className='h-full w-full overflow-hidden'>
-				<Card className='border-2 shadow-md transition-all duration-300 hover:shadow-lg'>
+				<Card className='border-1 shadow-md transition-all duration-300 hover:shadow-lg'>
 					<CardContent className='relative flex flex-col justify-between p-6'>
 						<div className='flex flex-col gap-2'>
 							<div className='bg-background/50 mb-3 flex min-h-[450px] w-full flex-col items-center justify-center rounded-t-md'>

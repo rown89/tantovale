@@ -1,21 +1,23 @@
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { client } from "@workspace/server/client-rpc";
 import { ChatMessageSchema } from "@workspace/server/extended_schemas";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { User } from "#providers/auth-providers";
 
 interface useItemDetailProps {
+  user: User | null;
   item_id: number;
 }
 
 type schemaType = z.infer<typeof ChatMessageSchema>;
 
-export function useItemDetail({ item_id }: useItemDetailProps) {
-  // Initialize with null to match server-side rendering
+export function useItemDetail({ user, item_id }: useItemDetailProps) {
   const [isFavorite, setIsFavorite] = useState<boolean | null>(null);
+
   const queryClient = useQueryClient();
 
   // get chat id from item_id
@@ -25,9 +27,9 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
     error: isChatIdError,
   } = useQuery({
     queryKey: ["get_chat_id_by_item"],
+    enabled: !!user,
     queryFn: async () => {
-      // Defer actual data fetching to client-side only
-      if (typeof window === "undefined") return null;
+      if (!user) return null;
 
       const response = await client.chat.auth.rooms.id[":item_id"].$get({
         param: {
@@ -41,8 +43,6 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
 
       return chat.id ?? 0;
     },
-    // Skip running this query during SSR
-    enabled: typeof window !== "undefined",
   });
 
   // Check if item_id is a user favorite
@@ -52,9 +52,9 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
     error: isFavoriteError,
   } = useQuery({
     queryKey: ["get_is_favorite_item"],
+    enabled: !!user,
     queryFn: async () => {
-      // Defer actual data fetching to client-side only
-      if (typeof window === "undefined") return null;
+      if (!user) return false;
 
       const response = await client.favorites.auth.check[":item_id"].$get({
         param: {
@@ -66,15 +66,10 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
 
       const isFavorite = await response.json();
 
-      // Only update state on client side
-      if (typeof window !== "undefined") {
-        setIsFavorite(isFavorite);
-      }
+      setIsFavorite(isFavorite);
 
       return isFavorite;
     },
-    // Skip running this query during SSR
-    enabled: typeof window !== "undefined",
   });
 
   // Add item to favorites
@@ -90,6 +85,27 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
     },
     onSuccess: (value) => {
       setIsFavorite(value as boolean);
+    },
+    onError: (error) => {
+      console.error("Failed to send message:", error);
+    },
+  });
+
+  const handlePayment = useMutation({
+    mutationFn: async (price: number) => {
+      const response = await client.orders_proposals.auth.create.$post({
+        json: {
+          item_id,
+          price,
+        },
+      });
+
+      if (!response.ok) return false;
+
+      return await response.json();
+    },
+    onSuccess: (value) => {
+      console.log("success", value);
     },
     onError: (error) => {
       console.error("Failed to send message:", error);
@@ -158,5 +174,6 @@ export function useItemDetail({ item_id }: useItemDetailProps) {
     chatId,
     isChatIdLoading,
     handleFavorite,
+    handlePayment,
   };
 }

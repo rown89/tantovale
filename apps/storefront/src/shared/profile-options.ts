@@ -1,4 +1,5 @@
 import {
+  ClipboardList,
   LucideProps,
   Save,
   Settings,
@@ -26,6 +27,12 @@ export const profileOptions: ProfileOptionsProps[] = [
     label: "Selling items",
     url: "/auth/profile/selling-items",
     slug: "selling-items",
+  },
+  {
+    Icon: ClipboardList,
+    label: "Orders",
+    url: "/auth/profile/orders",
+    slug: "orders",
   },
   {
     Icon: Save,

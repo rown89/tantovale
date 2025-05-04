@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Heart,
-  ShoppingCart,
-  BadgeCheck,
-  Mail,
-  Phone,
-  FileSpreadsheet,
-} from "lucide-react";
+import { Heart, BadgeCheck, Mail, Phone, FileSpreadsheet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, forwardRef } from "react";
 
@@ -35,7 +28,6 @@ import { FieldInfo } from "#components/forms/utils/field-info";
 import { useItemDetail } from "../hooks/use-item-detail";
 import { ItemWrapperProps } from "../types";
 import Link from "next/link";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { PaymentButton } from "./payment-button";
 
 interface UserInfoBoxProps {
@@ -54,8 +46,8 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 
     const { phone_verified, email_verified } = itemOwnerData || {};
     const { user } = useAuth();
+
     const router = useRouter();
-    const isMobile = useIsMobile();
 
     const item_id = item.id;
     const [itemOwnerIsNotCurrentUser, setItemOwnerIsNotCurrentUser] = useState<
@@ -66,10 +58,16 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       setItemOwnerIsNotCurrentUser(item?.user?.id !== user?.id);
     }, [item?.user?.id, user?.id]);
 
-    const { messageBoxForm, isFavorite, isFavoriteLoading, handleFavorite } =
-      useItemDetail({
-        item_id,
-      });
+    const {
+      messageBoxForm,
+      isFavorite,
+      isFavoriteLoading,
+      handleFavorite,
+      handlePayment,
+    } = useItemDetail({
+      user,
+      item_id,
+    });
 
     return (
       <div
@@ -82,31 +80,43 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
               <CardTitle
                 className={`flex flex-col break-all justify-between items-center gap-3`}
               >
-                <PaymentButton
-                  is_payable={item?.is_payable}
-                  handlePayment={() => {
-                    console.log("handlePayment");
-                    // TODO: handle
-                  }}
-                />
+                {item?.is_payable && (
+                  <PaymentButton
+                    handlePayment={() => {
+                      if (user) {
+                        handlePayment.mutate(item.price);
+                      } else {
+                        router.push("/login");
+                      }
+                    }}
+                  />
+                )}
 
                 <div className="mt-2 w-full flex justify-center">
                   {isFavoriteLoading ? (
                     <Spinner />
                   ) : (
                     <Button
-                      className="hover:bg-amber-300 w-full"
+                      className="hover:bg-destructive/70 w-full"
                       variant={!isFavorite ? "outline" : "destructive"}
+                      disabled={isFavoriteLoading}
                       onClick={() => {
+                        if (!user) {
+                          router.push("/login");
+                          return;
+                        }
+
                         if (isFavorite) {
+                          console.log("remove");
                           handleFavorite.mutate("remove");
                         } else {
+                          console.log("add");
                           handleFavorite.mutate("add");
                         }
                       }}
                     >
                       {!isFavorite ? (
-                        <Heart className="text-destructive" />
+                        <Heart className="text-inherit" />
                       ) : (
                         <Heart />
                       )}

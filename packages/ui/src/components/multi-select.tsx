@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { CheckIcon, XCircle, ChevronDown, XIcon, WandSparkles } from 'lucide-react';
+import { CheckIcon, XCircle, ChevronDown, XIcon } from 'lucide-react';
 
 import { cn } from '@workspace/ui/lib/utils';
 import { Separator } from '@workspace/ui/components/separator';
@@ -142,10 +142,10 @@ export const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>
 			}
 		};
 
-		const toggleOption = (option: string) => {
-			const newSelectedValues = selectedValues.includes(option)
-				? selectedValues.filter((value) => value !== option)
-				: [...selectedValues, option];
+		const toggleOption = (optionValue: string) => {
+			const newSelectedValues = selectedValues.includes(optionValue)
+				? selectedValues.filter((value) => value !== optionValue)
+				: [...selectedValues, optionValue];
 			setSelectedValues(newSelectedValues);
 			onValueChange(newSelectedValues);
 		};

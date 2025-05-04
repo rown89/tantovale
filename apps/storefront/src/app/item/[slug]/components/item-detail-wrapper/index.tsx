@@ -4,15 +4,17 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { useAuth } from "#providers/auth-providers";
 
 import { Badge } from "@workspace/ui/components/badge";
-
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
+
 import { useItemDetail } from "./hooks/use-item-detail";
 import { ItemWrapperProps } from "./types";
 import { UserInfoBox } from "./components/right-sidebar";
 import { PaymentButton } from "./components/payment-button";
-import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
 export default function ItemWDetailrapper({
   item,
@@ -21,7 +23,9 @@ export default function ItemWDetailrapper({
   const item_id = item.id;
   const { images } = item;
 
+  const { user } = useAuth();
   const isMobile = useIsMobile();
+  const router = useRouter();
 
   // Use null as initial state to match SSR
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -30,7 +34,8 @@ export default function ItemWDetailrapper({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoBoxRef = useRef<HTMLDivElement>(null);
-  const { chatId, isChatIdLoading } = useItemDetail({
+  const { chatId, isChatIdLoading, handlePayment } = useItemDetail({
+    user,
     item_id,
   });
 
@@ -57,7 +62,7 @@ export default function ItemWDetailrapper({
   }, []);
 
   return (
-    <div className="container mx-auto px-4 flex flex-col my-4">
+    <div className="container mx-auto px-4 xl:px-0 flex flex-col my-4">
       <div className="flex gap-8 xl:gap-12 w-full h-full flex-col xl:flex-row">
         {/* Item Card Detail  */}
         <ItemDetailCard
@@ -91,13 +96,15 @@ export default function ItemWDetailrapper({
           }}
         />
 
-        {isMobile && !isInfoBoxInView && (
+        {isMobile && !isInfoBoxInView && item?.is_payable && (
           <div className="w-full fixed bottom-0 left-0 px-8 pb-4 ">
             <PaymentButton
-              is_payable={item?.is_payable}
               handlePayment={() => {
-                console.log("handlePayment");
-                // TODO: handle
+                if (user) {
+                  handlePayment.mutate(item.price);
+                } else {
+                  router.push("/login");
+                }
               }}
             />
             <div className="w-full bg-accent blur-xl h-[40px] fixed left-0 bottom-0 right-0" />

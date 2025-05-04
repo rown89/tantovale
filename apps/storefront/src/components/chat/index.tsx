@@ -2,9 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { ChatHeader } from "./chat-header";
-import { ChatMessage } from "./chat-message";
 import { ChatInput } from "./chat-input";
 import { ItemStatus } from "@workspace/server/enumerated_values";
+import { ChatMessage } from "./chat-message/types";
+import { ChatMessage as ChatMessageComponent } from "./chat-message";
 
 export interface ChatItem {
   id: number;
@@ -29,21 +30,7 @@ export interface ChatProps {
     };
   };
 
-  messages:
-    | {
-        id: number;
-        message: string;
-        message_type: "text" | "proposal";
-        order_proposal_id: number | null;
-        item: ChatItem;
-        created_at: string;
-        read_at: string | null;
-        sender: {
-          id: number;
-          username: string;
-        };
-      }[]
-    | undefined;
+  messages: ChatMessage[] | undefined;
 }
 
 export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
@@ -63,7 +50,7 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
       <div className="flex-1 overflow-y-auto py-4 px-8">
         {messages && messages?.length > 0 ? (
           messages?.map((message) => (
-            <ChatMessage
+            <ChatMessageComponent
               key={message.id}
               message={message}
               item={chatRoom.item}

@@ -13,7 +13,7 @@ import { Label } from "@workspace/ui/components/label";
 
 import { submitLogin } from "../../../app/login/actions";
 import { LoginActionResponse } from "../../../app/login/types";
-import { useAuth } from "../../../providers/auth-providers";
+import { useAuth } from "#providers/auth-providers";
 
 const initialState: LoginActionResponse = {
   success: false,

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { client } from "@workspace/server/client-rpc";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { SidebarProvider } from "@workspace/ui/components/sidebar";
-import { ChatSidebar } from "#components/chat/chat-sidebar";
+import { ChatSidebar } from "#components/chat/chat-sidebar/index";
 
 export default function ChatLayout({
   children,

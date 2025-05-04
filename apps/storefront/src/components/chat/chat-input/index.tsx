@@ -7,7 +7,7 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { ChatMessageSchema } from "@workspace/server/extended_schemas";
 import { z } from "zod";
-import { FieldInfo } from "../forms/utils/field-info";
+import { FieldInfo } from "../../forms/utils/field-info";
 
 interface ChatInputProps {
   chatRoomId: number;
@@ -16,7 +16,7 @@ interface ChatInputProps {
 export function ChatInput({ chatRoomId }: ChatInputProps) {
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       await client.chat.auth.rooms[":roomId"].messages.$post({
         param: {
@@ -45,7 +45,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
       onSubmit: ChatMessageSchema,
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
-      mutation.mutate(value.message);
+      sendMessage.mutate(value.message);
     },
   });
 

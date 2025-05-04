@@ -41,7 +41,7 @@ export default async function UserDetailPage({
     <div className="container mx-auto py-8 px-4">
       <div className="grid gap-8">
         {/* User Profile Section */}
-        <div className="flex flex-row gap-6 ">
+        <div className="flex flex-row gap-6 items-center">
           <Avatar className="w-24 h-24">
             <AvatarFallback>
               {username.substring(0, 2).toUpperCase()}

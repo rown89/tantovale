@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Button } from "@workspace/ui/components/button";
 import { formatPrice } from "@workspace/ui/lib/utils";
-import { ChatProps } from ".";
+import { ChatProps } from "..";
 
 interface ChatHeaderProps {
   id: string;
@@ -38,7 +38,7 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <div className="flex flex-col text-right w-[200px]">
+        <div className="flex flex-col text-right xl:min-w-[200px]">
           {room.item.status === "available" && room.item.published ? (
             <>
               <Link
