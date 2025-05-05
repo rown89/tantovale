@@ -8,6 +8,11 @@ import { zValidator } from '@hono/zod-validator';
 import { authPath } from 'src/utils/constants';
 import { orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
 import { items } from 'src/database/schemas/items';
+import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
+import { users } from 'src/database/schemas/users';
+import { chat_room } from 'src/database/schemas/chat_room';
+import { chat_messages } from 'src/database/schemas/chat_messages';
+
 export const ordersProposalsRoute = createRouter()
 	.post(
 		`${authPath}/create`,
@@ -17,10 +22,11 @@ export const ordersProposalsRoute = createRouter()
 			z.object({
 				item_id: z.number(),
 				price: z.number(),
+				message: z.string().optional(),
 			}),
 		),
 		async (c) => {
-			const { item_id, price } = c.req.valid('json');
+			const { item_id, price, message } = c.req.valid('json');
 			const user = c.var.user;
 
 			const { db } = createClient();
@@ -29,6 +35,8 @@ export const ordersProposalsRoute = createRouter()
 			const [item] = await db
 				.select({
 					id: items.id,
+					title: items.title,
+					user_id: items.user_id,
 				})
 				.from(items)
 				.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
@@ -37,14 +45,15 @@ export const ordersProposalsRoute = createRouter()
 			if (!item) return c.json({ error: 'Item not found' }, 404);
 
 			// check if the user already has a proposal for this item
-			const [proposalCheck] = await db
+			const [proposalAlreadyExists] = await db
 				.select()
 				.from(ordersProposals)
 				.where(and(eq(ordersProposals.item_id, item_id), eq(ordersProposals.user_id, user.id)))
 				.limit(1);
 
-			if (proposalCheck) return c.json({ error: 'Proposal already exists' }, 400);
+			if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
 
+			// create a new proposal
 			const [proposal] = await db
 				.insert(ordersProposals)
 				.values({
@@ -53,6 +62,60 @@ export const ordersProposalsRoute = createRouter()
 					price,
 				})
 				.returning();
+
+			if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+
+			// get the user email
+			const [userData] = await db.select({ email: users.email }).from(users).where(eq(users.id, user.id)).limit(1);
+			if (!userData) return c.json({ error: 'User not found' }, 404);
+
+			// check if user already has an ongoing chat with the item owner
+			const [chatRoom] = await db
+				.select()
+				.from(chat_room)
+				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
+				.limit(1);
+
+			let chatRoomId = null;
+
+			if (chatRoom) {
+				// send a new chat message of type proposal
+				const [newChatMessage] = await db
+					.insert(chat_messages)
+					.values({
+						chat_room_id: chatRoom.id,
+						sender_id: user.id,
+						order_proposal_id: proposal.id,
+						message: message || `Proposal from ${user.username} for the object ${item.title}`,
+						message_type: 'proposal',
+					})
+					.returning();
+
+				if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
+				chatRoomId = chatRoom.id;
+			} else {
+				// create a new chat room
+				const [newChatRoom] = await db
+					.insert(chat_room)
+					.values({
+						item_id,
+						buyer_id: user.id,
+					})
+					.returning();
+
+				if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
+
+				chatRoomId = newChatRoom.id;
+			}
+
+			await sendNewProposalMessage({
+				to: userData.email,
+				roomId: chatRoomId,
+				username: user.username,
+				itemName: item.title,
+				message: message || `Proposal from ${user.username} for the object ${item.title}`,
+			});
 
 			return c.json(proposal);
 		},

@@ -3,6 +3,7 @@
 import { Heart, BadgeCheck, Mail, Phone, FileSpreadsheet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, forwardRef } from "react";
+import Link from "next/link";
 
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -25,10 +26,12 @@ import {
 
 import { useAuth } from "#providers/auth-providers";
 import { FieldInfo } from "#components/forms/utils/field-info";
-import { useItemDetail } from "../hooks/use-item-detail";
 import { ItemWrapperProps } from "../types";
-import Link from "next/link";
 import { PaymentButton } from "./payment-button";
+import { ProposalButton } from "./proposal-button";
+import { useItemFavorite } from "../hooks/use-item-favorite";
+import { useItemPayments } from "../hooks/use-item-payments";
+import { useItemChat } from "../hooks/use-item-chat";
 
 interface UserInfoBoxProps {
   item: ItemWrapperProps["item"];
@@ -42,14 +45,33 @@ interface UserInfoBoxProps {
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
   function UserInfoBox({ item, itemOwnerData, chatId, isChatIdLoading }, ref) {
-    // Use useState with initial null to avoid hydration mismatches
-
+    const item_id = item.id;
     const { phone_verified, email_verified } = itemOwnerData || {};
-    const { user } = useAuth();
 
+    const { user } = useAuth();
     const router = useRouter();
 
-    const item_id = item.id;
+    const {
+      isBuyModalOpen,
+      setIsBuyModalOpen,
+      isProposalModalOpen,
+      setIsProposalModalOpen,
+      handlePayment,
+      handleProposal,
+    } = useItemPayments({
+      item_id,
+    });
+
+    const { messageBoxForm } = useItemChat({
+      user,
+      item_id,
+    });
+
+    const { isFavorite, isFavoriteLoading, handleFavorite } = useItemFavorite({
+      user,
+      item_id,
+    });
+
     const [itemOwnerIsNotCurrentUser, setItemOwnerIsNotCurrentUser] = useState<
       boolean | null
     >(null);
@@ -57,17 +79,6 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     useEffect(() => {
       setItemOwnerIsNotCurrentUser(item?.user?.id !== user?.id);
     }, [item?.user?.id, user?.id]);
-
-    const {
-      messageBoxForm,
-      isFavorite,
-      isFavoriteLoading,
-      handleFavorite,
-      handlePayment,
-    } = useItemDetail({
-      user,
-      item_id,
-    });
 
     return (
       <div
@@ -92,12 +103,24 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   />
                 )}
 
+                {item?.is_payable && (
+                  <ProposalButton
+                    handleProposal={() => {
+                      if (user) {
+                        handlePayment.mutate(item.price);
+                      } else {
+                        router.push("/login");
+                      }
+                    }}
+                  />
+                )}
+
                 <div className="mt-2 w-full flex justify-center">
                   {isFavoriteLoading ? (
                     <Spinner />
                   ) : (
                     <Button
-                      className="hover:bg-destructive/70 w-full"
+                      className="hover:bg-destructive/70 w-full font-bold"
                       variant={!isFavorite ? "outline" : "destructive"}
                       disabled={isFavoriteLoading}
                       onClick={() => {
@@ -107,10 +130,8 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                         }
 
                         if (isFavorite) {
-                          console.log("remove");
                           handleFavorite.mutate("remove");
                         } else {
-                          console.log("add");
                           handleFavorite.mutate("add");
                         }
                       }}

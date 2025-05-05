@@ -15,7 +15,7 @@ export const PaymentButton = ({
           onClick={handlePayment}
         >
           <ShoppingCart />
-          <p>Acquista</p>
+          <p>Buy</p>
         </Button>
       </div>
     </>

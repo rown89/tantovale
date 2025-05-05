@@ -97,7 +97,10 @@ export function ChatMessage({
                       </CardHeader>
                       <CardContent>
                         <div className="flex gap-1">
-                          <p>{message.sender.username} is offering you</p>
+                          <p>
+                            {message.sender.username} is offering{" "}
+                            {!isCurrentUser && "you"}
+                          </p>
                           <p className="font-bold">
                             {formatPrice(orderProposal.price)}€
                           </p>
@@ -105,46 +108,46 @@ export function ChatMessage({
                         <Separator className="my-2" />
                         <p className="text-sm ">{message.message}</p>
                       </CardContent>
-                      {!isCurrentUser && (
-                        <CardFooter
+                      <CardFooter
+                        className={cn(
+                          "flex gap-2",
+                          proposalStatus === "pending"
+                            ? "justify-between"
+                            : "justify-center",
+                        )}
+                      >
+                        {!isCurrentUser && proposalStatus === "pending" && (
+                          <>
+                            <Button
+                              variant="destructive"
+                              className="flex-1"
+                              onClick={handleRejectProposal}
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              variant="default"
+                              className="flex-1"
+                              onClick={handleAcceptProposal}
+                            >
+                              Accept
+                            </Button>
+                          </>
+                        )}
+                        <p
                           className={cn(
-                            "flex gap-2",
-                            proposalStatus === "pending"
-                              ? "justify-between"
-                              : "justify-center",
+                            "text-center",
+                            proposalStatus === "rejected"
+                              ? "text-destructive"
+                              : "text-green-500",
                           )}
                         >
-                          {proposalStatus === "pending" ? (
-                            <>
-                              <Button
-                                variant="destructive"
-                                className="flex-1"
-                                onClick={handleRejectProposal}
-                              >
-                                Reject
-                              </Button>
-                              <Button
-                                variant="default"
-                                className="flex-1"
-                                onClick={handleAcceptProposal}
-                              >
-                                Accept
-                              </Button>
-                            </>
-                          ) : (
-                            <p
-                              className={cn(
-                                "text-center",
-                                proposalStatus === "rejected"
-                                  ? "text-destructive"
-                                  : "text-green-500",
-                              )}
-                            >
-                              {proposalStatus}
-                            </p>
+                          {isCurrentUser && <p>{proposalStatus}</p>}
+                          {!isCurrentUser && proposalStatus !== "pending" && (
+                            <p>{proposalStatus}</p>
                           )}
-                        </CardFooter>
-                      )}
+                        </p>
+                      </CardFooter>
                     </Card>
                   </div>
                 )

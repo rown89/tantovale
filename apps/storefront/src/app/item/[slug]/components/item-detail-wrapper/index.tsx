@@ -5,16 +5,21 @@ import Image from "next/image";
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useAuth } from "#providers/auth-providers";
 
 import { Badge } from "@workspace/ui/components/badge";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 
-import { useItemDetail } from "./hooks/use-item-detail";
-import { ItemWrapperProps } from "./types";
-import { UserInfoBox } from "./components/right-sidebar";
+import { useAuth } from "#providers/auth-providers";
+import { UserInfoBox } from "./components/user-info-box";
 import { PaymentButton } from "./components/payment-button";
+import { PaymentDialog } from "./components/payment-dialog";
+import { ProposalDialog } from "./components/proposal-dialog";
+
+import { useItemPayments } from "./hooks/use-item-payments";
+import { useItemChat } from "./hooks/use-item-chat";
+
+import { ItemWrapperProps } from "./types";
 
 export default function ItemWDetailrapper({
   item,
@@ -34,12 +39,23 @@ export default function ItemWDetailrapper({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoBoxRef = useRef<HTMLDivElement>(null);
-  const { chatId, isChatIdLoading, handlePayment } = useItemDetail({
+
+  const {
+    isBuyModalOpen,
+    setIsBuyModalOpen,
+    isProposalModalOpen,
+    setIsProposalModalOpen,
+    handlePayment,
+    handleProposal,
+  } = useItemPayments({
+    item_id,
+  });
+
+  const { chatId, isChatIdLoading } = useItemChat({
     user,
     item_id,
   });
 
-  // Set up intersection observer to detect when UserInfoBox is in view
   useEffect(() => {
     if (!infoBoxRef.current) return;
 
@@ -122,6 +138,16 @@ export default function ItemWDetailrapper({
           />
         }
       </div>
+
+      <PaymentDialog
+        isBuyModalOpen={isBuyModalOpen}
+        setIsBuyModalOpen={setIsBuyModalOpen}
+      />
+
+      <ProposalDialog
+        isProposalModalOpen={isProposalModalOpen}
+        setIsProposalModalOpen={setIsProposalModalOpen}
+      />
 
       {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
       {
