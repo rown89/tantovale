@@ -4,12 +4,12 @@ export async function sendProposalRejectedMessage({
 	to,
 	roomId,
 	itemName,
-	username,
+	merchant_username,
 }: {
 	to: string;
 	roomId: number;
 	itemName: string;
-	username: string;
+	merchant_username: string;
 }) {
 	const transporter = createMailer(process);
 
@@ -19,7 +19,7 @@ export async function sendProposalRejectedMessage({
 		subject: `Tantovale - Proposal rejected`,
 		html: `
       <div>
-        <p>${username} has rejected your proposal for the object ${itemName}</p>
+        <p>${merchant_username} has rejected your proposal for the object ${itemName}</p>
         <br>
         <a href="${process.env.STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
       </div>

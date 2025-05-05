@@ -16,8 +16,8 @@ export const useChatMessageHook = (message: ChatMessage) => {
     queryFn: async () => {
       if (!message.order_proposal_id) return null;
 
-      const response = await client.orders_proposals.auth.$post({
-        json: { id: message.order_proposal_id },
+      const response = await client.orders_proposals.auth[":id"].$get({
+        param: { id: message.order_proposal_id.toString() },
       });
 
       if (!response.ok) throw new Error("Failed to fetch order proposal");
