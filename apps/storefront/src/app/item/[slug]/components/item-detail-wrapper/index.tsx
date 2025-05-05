@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -24,6 +24,7 @@ import { ItemWrapperProps } from "./types";
 export default function ItemWDetailrapper({
   item,
   itemOwnerData,
+  chatId,
 }: ItemWrapperProps) {
   const item_id = item.id;
   const { images } = item;
@@ -48,11 +49,6 @@ export default function ItemWDetailrapper({
     handlePayment,
     handleProposal,
   } = useItemPayments({
-    item_id,
-  });
-
-  const { chatId, isChatIdLoading } = useItemChat({
-    user,
     item_id,
   });
 
@@ -134,7 +130,6 @@ export default function ItemWDetailrapper({
             item={item}
             itemOwnerData={itemOwnerData}
             chatId={chatId}
-            isChatIdLoading={isChatIdLoading}
           />
         }
       </div>

@@ -1,46 +1,25 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { client } from "@workspace/server/client-rpc";
 import { ChatMessageSchema } from "@workspace/server/extended_schemas";
-import { User } from "#providers/auth-providers";
+import { useState } from "react";
 
 interface useItemChatProps {
-  user: User | null;
   item_id: number;
+  chatId: number | null | undefined;
 }
 
 type schemaType = z.infer<typeof ChatMessageSchema>;
 
-export function useItemChat({ user, item_id }: useItemChatProps) {
+export function useItemChat({ item_id, chatId }: useItemChatProps) {
+  const [clientChatId, setClientChatId] = useState<number | null | undefined>(
+    chatId,
+  );
+
   const queryClient = useQueryClient();
-
-  // get chat id from item_id
-  const {
-    data: chatId,
-    isLoading: isChatIdLoading,
-    error: isChatIdError,
-  } = useQuery({
-    queryKey: ["get_chat_id_by_item"],
-    enabled: !!user,
-    queryFn: async () => {
-      if (!user) return null;
-
-      const response = await client.chat.auth.rooms.id[":item_id"].$get({
-        param: {
-          item_id: String(item_id),
-        },
-      });
-
-      if (!response.ok) return null;
-
-      const chat = await response.json();
-
-      return chat.id ?? 0;
-    },
-  });
 
   // Send message to user form
   const messageBoxForm = useForm({
@@ -83,6 +62,8 @@ export function useItemChat({ user, item_id }: useItemChatProps) {
 
         queryClient.invalidateQueries({ queryKey: ["get_chat_id_by_item"] });
 
+        setClientChatId(room.id);
+
         return toast(`Success!`, {
           description: "Message correctly sent, check your inbox!",
           duration: 5000,
@@ -99,7 +80,6 @@ export function useItemChat({ user, item_id }: useItemChatProps) {
 
   return {
     messageBoxForm,
-    chatId,
-    isChatIdLoading,
+    clientChatId,
   };
 }

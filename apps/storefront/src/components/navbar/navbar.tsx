@@ -26,7 +26,7 @@ export default function NavBar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="container flex py-4 px-4 xl:px-0 justify-between items-center min-h-14 mx-auto">
+    <div className="container flex py-4 px-4 xl:px-0 justify-between items-center mx-auto min-h-[72px]">
       <div className="flex items-center">
         <Link href="/" className="text-xl font-bold">
           Tantovale

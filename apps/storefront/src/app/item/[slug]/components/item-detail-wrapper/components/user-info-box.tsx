@@ -40,11 +40,10 @@ interface UserInfoBoxProps {
     "phone_verified" | "email_verified" | "selling_items"
   >;
   chatId: number | null | undefined;
-  isChatIdLoading: boolean;
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
-  function UserInfoBox({ item, itemOwnerData, chatId, isChatIdLoading }, ref) {
+  function UserInfoBox({ item, itemOwnerData, chatId }, ref) {
     const item_id = item.id;
     const { phone_verified, email_verified } = itemOwnerData || {};
 
@@ -62,9 +61,9 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       item_id,
     });
 
-    const { messageBoxForm } = useItemChat({
-      user,
+    const { messageBoxForm, clientChatId } = useItemChat({
       item_id,
+      chatId,
     });
 
     const { isFavorite, isFavoriteLoading, handleFavorite } = useItemFavorite({
@@ -72,13 +71,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       item_id,
     });
 
-    const [itemOwnerIsNotCurrentUser, setItemOwnerIsNotCurrentUser] = useState<
-      boolean | null
-    >(null);
-
-    useEffect(() => {
-      setItemOwnerIsNotCurrentUser(item?.user?.id !== user?.id);
-    }, [item?.user?.id, user?.id]);
+    const itemOwnerIsNotCurrentUser = item?.user?.id !== user?.id;
 
     return (
       <div
@@ -194,10 +187,10 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
             </div>
           </CardContent>
 
-          {!isChatIdLoading && itemOwnerIsNotCurrentUser && (
+          {itemOwnerIsNotCurrentUser && (
             <CardFooter className="flex flex-col gap-2 items-start">
               <Label className="mb-1">Richiedi informazioni</Label>
-              {!chatId ? (
+              {!clientChatId ? (
                 <form
                   className="w-full"
                   onSubmit={(e) => {

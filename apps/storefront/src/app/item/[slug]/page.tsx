@@ -1,6 +1,7 @@
 import { client } from "@workspace/server/client-rpc";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import ItemWDetailrapper from "./components/item-detail-wrapper";
 
 export default async function ItemDetailPage() {
@@ -12,6 +13,10 @@ export default async function ItemDetailPage() {
   const id = match ? match[1] : null;
 
   if (!id || !Number(id)) return notFound();
+
+  const cookieStore = await cookies();
+  const accessToken = await cookieStore.get("access_token")?.value;
+  const refreshToken = await cookieStore.get("refresh_token")?.value;
 
   // get item
   const itemResponse = await client.item[":id"].$get({
@@ -35,5 +40,32 @@ export default async function ItemDetailPage() {
 
   const itemOwnerData = await itemOwnerDataResponse.json();
 
-  return <ItemWDetailrapper item={item} itemOwnerData={itemOwnerData} />;
+  // Forward auth token for authenticated requests
+  const chatResponse = await client.chat.auth.rooms.id[":item_id"].$get(
+    {
+      param: {
+        item_id: id,
+      },
+    },
+    {
+      headers: {
+        cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+      },
+    },
+  );
+
+  let chatId = undefined;
+
+  if (chatResponse.ok) {
+    const chat = await chatResponse.json();
+    chatId = chat.id;
+  }
+
+  return (
+    <ItemWDetailrapper
+      item={item}
+      itemOwnerData={itemOwnerData}
+      chatId={chatId}
+    />
+  );
 }

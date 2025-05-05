@@ -26,4 +26,5 @@ export interface ItemWrapperProps {
       name: string;
     };
   };
+  chatId?: number;
 }
