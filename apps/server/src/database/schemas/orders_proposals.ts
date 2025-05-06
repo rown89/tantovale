@@ -33,5 +33,8 @@ export const ordersProposalsRelations = relations(ordersProposals, ({ one }) => 
 	}),
 }));
 
+export type SelectOrderProposal = typeof ordersProposals.$inferSelect;
+export type InsertOrderProposal = typeof ordersProposals.$inferInsert;
+
 export const ordersProposalsSelectSchema = createSelectSchema(ordersProposals);
 export const ordersProposalsInsertSchema = createInsertSchema(ordersProposals);

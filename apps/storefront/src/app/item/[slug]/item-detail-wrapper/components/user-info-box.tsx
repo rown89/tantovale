@@ -2,7 +2,7 @@
 
 import { Heart, BadgeCheck, Mail, Phone, FileSpreadsheet } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, forwardRef } from "react";
+import { forwardRef } from "react";
 import Link from "next/link";
 
 import { Button } from "@workspace/ui/components/button";
@@ -39,6 +39,8 @@ import {
   AlertTitle,
 } from "@workspace/ui/components/alert";
 import { Repeat } from "lucide-react";
+import useProposalStore from "#stores/proposal-store";
+import { formatPrice } from "@workspace/ui/lib/utils";
 
 interface UserInfoBoxProps {
   item: ItemWrapperProps["item"];
@@ -62,12 +64,16 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     const router = useRouter();
 
     const {
-      isBuyModalOpen,
-      setIsBuyModalOpen,
       isProposalModalOpen,
       setIsProposalModalOpen,
+      setOriginalItemPrice,
+    } = useProposalStore();
+
+    const {
+      isBuyModalOpen,
+      setIsBuyModalOpen,
+
       handlePayment,
-      handleProposal,
     } = useItemPayments({
       item_id,
     });
@@ -111,7 +117,9 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   <ProposalButton
                     handleProposal={() => {
                       if (user) {
-                        handlePayment.mutate(item.price);
+                        // handlePayment.mutate(item.price);
+                        setOriginalItemPrice(Number(formatPrice(item.price)));
+                        setIsProposalModalOpen(true);
                       } else {
                         router.push("/login");
                       }
@@ -123,7 +131,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   <div className="mt-2 w-full flex justify-center">
                     <Alert>
                       <Repeat className="h-4 w-4" />
-                      <AlertTitle>Heads up!</AlertTitle>
+                      <AlertTitle>Hey!</AlertTitle>
                       <AlertDescription>
                         Order proposal already sent on:{" "}
                         {format(

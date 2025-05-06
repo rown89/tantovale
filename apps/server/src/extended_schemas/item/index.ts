@@ -31,7 +31,6 @@ export const createItemSchema = z.object({
 		user_id: true,
 		published: true,
 		status: true,
-		shipping_cost: true,
 		created_at: true,
 		updated_at: true,
 		deleted_at: true,

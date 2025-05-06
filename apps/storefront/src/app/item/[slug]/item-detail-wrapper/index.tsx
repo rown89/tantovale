@@ -20,6 +20,8 @@ import { useItemPayments } from "./hooks/use-item-payments";
 
 import { ItemWrapperProps } from "./types";
 import { ProposalButton } from "./components/proposal-button";
+import useTantovaleStore from "#stores";
+import useProposalStore from "#stores/proposal-store";
 
 export default function ItemWDetailWrapper({
   item,
@@ -30,7 +32,19 @@ export default function ItemWDetailWrapper({
   const item_id = item.id;
   const { images } = item;
 
-  console.log(orderProposal);
+  const { setItem, setItemOwnerData, setChatId, setOrderProposal, resetAll } =
+    useTantovaleStore();
+
+  useEffect(() => {
+    setItem(item);
+    setItemOwnerData(itemOwnerData);
+    setChatId(chatId);
+    setOrderProposal(orderProposal);
+
+    return () => {
+      resetAll();
+    };
+  }, [item, itemOwnerData, chatId, orderProposal]);
 
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -44,14 +58,9 @@ export default function ItemWDetailWrapper({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoBoxRef = useRef<HTMLDivElement>(null);
 
-  const {
-    isBuyModalOpen,
-    setIsBuyModalOpen,
-    isProposalModalOpen,
-    setIsProposalModalOpen,
-    handlePayment,
-    handleProposal,
-  } = useItemPayments({
+  const { isProposalModalOpen, setIsProposalModalOpen } = useProposalStore();
+
+  const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } = useItemPayments({
     item_id,
   });
 
@@ -111,13 +120,25 @@ export default function ItemWDetailWrapper({
           }}
         />
 
+        {/* Right sidebar */}
+        {
+          <UserInfoBox
+            ref={infoBoxRef}
+            item={item}
+            itemOwnerData={itemOwnerData}
+            chatId={chatId}
+            orderProposal={orderProposal}
+          />
+        }
+
         {isMobile && !isInfoBoxInView && item?.is_payable && (
           <div className="flex gap-2 justify-center items-center w-full fixed bottom-0 left-0 px-8 pb-4 ">
             {!orderProposal?.id && (
               <ProposalButton
                 handleProposal={() => {
                   if (user) {
-                    handlePayment.mutate(item.price);
+                    setIsProposalModalOpen(true);
+                    //  handlePayment.mutate(item.price);
                   } else {
                     router.push("/login");
                   }
@@ -137,17 +158,6 @@ export default function ItemWDetailWrapper({
             <div className="w-full bg-accent blur-xl h-[40px] fixed left-0 bottom-0 right-0 opacity-50" />
           </div>
         )}
-
-        {/* Right sidebar */}
-        {
-          <UserInfoBox
-            ref={infoBoxRef}
-            item={item}
-            itemOwnerData={itemOwnerData}
-            chatId={chatId}
-            orderProposal={orderProposal}
-          />
-        }
       </div>
 
       <PaymentDialog

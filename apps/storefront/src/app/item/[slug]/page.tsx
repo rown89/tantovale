@@ -86,9 +86,6 @@ export default async function ItemDetailPage() {
 
     if (orderProposalResponse.ok) {
       const response = await orderProposalResponse.json();
-
-      console.log("here", response);
-
       orderProposal = response;
     }
   }
