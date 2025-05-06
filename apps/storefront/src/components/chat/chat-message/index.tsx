@@ -142,9 +142,9 @@ export function ChatMessage({
                               : "text-green-500",
                           )}
                         >
-                          {isCurrentUser && <p>{proposalStatus}</p>}
+                          {isCurrentUser && <span>{proposalStatus}</span>}
                           {!isCurrentUser && proposalStatus !== "pending" && (
-                            <p>{proposalStatus}</p>
+                            <span>{proposalStatus}</span>
                           )}
                         </p>
                       </CardFooter>

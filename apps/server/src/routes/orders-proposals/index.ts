@@ -1,7 +1,7 @@
 import { createClient } from 'src/database';
 import { createRouter } from 'src/lib/create-app';
 import { ordersProposals } from 'src/database/schemas/orders_proposals';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
@@ -132,7 +132,7 @@ export const ordersProposalsRoute = createRouter()
 						message: message || `Proposal from ${user.username} for the object ${item.title}`,
 					});
 
-					return c.json(proposal);
+					return c.json(proposal, 200);
 				});
 			} catch (error) {
 				console.error('Error creating proposal:', error);
@@ -156,7 +156,32 @@ export const ordersProposalsRoute = createRouter()
 
 		if (!proposal[0]) return c.json({ error: 'Proposal not found' }, 404);
 
-		return c.json(proposal[0]);
+		return c.json(proposal[0], 200);
+	})
+	.get(`${authPath}/by_item/:item_id`, authMiddleware, async (c) => {
+		const user = c.var.user;
+		const item_id = Number(c.req.param('item_id'));
+
+		const { db } = createClient();
+
+		const [proposal] = await db
+			.select({
+				id: ordersProposals.id,
+				created_at: ordersProposals.created_at,
+			})
+			.from(ordersProposals)
+			.where(
+				and(
+					eq(ordersProposals.item_id, item_id),
+					eq(ordersProposals.user_id, user.id),
+					eq(ordersProposals.status, 'pending'),
+				),
+			)
+			.limit(1);
+
+		if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+
+		return c.json(proposal, 200);
 	})
 	.put(
 		`${authPath}`,

@@ -10,8 +10,8 @@ export const ProposalButton = ({
     <>
       <div className="flex flex-col w-full items-center gap-4 relative z-1">
         <Button
-          variant="outline"
-          className="w-full font-bold shadow-md border-amber-400 hover:bg-secondary hover:text-base"
+          variant="default"
+          className="w-full font-bold shadow-md border-amber-400 hover:bg-secondary hover:text-base bg-background outline-black outline-1"
           onClick={handleProposal}
         >
           <HandHelping />

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRef, useState, useEffect, Suspense } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -13,21 +13,24 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { useAuth } from "#providers/auth-providers";
 import { UserInfoBox } from "./components/user-info-box";
 import { PaymentButton } from "./components/payment-button";
-import { PaymentDialog } from "./components/payment-dialog";
-import { ProposalDialog } from "./components/proposal-dialog";
+import { PaymentDialog } from "../../../../components/dialogs/pay-dialog";
+import { ProposalDialog } from "../../../../components/dialogs/order-proposal-dialog";
 
 import { useItemPayments } from "./hooks/use-item-payments";
-import { useItemChat } from "./hooks/use-item-chat";
 
 import { ItemWrapperProps } from "./types";
+import { ProposalButton } from "./components/proposal-button";
 
-export default function ItemWDetailrapper({
+export default function ItemWDetailWrapper({
   item,
   itemOwnerData,
   chatId,
+  orderProposal,
 }: ItemWrapperProps) {
   const item_id = item.id;
   const { images } = item;
+
+  console.log(orderProposal);
 
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -61,7 +64,7 @@ export default function ItemWDetailrapper({
           setIsInfoBoxInView(entries[0].isIntersecting);
         }
       },
-      { threshold: 0.1 }, // Consider visible when 10% is in view
+      { threshold: 0.01 }, // Consider visible when 10% is in view
     );
 
     observer.observe(infoBoxRef.current);
@@ -109,7 +112,19 @@ export default function ItemWDetailrapper({
         />
 
         {isMobile && !isInfoBoxInView && item?.is_payable && (
-          <div className="w-full fixed bottom-0 left-0 px-8 pb-4 ">
+          <div className="flex gap-2 justify-center items-center w-full fixed bottom-0 left-0 px-8 pb-4 ">
+            {!orderProposal?.id && (
+              <ProposalButton
+                handleProposal={() => {
+                  if (user) {
+                    handlePayment.mutate(item.price);
+                  } else {
+                    router.push("/login");
+                  }
+                }}
+              />
+            )}
+
             <PaymentButton
               handlePayment={() => {
                 if (user) {
@@ -119,7 +134,7 @@ export default function ItemWDetailrapper({
                 }
               }}
             />
-            <div className="w-full bg-accent blur-xl h-[40px] fixed left-0 bottom-0 right-0" />
+            <div className="w-full bg-accent blur-xl h-[40px] fixed left-0 bottom-0 right-0 opacity-50" />
           </div>
         )}
 
@@ -130,6 +145,7 @@ export default function ItemWDetailrapper({
             item={item}
             itemOwnerData={itemOwnerData}
             chatId={chatId}
+            orderProposal={orderProposal}
           />
         }
       </div>

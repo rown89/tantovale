@@ -27,4 +27,8 @@ export interface ItemWrapperProps {
     };
   };
   chatId?: number;
+  orderProposal?: {
+    id: number;
+    created_at: string;
+  };
 }

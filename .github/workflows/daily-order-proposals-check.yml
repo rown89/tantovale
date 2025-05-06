@@ -1,0 +1,15 @@
+name: Daily Order Proposals Check
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # Every day at 5:00 UTC
+  workflow_dispatch: # optional, to run manually
+
+jobs:
+  ping-cron-endpoint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Hono endpoint
+        run: |
+          curl -s -X GET "https://tuo-dominio.com/cron/controlla-ordini?key=${{ secrets.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY }}"

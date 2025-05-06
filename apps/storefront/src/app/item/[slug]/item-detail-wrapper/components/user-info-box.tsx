@@ -32,6 +32,13 @@ import { ProposalButton } from "./proposal-button";
 import { useItemFavorite } from "../hooks/use-item-favorite";
 import { useItemPayments } from "../hooks/use-item-payments";
 import { useItemChat } from "../hooks/use-item-chat";
+import { format } from "date-fns";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert";
+import { Repeat } from "lucide-react";
 
 interface UserInfoBoxProps {
   item: ItemWrapperProps["item"];
@@ -40,10 +47,14 @@ interface UserInfoBoxProps {
     "phone_verified" | "email_verified" | "selling_items"
   >;
   chatId: number | null | undefined;
+  orderProposal?: {
+    id: number;
+    created_at: string;
+  };
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
-  function UserInfoBox({ item, itemOwnerData, chatId }, ref) {
+  function UserInfoBox({ item, itemOwnerData, chatId, orderProposal }, ref) {
     const item_id = item.id;
     const { phone_verified, email_verified } = itemOwnerData || {};
 
@@ -96,7 +107,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   />
                 )}
 
-                {item?.is_payable && (
+                {item?.is_payable && !orderProposal?.id && (
                   <ProposalButton
                     handleProposal={() => {
                       if (user) {
@@ -106,6 +117,22 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                       }
                     }}
                   />
+                )}
+
+                {orderProposal?.id && (
+                  <div className="mt-2 w-full flex justify-center">
+                    <Alert>
+                      <Repeat className="h-4 w-4" />
+                      <AlertTitle>Heads up!</AlertTitle>
+                      <AlertDescription>
+                        Order proposal already sent on:{" "}
+                        {format(
+                          new Date(orderProposal.created_at),
+                          "dd/MM/yyyy - HH:mm",
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 )}
 
                 <div className="mt-2 w-full flex justify-center">

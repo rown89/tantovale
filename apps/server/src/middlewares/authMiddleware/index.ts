@@ -16,7 +16,6 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 		REFRESH_TOKEN_SECRET: string;
 		NODE_ENV: string;
 	}>(c);
-
 	const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 	const { db } = createClient();
 

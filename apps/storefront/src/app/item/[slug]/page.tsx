@@ -2,7 +2,9 @@ import { client } from "@workspace/server/client-rpc";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import ItemWDetailrapper from "./components/item-detail-wrapper";
+import ItemWDetailWrapper from "./item-detail-wrapper";
+import { Suspense } from "react";
+import { Spinner } from "@workspace/ui/components/spinner";
 
 export default async function ItemDetailPage() {
   const headerList = await headers();
@@ -15,8 +17,8 @@ export default async function ItemDetailPage() {
   if (!id || !Number(id)) return notFound();
 
   const cookieStore = await cookies();
-  const accessToken = await cookieStore.get("access_token")?.value;
-  const refreshToken = await cookieStore.get("refresh_token")?.value;
+  const accessToken = cookieStore.get("access_token")?.value;
+  const refreshToken = cookieStore.get("refresh_token")?.value;
 
   // get item
   const itemResponse = await client.item[":id"].$get({
@@ -40,32 +42,65 @@ export default async function ItemDetailPage() {
 
   const itemOwnerData = await itemOwnerDataResponse.json();
 
-  // Forward auth token for authenticated requests
-  const chatResponse = await client.chat.auth.rooms.id[":item_id"].$get(
-    {
-      param: {
-        item_id: id,
-      },
-    },
-    {
-      headers: {
-        cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
-      },
-    },
-  );
-
+  // If logged in, check if user has already an ongoing chat with the item owner
   let chatId = undefined;
 
-  if (chatResponse.ok) {
-    const chat = await chatResponse.json();
-    chatId = chat.id;
+  if (accessToken) {
+    const chatResponse = await client.chat.auth.rooms.id[":item_id"].$get(
+      {
+        param: {
+          item_id: id,
+        },
+      },
+      {
+        headers: {
+          cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+        },
+      },
+    );
+
+    if (chatResponse.ok) {
+      const chat = await chatResponse.json();
+      chatId = chat.id;
+    }
+  }
+
+  // If logged in, check if user has already an ongoing order proposal with the item owner
+  let orderProposal = undefined;
+
+  if (accessToken) {
+    const orderProposalResponse = await client.orders_proposals.auth.by_item[
+      ":item_id"
+    ].$get(
+      {
+        param: {
+          item_id: id,
+        },
+      },
+      {
+        headers: {
+          cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+        },
+      },
+    );
+
+    if (orderProposalResponse.ok) {
+      const response = await orderProposalResponse.json();
+
+      console.log("here", response);
+
+      orderProposal = response;
+    }
   }
 
   return (
-    <ItemWDetailrapper
-      item={item}
-      itemOwnerData={itemOwnerData}
-      chatId={chatId}
-    />
+    <Suspense fallback={<Spinner />}>
+      <ItemWDetailWrapper
+        item={item}
+        itemOwnerData={itemOwnerData}
+        chatId={chatId}
+        orderProposal={orderProposal}
+      />
+    </Suspense>
   );
 }
