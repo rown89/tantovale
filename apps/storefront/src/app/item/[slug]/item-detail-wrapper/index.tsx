@@ -9,19 +9,17 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@workspace/ui/components/badge";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
+import { formatPrice } from "@workspace/ui/lib/utils";
 
-import { useAuth } from "#providers/auth-providers";
 import { UserInfoBox } from "./components/user-info-box";
 import { PaymentButton } from "./components/payment-button";
 import { PaymentDialog } from "../../../../components/dialogs/pay-dialog";
 import { ProposalDialog } from "../../../../components/dialogs/order-proposal-dialog";
-
 import { useItemPayments } from "./hooks/use-item-payments";
-
 import { ItemWrapperProps } from "./types";
 import { ProposalButton } from "./components/proposal-button";
+import { useAuth } from "#providers/auth-providers";
 import useTantovaleStore from "#stores";
-import useProposalStore from "#stores/proposal-store";
 
 export default function ItemWDetailWrapper({
   item,
@@ -32,17 +30,24 @@ export default function ItemWDetailWrapper({
   const item_id = item.id;
   const { images } = item;
 
-  const { setItem, setItemOwnerData, setChatId, setOrderProposal, resetAll } =
-    useTantovaleStore();
+  const {
+    proposal_created_at,
+    setItem,
+    setItemOwnerData,
+    setChatId,
+    setOrderProposal,
+    resetAllItemDetail,
+  } = useTantovaleStore();
 
   useEffect(() => {
     setItem(item);
     setItemOwnerData(itemOwnerData);
-    setChatId(chatId);
-    setOrderProposal(orderProposal);
+
+    if (chatId) setChatId(chatId);
+    if (orderProposal) setOrderProposal(orderProposal);
 
     return () => {
-      resetAll();
+      resetAllItemDetail();
     };
   }, [item, itemOwnerData, chatId, orderProposal]);
 
@@ -58,7 +63,7 @@ export default function ItemWDetailWrapper({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoBoxRef = useRef<HTMLDivElement>(null);
 
-  const { isProposalModalOpen, setIsProposalModalOpen } = useProposalStore();
+  const { setIsProposalModalOpen, setOriginalItemPrice } = useTantovaleStore();
 
   const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } = useItemPayments({
     item_id,
@@ -126,21 +131,22 @@ export default function ItemWDetailWrapper({
             ref={infoBoxRef}
             item={item}
             itemOwnerData={itemOwnerData}
-            chatId={chatId}
             orderProposal={orderProposal}
           />
         }
 
         {isMobile && !isInfoBoxInView && item?.is_payable && (
           <div className="flex gap-2 justify-center items-center w-full fixed bottom-0 left-0 px-8 pb-4 ">
-            {!orderProposal?.id && (
+            {!orderProposal?.id && !proposal_created_at && (
               <ProposalButton
                 handleProposal={() => {
-                  if (user) {
-                    setIsProposalModalOpen(true);
-                    //  handlePayment.mutate(item.price);
-                  } else {
+                  if (!user) {
                     router.push("/login");
+                  } else {
+                    const itemPrice = Number(formatPrice(item.price));
+
+                    setOriginalItemPrice(itemPrice);
+                    setIsProposalModalOpen(true);
                   }
                 }}
               />
@@ -148,10 +154,10 @@ export default function ItemWDetailWrapper({
 
             <PaymentButton
               handlePayment={() => {
-                if (user) {
-                  handlePayment.mutate(item.price);
-                } else {
+                if (!user) {
                   router.push("/login");
+                } else {
+                  // handlePayment.mutate(item.price);
                 }
               }}
             />
@@ -165,10 +171,7 @@ export default function ItemWDetailWrapper({
         setIsBuyModalOpen={setIsBuyModalOpen}
       />
 
-      <ProposalDialog
-        isProposalModalOpen={isProposalModalOpen}
-        setIsProposalModalOpen={setIsProposalModalOpen}
-      />
+      <ProposalDialog />
 
       {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
       {

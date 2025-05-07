@@ -39,8 +39,8 @@ import {
   AlertTitle,
 } from "@workspace/ui/components/alert";
 import { Repeat } from "lucide-react";
-import useProposalStore from "#stores/proposal-store";
 import { formatPrice } from "@workspace/ui/lib/utils";
+import useTantovaleStore from "#stores";
 
 interface UserInfoBoxProps {
   item: ItemWrapperProps["item"];
@@ -48,7 +48,6 @@ interface UserInfoBoxProps {
     ItemWrapperProps["itemOwnerData"],
     "phone_verified" | "email_verified" | "selling_items"
   >;
-  chatId: number | null | undefined;
   orderProposal?: {
     id: number;
     created_at: string;
@@ -56,7 +55,7 @@ interface UserInfoBoxProps {
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
-  function UserInfoBox({ item, itemOwnerData, chatId, orderProposal }, ref) {
+  function UserInfoBox({ item, itemOwnerData, orderProposal }, ref) {
     const item_id = item.id;
     const { phone_verified, email_verified } = itemOwnerData || {};
 
@@ -64,10 +63,12 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     const router = useRouter();
 
     const {
-      isProposalModalOpen,
+      chatId,
+      proposal_created_at,
+      proposal_status,
       setIsProposalModalOpen,
       setOriginalItemPrice,
-    } = useProposalStore();
+    } = useTantovaleStore();
 
     const {
       isBuyModalOpen,
@@ -78,9 +79,8 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       item_id,
     });
 
-    const { messageBoxForm, clientChatId } = useItemChat({
+    const { messageBoxForm } = useItemChat({
       item_id,
-      chatId,
     });
 
     const { isFavorite, isFavoriteLoading, handleFavorite } = useItemFavorite({
@@ -89,6 +89,11 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     });
 
     const itemOwnerIsNotCurrentUser = item?.user?.id !== user?.id;
+
+    const proposal_date = format(
+      new Date(orderProposal?.created_at || proposal_created_at || new Date()),
+      "dd/MM/yyyy - HH:mm",
+    );
 
     return (
       <div
@@ -104,40 +109,38 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                 {item?.is_payable && (
                   <PaymentButton
                     handlePayment={() => {
-                      if (user) {
+                      if (!user) {
+                        router.push("/login");
+                      } else {
                         handlePayment.mutate(item.price);
-                      } else {
-                        router.push("/login");
                       }
                     }}
                   />
                 )}
 
-                {item?.is_payable && !orderProposal?.id && (
-                  <ProposalButton
-                    handleProposal={() => {
-                      if (user) {
-                        // handlePayment.mutate(item.price);
-                        setOriginalItemPrice(Number(formatPrice(item.price)));
-                        setIsProposalModalOpen(true);
-                      } else {
-                        router.push("/login");
-                      }
-                    }}
-                  />
-                )}
+                {item?.is_payable &&
+                  !orderProposal?.id &&
+                  !proposal_created_at && (
+                    <ProposalButton
+                      handleProposal={() => {
+                        if (!user) {
+                          router.push("/login");
+                        } else {
+                          const itemPrice = Number(formatPrice(item.price));
+                          setOriginalItemPrice(itemPrice);
+                          setIsProposalModalOpen(true);
+                        }
+                      }}
+                    />
+                  )}
 
-                {orderProposal?.id && (
+                {(orderProposal?.id || proposal_created_at) && (
                   <div className="mt-2 w-full flex justify-center">
                     <Alert>
                       <Repeat className="h-4 w-4" />
                       <AlertTitle>Hey!</AlertTitle>
                       <AlertDescription>
-                        Order proposal already sent on:{" "}
-                        {format(
-                          new Date(orderProposal.created_at),
-                          "dd/MM/yyyy - HH:mm",
-                        )}
+                        Order proposal already sent on: {proposal_date}
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -225,7 +228,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
           {itemOwnerIsNotCurrentUser && (
             <CardFooter className="flex flex-col gap-2 items-start">
               <Label className="mb-1">Richiedi informazioni</Label>
-              {!clientChatId ? (
+              {!chatId ? (
                 <form
                   className="w-full"
                   onSubmit={(e) => {

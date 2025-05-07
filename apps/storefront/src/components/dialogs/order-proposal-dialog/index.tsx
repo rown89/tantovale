@@ -1,7 +1,9 @@
 "use client";
 
+import { z } from "zod";
 import { useEffect, useState } from "react";
-import useProposalStore from "#stores/proposal-store";
+import { useForm } from "@tanstack/react-form";
+
 import { Button } from "@workspace/ui/components/button";
 import {
   Dialog,
@@ -13,66 +15,86 @@ import {
 } from "@workspace/ui/components/dialog";
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
-import { useForm } from "@tanstack/react-form";
-import { z } from "zod";
+import { Textarea } from "@workspace/ui/components/textarea";
+
 import { FieldInfo } from "#components/forms/utils/field-info";
+import useTantovaleStore from "#stores";
 
 export function ProposalDialog() {
   const {
+    setChatId,
+    item,
     originalItemPrice,
-    proposalPrice,
-    setProposalPrice,
     isProposalModalOpen,
     setIsProposalModalOpen,
     handleProposal,
-    resetProposal,
-  } = useProposalStore();
-  const [itemId, setItemId] = useState<number | null>(null);
+  } = useTantovaleStore();
 
-  // Assuming the item ID comes from URL or some other source
-  // For example, we could extract it from the current URL
-  useEffect(() => {
-    if (isProposalModalOpen && typeof window !== "undefined") {
-      const pathParts = window.location.pathname.split("/");
-      const slug = pathParts[pathParts.length - 1];
-      // This is just a placeholder - replace with actual logic to get item ID
-      if (slug) {
-        const id = parseInt(slug);
-        if (!isNaN(id)) {
-          setItemId(id);
-        } else {
-          setItemId(1); // Fallback ID
-        }
-      }
-    }
-  }, [isProposalModalOpen]);
+  // State for validation errors
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Define the schema for our form
+  const formSchema = z.object({
+    price: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+        required_error: "Price is required",
+      })
+      .min(0.01, "Price must be greater than zero")
+      .max(
+        originalItemPrice,
+        `Price cannot exceed ${originalItemPrice.toFixed(2)}`,
+      ),
+    message: z.string().optional(),
+  });
 
   const form = useForm({
     defaultValues: {
-      price: "",
+      price: originalItemPrice ?? 0,
+      message: "",
     },
     onSubmit: async ({ value }) => {
-      if (!itemId) return;
+      if (!item) return;
 
       try {
-        const result = await handleProposal(itemId, Number(value.price));
+        // Validate with our Zod schema
+        formSchema.parse(value);
+
+        console.log("Submitting values:", value);
+
+        const result = await handleProposal(
+          item.id,
+          // Convert to cents
+          Number(value.price) * 100,
+          value.message,
+        );
 
         if (result) {
-          // Success - close the modal
           setIsProposalModalOpen(false);
+          setChatId(result.chatRoomId);
         }
       } catch (error) {
-        console.error("Error submitting proposal:", error);
+        console.error("Error during submission:", error);
+        if (error instanceof z.ZodError) {
+          // Get the first error message for display
+          setValidationError(error.errors[0]?.message || "Invalid form data");
+        } else {
+          setValidationError("Failed to submit proposal. Please try again.");
+        }
       }
     },
   });
 
-  // Reset form when dialog opens
+  // Reset form when dialog opens or originalItemPrice changes
   useEffect(() => {
     if (isProposalModalOpen) {
-      form.reset();
+      form.reset({
+        price: originalItemPrice ?? 0,
+        message: "",
+      });
+      setValidationError(null);
     }
-  }, [isProposalModalOpen, form]);
+  }, [isProposalModalOpen, originalItemPrice, form]);
 
   return (
     <Dialog
@@ -81,7 +103,7 @@ export function ProposalDialog() {
         setIsProposalModalOpen(value);
         if (!value) {
           form.reset();
-          resetProposal();
+          setValidationError(null);
         }
       }}
     >
@@ -96,57 +118,81 @@ export function ProposalDialog() {
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            form.handleSubmit();
+
+            try {
+              // Validate before submitting
+              formSchema.parse(form.state.values);
+              setValidationError(null);
+              form.handleSubmit();
+            } catch (error) {
+              if (error instanceof z.ZodError) {
+                setValidationError(
+                  error.errors[0]?.message || "Invalid form data",
+                );
+              } else {
+                setValidationError(
+                  "Form validation failed. Please check your input.",
+                );
+              }
+              console.error("Form validation error:", error);
+            }
           }}
           className="space-y-4"
         >
+          {validationError && (
+            <div className="bg-red-50 p-3 rounded-md border border-red-200">
+              <p className="text-red-600 text-sm">{validationError}</p>
+            </div>
+          )}
+
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 items-center gap-4">
+            <div className="grid grid-cols-1 items-center gap-5">
               <Label htmlFor="price">Your proposed price</Label>
               <div className="col-span-3">
-                <form.Field
-                  name="price"
-                  validators={{
-                    onChange: z
-                      .string()
-                      .refine(
-                        (val) => !isNaN(Number(val)) && val !== "",
-                        "Please enter a valid number",
-                      )
-                      .refine(
-                        (val) => Number(val) > 0,
-                        "Price must be greater than zero",
-                      )
-                      .refine(
-                        (val) => Number(val) <= originalItemPrice,
-                        `Price cannot exceed ${originalItemPrice.toFixed(2)}`,
-                      ),
-                  }}
-                >
+                <form.Field name="price">
                   {(field) => (
                     <div>
                       <Input
                         id="price"
+                        name="price"
                         type="number"
                         step="0.01"
                         min="0.01"
                         max={originalItemPrice}
                         placeholder={`Max: ${originalItemPrice.toFixed(2)}`}
                         value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.handleChange(value === "" ? 0 : Number(value));
+                        }}
                       />
                       <FieldInfo field={field} />
                     </div>
                   )}
                 </form.Field>
               </div>
+              <Label htmlFor="message">Optional message</Label>
+              <div className="col-span-3">
+                <form.Field name="message">
+                  {(field) => (
+                    <>
+                      <Textarea
+                        id="message"
+                        name="message"
+                        rows={4}
+                        placeholder={`Write a message to the user`}
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                      />
+                      <FieldInfo field={field} />
+                    </>
+                  )}
+                </form.Field>
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              type="submit"
-              disabled={!form.state.canSubmit || originalItemPrice <= 0}
-            >
+            <Button type="submit" disabled={originalItemPrice <= 0}>
               {form.state.isSubmitting ? "Submitting..." : "Submit Proposal"}
             </Button>
           </DialogFooter>

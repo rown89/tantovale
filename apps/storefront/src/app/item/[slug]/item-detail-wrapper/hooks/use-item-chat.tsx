@@ -5,19 +5,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { client } from "@workspace/server/client-rpc";
 import { ChatMessageSchema } from "@workspace/server/extended_schemas";
-import { useState } from "react";
+import useTantovaleStore from "#stores";
 
 interface useItemChatProps {
   item_id: number;
-  chatId: number | null | undefined;
 }
 
 type schemaType = z.infer<typeof ChatMessageSchema>;
 
-export function useItemChat({ item_id, chatId }: useItemChatProps) {
-  const [clientChatId, setClientChatId] = useState<number | null | undefined>(
-    chatId,
-  );
+export function useItemChat({ item_id }: useItemChatProps) {
+  const { setChatId } = useTantovaleStore();
 
   const queryClient = useQueryClient();
 
@@ -44,6 +41,8 @@ export function useItemChat({ item_id, chatId }: useItemChatProps) {
 
         const room = await charRoomResponse.json();
 
+        if (!room.id) throw new Error("Error creating new room");
+
         // send the message to the created room
         const ChatRoomMessageResponse = await client.chat.auth.rooms[
           ":roomId"
@@ -62,7 +61,7 @@ export function useItemChat({ item_id, chatId }: useItemChatProps) {
 
         queryClient.invalidateQueries({ queryKey: ["get_chat_id_by_item"] });
 
-        setClientChatId(room.id);
+        setChatId(room.id);
 
         return toast(`Success!`, {
           description: "Message correctly sent, check your inbox!",
@@ -80,6 +79,5 @@ export function useItemChat({ item_id, chatId }: useItemChatProps) {
 
   return {
     messageBoxForm,
-    clientChatId,
   };
 }

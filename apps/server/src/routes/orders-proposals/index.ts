@@ -121,6 +121,20 @@ export const ordersProposalsRoute = createRouter()
 
 						if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
 
+						// create a new chat message of type proposal
+						const [newChatMessage] = await tx
+							.insert(chat_messages)
+							.values({
+								chat_room_id: newChatRoom.id,
+								sender_id: user.id,
+								order_proposal_id: proposal.id,
+								message: message || `Proposal from ${user.username} for the object ${item.title}`,
+								message_type: 'proposal',
+							})
+							.returning();
+
+						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
 						chatRoomId = newChatRoom.id;
 					}
 
@@ -132,7 +146,7 @@ export const ordersProposalsRoute = createRouter()
 						message: message || `Proposal from ${user.username} for the object ${item.title}`,
 					});
 
-					return c.json(proposal, 200);
+					return c.json({ proposal, chatRoomId }, 200);
 				});
 			} catch (error) {
 				console.error('Error creating proposal:', error);
