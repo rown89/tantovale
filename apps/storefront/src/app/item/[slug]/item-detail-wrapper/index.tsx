@@ -26,6 +26,7 @@ export default function ItemWDetailWrapper({
   itemOwnerData,
   chatId,
   orderProposal,
+  isFavorite,
 }: ItemWrapperProps) {
   const item_id = item.id;
   const { images } = item;
@@ -34,7 +35,6 @@ export default function ItemWDetailWrapper({
     proposal_created_at,
     setItem,
     setItemOwnerData,
-    setChatId,
     setOrderProposal,
     resetAllItemDetail,
   } = useTantovaleStore();
@@ -43,7 +43,6 @@ export default function ItemWDetailWrapper({
     setItem(item);
     setItemOwnerData(itemOwnerData);
 
-    if (chatId) setChatId(chatId);
     if (orderProposal) setOrderProposal(orderProposal);
 
     return () => {
@@ -130,8 +129,10 @@ export default function ItemWDetailWrapper({
           <UserInfoBox
             ref={infoBoxRef}
             item={item}
+            chatId={chatId}
             itemOwnerData={itemOwnerData}
             orderProposal={orderProposal}
+            isFavorite={isFavorite}
           />
         }
 

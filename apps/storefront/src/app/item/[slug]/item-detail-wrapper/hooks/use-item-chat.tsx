@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -5,16 +6,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { client } from "@workspace/server/client-rpc";
 import { ChatMessageSchema } from "@workspace/server/extended_schemas";
-import useTantovaleStore from "#stores";
 
 interface useItemChatProps {
   item_id: number;
+  chatId?: number;
 }
 
 type schemaType = z.infer<typeof ChatMessageSchema>;
 
-export function useItemChat({ item_id }: useItemChatProps) {
-  const { setChatId } = useTantovaleStore();
+export function useItemChat({ item_id, chatId }: useItemChatProps) {
+  const [chatIdClient, setChatIdClient] = useState<number | undefined>(chatId);
 
   const queryClient = useQueryClient();
 
@@ -61,7 +62,7 @@ export function useItemChat({ item_id }: useItemChatProps) {
 
         queryClient.invalidateQueries({ queryKey: ["get_chat_id_by_item"] });
 
-        setChatId(room.id);
+        setChatIdClient(room.id);
 
         return toast(`Success!`, {
           description: "Message correctly sent, check your inbox!",
@@ -79,5 +80,6 @@ export function useItemChat({ item_id }: useItemChatProps) {
 
   return {
     messageBoxForm,
+    chatIdClient,
   };
 }

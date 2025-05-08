@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const cookieReader = await cookies();
 
   cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-    const [pair, ...rest] = cookie.split(";");
+    const [pair] = cookie.split(";");
     const [name, value] = pair?.split("=") ?? [];
     const trimmedName = name?.trim();
     const trimmedValue = value?.trim();

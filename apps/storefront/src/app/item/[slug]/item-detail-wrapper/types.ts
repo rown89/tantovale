@@ -1,3 +1,5 @@
+import { OrderProposalStatus } from "@workspace/server/enumerated_values";
+
 export interface ItemWrapperProps {
   item: {
     id: number;
@@ -30,5 +32,7 @@ export interface ItemWrapperProps {
   orderProposal?: {
     id: number;
     created_at: string;
+    status: OrderProposalStatus;
   };
+  isFavorite: boolean;
 }

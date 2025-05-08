@@ -15,7 +15,6 @@ import {
 } from "@workspace/ui/components/card";
 import { Label } from "@workspace/ui/components/label";
 import { Separator } from "@workspace/ui/components/separator";
-import { Spinner } from "@workspace/ui/components/spinner";
 import { Textarea } from "@workspace/ui/components/textarea";
 import {
   TooltipProvider,
@@ -52,10 +51,15 @@ interface UserInfoBoxProps {
     id: number;
     created_at: string;
   };
+  isFavorite: boolean;
+  chatId?: number;
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
-  function UserInfoBox({ item, itemOwnerData, orderProposal }, ref) {
+  function UserInfoBox(
+    { item, itemOwnerData, orderProposal, isFavorite, chatId },
+    ref,
+  ) {
     const item_id = item.id;
     const { phone_verified, email_verified } = itemOwnerData || {};
 
@@ -63,9 +67,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     const router = useRouter();
 
     const {
-      chatId,
       proposal_created_at,
-      proposal_status,
       setIsProposalModalOpen,
       setOriginalItemPrice,
     } = useTantovaleStore();
@@ -79,13 +81,14 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       item_id,
     });
 
-    const { messageBoxForm } = useItemChat({
+    const { chatIdClient, messageBoxForm } = useItemChat({
       item_id,
+      chatId,
     });
 
-    const { isFavorite, isFavoriteLoading, handleFavorite } = useItemFavorite({
-      user,
+    const { isFavoriteClient, handleFavorite } = useItemFavorite({
       item_id,
+      isFavorite,
     });
 
     const itemOwnerIsNotCurrentUser = item?.user?.id !== user?.id;
@@ -147,34 +150,30 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                 )}
 
                 <div className="mt-2 w-full flex justify-center">
-                  {isFavoriteLoading ? (
-                    <Spinner />
-                  ) : (
-                    <Button
-                      className="hover:bg-destructive/70 w-full font-bold"
-                      variant={!isFavorite ? "outline" : "destructive"}
-                      disabled={isFavoriteLoading}
-                      onClick={() => {
-                        if (!user) {
-                          router.push("/login");
-                          return;
-                        }
+                  <Button
+                    className="hover:bg-destructive/70 w-full font-bold"
+                    variant={!isFavoriteClient ? "outline" : "destructive"}
+                    onClick={() => {
+                      if (!user) {
+                        router.push("/login");
+                        return;
+                      }
 
-                        if (isFavorite) {
-                          handleFavorite.mutate("remove");
-                        } else {
-                          handleFavorite.mutate("add");
-                        }
-                      }}
-                    >
-                      {!isFavorite ? (
-                        <Heart className="text-inherit" />
-                      ) : (
-                        <Heart />
-                      )}
-                      {!isFavorite ? "Favorite" : "UnFavorite"}
-                    </Button>
-                  )}
+                      if (isFavoriteClient) {
+                        handleFavorite.mutate("remove");
+                      } else {
+                        handleFavorite.mutate("add");
+                      }
+                    }}
+                    disabled={handleFavorite.isPending}
+                  >
+                    {!isFavoriteClient ? (
+                      <Heart className="text-inherit" />
+                    ) : (
+                      <Heart />
+                    )}
+                    {!isFavoriteClient ? "Favorite" : "UnFavorite"}
+                  </Button>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -228,7 +227,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
           {itemOwnerIsNotCurrentUser && (
             <CardFooter className="flex flex-col gap-2 items-start">
               <Label className="mb-1">Richiedi informazioni</Label>
-              {!chatId ? (
+              {!chatIdClient ? (
                 <form
                   className="w-full"
                   onSubmit={(e) => {
@@ -294,7 +293,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                 <Button
                   variant="default"
                   className="w-full font-bold"
-                  onClick={() => router.push(`/auth/chat/${chatId}`)}
+                  onClick={() => router.push(`/auth/chat/${chatIdClient}`)}
                 >
                   Go to Chat
                 </Button>

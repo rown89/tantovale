@@ -110,8 +110,12 @@ export function ProposalDialog() {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Make a Price Proposal</DialogTitle>
-          <DialogDescription>
-            Original price: {originalItemPrice.toFixed(2)}
+          <DialogDescription className="flex flex-col gap-2">
+            <span>Seller item price: {originalItemPrice.toFixed(2)}€</span>
+            <i className="text-sm text-orange-400">
+              If the seller does not accept or reject the proposal, it will
+              automatically expire after 7 days.
+            </i>
           </DialogDescription>
         </DialogHeader>
         <form
@@ -171,7 +175,7 @@ export function ProposalDialog() {
                   )}
                 </form.Field>
               </div>
-              <Label htmlFor="message">Optional message</Label>
+              <Label htmlFor="message">Message (optional)</Label>
               <div className="col-span-3">
                 <form.Field name="message">
                   {(field) => (

@@ -12,6 +12,7 @@ export interface ChatMessage {
     id: number;
     username: string;
   };
+  sender_id: number;
 }
 
 export interface ChatMessageProps {

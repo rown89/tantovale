@@ -49,12 +49,14 @@ export const refreshRoute = createRouter().post(
 			const payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
 			const id = Number(payload.id);
 			const username = payload.username as string;
+			const email = payload.email as string;
 			const email_verified = payload.email_verified as boolean;
 			const phone_verified = payload.phone_verified as boolean;
 
 			const user = {
 				id,
 				username,
+				email,
 				email_verified,
 				phone_verified,
 			};

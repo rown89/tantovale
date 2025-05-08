@@ -29,7 +29,6 @@ export interface ChatProps {
       username: string;
     };
   };
-
   messages: ChatMessage[] | undefined;
 }
 

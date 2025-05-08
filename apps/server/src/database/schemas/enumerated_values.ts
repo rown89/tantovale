@@ -1,7 +1,7 @@
 export const chatMessageTypeValues = ['text', 'proposal'] as const;
 export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 
-export const orderProposalStatusValues = ['pending', 'accepted', 'rejected'] as const;
+export const orderProposalStatusValues = ['pending', 'accepted', 'rejected', 'expired'] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
 export const orderStatusValues = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'] as const;

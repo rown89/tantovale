@@ -1,7 +1,6 @@
 import { ChatMessage } from "./types";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { client } from "@workspace/server/client-rpc";
-import { OrderProposalStatus } from "@workspace/server/enumerated_values";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const useChatMessageHook = (message: ChatMessage) => {
@@ -30,7 +29,7 @@ export const useChatMessageHook = (message: ChatMessage) => {
     mutationFn: async (params: {
       orderProposalId: number;
       item_id: number;
-      status: OrderProposalStatus;
+      status: "accepted" | "rejected";
     }) => {
       const response = await client.orders_proposals.auth.$put({
         json: {

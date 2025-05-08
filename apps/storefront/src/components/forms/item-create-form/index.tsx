@@ -302,8 +302,7 @@ export default function CreateItemFormComponent({
               </form.Field>
               <form.Field name="images">
                 {(field) => {
-                  const { state, handleChange } = field;
-                  const { meta } = state;
+                  const { handleChange } = field;
 
                   return (
                     <div className="space-y-2">

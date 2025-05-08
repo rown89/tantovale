@@ -1,9 +1,10 @@
 "use client";
 
-import { Chat } from "#components/chat";
-import { client } from "@workspace/server/client-rpc";
 import { notFound, useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+
+import { client } from "@workspace/server/client-rpc";
+import { Chat } from "#components/chat";
 
 export default function ChatRoomPage() {
   const params = useParams<{ id: string }>();
@@ -50,7 +51,7 @@ export default function ChatRoomPage() {
 
       if (!response.ok) {
         console.log("chatRooms error", response);
-        return [];
+        return undefined;
       }
 
       return await response.json();

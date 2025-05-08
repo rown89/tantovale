@@ -6,7 +6,7 @@ import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { authPath } from 'src/utils/constants';
-import { orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
+import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
 import { items } from 'src/database/schemas/items';
 import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
 import { users } from 'src/database/schemas/users';
@@ -172,31 +172,43 @@ export const ordersProposalsRoute = createRouter()
 
 		return c.json(proposal[0], 200);
 	})
-	.get(`${authPath}/by_item/:item_id`, authMiddleware, async (c) => {
-		const user = c.var.user;
-		const item_id = Number(c.req.param('item_id'));
+	.get(
+		`${authPath}/by_item/:item_id`,
+		zValidator(
+			'query',
+			z.object({
+				status: z.enum(orderProposalStatusValues).optional(),
+			}),
+		),
+		authMiddleware,
+		async (c) => {
+			const user = c.var.user;
+			const item_id = Number(c.req.param('item_id'));
+			const { status } = c.req.valid('query');
 
-		const { db } = createClient();
+			const { db } = createClient();
 
-		const [proposal] = await db
-			.select({
-				id: ordersProposals.id,
-				created_at: ordersProposals.created_at,
-			})
-			.from(ordersProposals)
-			.where(
-				and(
-					eq(ordersProposals.item_id, item_id),
-					eq(ordersProposals.user_id, user.id),
-					eq(ordersProposals.status, 'pending'),
-				),
-			)
-			.limit(1);
+			const [proposal] = await db
+				.select({
+					id: ordersProposals.id,
+					status: ordersProposals.status,
+					created_at: ordersProposals.created_at,
+				})
+				.from(ordersProposals)
+				.where(
+					and(
+						eq(ordersProposals.item_id, item_id),
+						eq(ordersProposals.user_id, user.id),
+						eq(ordersProposals.status, status as OrderProposalStatus),
+					),
+				)
+				.limit(1);
 
-		if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+			if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
 
-		return c.json(proposal, 200);
-	})
+			return c.json(proposal, 200);
+		},
+	)
 	.put(
 		`${authPath}`,
 		authMiddleware,
@@ -204,7 +216,7 @@ export const ordersProposalsRoute = createRouter()
 			'json',
 			z.object({
 				id: z.number(),
-				status: z.enum(orderProposalStatusValues),
+				status: z.enum(['accepted', 'rejected']),
 				item_id: z.number(),
 			}),
 		),
@@ -223,6 +235,15 @@ export const ordersProposalsRoute = createRouter()
 
 			if (!item) return c.json({ error: 'Item not found' }, 404);
 			if (item.user_id !== user.id) return c.json({ error: 'Item not found' }, 404);
+
+			// check if the proposal is not expired
+			const [proposal] = await db
+				.select()
+				.from(ordersProposals)
+				.where(and(eq(ordersProposals.id, id), eq(ordersProposals.status, 'expired')))
+				.limit(1);
+
+			if (proposal) return c.json({ error: 'Proposal expired' }, 400);
 
 			const [updatedProposal] = await db
 				.update(ordersProposals)

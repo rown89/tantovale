@@ -76,6 +76,9 @@ export default async function ItemDetailPage() {
         param: {
           item_id: id,
         },
+        query: {
+          status: "pending",
+        },
       },
       {
         headers: {
@@ -90,11 +93,36 @@ export default async function ItemDetailPage() {
     }
   }
 
+  let isFavorite = false;
+
+  if (accessToken) {
+    const isFavoriteResponse = await client.favorites.auth.check[
+      ":item_id"
+    ].$get(
+      {
+        param: {
+          item_id: id,
+        },
+      },
+      {
+        headers: {
+          cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+        },
+      },
+    );
+
+    if (isFavoriteResponse.ok) {
+      const response = await isFavoriteResponse.json();
+      isFavorite = response;
+    }
+  }
+
   return (
     <Suspense fallback={<Spinner />}>
       <ItemWDetailWrapper
         item={item}
         itemOwnerData={itemOwnerData}
+        isFavorite={isFavorite}
         chatId={chatId}
         orderProposal={orderProposal}
       />

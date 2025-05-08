@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Drama } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
@@ -7,10 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { client } from "@workspace/server/client-rpc";
 import { ItemLinearCard } from "@workspace/ui/components/item-linear-card/item-linear-card";
 import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
-import { useState } from "react";
 import { Separator } from "@workspace/ui/components/separator";
 import { Spinner } from "@workspace/ui/components/spinner";
-import { Drama } from "lucide-react";
 import { ShareSocialModal } from "@workspace/ui/components/social-share-dialog/social-share-dialog";
 
 export interface Item {

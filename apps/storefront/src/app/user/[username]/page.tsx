@@ -1,4 +1,3 @@
-import { createRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,7 +13,7 @@ import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 export default async function UserDetailPage({
   params,
 }: {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
 

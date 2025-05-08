@@ -72,7 +72,10 @@ export async function submitLogin(
     const result = {
       success: true,
       message: "Correctly logged-in",
-      user,
+      user: {
+        ...user,
+        email: rawData.email,
+      },
     };
 
     return result;

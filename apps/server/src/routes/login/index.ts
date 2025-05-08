@@ -38,7 +38,7 @@ export const loginRoute = createRouter().post(
 		const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 
 		try {
-			const { email, password } = await c.req.json();
+			const { email, password } = c.req.valid('json');
 
 			const { db } = createClient();
 			// lookup email in database
@@ -122,6 +122,7 @@ export const loginRoute = createRouter().post(
 					user: {
 						id,
 						username,
+						email: email,
 						email_verified,
 						phone_verified,
 					},
