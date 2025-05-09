@@ -4,7 +4,7 @@ export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 export const orderProposalStatusValues = ['pending', 'accepted', 'rejected', 'expired'] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
-export const orderStatusValues = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'] as const;
+export const orderStatusValues = ['pending_payment', 'confirmed', 'cancelled'] as const;
 export type OrderStatus = (typeof orderStatusValues)[number];
 
 export const transactionStatusValues = ['pending_payment', 'waiting_confirmation', 'released', 'refunded'] as const;

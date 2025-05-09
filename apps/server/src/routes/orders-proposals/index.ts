@@ -14,146 +14,135 @@ import { chat_room } from 'src/database/schemas/chat_room';
 import { chat_messages } from 'src/database/schemas/chat_messages';
 import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
 import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
+import { create_order_proposal_schema, update_order_proposal_schema } from 'src/extended_schemas/order_proposals';
 
 export const ordersProposalsRoute = createRouter()
-	.post(
-		`${authPath}/create`,
-		authMiddleware,
-		zValidator(
-			'json',
-			z.object({
-				item_id: z.number(),
-				price: z.number(),
-				message: z.string().optional(),
-			}),
-		),
-		async (c) => {
-			const { item_id, price, message } = c.req.valid('json');
-			const user = c.var.user;
+	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
+		const { item_id, proposal_price, message } = c.req.valid('json');
+		const user = c.var.user;
 
-			const { db } = createClient();
+		const { db } = createClient();
 
-			try {
-				return await db.transaction(async (tx) => {
-					// check if the item exists and is available and published
-					const [item] = await tx
-						.select({
-							id: items.id,
-							title: items.title,
-							user_id: items.user_id,
-						})
-						.from(items)
-						.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
-						.limit(1);
+		try {
+			return await db.transaction(async (tx) => {
+				// check if the item exists and is available and published
+				const [item] = await tx
+					.select({
+						id: items.id,
+						title: items.title,
+						user_id: items.user_id,
+					})
+					.from(items)
+					.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
+					.limit(1);
 
-					if (!item) return c.json({ error: 'Item not found' }, 404);
+				if (!item) return c.json({ error: 'Item not found' }, 404);
 
-					// check if the user already has a proposal in pending status for this item
-					const [proposalAlreadyExists] = await tx
-						.select()
-						.from(ordersProposals)
-						.where(
-							and(
-								eq(ordersProposals.item_id, item_id),
-								eq(ordersProposals.user_id, user.id),
-								eq(ordersProposals.status, 'pending'),
-							),
-						)
-						.limit(1);
+				// check if the user already has a proposal in pending status for this item
+				const [proposalAlreadyExists] = await tx
+					.select()
+					.from(ordersProposals)
+					.where(
+						and(
+							eq(ordersProposals.item_id, item_id),
+							eq(ordersProposals.user_id, user.id),
+							eq(ordersProposals.status, 'pending'),
+						),
+					)
+					.limit(1);
 
-					if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
+				if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
 
-					// create a new proposal
-					const [proposal] = await tx
-						.insert(ordersProposals)
+				// create a new proposal
+				const [proposal] = await tx
+					.insert(ordersProposals)
+					.values({
+						item_id,
+						user_id: user.id,
+						proposal_price,
+					})
+					.returning();
+
+				if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+
+				// get the item owner email
+				const [itemOwner] = await tx
+					.select({ email: users.email })
+					.from(users)
+					.where(eq(users.id, item.user_id))
+					.limit(1);
+
+				if (!itemOwner) return c.json({ error: 'Item owner not found' }, 404);
+
+				// check if user already has an ongoing chat with the item owner
+				const [chatRoom] = await tx
+					.select()
+					.from(chat_room)
+					.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
+					.limit(1);
+
+				let chatRoomId = null;
+
+				if (chatRoom) {
+					// send a new chat message of type proposal
+					const [newChatMessage] = await tx
+						.insert(chat_messages)
 						.values({
-							item_id,
-							user_id: user.id,
-							price,
+							chat_room_id: chatRoom.id,
+							sender_id: user.id,
+							order_proposal_id: proposal.id,
+							message: message || `Proposal from ${user.username} for the object ${item.title}`,
+							message_type: 'proposal',
 						})
 						.returning();
 
-					if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+					if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
 
-					// get the item owner email
-					const [itemOwner] = await tx
-						.select({ email: users.email })
-						.from(users)
-						.where(eq(users.id, item.user_id))
-						.limit(1);
+					chatRoomId = chatRoom.id;
+				} else {
+					// create a new chat room
+					const [newChatRoom] = await tx
+						.insert(chat_room)
+						.values({
+							item_id,
+							buyer_id: user.id,
+						})
+						.returning();
 
-					if (!itemOwner) return c.json({ error: 'Item owner not found' }, 404);
+					if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
 
-					// check if user already has an ongoing chat with the item owner
-					const [chatRoom] = await tx
-						.select()
-						.from(chat_room)
-						.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
-						.limit(1);
+					// create a new chat message of type proposal
+					const [newChatMessage] = await tx
+						.insert(chat_messages)
+						.values({
+							chat_room_id: newChatRoom.id,
+							sender_id: user.id,
+							order_proposal_id: proposal.id,
+							message: message || `Proposal from ${user.username} for the object ${item.title}`,
+							message_type: 'proposal',
+						})
+						.returning();
 
-					let chatRoomId = null;
+					if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
 
-					if (chatRoom) {
-						// send a new chat message of type proposal
-						const [newChatMessage] = await tx
-							.insert(chat_messages)
-							.values({
-								chat_room_id: chatRoom.id,
-								sender_id: user.id,
-								order_proposal_id: proposal.id,
-								message: message || `Proposal from ${user.username} for the object ${item.title}`,
-								message_type: 'proposal',
-							})
-							.returning();
+					chatRoomId = newChatRoom.id;
+				}
 
-						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
-
-						chatRoomId = chatRoom.id;
-					} else {
-						// create a new chat room
-						const [newChatRoom] = await tx
-							.insert(chat_room)
-							.values({
-								item_id,
-								buyer_id: user.id,
-							})
-							.returning();
-
-						if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
-
-						// create a new chat message of type proposal
-						const [newChatMessage] = await tx
-							.insert(chat_messages)
-							.values({
-								chat_room_id: newChatRoom.id,
-								sender_id: user.id,
-								order_proposal_id: proposal.id,
-								message: message || `Proposal from ${user.username} for the object ${item.title}`,
-								message_type: 'proposal',
-							})
-							.returning();
-
-						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
-
-						chatRoomId = newChatRoom.id;
-					}
-
-					await sendNewProposalMessage({
-						to: itemOwner.email,
-						roomId: chatRoomId,
-						buyer_username: user.username,
-						itemName: item.title,
-						message: message || `Proposal from ${user.username} for the object ${item.title}`,
-					});
-
-					return c.json({ proposal, chatRoomId }, 200);
+				await sendNewProposalMessage({
+					to: itemOwner.email,
+					roomId: chatRoomId,
+					buyer_username: user.username,
+					itemName: item.title,
+					message: message || `Proposal from ${user.username} for the object ${item.title}`,
 				});
-			} catch (error) {
-				console.error('Error creating proposal:', error);
-				return c.json({ error: 'Failed to create proposal' }, 500);
-			}
-		},
-	)
+
+				return c.json({ proposal, chatRoomId }, 200);
+			});
+		} catch (error) {
+			console.error('Error creating proposal:', error);
+			return c.json({ error: 'Failed to create proposal' }, 500);
+		}
+	})
 	.get(`${authPath}/:id`, authMiddleware, async (c) => {
 		const id = Number(c.req.param('id'));
 
@@ -162,7 +151,8 @@ export const ordersProposalsRoute = createRouter()
 		const proposal = await db
 			.select({
 				status: ordersProposals.status,
-				price: ordersProposals.price,
+				proposal_price: ordersProposals.proposal_price,
+				created_at: ordersProposals.created_at,
 			})
 			.from(ordersProposals)
 			.where(eq(ordersProposals.id, id))
@@ -209,89 +199,78 @@ export const ordersProposalsRoute = createRouter()
 			return c.json(proposal, 200);
 		},
 	)
-	.put(
-		`${authPath}`,
-		authMiddleware,
-		zValidator(
-			'json',
-			z.object({
-				id: z.number(),
-				status: z.enum(['accepted', 'rejected']),
-				item_id: z.number(),
-			}),
-		),
-		async (c) => {
-			const user = c.var.user;
-			const { id, status, item_id } = await c.req.valid('json');
+	.put(`${authPath}`, authMiddleware, zValidator('json', update_order_proposal_schema), async (c) => {
+		const user = c.var.user;
+		const { id, status, item_id } = await c.req.valid('json');
 
-			const { db } = createClient();
+		const { db } = createClient();
 
-			// check if the item exists and is owned by the user (merchant)
-			const [item] = await db
-				.select()
-				.from(items)
-				.where(and(eq(items.id, item_id), eq(items.user_id, user.id)))
-				.limit(1);
+		// check if the item exists and is owned by the user (merchant)
+		const [item] = await db
+			.select()
+			.from(items)
+			.where(and(eq(items.id, item_id), eq(items.user_id, user.id)))
+			.limit(1);
 
-			if (!item) return c.json({ error: 'Item not found' }, 404);
-			if (item.user_id !== user.id) return c.json({ error: 'Item not found' }, 404);
+		if (!item) return c.json({ error: 'Item not found' }, 404);
+		if (item.user_id !== user.id) return c.json({ error: 'Item not found' }, 404);
 
-			// check if the proposal is not expired
-			const [proposal] = await db
-				.select()
-				.from(ordersProposals)
-				.where(and(eq(ordersProposals.id, id), eq(ordersProposals.status, 'expired')))
-				.limit(1);
+		// check if the proposal is not expired
+		const [proposal] = await db
+			.select()
+			.from(ordersProposals)
+			.where(and(eq(ordersProposals.id, id), eq(ordersProposals.status, 'expired')))
+			.limit(1);
 
-			if (proposal) return c.json({ error: 'Proposal expired' }, 400);
+		if (proposal) return c.json({ error: 'Proposal expired' }, 400);
 
-			const [updatedProposal] = await db
-				.update(ordersProposals)
-				.set({ status })
-				.where(eq(ordersProposals.id, id))
-				.returning();
+		const [updatedProposal] = await db
+			.update(ordersProposals)
+			.set({ status })
+			.where(eq(ordersProposals.id, id))
+			.returning();
 
-			if (!updatedProposal) return c.json({ error: 'Proposal not found' }, 404);
-			if (updatedProposal.user_id !== user.id) return c.json({ error: 'Proposal not found' }, 404);
+		if (!updatedProposal) return c.json({ error: 'Proposal not found' }, 404);
 
-			// get the chat room
-			const [chatRoom] = await db
-				.select({ id: chat_room.id })
-				.from(chat_room)
-				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, updatedProposal.user_id)))
-				.limit(1);
+		if (user.id !== item.user_id) return c.json({ error: 'Proposal is not owned by the item owner' }, 404);
 
-			if (!chatRoom) return c.json({ error: 'Chat room not found, cannot send the proposal update	 message' }, 404);
+		// get the chat room
+		const [chatRoom] = await db
+			.select({ id: chat_room.id })
+			.from(chat_room)
+			.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, updatedProposal.user_id)))
+			.limit(1);
 
-			const [userProposal] = await db
-				.select({
-					email: users.email,
-					username: users.username,
-				})
-				.from(users)
-				.where(eq(users.id, updatedProposal.user_id))
-				.limit(1);
+		if (!chatRoom) return c.json({ error: 'Chat room not found, cannot send the proposal update	 message' }, 404);
 
-			if (!userProposal) return c.json({ error: 'User not found' }, 404);
+		const [userProposal] = await db
+			.select({
+				email: users.email,
+				username: users.username,
+			})
+			.from(users)
+			.where(eq(users.id, updatedProposal.user_id))
+			.limit(1);
 
-			if (status === 'accepted') {
-				sendProposalAcceptedMessage({
-					to: userProposal.email,
-					roomId: chatRoom.id,
-					merchant_username: user.username,
-					itemName: item.title,
-				});
-			}
+		if (!userProposal) return c.json({ error: 'User not found' }, 404);
 
-			if (status === 'rejected') {
-				sendProposalRejectedMessage({
-					to: userProposal.email,
-					roomId: chatRoom.id,
-					merchant_username: user.username,
-					itemName: item.title,
-				});
-			}
+		if (status === 'accepted') {
+			sendProposalAcceptedMessage({
+				to: userProposal.email,
+				roomId: chatRoom.id,
+				merchant_username: user.username,
+				itemName: item.title,
+			});
+		}
 
-			return c.json(updatedProposal);
-		},
-	);
+		if (status === 'rejected') {
+			sendProposalRejectedMessage({
+				to: userProposal.email,
+				roomId: chatRoom.id,
+				merchant_username: user.username,
+				itemName: item.title,
+			});
+		}
+
+		return c.json(updatedProposal);
+	});

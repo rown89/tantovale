@@ -34,7 +34,14 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
           </AvatarFallback>
         </Avatar>
         <div>
-          <h2 className="font-medium truncate">{otherUser.username}</h2>
+          <h2 className="font-medium truncate">
+            <Link
+              className="hover:underline"
+              href={`/user/${otherUser.username}`}
+            >
+              {otherUser.username}
+            </Link>
+          </h2>
         </div>
       </div>
       <div className="flex items-center gap-3">

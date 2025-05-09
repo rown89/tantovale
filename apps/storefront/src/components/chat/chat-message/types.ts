@@ -18,5 +18,5 @@ export interface ChatMessage {
 export interface ChatMessageProps {
   message: ChatMessage;
   item: ChatItem;
-  isCurrentUser: boolean;
+  isChatOwner: boolean;
 }

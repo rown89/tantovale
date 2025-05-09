@@ -16,7 +16,7 @@ export const ordersProposals = pgTable('orders_proposals', {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
-	price: integer('price').notNull(),
+	proposal_price: integer('proposal_price').notNull(),
 	status: ordersProposalStatusEnum('status').notNull().default('pending'),
 	created_at: timestamp('created_at').notNull().defaultNow(),
 	updated_at: timestamp('updated_at').notNull().defaultNow(),

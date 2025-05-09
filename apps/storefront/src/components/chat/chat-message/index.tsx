@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, addDays } from "date-fns";
 import { cn, formatPrice } from "@workspace/ui/lib/utils";
 import {
   Card,
@@ -13,13 +13,8 @@ import { Spinner } from "@workspace/ui/components/spinner";
 
 import { ChatMessageProps } from "./types";
 import { useChatMessageHook } from "./use-chat-message";
-import { Separator } from "@workspace/ui/components/separator";
 
-export function ChatMessage({
-  message,
-  item,
-  isCurrentUser,
-}: ChatMessageProps) {
+export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
   const {
     orderProposal,
     isOrderProposalLoading,
@@ -55,13 +50,13 @@ export function ChatMessage({
     <div
       className={cn(
         "flex items-start gap-2 mb-4 break-all",
-        isCurrentUser ? "flex-row-reverse" : "flex-row",
+        isChatOwner ? "flex-row-reverse" : "flex-row",
       )}
     >
       <div
         className={cn(
           "flex flex-col max-w-[80%]",
-          isCurrentUser ? "items-end" : "items-start",
+          isChatOwner ? "items-end" : "items-start",
         )}
       >
         <div>
@@ -76,77 +71,120 @@ export function ChatMessage({
                     <Card
                       className={cn(
                         "min-w-[300px]",
-                        proposalStatus === "rejected" && "bg-destructive/10",
+                        (proposalStatus === "rejected" ||
+                          proposalStatus === "expired") &&
+                          "bg-destructive/10",
                         proposalStatus === "accepted" && "bg-green-500/10",
                         proposalStatus === "pending" && "bg-background",
                       )}
                     >
                       <CardHeader>
                         <CardTitle>
-                          😃 {!isCurrentUser ? "You have  a" : "Your"} buy
-                          proposal {!isCurrentUser && "from "}
-                          {!isCurrentUser && (
-                            <Link
-                              className="text-accent"
-                              href={`/user/${message.sender.username}`}
-                            >
-                              {message.sender.username}
-                            </Link>
-                          )}
+                          😃 &nbsp;
+                          {isChatOwner ? "Your " : "You have a buy "}
+                          proposal
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="flex gap-1">
-                          <p>
-                            {message.sender.username} is offering{" "}
-                            {!isCurrentUser && "you"}
-                          </p>
-                          <p className="font-bold">
-                            {formatPrice(orderProposal.price)}€
-                          </p>
+                        <p className="my-2 italic">"{message.message}"</p>
+                        <div className="flex">
+                          {isChatOwner ? (
+                            <span className="flex gap-1">
+                              You are offering{" "}
+                              <p className="font-bold">
+                                {formatPrice(orderProposal.proposal_price)}€
+                              </p>
+                            </span>
+                          ) : (
+                            <span className="flex gap-1">
+                              <Link
+                                className="text-accent hover:underline"
+                                href={`/user/${message.sender.username}`}
+                              >
+                                {message.sender.username}
+                              </Link>{" "}
+                              is offering you{" "}
+                              <p className="font-bold">
+                                {formatPrice(orderProposal.proposal_price)}€
+                              </p>
+                            </span>
+                          )}
                         </div>
-                        <Separator className="my-2" />
-                        <p className="text-sm ">{message.message}</p>
+                        <p className="italic mt-2 text-muted-foreground">
+                          * This proposal will expire automatically in{" "}
+                          {formatDistanceToNow(
+                            addDays(new Date(orderProposal.created_at), 7),
+                          )}
+                        </p>
                       </CardContent>
                       <CardFooter
                         className={cn(
                           "flex gap-2",
-                          proposalStatus === "pending"
+                          proposalStatus === "pending" && !isChatOwner
                             ? "justify-between"
                             : "justify-center",
                         )}
                       >
-                        {!isCurrentUser && proposalStatus === "pending" && (
+                        {/* Buyer actions (when not chat owner and proposal is pending) */}
+                        {!isChatOwner && proposalStatus === "pending" && (
                           <>
                             <Button
                               variant="destructive"
-                              className="flex-1"
+                              className="flex-1 bg-destructive hover:bg-destructive/70 font-bold"
                               onClick={handleRejectProposal}
                             >
                               Reject
                             </Button>
                             <Button
                               variant="default"
-                              className="flex-1"
+                              className="flex-1 bg-green-700 hover:bg-green-600 font-bold"
                               onClick={handleAcceptProposal}
                             >
                               Accept
                             </Button>
                           </>
                         )}
-                        <p
-                          className={cn(
-                            "text-center",
-                            proposalStatus === "rejected"
-                              ? "text-destructive"
-                              : "text-green-500",
+
+                        {/* Proposal status */}
+                        <div className="flex flex-col gap-2 w-full">
+                          {/* Buyer view of status (when not pending) */}
+                          {!isChatOwner && proposalStatus !== "pending" && (
+                            <span className="flex">
+                              Proposal status:&nbsp;&nbsp;
+                              <p
+                                className={cn(
+                                  "font-bold",
+                                  proposalStatus === "rejected" ||
+                                    proposalStatus === "expired"
+                                    ? "text-destructive"
+                                    : "text-green-500",
+                                )}
+                              >
+                                {proposalStatus}
+                              </p>
+                            </span>
                           )}
-                        >
-                          {isCurrentUser && <span>{proposalStatus}</span>}
-                          {!isCurrentUser && proposalStatus !== "pending" && (
-                            <span>{proposalStatus}</span>
+
+                          {/* Seller view of status (always shown) */}
+                          {isChatOwner && (
+                            <div className="flex gap-2">
+                              <p className="text-foreground">
+                                Proposal status:
+                              </p>
+                              <p
+                                className={cn(
+                                  "font-bold",
+                                  proposalStatus === "rejected" ||
+                                    proposalStatus === "expired"
+                                    ? "text-destructive"
+                                    : "text-green-500",
+                                )}
+                              >
+                                {proposalStatus}
+                              </p>
+                            </div>
                           )}
-                        </p>
+                        </div>
                       </CardFooter>
                     </Card>
                   </div>
@@ -158,7 +196,7 @@ export function ChatMessage({
             <div
               className={cn(
                 "px-3 py-2 rounded-lg",
-                isCurrentUser
+                isChatOwner
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted/80",
               )}

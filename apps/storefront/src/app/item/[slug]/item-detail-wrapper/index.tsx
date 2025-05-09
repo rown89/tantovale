@@ -62,7 +62,7 @@ export default function ItemWDetailWrapper({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const infoBoxRef = useRef<HTMLDivElement>(null);
 
-  const { setIsProposalModalOpen, setOriginalItemPrice } = useTantovaleStore();
+  const { setIsProposalModalOpen } = useTantovaleStore();
 
   const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } = useItemPayments({
     item_id,
@@ -144,9 +144,8 @@ export default function ItemWDetailWrapper({
                   if (!user) {
                     router.push("/login");
                   } else {
-                    const itemPrice = Number(formatPrice(item.price));
+                    const itemPrice = formatPrice(item.price);
 
-                    setOriginalItemPrice(itemPrice);
                     setIsProposalModalOpen(true);
                   }
                 }}

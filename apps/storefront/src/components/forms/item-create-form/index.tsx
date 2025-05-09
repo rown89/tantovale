@@ -24,7 +24,7 @@ import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 import type { Category } from "@workspace/shared/types/category";
 import Link from "next/link";
 import { Badge } from "@workspace/ui/components/badge";
-
+import { formatPriceToCents } from "@workspace/ui/lib/utils";
 const maxImages = 5;
 
 export default function CreateItemFormComponent({
@@ -284,7 +284,7 @@ export default function CreateItemFormComponent({
                         onChange={(e) => {
                           handleChange(
                             e.target.value
-                              ? Math.round(e.target.valueAsNumber * 100)
+                              ? formatPriceToCents(e.target.valueAsNumber)
                               : 0,
                           );
                         }}

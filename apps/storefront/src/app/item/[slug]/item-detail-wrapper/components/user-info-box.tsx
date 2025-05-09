@@ -4,6 +4,8 @@ import { Heart, BadgeCheck, Mail, Phone, FileSpreadsheet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { forwardRef } from "react";
 import Link from "next/link";
+import { format } from "date-fns";
+import { Repeat } from "lucide-react";
 
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -22,23 +24,21 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@workspace/ui/components/tooltip";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert";
+import { formatPrice } from "@workspace/ui/lib/utils";
 
-import { useAuth } from "#providers/auth-providers";
-import { FieldInfo } from "#components/forms/utils/field-info";
 import { ItemWrapperProps } from "../types";
 import { PaymentButton } from "./payment-button";
 import { ProposalButton } from "./proposal-button";
 import { useItemFavorite } from "../hooks/use-item-favorite";
 import { useItemPayments } from "../hooks/use-item-payments";
 import { useItemChat } from "../hooks/use-item-chat";
-import { format } from "date-fns";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@workspace/ui/components/alert";
-import { Repeat } from "lucide-react";
-import { formatPrice } from "@workspace/ui/lib/utils";
+import { useAuth } from "#providers/auth-providers";
+import { FieldInfo } from "#components/forms/utils/field-info";
 import useTantovaleStore from "#stores";
 
 interface UserInfoBoxProps {
@@ -66,20 +66,12 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     const { user } = useAuth();
     const router = useRouter();
 
-    const {
-      proposal_created_at,
-      setIsProposalModalOpen,
-      setOriginalItemPrice,
-    } = useTantovaleStore();
+    const { proposal_created_at, setIsProposalModalOpen } = useTantovaleStore();
 
-    const {
-      isBuyModalOpen,
-      setIsBuyModalOpen,
-
-      handlePayment,
-    } = useItemPayments({
-      item_id,
-    });
+    const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } =
+      useItemPayments({
+        item_id,
+      });
 
     const { chatIdClient, messageBoxForm } = useItemChat({
       item_id,
@@ -129,8 +121,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                         if (!user) {
                           router.push("/login");
                         } else {
-                          const itemPrice = Number(formatPrice(item.price));
-                          setOriginalItemPrice(itemPrice);
+                          const itemPrice = formatPrice(item.price);
                           setIsProposalModalOpen(true);
                         }
                       }}
@@ -141,9 +132,9 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   <div className="mt-2 w-full flex justify-center">
                     <Alert>
                       <Repeat className="h-4 w-4" />
-                      <AlertTitle>Hey!</AlertTitle>
+                      <AlertTitle>Waiting for seller response</AlertTitle>
                       <AlertDescription>
-                        Order proposal already sent on: {proposal_date}
+                        Proposal sent on {proposal_date}
                       </AlertDescription>
                     </Alert>
                   </div>

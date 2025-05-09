@@ -9,43 +9,48 @@ type OrderProposalProps = Omit<
   created_at: string;
   updated_at: string;
 } & {
-  chatRoomId: number;
+  chat_room_id: number;
 };
 
+interface handleProposalProps {
+  item_id: number;
+  proposal_price: number;
+  message?: string;
+}
+
 export type OrderProposalStore = {
-  originalItemPrice: number;
-  proposalPrice: number;
+  proposal_price: number;
   proposal_created_at: string | null;
   proposal_status: SelectOrderProposal["status"] | undefined;
   isProposalModalOpen: boolean;
   setIsProposalModalOpen: (isProposalModalOpen: boolean) => void;
-  setOriginalItemPrice: (originalItemPrice: number) => void;
-  setProposalPrice: (proposalPrice: number) => void;
-  handleProposal: (
-    item_id: number,
-    price: number,
-    message?: string,
-  ) => Promise<OrderProposalProps | undefined>;
+  setProposalPrice: (proposal_price: number) => void;
+  handleProposal: ({
+    item_id,
+    proposal_price,
+    message,
+  }: handleProposalProps) => Promise<OrderProposalProps | undefined>;
   resetProposal: () => void;
 };
 
 export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
-  originalItemPrice: 0,
-  proposalPrice: 0,
+  proposal_price: 0,
   proposal_created_at: null,
   proposal_status: undefined,
   isProposalModalOpen: false,
-  setOriginalItemPrice: (originalItemPrice: number) =>
-    set({ originalItemPrice }),
-  setProposalPrice: (proposalPrice: number) => set({ proposalPrice }),
+  setProposalPrice: (proposal_price: number) => set({ proposal_price }),
   setIsProposalModalOpen: (isProposalModalOpen: boolean) =>
     set({ isProposalModalOpen }),
-  handleProposal: async (item_id: number, price: number, message?: string) => {
+  handleProposal: async ({
+    item_id,
+    proposal_price,
+    message,
+  }: handleProposalProps) => {
     try {
       const response = await client.orders_proposals.auth.create.$post({
         json: {
           item_id,
-          price,
+          proposal_price,
           message,
         },
       });
@@ -55,8 +60,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
       const data = await response.json();
 
       set({
-        originalItemPrice: price,
-        proposalPrice: data.proposal.price,
+        proposal_price: data.proposal.proposal_price,
         proposal_created_at: data.proposal.created_at,
         proposal_status: data.proposal.status,
       });
@@ -66,11 +70,11 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
         id: data.proposal.id,
         item_id: data.proposal.item_id,
         status: data.proposal.status,
-        price: data.proposal.price,
+        proposal_price: data.proposal.proposal_price,
         user_id: data.proposal.user_id,
         created_at: data.proposal.created_at,
         updated_at: data.proposal.updated_at,
-        chatRoomId: data.chatRoomId,
+        chat_room_id: data.chatRoomId,
       };
 
       return orderProposalProps;
@@ -81,9 +85,9 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
   },
   resetProposal: () =>
     set({
-      originalItemPrice: 0,
-      proposalPrice: 0,
+      proposal_price: 0,
       proposal_created_at: null,
       proposal_status: undefined,
+      isProposalModalOpen: false,
     }),
 });
