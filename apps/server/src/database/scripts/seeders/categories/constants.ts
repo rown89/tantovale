@@ -1,4 +1,5 @@
-import type { SubcategorySeeds, FilterSeed, FilterValues } from './types';
+import { FilterValues } from 'src/database/schemas/enumerated_values';
+import type { SubcategorySeeds, FilterSeed } from './types';
 
 export const Categories = {
 	ELECTRONICS: 'electronics',

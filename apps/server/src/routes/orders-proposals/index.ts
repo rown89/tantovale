@@ -1,11 +1,13 @@
-import { createClient } from 'src/database';
-import { createRouter } from 'src/lib/create-app';
-import { ordersProposals } from 'src/database/schemas/orders_proposals';
-import { eq, and, or } from 'drizzle-orm';
+import { env } from 'hono/adapter';
+import { eq, and, lt } from 'drizzle-orm';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { authPath } from 'src/utils/constants';
+
+import { createClient } from 'src/database';
+import { createRouter } from 'src/lib/create-app';
+import { ordersProposals } from 'src/database/schemas/orders_proposals';
+import { authPath, cronPath } from 'src/utils/constants';
 import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
 import { items } from 'src/database/schemas/items';
 import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
@@ -15,7 +17,7 @@ import { chat_messages } from 'src/database/schemas/chat_messages';
 import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
 import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
 import { create_order_proposal_schema, update_order_proposal_schema } from 'src/extended_schemas/order_proposals';
-
+import { subDays } from 'date-fns';
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const { item_id, proposal_price, message } = c.req.valid('json');
@@ -199,6 +201,26 @@ export const ordersProposalsRoute = createRouter()
 			return c.json(proposal, 200);
 		},
 	)
+	.get(`${cronPath}/expired-proposals-check`, authMiddleware, async (c) => {
+		const { DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY } = env<{
+			DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: string;
+		}>(c);
+
+		const { key } = c.req.query();
+
+		if (key !== DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY) {
+			return c.json({ error: 'Invalid key' }, 401);
+		}
+
+		const { db } = createClient();
+
+		// remove proposals in pending status with created_at date equal or older than 7 days
+		await db
+			.delete(ordersProposals)
+			.where(and(eq(ordersProposals.status, 'pending'), lt(ordersProposals.created_at, subDays(new Date(), 7))));
+
+		return c.json({ message: 'Expired proposals removed' }, 200);
+	})
 	.put(`${authPath}`, authMiddleware, zValidator('json', update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 		const { id, status, item_id } = await c.req.valid('json');

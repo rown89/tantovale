@@ -2,15 +2,15 @@ import { pgTable, integer, timestamp } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { orders } from './orders';
 import { relations } from 'drizzle-orm';
-import { shippings } from './shippings';
+import { deliveries } from './deliveries';
 
-export const orders_shippings = pgTable('orders_shippings', {
+export const deliveries_orders = pgTable('deliveries_orders', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 	order_id: integer('order_id').references(() => orders.id, {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
-	shipping_id: integer('shipping_id').references(() => shippings.id, {
+	delivery_id: integer('delivery_id').references(() => deliveries.id, {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
@@ -18,16 +18,16 @@ export const orders_shippings = pgTable('orders_shippings', {
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const orders_shippingsRelations = relations(orders_shippings, ({ one }) => ({
+export const deliveries_ordersRelations = relations(deliveries_orders, ({ one }) => ({
 	order: one(orders, {
-		fields: [orders_shippings.order_id],
+		fields: [deliveries_orders.order_id],
 		references: [orders.id],
 	}),
-	shipping: one(shippings, {
-		fields: [orders_shippings.shipping_id],
-		references: [shippings.id],
+	delivery: one(deliveries, {
+		fields: [deliveries_orders.delivery_id],
+		references: [deliveries.id],
 	}),
 }));
 
-export const orders_shippingsSelectSchema = createSelectSchema(orders_shippings);
-export const orders_shippingsInsertSchema = createInsertSchema(orders_shippings);
+export const deliveries_ordersSelectSchema = createSelectSchema(deliveries_orders);
+export const deliveries_ordersInsertSchema = createInsertSchema(deliveries_orders);

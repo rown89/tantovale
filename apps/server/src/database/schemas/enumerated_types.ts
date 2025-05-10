@@ -1,29 +1,28 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
 import { Categories, Filters, Subcategories } from '../scripts/seeders/categories/constants';
-import {
-	DeliveryMethodValues,
-	ProductConditionValues,
-	GenderCategoryValues,
-	ClothingMaterialValues,
-	ColorValues,
-	ClothingSizeValues,
-	ShoeSizeValues,
-	WatchWristSizeValues,
-	PhoneScreenSizeValues,
-	MonitorScreenSizeValues,
-} from '../scripts/seeders/categories/types';
+
 import {
 	chatMessageTypeValues,
+	clothingSizeValues,
+	colorValues,
+	clothingMaterialValues,
 	currencyValues,
+	deliveryMethodValues,
 	filterTypeValues,
 	itemImagesSizeValues,
 	itemStatusValues,
+	monitorScreenSizeValues,
+	productConditionValues,
 	orderProposalStatusValues,
 	orderStatusValues,
 	profileValues,
 	sexValues,
 	transactionStatusValues,
+	genderCategoryValues,
+	phoneScreenSizeValues,
+	watchWristSizeValues,
+	shoeSizeValues,
 } from './enumerated_values';
 
 export const itemStatusEnum = pgEnum('status_enum', itemStatusValues);
@@ -42,6 +41,8 @@ export const sexEnum = pgEnum('sex_enum', sexValues);
 export const profileEnum = pgEnum('profile_types_enum', profileValues);
 
 export const itemImagesSizeEnum = pgEnum('item_images_size_enum', itemImagesSizeValues);
+
+export const deliveryMethodEnum = pgEnum('delivery_method_enum', deliveryMethodValues);
 
 export const filtersEnum = pgEnum('filters_enum', [
 	Filters.CONDITION,
@@ -92,23 +93,23 @@ export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 export const FilterValuesEnum = pgEnum('filter_values_enum', [
 	'null',
 	// DELIVERY_METHODS
-	...DeliveryMethodValues,
+	...deliveryMethodValues,
 	// CONDITIONS
-	...ProductConditionValues,
+	...productConditionValues,
 	// GENDER
-	...GenderCategoryValues,
+	...genderCategoryValues,
 	// CLOTHING MATERIALS
-	...ClothingMaterialValues,
+	...clothingMaterialValues,
 	// COLORS
-	...ColorValues,
+	...colorValues,
 	// CLOTH SIZES
-	...ClothingSizeValues,
+	...clothingSizeValues,
 	// SHOES SIZES
-	...ShoeSizeValues,
+	...shoeSizeValues,
 	// WATCH WIRST SIZES
-	...WatchWristSizeValues,
+	...watchWristSizeValues,
 	// PHONE SIZE SCREENS
-	...PhoneScreenSizeValues,
+	...phoneScreenSizeValues,
 	// MONITOR SIZE SCREENS
-	...MonitorScreenSizeValues,
+	...monitorScreenSizeValues,
 ]);

@@ -1,6 +1,7 @@
 import { parseEnv, type Environment } from '../env';
 
 export const authPath = 'auth';
+export const cronPath = 'cron';
 
 export const DEFAULT_ACCESS_TOKEN_EXPIRES = () => new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
 
