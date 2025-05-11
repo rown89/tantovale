@@ -1,9 +1,9 @@
-import { count, eq, and, sql } from 'drizzle-orm';
+import { count, eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '../../database';
-import { cities, items, itemsImages, profiles, users } from '../../database/schemas/schema';
+import { cities, items, profiles, users } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { UserSchema } from '../../extended_schemas/users';
 import { authPath } from '../../utils/constants';

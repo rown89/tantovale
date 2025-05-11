@@ -19,4 +19,5 @@ export * from './user';
 export * from './favorites';
 export * from './transaction';
 export * from './webhooks';
+export * from './orders';
 export * from './orders-proposals';

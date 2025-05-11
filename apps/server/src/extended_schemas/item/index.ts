@@ -27,6 +27,7 @@ export const createItemSchema = z.object({
 				.regex(/^[a-zA-Z0-9\s]+$/, 'Title can only contain letters, numbers, and spaces'),
 		description: (schema) => schema.min(50, 'Description must be at least 100 characters').max(2500),
 		price: number().min(0.01, 'Price must be greater than 0'),
+		shipping_price: number().optional(),
 	}).omit({
 		user_id: true,
 		published: true,

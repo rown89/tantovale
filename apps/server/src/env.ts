@@ -35,8 +35,10 @@ const EnvSchema = z.object({
 	DATABASE_HOST: z.string(),
 	POSTGRES_DB: z.string(),
 	DATABASE_PORT: z.coerce.number().default(5432),
-	STRIPE_SECRET_KEY: z.string(),
-	STRIPE_WEBHOOK_SECRET: z.string(),
+	PAYMENT_PROVIDER_SECRET_KEY: z.string(),
+	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
+	SHIPPING_PROVIDER_SECRET_KEY: z.string(),
+	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),
 });
 
 export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {

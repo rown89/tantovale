@@ -4,6 +4,7 @@ import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { orders } from './orders';
 import { items } from './items';
+import { orderStatusEnum } from './enumerated_types';
 
 export const orders_items = pgTable('orders_items', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
@@ -15,9 +16,8 @@ export const orders_items = pgTable('orders_items', {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
-	quantity: integer('quantity').notNull().default(1),
-	price: integer('price').notNull(),
-	total_price: integer('total_price').notNull(),
+	finished_price: integer('finished_price').notNull(),
+	order_status: orderStatusEnum('order_status').notNull().default('pending_payment'),
 	created_at: timestamp('created_at').notNull().defaultNow(),
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });

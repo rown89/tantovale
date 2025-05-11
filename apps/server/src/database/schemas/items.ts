@@ -12,11 +12,6 @@ export const items = pgTable(
 	'items',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
-		title: text('title').notNull(),
-		description: text('description').notNull(),
-		status: itemStatusEnum('status').notNull().default('available'),
-		published: boolean('published').default(false).notNull(),
-		price: integer('price').notNull().default(0),
 		user_id: integer('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
@@ -29,6 +24,12 @@ export const items = pgTable(
 		city: integer('city')
 			.notNull()
 			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+		title: text('title').notNull(),
+		description: text('description').notNull(),
+		status: itemStatusEnum('status').notNull().default('available'),
+		published: boolean('published').default(false).notNull(),
+		price: integer('price').notNull().default(0),
+		shipping_price: integer('shipping_price'),
 		is_payable: boolean('is_payable').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -39,6 +40,9 @@ export const items = pgTable(
 		index('city_idx').on(table.city),
 		index('title_idx').on(table.title),
 		index('subcategory_id_idx').on(table.subcategory_id),
+		index('is_payable_idx').on(table.is_payable),
+		index('published_idx').on(table.published),
+		index('status_idx').on(table.status),
 	],
 );
 

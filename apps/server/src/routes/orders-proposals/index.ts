@@ -1,3 +1,4 @@
+import { subDays } from 'date-fns';
 import { env } from 'hono/adapter';
 import { eq, and, lt } from 'drizzle-orm';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
@@ -17,7 +18,9 @@ import { chat_messages } from 'src/database/schemas/chat_messages';
 import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
 import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
 import { create_order_proposal_schema, update_order_proposal_schema } from 'src/extended_schemas/order_proposals';
-import { subDays } from 'date-fns';
+import { orders } from 'src/database/schemas/orders';
+import { orders_items } from 'src/database/schemas/orders_items';
+
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const { item_id, proposal_price, message } = c.req.valid('json');
@@ -253,7 +256,9 @@ export const ordersProposalsRoute = createRouter()
 			.returning();
 
 		if (!updatedProposal) return c.json({ error: 'Proposal not found' }, 404);
+		if (!updatedProposal.user_id) return c.json({ error: 'Proposal user not found' }, 404);
 
+		// check if the proposal is not owned by the item owner
 		if (user.id !== item.user_id) return c.json({ error: 'Proposal is not owned by the item owner' }, 404);
 
 		// get the chat room
@@ -277,21 +282,76 @@ export const ordersProposalsRoute = createRouter()
 		if (!userProposal) return c.json({ error: 'User not found' }, 404);
 
 		if (status === 'accepted') {
-			sendProposalAcceptedMessage({
-				to: userProposal.email,
-				roomId: chatRoom.id,
-				merchant_username: user.username,
-				itemName: item.title,
-			});
+			try {
+				await db.transaction(async (tx) => {
+					// create a new order and order item
+					const [newOrder] = await tx
+						.insert(orders)
+						.values({
+							buyer_id: updatedProposal.user_id,
+							seller_id: item.user_id,
+						})
+						.returning({
+							id: orders.id,
+						});
+
+					if (!newOrder) throw new Error('Order not found');
+
+					// create a new order item
+					const [newOrderItem] = await tx
+						.insert(orders_items)
+						.values({
+							order_id: newOrder.id,
+							item_id,
+							finished_price: updatedProposal.proposal_price,
+							order_status: 'pending_payment',
+						})
+						.returning({
+							id: orders_items.id,
+						});
+
+					if (!newOrderItem) throw new Error('Order item not found');
+
+					sendProposalAcceptedMessage({
+						to: userProposal.email,
+						roomId: chatRoom.id,
+						merchant_username: user.username,
+						itemName: item.title,
+					});
+
+					return c.json(
+						{
+							message: 'Proposal accepted and order created successfully',
+							order: {
+								id: newOrder.id,
+							},
+						},
+						200,
+					);
+				});
+			} catch (error) {
+				console.error('Error creating order:', error);
+				return c.json({ error: 'Failed to create a new order' }, 500);
+			}
 		}
 
 		if (status === 'rejected') {
+			// reject the proposal
+			await db.update(ordersProposals).set({ status: 'rejected' }).where(eq(ordersProposals.id, id));
+
 			sendProposalRejectedMessage({
 				to: userProposal.email,
 				roomId: chatRoom.id,
 				merchant_username: user.username,
 				itemName: item.title,
 			});
+
+			return c.json(
+				{
+					message: 'Proposal rejected successfully',
+				},
+				200,
+			);
 		}
 
 		return c.json(updatedProposal);

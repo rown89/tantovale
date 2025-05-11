@@ -15,8 +15,6 @@ export const orders = pgTable('orders', {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
-	finished_price: integer('finished_price').notNull(),
-	order_status: orderStatusEnum('order_status').notNull().default('pending_payment'),
 	created_at: timestamp('created_at').notNull().defaultNow(),
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
