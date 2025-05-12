@@ -8,7 +8,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = nextUrl;
 
   // TODO: Remove this once we have a production environment
-  if (process.env.NODE_ENV === "production" && pathname === "/") {
+  if (process.env.NODE_ENV === "production" && pathname !== "/") {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
