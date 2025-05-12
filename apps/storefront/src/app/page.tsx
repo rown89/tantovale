@@ -247,7 +247,7 @@ export default function Home() {
     isComplete: isComplete1,
   } = useTypewriter("Un marketplace", 100, 500);
   const { displayText: text2, showCaret: showCaret2 } = useTypewriter(
-    "open source",
+    "open source.",
     100,
     500 + "Un marketplace".length * 100,
   );
