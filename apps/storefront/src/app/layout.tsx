@@ -45,7 +45,8 @@ export default async function RootLayout({
         >
           <QueryProvider>
             <AuthProvider isLogged={isLogged}>
-              <NavBar />
+              {/* TODO: Remove this once we have a production environment */}
+              {process.env.NODE_ENV !== "production" && <NavBar />}
               {children}
             </AuthProvider>
             <Toaster />

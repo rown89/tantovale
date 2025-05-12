@@ -15,7 +15,6 @@ import { UserInfoBox } from "./components/user-info-box";
 import { PaymentButton } from "./components/payment-button";
 import { PaymentDialog } from "../../../../components/dialogs/pay-dialog";
 import { ProposalDialog } from "../../../../components/dialogs/order-proposal-dialog";
-import { useItemPayments } from "./hooks/use-item-payments";
 import { ItemWrapperProps } from "./types";
 import { ProposalButton } from "./components/proposal-button";
 import { useAuth } from "#providers/auth-providers";
@@ -63,10 +62,6 @@ export default function ItemWDetailWrapper({
   const infoBoxRef = useRef<HTMLDivElement>(null);
 
   const { setIsProposalModalOpen } = useTantovaleStore();
-
-  const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } = useItemPayments({
-    item_id,
-  });
 
   useEffect(() => {
     if (!infoBoxRef.current) return;
@@ -166,10 +161,7 @@ export default function ItemWDetailWrapper({
         )}
       </div>
 
-      <PaymentDialog
-        isBuyModalOpen={isBuyModalOpen}
-        setIsBuyModalOpen={setIsBuyModalOpen}
-      />
+      <PaymentDialog isBuyModalOpen={false} setIsBuyModalOpen={() => {}} />
 
       <ProposalDialog />
 

@@ -22,5 +22,4 @@ export * from './user_items_favorites';
 export * from './transactions';
 export * from './orders_proposals';
 export * from './orders';
-export * from './deliveries';
-export * from './deliveries_orders';
+export * from './subcategory_filters';

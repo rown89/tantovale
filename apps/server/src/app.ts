@@ -23,9 +23,9 @@ import {
 	chatRoute,
 	userRoute,
 	favoritesRoute,
-	transactionRoute,
 	webhooksRoute,
 	ordersProposalsRoute,
+	ordersRoute,
 } from './routes';
 
 const app = createApp();
@@ -57,8 +57,8 @@ const apiRoutes = app
 	.route(`/profile`, profileRoute)
 	.route(`/favorites`, favoritesRoute)
 	.route(`/user`, userRoute)
-	.route(`/transaction`, transactionRoute)
 	.route(`/webhooks`, webhooksRoute)
+	.route(`/orders`, ordersRoute)
 	.route(`/orders_proposals`, ordersProposalsRoute);
 
 export { app };

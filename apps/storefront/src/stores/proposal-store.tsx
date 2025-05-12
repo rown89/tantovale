@@ -15,7 +15,7 @@ type OrderProposalProps = Omit<
 interface handleProposalProps {
   item_id: number;
   proposal_price: number;
-  message?: string;
+  message: string;
 }
 
 export type OrderProposalStore = {

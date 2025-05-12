@@ -35,7 +35,6 @@ import { ItemWrapperProps } from "../types";
 import { PaymentButton } from "./payment-button";
 import { ProposalButton } from "./proposal-button";
 import { useItemFavorite } from "../hooks/use-item-favorite";
-import { useItemPayments } from "../hooks/use-item-payments";
 import { useItemChat } from "../hooks/use-item-chat";
 import { useAuth } from "#providers/auth-providers";
 import { FieldInfo } from "#components/forms/utils/field-info";
@@ -67,11 +66,6 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
     const router = useRouter();
 
     const { proposal_created_at, setIsProposalModalOpen } = useTantovaleStore();
-
-    const { isBuyModalOpen, setIsBuyModalOpen, handlePayment } =
-      useItemPayments({
-        item_id,
-      });
 
     const { chatIdClient, messageBoxForm } = useItemChat({
       item_id,
@@ -107,7 +101,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                       if (!user) {
                         router.push("/login");
                       } else {
-                        handlePayment.mutate(item.price);
+                        // handlePayment.mutate(item.price);
                       }
                     }}
                   />

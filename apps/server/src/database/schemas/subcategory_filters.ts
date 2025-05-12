@@ -27,15 +27,10 @@ export const subCategoryFilters = pgTable(
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(table) => {
-		return {
-			// Add a unique constraint to ensure filter_id is unique within each subcategory_id
-			unique_filter_per_subcategory: uniqueIndex('unique_filter_per_subcategory').on(
-				table.filter_id,
-				table.subcategory_id,
-			),
-		};
-	},
+	(table) => [
+		// Add a unique constraint to ensure filter_id is unique within each subcategory_id
+		uniqueIndex('unique_filter_per_subcategory').on(table.filter_id, table.subcategory_id),
+	],
 );
 
 export type SelectCategoryFilter = typeof subCategoryFilters.$inferSelect;

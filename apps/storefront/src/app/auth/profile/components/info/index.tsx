@@ -60,12 +60,8 @@ export default function UserInfoComponent() {
                   {!isPaymentProviderConnected ? (
                     <span>
                       Connect a{" "}
-                      <Link
-                        href="https://stripe.com"
-                        target="_blank"
-                        className="text-blue-500"
-                      >
-                        Stripe
+                      <Link href="#" target="_blank" className="text-blue-500">
+                        payment provider
                       </Link>{" "}
                       account to start selling and accepting payments.
                     </span>
