@@ -7,15 +7,6 @@ export async function middleware(req: NextRequest) {
   const { nextUrl } = req;
   const { pathname } = nextUrl;
 
-  // TODO: Remove this once we have a production environment
-  if (
-    process?.env?.NODE_ENV === "production" &&
-    pathname !== "/" &&
-    pathname !== "/public"
-  ) {
-    return NextResponse.redirect(new URL("/", req.url));
-  }
-
   const accessToken = req.cookies.get("access_token")?.value;
   const refreshToken = req.cookies.get("refresh_token")?.value;
 
