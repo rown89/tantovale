@@ -38,8 +38,8 @@
 		"zod": "^3.24.4"
 	},
 	"devDependencies": {
-		"@commitlint/cli": "^19.6.1",
-		"@commitlint/config-conventional": "^19.6.0",
+		"@commitlint/cli": "^19.8.1",
+		"@commitlint/config-conventional": "^19.8.1",
 		"dotenv-cli": "^8.0.0",
 		"husky": "^9.1.7",
 		"prettier": "^3.5.3",
