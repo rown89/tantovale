@@ -22,7 +22,7 @@ const nextConfig = {
   },
   async headers() {
     return [
-      {
+      /* {
         // Apply these headers to all routes
         source: "/(.*)",
         headers: [
@@ -42,7 +42,7 @@ const nextConfig = {
             value: "strict-origin-when-cross-origin",
           },
         ],
-      },
+      }, */
       {
         source: "/sw.js",
         headers: [

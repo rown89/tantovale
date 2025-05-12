@@ -11,7 +11,7 @@
 		"dev": {
 			"cache": false,
 			"persistent": true,
-			"inputs": ["$TURBO_DEFAULT$", ".env.local", ".env", "./packages/database/.env.local", "./packages/database/.env"],
+			"inputs": ["$TURBO_DEFAULT$", ".env.local", ".env"],
 			"env": [
 				"NODE_ENV",
 				"LOG_LEVEL",
@@ -21,6 +21,18 @@
 
 				"STOREFRONT_HOSTNAME",
 				"STOREFRONT_PORT",
+
+				"POSTGRES_USER",
+				"POSTGRES_PASSWORD",
+				"DATABASE_HOST",
+				"DATABASE_PORT",
+				"POSTGRES_DB",
+
+				"PAYMENT_PROVIDER_SECRET_KEY",
+				"PAYMENT_PROVIDER_PUBLIC_KEY",
+
+				"SHIPPING_PROVIDER_SECRET_KEY",
+				"SHIPPING_PROVIDER_WEBHOOK_SECRET",
 
 				"ACCESS_TOKEN_SECRET",
 				"REFRESH_TOKEN_SECRET",
@@ -38,11 +50,8 @@
 				"SMTP_USER",
 				"SMTP_PASS",
 
-				"DATABASE_HOST",
-				"DATABASE_PORT",
-				"POSTGRES_USER",
-				"POSTGRES_PASSWORD",
-				"POSTGRES_DB"
+				"DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY",
+				"DAILY_ORDER_CHECK_SECRET_KEY"
 			]
 		},
 		"lint": {
