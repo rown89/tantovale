@@ -13,9 +13,14 @@ const FRICTION = 0.95; // Friction to slow down particles gradually
 
 // Smooth logo animation
 const useSmoothLogoMovement = (
-  mousePosition: React.MutableRefObject<{ x: number; y: number }>,
+  mousePosition: React.RefObject<{ x: number; y: number }>,
 ) => {
-  const [logoPosition, setLogoPosition] = useState({ x: 0, y: 0 });
+  const [logoPosition, setLogoPosition] = useState({
+    x: 0,
+    y: 0,
+    rotateX: 0, // Added rotation X
+    rotateY: 0, // Added rotation Y
+  });
 
   useEffect(() => {
     let animationId: number;
@@ -38,12 +43,26 @@ const useSmoothLogoMovement = (
       const targetX = distanceX * LOGO_MOVEMENT_STRENGTH;
       const targetY = distanceY * LOGO_MOVEMENT_STRENGTH;
 
+      // Calculate 3D rotation - inverse rotation to create a more natural effect
+      // Multiplying by a smaller value to limit rotation range
+      const targetRotateY = distanceX * 30; // -20 to 20 degrees
+      const targetRotateX = -distanceY * 25; // -15 to 15 degrees
+
       setLogoPosition((current) => {
         // Smooth interpolation (easing)
         const newX = current.x + (targetX - current.x) * 0.05;
         const newY = current.y + (targetY - current.y) * 0.05;
+        const newRotateX =
+          current.rotateX + (targetRotateX - current.rotateX) * 0.05;
+        const newRotateY =
+          current.rotateY + (targetRotateY - current.rotateY) * 0.05;
 
-        return { x: newX, y: newY };
+        return {
+          x: newX,
+          y: newY,
+          rotateX: newRotateX,
+          rotateY: newRotateY,
+        };
       });
 
       animationId = requestAnimationFrame(updateLogoPosition);
@@ -63,7 +82,7 @@ const useSmoothLogoMovement = (
 const useTypewriter = (
   text: string,
   speed: number = 100,
-  delay: number = 500,
+  delay: number = 100,
 ) => {
   const [displayText, setDisplayText] = useState("");
   const [showCaret, setShowCaret] = useState(true);
@@ -93,7 +112,7 @@ const useTypewriter = (
     // Blink the caret
     const caretInterval = setInterval(() => {
       setShowCaret((prev) => !prev);
-    }, 500);
+    }, 700);
 
     return () => {
       clearTimeout(startTimer);
@@ -109,7 +128,6 @@ const useCanvasAnimation = (
   mousePosition: React.MutableRefObject<{ x: number; y: number }>,
 ) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const particlesRef = useRef<
     Array<{
       x: number;
@@ -128,7 +146,6 @@ const useCanvasAnimation = (
 
     const width = window.innerWidth;
     const height = window.innerHeight;
-    setDimensions({ width, height });
 
     const newParticles = [];
     for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -160,7 +177,6 @@ const useCanvasAnimation = (
       const height = window.innerHeight;
       canvas.width = width;
       canvas.height = height;
-      setDimensions({ width, height });
 
       // Ensure particles are within new dimensions
       particlesRef.current.forEach((particle) => {
@@ -245,12 +261,14 @@ export default function Home() {
     displayText: text1,
     showCaret: showCaret1,
     isComplete: isComplete1,
-  } = useTypewriter("Un marketplace", 100, 500);
+  } = useTypewriter("Un marketplace", 100, 100);
+
   const { displayText: text2, showCaret: showCaret2 } = useTypewriter(
     "open source.",
     100,
-    500 + "Un marketplace".length * 100,
+    100 + "Un marketplace".length * 100,
   );
+
   const logoPosition = useSmoothLogoMovement(mousePosition);
 
   // Animation states
@@ -303,8 +321,11 @@ export default function Home() {
           <div
             className={`w-48 h-48 mx-auto mb-12 relative transition-opacity duration-1000 ease-in-out ${logoVisible ? "opacity-100" : "opacity-0"}`}
             style={{
-              transform: `translate(${logoPosition.x}px, ${logoPosition.y}px)`,
+              transform: `translate(${logoPosition.x}px, ${logoPosition.y}px) rotateX(${logoPosition.rotateX}deg) rotateY(${logoPosition.rotateY}deg)`,
               transition: "transform 0.1s ease-out, opacity 1s ease-in-out",
+              transformStyle: "preserve-3d",
+              perspective: "1000px",
+              filter: `drop-shadow(${-logoPosition.rotateY / 3}px ${logoPosition.rotateX / 3}px 10px rgba(0, 0, 0, 0.5))`,
             }}
           >
             <Logo className="w-full h-full" />
@@ -348,11 +369,11 @@ export default function Home() {
           </div>
 
           <div
-            className={`p-6 rounded-lg bg-white/5 backdrop-blur-sm w-fit transition-opacity duration-1000 ease-in-out ${statusVisible ? "opacity-100" : "opacity-0"}`}
+            className={`flex gap-2 items-center flex-col md:flex-row transition-opacity duration-1000 ease-in-out ${githubVisible ? "opacity-100" : "opacity-0"}`}
           >
-            <h2 className="mb-2 text-xl font-medium">Project Status</h2>
+            <h2 className="mb-2 text-xl font-medium">Stato:</h2>
             <div className="inline-block px-3 py-1 text-sm font-medium rounded-full bg-blue-500/30">
-              Initial building blocks
+              In costruzione
             </div>
           </div>
         </div>

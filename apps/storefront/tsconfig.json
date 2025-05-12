@@ -17,9 +17,10 @@
     ]
   },
   "paths": {
-    "@workspace/server/*": ["./packages/server/src/*"]
+    "@workspace/server/*": ["../server/src/*"],
+    "@workspace/ui/*": ["../../packages/ui/src/*"]
   },
-  "references": [{ "path": "../server/" }],
+  "references": [{ "path": "../server/" }, { "path": "../../packages/ui/" }],
   "include": [
     ".",
     "**/*.ts",
