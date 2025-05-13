@@ -12,7 +12,8 @@ export async function signupAction(
   try {
     const rawData: SignupFormData = {
       username: formData.get("username") as string,
-      fullname: formData.get("fullname") as string,
+      name: formData.get("name") as string,
+      surname: formData.get("surname") as string,
       gender: formData.get("gender") as "male" | "female",
       city: Number(formData.get("city")),
       email: formData.get("email") as string,
@@ -66,12 +67,10 @@ export async function signupAction(
       return {
         success: true,
         inputs: rawData,
-        message: "Signup successful!",
+        message: "Signup successful! Check your email for verification.",
       };
     }
   } catch (error) {
-    console.error("signup form err: ", error);
-
     return {
       success: false,
       message: "An unexpected error occurred with signup form",

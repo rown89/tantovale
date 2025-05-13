@@ -91,75 +91,104 @@ export default function SignupForm() {
             </div>
             <Separator className="mt-7 mb-6" />
             <div className="flex flex-col gap-4">
-              <Label htmlFor="fullname">
-                {" "}
-                Full name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="fullname"
-                name="fullname"
-                type="text"
-                placeholder="Mario Rossi"
-                required
-                defaultValue={state.inputs?.fullname}
-                className={state?.errors?.fullname ? "border-red-500" : ""}
-              />
-              {state.errors?.fullname && (
-                <p className="text-sm text-red-500 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
-                  {state.errors.fullname}
-                </p>
-              )}
-              <Label htmlFor="gender">
-                Gender <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                name="gender"
-                required
-                defaultValue={state.inputs?.gender}
-              >
-                <SelectTrigger className="w-full bg-input/30">
-                  <SelectValue placeholder={`Select your gender`} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {["male", "female"]?.map((item, i) => (
-                      <SelectItem key={i} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              {state.errors?.gender && (
-                <p className="text-sm text-red-500 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
-                  {state.errors.gender}
-                </p>
-              )}
-              <Label htmlFor="city">
-                Your city <span className="text-red-500">*</span>
-              </Label>
-              <CitySelector
-                name="city"
-                value={selectedCity}
-                onChange={(e) => {
-                  setSelectedCity(e);
-                }}
-                cities={cities}
-                isLoadingCities={isLoadingCities}
-                isSubmittingForm={isPending}
-                onSearchChange={setSearchedCityName}
-                isCityPopoverOpen={isCityPopoverOpen}
-                setIsCityPopoverOpen={setIsCityPopoverOpen}
-              />
-              <input type="hidden" name="city" value={selectedCity} />
-              {state.errors?.city && (
-                <p className="text-sm text-red-500 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
-                  {state.errors.city}
-                </p>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-4">
+                  <Label htmlFor="name">
+                    Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    type="text"
+                    placeholder="Mario"
+                    required
+                    defaultValue={state.inputs?.name}
+                    className={state?.errors?.name ? "border-red-500" : ""}
+                  />
+                  {state.errors?.name && (
+                    <p className="text-sm text-red-500 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {state.errors.name}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-4">
+                  <Label htmlFor="surname">
+                    Surname <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="surname"
+                    name="surname"
+                    type="text"
+                    placeholder="Rossi"
+                    required
+                    defaultValue={state.inputs?.surname}
+                    className={state?.errors?.surname ? "border-red-500" : ""}
+                  />
+                  {state.errors?.surname && (
+                    <p className="text-sm text-red-500 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {state.errors.surname}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Separator className="mt-3 mb-2" />
+              <div className="flex flex-col gap-4">
+                <Label htmlFor="gender">
+                  Gender <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  name="gender"
+                  required
+                  defaultValue={state.inputs?.gender}
+                >
+                  <SelectTrigger className="w-full bg-input/30">
+                    <SelectValue placeholder={`Select your gender`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {["male", "female"]?.map((item, i) => (
+                        <SelectItem key={i} value={item}>
+                          {item}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                {state.errors?.gender && (
+                  <p className="text-sm text-red-500 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-1" />
+                    {state.errors.gender}
+                  </p>
+                )}
+              </div>
+              <Separator className="mt-3 mb-2" />
+              <div className="flex flex-col gap-4">
+                <Label htmlFor="city">
+                  Your city <span className="text-red-500">*</span>
+                </Label>
+                <CitySelector
+                  name="city"
+                  value={selectedCity}
+                  onChange={(e) => {
+                    setSelectedCity(e);
+                  }}
+                  cities={cities}
+                  isLoadingCities={isLoadingCities}
+                  isSubmittingForm={isPending}
+                  onSearchChange={setSearchedCityName}
+                  isCityPopoverOpen={isCityPopoverOpen}
+                  setIsCityPopoverOpen={setIsCityPopoverOpen}
+                />
+                <input type="hidden" name="city" value={selectedCity} />
+                {state.errors?.city && (
+                  <p className="text-sm text-red-500 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-1" />
+                    {state.errors.city}
+                  </p>
+                )}
+              </div>
             </div>
             <Separator className="mt-7 mb-6" />
             <div className="flex flex-col gap-4">
@@ -203,7 +232,6 @@ export default function SignupForm() {
               )}
             </div>
             <Separator className="my-6" />
-
             <div className="flex flex-col gap-4">
               <div className="flex gap-1 items-center">
                 <Checkbox

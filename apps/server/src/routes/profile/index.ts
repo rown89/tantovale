@@ -20,7 +20,8 @@ export const profileRoute = createRouter()
 			.select({
 				username: users.username,
 				email: users.email,
-				fullname: profiles.fullname,
+				name: profiles.name,
+				surname: profiles.surname,
 				gender: profiles.gender,
 				city: {
 					id: cities.id,
@@ -107,7 +108,8 @@ export const profileRoute = createRouter()
 		zValidator(
 			'json',
 			UserSchema.pick({
-				fullname: true,
+				name: true,
+				surname: true,
 				gender: true,
 				city: true,
 			}),

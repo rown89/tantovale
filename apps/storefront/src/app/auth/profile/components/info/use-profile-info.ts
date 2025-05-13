@@ -6,7 +6,8 @@ import { UserSchema } from "@workspace/server/extended_schemas";
 import { client } from "@workspace/server/client-rpc";
 
 const schema = UserSchema.pick({
-  fullname: true,
+  name: true,
+  surname: true,
   gender: true,
   city: true,
 });
@@ -19,7 +20,8 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
   // Initialize form
   const form = useForm({
     defaultValues: {
-      fullname: profiles?.fullname ?? "",
+      name: profiles?.name ?? "",
+      surname: profiles?.surname ?? "",
       gender: profiles?.gender ?? "male",
       city: profiles?.city ?? 0,
     },

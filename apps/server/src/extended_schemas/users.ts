@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 export const UserSchema = z.object({
-	fullname: z.string().min(6).max(50).nonempty(),
+	name: z.string().min(3).max(30).nonempty(),
+	surname: z.string().min(3).max(30).nonempty(),
 	username: z.string().min(3).max(30).nonempty(),
 	email: z.string().email("L'email non sembra essere valida").nonempty(),
 	gender: z.enum(['male', 'female']),

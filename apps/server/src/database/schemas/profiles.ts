@@ -15,7 +15,8 @@ export const profiles = pgTable(
 			.unique()
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		fullname: varchar('fullname', { length: 50 }).notNull(),
+		name: varchar('name', { length: 50 }).notNull(),
+		surname: varchar('surname', { length: 50 }).notNull(),
 		vat_number: varchar('vat_number', { length: 50 }),
 		birthday: date('birthday'),
 		gender: sexEnum('gender').notNull(),
@@ -28,7 +29,7 @@ export const profiles = pgTable(
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('profiles_fullname_idx').on(table.fullname)],
+	(table) => [index('profiles_name_surname_idx').on(table.name, table.surname)],
 );
 
 export const profilesRelations = relations(profiles, ({ one, many }) => ({

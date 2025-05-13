@@ -134,7 +134,7 @@ export default function UserInfoComponent() {
                     }}
                   >
                     <div className="space-y-4">
-                      <form.Field name="fullname">
+                      <form.Field name="name">
                         {(field) => {
                           const { name, state, handleChange } = field;
                           const { value } = state;
@@ -142,8 +142,29 @@ export default function UserInfoComponent() {
                           return (
                             <div className="space-y-2">
                               <Label htmlFor={name} className="block">
-                                Full name{" "}
-                                <span className="text-red-500">*</span>
+                                Name <span className="text-red-500">*</span>
+                              </Label>
+                              <Input
+                                id={name}
+                                name={name}
+                                disabled={isLoadingProfile || isSubmittingForm}
+                                onChange={(e) => handleChange(e.target.value)}
+                                value={value}
+                              />
+                              <FieldInfo field={field} />
+                            </div>
+                          );
+                        }}
+                      </form.Field>
+                      <form.Field name="surname">
+                        {(field) => {
+                          const { name, state, handleChange } = field;
+                          const { value } = state;
+
+                          return (
+                            <div className="space-y-2">
+                              <Label htmlFor={name} className="block">
+                                Surname <span className="text-red-500">*</span>
                               </Label>
                               <Input
                                 id={name}
