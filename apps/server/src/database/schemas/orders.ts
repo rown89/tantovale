@@ -2,7 +2,6 @@ import { pgTable, integer, timestamp } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
-import { orderStatusEnum } from './enumerated_types';
 import { users } from './users';
 
 export const orders = pgTable('orders', {
@@ -29,6 +28,9 @@ export const ordersRelations = relations(orders, ({ one }) => ({
 		references: [users.id],
 	}),
 }));
+
+export type SelectOrder = typeof orders.$inferSelect;
+export type InsertOrder = typeof orders.$inferInsert;
 
 export const ordersSelectSchema = createSelectSchema(orders);
 export const ordersInsertSchema = createInsertSchema(orders);

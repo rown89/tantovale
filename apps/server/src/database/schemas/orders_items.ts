@@ -33,5 +33,8 @@ export const orders_itemsRelations = relations(orders_items, ({ one }) => ({
 	}),
 }));
 
+export type SelectOrderItem = typeof orders_items.$inferSelect;
+export type InsertOrderItem = typeof orders_items.$inferInsert;
+
 export const orders_itemsSelectSchema = createSelectSchema(orders_items);
 export const orders_itemsInsertSchema = createInsertSchema(orders_items);

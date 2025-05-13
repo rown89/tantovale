@@ -1,18 +1,18 @@
 import { createClient } from 'src/database';
 import { chat_messages } from 'src/database/schemas/chat_messages';
-import { chat_room } from 'src/database/schemas/chat_room';
+import { chat_rooms } from 'src/database/schemas/chat_rooms';
 
 export async function createRoom({ item_id, buyer_id }: { item_id: number; buyer_id: number }) {
 	const { db } = createClient();
 
 	// Create a new chat room
 	const newRoomResult = await db
-		.insert(chat_room)
+		.insert(chat_rooms)
 		.values({
 			item_id,
 			buyer_id,
 		})
-		.returning({ id: chat_room.id });
+		.returning({ id: chat_rooms.id });
 
 	return newRoomResult;
 }

@@ -1,6 +1,6 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-import { Categories, Filters, Subcategories } from '../scripts/seeders/categories/constants';
+import { Categories, Properties, Subcategories } from '../scripts/seeders/categories/constants';
 
 import {
 	chatMessageTypeValues,
@@ -9,7 +9,7 @@ import {
 	clothingMaterialValues,
 	currencyValues,
 	deliveryMethodValues,
-	filterTypeValues,
+	propertyTypeValues,
 	itemImagesSizeValues,
 	itemStatusValues,
 	monitorScreenSizeValues,
@@ -18,7 +18,6 @@ import {
 	orderStatusValues,
 	profileValues,
 	sexValues,
-	transactionStatusValues,
 	genderCategoryValues,
 	phoneScreenSizeValues,
 	watchWristSizeValues,
@@ -31,8 +30,6 @@ export const ordersProposalStatusEnum = pgEnum('proposal_status_enum', orderProp
 
 export const orderStatusEnum = pgEnum('order_status_enum', orderStatusValues);
 
-export const transactionsStatusEnum = pgEnum('transaction_status_enum', transactionStatusValues);
-
 export const chatMessageTypeEnum = pgEnum('chat_message_type_enum', chatMessageTypeValues);
 
 export const currencyEnum = pgEnum('transaction_currency_enum', currencyValues);
@@ -44,20 +41,20 @@ export const itemImagesSizeEnum = pgEnum('item_images_size_enum', itemImagesSize
 
 export const deliveryMethodEnum = pgEnum('delivery_method_enum', deliveryMethodValues);
 
-export const filtersEnum = pgEnum('filters_enum', [
-	Filters.CONDITION,
-	Filters.DELIVERY_METHOD,
-	Filters.GENDER,
-	Filters.COLOR,
-	Filters.MATERIAL_CLOTHING,
-	Filters.SIZE_CLOTHING,
-	Filters.SIZE_SHOES,
-	Filters.SIZE_WATCHES,
-	Filters.SIZE_PHONE_SCREEN,
-	Filters.SIZE_MONITOR_SCREEN,
+export const propertiesEnum = pgEnum('properties_enum', [
+	Properties.CONDITION,
+	Properties.DELIVERY_METHOD,
+	Properties.GENDER,
+	Properties.COLOR,
+	Properties.MATERIAL_CLOTHING,
+	Properties.SIZE_CLOTHING,
+	Properties.SIZE_SHOES,
+	Properties.SIZE_WATCHES,
+	Properties.SIZE_PHONE_SCREEN,
+	Properties.SIZE_MONITOR_SCREEN,
 ]);
 
-export const filterTypeEnum = pgEnum('filter_types_enum', filterTypeValues);
+export const propertyTypeEnum = pgEnum('property_types_enum', propertyTypeValues);
 
 export const categoriesEnum = pgEnum('categories_enum', [
 	Categories.ELECTRONICS,
@@ -90,7 +87,7 @@ export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 	`${Subcategories.ACCESSORIES}_${Categories.CLOTHINGS}`,
 ]);
 
-export const FilterValuesEnum = pgEnum('filter_values_enum', [
+export const PropertyValuesEnum = pgEnum('property_values_enum', [
 	'null',
 	// DELIVERY_METHODS
 	...deliveryMethodValues,

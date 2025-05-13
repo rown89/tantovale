@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { differenceInMinutes } from 'date-fns';
 
 import { createClient } from '../../database';
-import { chat_room, chat_messages, users, items } from '../../database/schemas/schema';
+import { chat_rooms, chat_messages, users, items } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
@@ -35,11 +35,11 @@ export const chatRoute = createRouter()
 			// Now perform the main query with proper joins
 			const chatRooms = await db
 				.select({
-					id: chat_room.id,
-					item_id: chat_room.item_id,
-					buyer_id: chat_room.buyer_id,
-					created_at: chat_room.created_at,
-					updated_at: chat_room.updated_at,
+					id: chat_rooms.id,
+					item_id: chat_rooms.item_id,
+					buyer_id: chat_rooms.buyer_id,
+					created_at: chat_rooms.created_at,
+					updated_at: chat_rooms.updated_at,
 					item_title: items.title,
 					item_price: items.price,
 					item_status: items.status,
@@ -53,15 +53,15 @@ export const chatRoute = createRouter()
 					last_message_read_at: chat_messages.read_at,
 					last_message_sender_id: chat_messages.sender_id,
 				})
-				.from(chat_room)
-				.innerJoin(items, eq(chat_room.item_id, items.id))
-				.innerJoin(usersBuyer, eq(chat_room.buyer_id, usersBuyer.id))
+				.from(chat_rooms)
+				.innerJoin(items, eq(chat_rooms.item_id, items.id))
+				.innerJoin(usersBuyer, eq(chat_rooms.buyer_id, usersBuyer.id))
 				.innerJoin(usersSeller, eq(items.user_id, usersSeller.id))
-				.leftJoin(lastMessagesSubquery, eq(chat_room.id, lastMessagesSubquery.chat_room_id))
+				.leftJoin(lastMessagesSubquery, eq(chat_rooms.id, lastMessagesSubquery.chat_room_id))
 				.leftJoin(
 					chat_messages,
 					and(
-						eq(chat_messages.chat_room_id, chat_room.id),
+						eq(chat_messages.chat_room_id, chat_rooms.id),
 						eq(chat_messages.id, lastMessagesSubquery.max_id),
 						eq(items.published, true),
 						eq(items.status, 'available'),
@@ -70,10 +70,10 @@ export const chatRoute = createRouter()
 				.where(
 					or(
 						eq(items.user_id, user.id), // User is the seller
-						eq(chat_room.buyer_id, user.id), // User is the buyer
+						eq(chat_rooms.buyer_id, user.id), // User is the buyer
 					),
 				)
-				.orderBy(desc(chat_room.created_at))
+				.orderBy(desc(chat_rooms.created_at))
 				.limit(100);
 
 			// Transform the chatRooms to match the expected shape
@@ -122,10 +122,10 @@ export const chatRoute = createRouter()
 		try {
 			const existingRoom = await db
 				.select({
-					id: chat_room.id,
+					id: chat_rooms.id,
 				})
-				.from(chat_room)
-				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
+				.from(chat_rooms)
+				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.id)))
 				.limit(1);
 
 			const id = existingRoom?.[0]?.id;
@@ -156,13 +156,13 @@ export const chatRoute = createRouter()
 				// Verify the user has access to this chat room
 				const roomResult = await tx
 					.select({
-						id: chat_room.id,
-						buyer_id: chat_room.buyer_id,
+						id: chat_rooms.id,
+						buyer_id: chat_rooms.buyer_id,
 						seller_id: items.user_id,
 					})
-					.from(chat_room)
-					.innerJoin(items, eq(chat_room.item_id, items.id))
-					.where(eq(chat_room.id, roomId));
+					.from(chat_rooms)
+					.innerJoin(items, eq(chat_rooms.item_id, items.id))
+					.where(eq(chat_rooms.id, roomId));
 
 				if (roomResult.length === 0) {
 					return c.json({ error: 'Chat room not found' }, 404);
@@ -259,9 +259,9 @@ export const chatRoute = createRouter()
 
 			// Check if a chat room already exists for this item and buyer
 			const existingRoomResult = await db
-				.select({ id: chat_room.id })
-				.from(chat_room)
-				.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)));
+				.select({ id: chat_rooms.id })
+				.from(chat_rooms)
+				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.id)));
 
 			const existingRoom = existingRoomResult[0];
 
@@ -290,13 +290,13 @@ export const chatRoute = createRouter()
 		// Verify the user has access to this chat room
 		const roomResult = await db
 			.select({
-				id: chat_room.id,
-				buyer_id: chat_room.buyer_id,
+				id: chat_rooms.id,
+				buyer_id: chat_rooms.buyer_id,
 				seller_id: items.user_id,
 			})
-			.from(chat_room)
-			.innerJoin(items, eq(chat_room.item_id, items.id))
-			.where(eq(chat_room.id, roomId));
+			.from(chat_rooms)
+			.innerJoin(items, eq(chat_rooms.item_id, items.id))
+			.where(eq(chat_rooms.id, roomId));
 
 		if (roomResult.length === 0) {
 			return c.json({ error: 'Chat room not found' }, 404);
@@ -389,7 +389,7 @@ export const chatRoute = createRouter()
 		});
 
 		// Update the chat room's updated_at timestamp
-		await db.update(chat_room).set({ updated_at: new Date() }).where(eq(chat_room.id, roomId));
+		await db.update(chat_rooms).set({ updated_at: new Date() }).where(eq(chat_rooms.id, roomId));
 
 		return c.json(newMessageResult?.[0]);
 	});

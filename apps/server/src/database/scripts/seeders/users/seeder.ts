@@ -26,7 +26,6 @@ export const seedDatabase = async (): Promise<void> => {
 };
 
 async function seedUsers(db: DrizzleClient['db']) {
-	// Query to get human-readable subcategory-filter relationships
 	const users_response = await db
 		.insert(users)
 		.values([

@@ -1,3 +1,4 @@
+import { relations } from 'drizzle-orm';
 import { pgTable, integer, timestamp } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
@@ -17,6 +18,20 @@ export const shippings_orders = pgTable('shippings_orders', {
 	created_at: timestamp('created_at').notNull().defaultNow(),
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
+
+export const shippings_ordersRelations = relations(shippings_orders, ({ one }) => ({
+	shipping: one(shippings, {
+		fields: [shippings_orders.shipping_id],
+		references: [shippings.id],
+	}),
+	order: one(orders, {
+		fields: [shippings_orders.order_id],
+		references: [orders.id],
+	}),
+}));
+
+export type SelectShippingOrder = typeof shippings_orders.$inferSelect;
+export type InsertShippingOrder = typeof shippings_orders.$inferInsert;
 
 export const shippings_ordersSelectSchema = createSelectSchema(shippings_orders);
 export const shippings_ordersInsertSchema = createInsertSchema(shippings_orders);

@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { getFiltersForSubcategory, getSubcategoryFiltersById } from './subcategory-filters.service';
+import { getFiltersForSubcategory, getSubcategoryPropertiesById } from './subcategory-propertiess.service';
 
 import type { AppBindings } from '../../lib/types';
 
@@ -10,7 +10,7 @@ export const getFiterSubcategoryByIdController = async (c: Context<AppBindings>)
 	if (isNaN(id)) return c.json({ message: 'Invalid subcategory ID' }, 400);
 
 	try {
-		const filters = await getSubcategoryFiltersById(c, id);
+		const filters = await getSubcategoryPropertiesById(c, id);
 
 		if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 500);
 

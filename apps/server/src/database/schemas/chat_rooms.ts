@@ -6,7 +6,7 @@ import { items } from './items';
 import { users } from './users';
 import { chat_messages } from './chat_messages';
 
-export const chat_room = pgTable('chat_room', {
+export const chat_rooms = pgTable('chat_rooms', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 	item_id: integer('item_id')
 		.notNull()
@@ -18,23 +18,23 @@ export const chat_room = pgTable('chat_room', {
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const chatRoomRelations = relations(chat_room, ({ one, many }) => ({
+export const chatRoomRelations = relations(chat_rooms, ({ one, many }) => ({
 	item: one(items, {
-		fields: [chat_room.item_id],
+		fields: [chat_rooms.item_id],
 		references: [items.id],
 	}),
 	buyer: one(users, {
-		fields: [chat_room.buyer_id],
+		fields: [chat_rooms.buyer_id],
 		references: [users.id],
 	}),
 	messages: many(chat_messages),
 }));
 
-export type SelectChatRoom = typeof chat_room.$inferSelect;
-export type InsertChatRoom = typeof chat_room.$inferInsert;
+export type SelectChatRoom = typeof chat_rooms.$inferSelect;
+export type InsertChatRoom = typeof chat_rooms.$inferInsert;
 
-export const selectChatRoomSchema = createSelectSchema(chat_room);
+export const selectChatRoomSchema = createSelectSchema(chat_rooms);
 
-export const insertChatRoomSchema = createInsertSchema(chat_room);
+export const insertChatRoomSchema = createInsertSchema(chat_rooms);
 
 export const patchChatRoomSchema = insertChatRoomSchema.partial();

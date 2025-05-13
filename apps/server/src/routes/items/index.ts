@@ -1,23 +1,23 @@
-import { eq, and, isNull, or, inArray } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { z } from 'zod';
 
+import { items } from 'src/database/schemas/items';
+import { users } from 'src/database/schemas/users';
+import { property_values } from 'src/database/schemas/properties_values';
+import { items_properties_values } from 'src/database/schemas/items_properties_values';
+import { properties } from 'src/database/schemas/properties';
+import { cities } from 'src/database/schemas/cities';
+import { user_items_favorites } from 'src/database/schemas/user_items_favorites';
 import { createRouter } from '../../lib/create-app';
 import { createClient } from '../../database';
-import { itemsImages } from '../../database/schemas/items_images';
+import { items_images } from '../../database/schemas/items_images';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { subcategories } from '../../database/schemas/subcategories';
 import { authPath } from '../../utils/constants';
-import { items } from 'src/database/schemas/items';
-import { users } from 'src/database/schemas/users';
-import { filterValues } from 'src/database/schemas/filter_values';
-import { itemsFiltersValues } from 'src/database/schemas/items_filter_values';
-import { filters } from 'src/database/schemas/filters';
-import { cities } from 'src/database/schemas/cities';
-import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -49,10 +49,10 @@ export const itemsRoute = createRouter()
 					created_at: items.created_at,
 					published: items.published,
 					subcategory_slug: subcategories.slug,
-					image: itemsImages.url,
+					image: items_images.url,
 				})
 				.from(items)
-				.innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
+				.innerJoin(items_images, eq(items_images.item_id, items.id))
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
 				.where(
 					and(
@@ -60,8 +60,8 @@ export const itemsRoute = createRouter()
 						eq(items.published, params.published),
 						eq(items.status, 'available'),
 						eq(items.user_id, user_id),
-						eq(itemsImages.size, 'thumbnail'),
-						eq(itemsImages.order_position, 0),
+						eq(items_images.size, 'thumbnail'),
+						eq(items_images.order_position, 0),
 					),
 				)
 				.orderBy(items.id);
@@ -85,27 +85,30 @@ export const itemsRoute = createRouter()
 		const { db } = createClient();
 
 		try {
-			const userFavorites = await db.select().from(userItemsFavorites).where(eq(userItemsFavorites.user_id, user.id));
+			const userFavorites = await db
+				.select()
+				.from(user_items_favorites)
+				.where(eq(user_items_favorites.user_id, user.id));
 
 			const userFavoritesItems = await db
 				.select({
 					id: items.id,
 					title: items.title,
 					price: items.price,
-					image: itemsImages.url,
+					image: items_images.url,
 					published: items.published,
 					created_at: items.created_at,
 				})
 				.from(items)
-				.innerJoin(itemsImages, eq(itemsImages.item_id, items.id))
+				.innerJoin(items_images, eq(items_images.item_id, items.id))
 				.where(
 					and(
 						inArray(
 							items.id,
 							userFavorites.map((favorite) => favorite.item_id),
 						),
-						eq(itemsImages.size, 'thumbnail'),
-						eq(itemsImages.order_position, 0),
+						eq(items_images.size, 'thumbnail'),
+						eq(items_images.order_position, 0),
 						eq(items.status, 'available'),
 						eq(items.published, true),
 					),
@@ -142,21 +145,21 @@ export const itemsRoute = createRouter()
 					price: items.price,
 					category: subcategories.slug,
 					city: cities.name,
-					filter_id: filters.id,
-					filter_slug: filters.slug,
-					filter_name: filters.name,
-					filter_value: filterValues.value,
-					imageUrl: itemsImages.url,
+					property_id: properties.id,
+					property_slug: properties.slug,
+					property_name: properties.name,
+					property_value: property_values.value,
+					imageUrl: items_images.url,
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
 				.innerJoin(cities, eq(cities.id, items.city))
-				.leftJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
-				.leftJoin(filterValues, eq(filterValues.id, itemsFiltersValues.filter_value_id))
-				.leftJoin(filters, eq(filters.id, filterValues.filter_id))
+				.leftJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
+				.leftJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
+				.leftJoin(properties, eq(properties.id, property_values.property_id))
 				.leftJoin(
-					itemsImages,
-					and(eq(itemsImages.item_id, items.id), eq(itemsImages.order_position, 0), eq(itemsImages.size, 'medium')),
+					items_images,
+					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
 				.where(and(eq(items.user_id, userId), eq(items.published, true), eq(items.status, 'available')));
 
@@ -189,18 +192,18 @@ export const itemsRoute = createRouter()
 				}
 
 				// Add filter value to the appropriate filter_slug array
-				if (row.filter_slug) {
+				if (row.property_slug) {
 					const item = itemsMap.get(row.id);
 
 					if (item && item.properties) {
-						// Initialize the array for this filter_slug if it doesn't exist
-						if (!item.properties[row.filter_slug]) {
-							item.properties[row.filter_slug] = [];
+						// Initialize the array for this property_slug if it doesn't exist
+						if (!item.properties[row.property_slug]) {
+							item.properties[row.property_slug] = [];
 						}
 
 						// Add the filter value to the array if it's not already there
-						if (row.filter_value && !item.properties[row.filter_slug]!.includes(row.filter_value)) {
-							item.properties[row.filter_slug]!.push(row.filter_value);
+						if (row.property_value && !item.properties[row.property_slug]!.includes(row.property_value)) {
+							item.properties[row.property_slug]!.push(row.property_value);
 						}
 					}
 				}

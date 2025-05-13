@@ -15,6 +15,6 @@ export interface SubcategorySeeds {
 	collectables: (BaseSubcategorySeed | ParentGroupSeed)[];
 }
 
-export interface FilterSeed extends BaseSubcategorySeed {
+export interface PropertySeed extends BaseSubcategorySeed {
 	type: 'select' | 'select_multi' | 'boolean' | 'checkbox' | 'radio';
 }

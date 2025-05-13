@@ -1,23 +1,23 @@
+import { eq, and } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
-import { eq, and } from 'drizzle-orm';
 
 import { createClient } from '../../database';
 import { subcategories } from '../../database/schemas/subcategories';
-import { subCategoryFilters } from '../../database/schemas/subcategory_filters';
+import { subcategory_properties } from '../../database/schemas/subcategory_properties';
 import { createItemSchema } from '../../extended_schemas';
 import { items } from '../../database/schemas/items';
-import { itemsFiltersValues, InsertItemFilterValue } from '../../database/schemas/items_filter_values';
+import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { itemsImages } from '../../database/schemas/items_images';
+import { items_images } from '../../database/schemas/items_images';
 import { cities } from '../../database/schemas/cities';
-import { filterValues } from 'src/database/schemas/filter_values';
-import { users } from 'src/database/schemas/users';
+import { property_values } from '../../database/schemas/properties_values';
+import { users } from '../../database/schemas/users';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -42,24 +42,24 @@ export const itemRoute = createRouter()
 						is_payable: items.is_payable,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
-						property_name: filterValues.name,
-						property_value: filterValues.value,
-						property_boolean_value: filterValues.boolean_value,
-						property_numeric_value: filterValues.numeric_value,
+						property_name: property_values.name,
+						property_value: property_values.value,
+						property_boolean_value: property_values.boolean_value,
+						property_numeric_value: property_values.numeric_value,
 					},
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
 				.innerJoin(cities, eq(cities.id, items.city))
-				.innerJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
-				.innerJoin(filterValues, eq(itemsFiltersValues.filter_value_id, filterValues.id))
+				.innerJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
+				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.innerJoin(users, eq(users.id, items.user_id))
 				.where(and(eq(items.id, id), eq(items.published, true)));
 
 			const itemImages = await db
-				.select({ url: itemsImages.url })
-				.from(itemsImages)
-				.where(and(eq(itemsImages.item_id, id), eq(itemsImages.size, 'original')));
+				.select({ url: items_images.url })
+				.from(items_images)
+				.where(and(eq(items_images.item_id, id), eq(items_images.size, 'original')));
 
 			if (!item) throw new Error('No item found');
 
@@ -141,64 +141,64 @@ export const itemRoute = createRouter()
 					throw new Error('Failed to create item');
 				}
 
-				// Handle item properties(filters) if provided
+				// Handle item properties(properties) if provided
 				if (properties?.length) {
-					// Get valid filters for this subcategory
-					const subcategoryFilters = await tx
+					// Get valid properties for this subcategory
+					const subcategoryProperties = await tx
 						.select()
-						.from(subCategoryFilters)
-						.where(eq(subCategoryFilters.subcategory_id, commons.subcategory_id));
+						.from(subcategory_properties)
+						.where(eq(subcategory_properties.subcategory_id, commons.subcategory_id));
 
-					const validFilterIds = new Set(subcategoryFilters.map((f) => f.filter_id));
+					const validPropertyIds = new Set(subcategoryProperties.map((p) => p.property_id));
 
 					// Validate all properties exist
-					const invalidProperties = properties.filter((p) => !validFilterIds.has(p.id));
+					const invalidProperties = properties.filter((p) => !validPropertyIds.has(p.id));
 
 					if (invalidProperties.length) {
-						throw new Error('Some properties have invalid filter IDs');
+						throw new Error('Some properties have invalid property IDs');
 					}
 
-					const reshapedProperties: InsertItemFilterValue[] = [];
+					const reshapedProperties: InsertItemPropertyValue[] = [];
 
 					// Reshape properties to match the database schema
 
 					properties.map((p) => {
-						// Check if the filter contains an array of values
+						// Check if the property contains an array of values
 						// If so, map through the values and create an object for each
 						// Otherwise, create a single object
 						if (Array.isArray(p.value)) {
 							p.value.map((v) => {
 								reshapedProperties.push({
 									item_id: newItem.id,
-									filter_value_id: Number(v),
+									property_value_id: Number(v),
 								});
 							});
 						} else {
 							reshapedProperties.push({
 								item_id: newItem.id,
-								filter_value_id: Number(p.value),
+								property_value_id: Number(p.value),
 							});
 						}
 					});
 
 					console.log(reshapedProperties);
 
-					// Insert filter values
-					await tx.insert(itemsFiltersValues).values(reshapedProperties);
+					// Insert property values
+					await tx.insert(items_properties_values).values(reshapedProperties);
 				} else {
 					// Check if the selected subcategory has mandatory properties
-					const mandatoryFilters = await tx
+					const mandatoryProperties = await tx
 						.select()
-						.from(subCategoryFilters)
+						.from(subcategory_properties)
 						.where(
 							and(
-								eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
-								eq(subCategoryFilters.on_item_create_required, true),
+								eq(subcategory_properties.subcategory_id, commons.subcategory_id),
+								eq(subcategory_properties.on_item_create_required, true),
 							),
 						);
 
-					if (mandatoryFilters.length > 0) {
-						throw new Error(`This subcategory requires ${mandatoryFilters.length} mandatory properties`);
+					if (mandatoryProperties.length > 0) {
+						throw new Error(`This subcategory requires ${mandatoryProperties.length} mandatory properties`);
 					}
 				}
 

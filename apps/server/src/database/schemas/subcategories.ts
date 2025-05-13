@@ -32,6 +32,10 @@ export const subcategoriesRelations = relations(subcategories, ({ one, many }) =
 		references: [categories.id],
 	}),
 	items: many(items),
+	parent: one(subcategories, {
+		fields: [subcategories.parent_id],
+		references: [subcategories.id],
+	}),
 }));
 
 export type SelectSubCategories = typeof subcategories.$inferSelect;

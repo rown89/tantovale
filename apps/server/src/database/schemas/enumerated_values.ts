@@ -7,9 +7,6 @@ export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 export const orderStatusValues = ['pending_payment', 'payment_confirmed', 'completed', 'cancelled', 'expired'] as const;
 export type OrderStatus = (typeof orderStatusValues)[number];
 
-export const transactionStatusValues = ['pending_payment', 'waiting_confirmation', 'released', 'refunded'] as const;
-export type TransactionStatus = (typeof transactionStatusValues)[number];
-
 export const currencyValues = [
 	'usd',
 	'eur',
@@ -39,8 +36,8 @@ export type Profile = (typeof profileValues)[number];
 export const itemImagesSizeValues = ['original', 'small', 'medium', 'thumbnail'] as const;
 export type ItemImagesSize = (typeof itemImagesSizeValues)[number];
 
-export const filterTypeValues = ['select', 'select_multi', 'boolean', 'checkbox', 'radio', 'number'] as const;
-export type FilterType = (typeof filterTypeValues)[number];
+export const propertyTypeValues = ['select', 'select_multi', 'boolean', 'checkbox', 'radio', 'number'] as const;
+export type PropertyType = (typeof propertyTypeValues)[number];
 
 export const itemStatusValues = ['available', 'sold', 'pending', 'archived'] as const;
 export type ItemStatus = (typeof itemStatusValues)[number];
@@ -263,7 +260,7 @@ export const monitorScreenSizeValues = [
 ] as const;
 export type MonitorScreenSize = (typeof monitorScreenSizeValues)[number];
 
-type FilterKeyValues =
+type PropertyKeyValues =
 	| 'null'
 	| DeliveryMethod
 	| ProductCondition
@@ -276,9 +273,9 @@ type FilterKeyValues =
 	| PhoneScreenSize
 	| MonitorScreenSize;
 
-export interface FilterValues {
+export interface PropertyValues {
 	slug: string;
-	value: FilterKeyValues;
+	value: PropertyKeyValues;
 	name: string;
 	icon?: string;
 	meta?: Record<string, any>;

@@ -13,5 +13,8 @@ export const shippings = pgTable('shippings', {
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export type SelectShipping = typeof shippings.$inferSelect;
+export type InsertShipping = typeof shippings.$inferInsert;
+
 export const shippingsSelectSchema = createSelectSchema(shippings);
 export const shippingsInsertSchema = createInsertSchema(shippings);

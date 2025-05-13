@@ -5,8 +5,8 @@ import { createRouter } from 'src/lib/create-app';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { orders } from 'src/database/schemas/orders';
 import { orders_items } from 'src/database/schemas/orders_items';
-import { filterValues } from 'src/database/schemas/filter_values';
-import { itemsFiltersValues } from 'src/database/schemas/items_filter_values';
+import { property_values } from 'src/database/schemas/properties_values';
+import { items_properties_values } from 'src/database/schemas/items_properties_values';
 
 // TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
@@ -38,32 +38,32 @@ export const ordersRoute = createRouter()
 		if (!orderItem.item_id) return c.json({ error: 'Order item has no item' }, 404);
 
 		if (delivery_method === 'shipping') {
-			// get the "shipping" filter value id
-			const [itemFilterValue] = await db
+			// get the "shipping" property value id
+			const [itemPropertyValue] = await db
 				.select({
-					id: filterValues.id,
+					id: property_values.id,
 				})
-				.from(filterValues)
-				.where(and(eq(filterValues.value, 'shipping')))
+				.from(property_values)
+				.where(and(eq(property_values.value, 'shipping')))
 				.limit(1);
 
-			if (!itemFilterValue) throw new Error('Item filter value "shipping" not found');
+			if (!itemPropertyValue) throw new Error('Item property value "shipping" not found');
 
-			// Check if the item has a "shipping" filter value
-			const [itemShippingFilterValue] = await db
+			// Check if the item has a "shipping" property value
+			const [itemShippingPropertyValue] = await db
 				.select({
-					filter_value: itemsFiltersValues.filter_value_id,
+					property_value: items_properties_values.property_value_id,
 				})
-				.from(itemsFiltersValues)
+				.from(items_properties_values)
 				.where(
 					and(
-						eq(itemsFiltersValues.item_id, orderItem.item_id),
-						eq(itemsFiltersValues.filter_value_id, itemFilterValue.id),
+						eq(items_properties_values.item_id, orderItem.item_id),
+						eq(items_properties_values.property_value_id, itemPropertyValue.id),
 					),
 				)
 				.limit(1);
 
-			if (itemShippingFilterValue) {
+			if (itemShippingPropertyValue) {
 				// TODO :create a new shipping with the shipping provider
 			}
 

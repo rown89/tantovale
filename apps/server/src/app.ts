@@ -15,9 +15,9 @@ import {
 	verifyRoute,
 	itemRoute,
 	subcategoriesRoute,
-	subcategoryFiltersRoute,
+	subcategoryPropertiesRoute,
 	categoriesRoute,
-	filtersRoute,
+	propertiesRoute,
 	uploadsRoute,
 	citiesRoute,
 	chatRoute,
@@ -44,9 +44,9 @@ const apiRoutes = app
 	.route(`/items`, itemsRoute)
 	.route(`/categories`, categoriesRoute)
 	.route(`/cities`, citiesRoute)
-	.route(`/filters`, filtersRoute)
+	.route(`/properties`, propertiesRoute)
 	.route(`/subcategories`, subcategoriesRoute)
-	.route(`/subcategory_fitlers`, subcategoryFiltersRoute)
+	.route(`/subcategory_properties`, subcategoryPropertiesRoute)
 	.route(`/uploads`, uploadsRoute)
 	.route(`/chat`, chatRoute)
 	.route(`/logout`, logoutRoute)
