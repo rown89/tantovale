@@ -152,7 +152,8 @@ CREATE TABLE "profiles" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "profiles_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"profile_type" "profile_types_enum" DEFAULT 'private' NOT NULL,
 	"user_id" integer NOT NULL,
-	"fullname" varchar(50) NOT NULL,
+	"name" varchar(50) NOT NULL,
+	"surname" varchar(50) NOT NULL,
 	"vat_number" varchar(50),
 	"birthday" date,
 	"gender" "sex_enum" NOT NULL,
@@ -330,7 +331,7 @@ CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> 
 CREATE INDEX "is_payable_idx" ON "items" USING btree ("is_payable");--> statement-breakpoint
 CREATE INDEX "published_idx" ON "items" USING btree ("published");--> statement-breakpoint
 CREATE INDEX "status_idx" ON "items" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "profiles_fullname_idx" ON "profiles" USING btree ("fullname");--> statement-breakpoint
+CREATE INDEX "profiles_name_surname_idx" ON "profiles" USING btree ("name","surname");--> statement-breakpoint
 CREATE INDEX "value_id_idx" ON "property_values" USING btree ("value");--> statement-breakpoint
 CREATE UNIQUE INDEX "unique_property_per_subcategory" ON "subcategory_properties" USING btree ("property_id","subcategory_id");--> statement-breakpoint
 CREATE INDEX "user_favorites_user_id_idx" ON "user_items_favorites" USING btree ("user_id");--> statement-breakpoint

@@ -1,6 +1,6 @@
 import { items } from '@workspace/server/database';
 import { createInsertSchema } from 'drizzle-zod';
-import { number, string, z } from 'zod';
+import { boolean, number, string, z } from 'zod';
 
 const imageFileSchema = z.instanceof(File).refine((file) => file.type.startsWith('image/'), {
 	message: 'Only image files are allowed',
@@ -29,6 +29,7 @@ export const createItemSchema = z.object({
 			schema
 				.min(50, 'Description must be at least 50 characters')
 				.max(2500, 'Description must be less than 2500 characters'),
+		is_payable: boolean().optional(),
 		price: number().min(0.01, 'Price must be greater than 0.01').max(1000000, 'Price must be less or equal to 10.000'),
 		shipping_price: number().optional(),
 	}).omit({

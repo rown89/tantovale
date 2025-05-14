@@ -25,6 +25,23 @@ import type { Category } from "@workspace/shared/types/category";
 import Link from "next/link";
 import { Badge } from "@workspace/ui/components/badge";
 import { formatPriceToCents } from "@workspace/ui/lib/utils";
+import { Switch } from "@workspace/ui/components/switch";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "@workspace/ui/components/alert";
+import { Info } from "lucide-react";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogFooter,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog";
+
 const maxImages = 5;
 
 export default function CreateItemFormComponent({
@@ -49,10 +66,10 @@ export default function CreateItemFormComponent({
   const {
     allCategories,
     allSubcategories,
-    subCatFilters,
+    subCatProperties,
     isLoadingCat,
     isLoadingSubCat,
-    isLoadingSubCatFilters,
+    isLoadingSubCatProperties,
   } = useCategoriesData(subcategory);
   const { cities, isLoadingCities } = useCitiesData(searchedCityName);
 
@@ -64,7 +81,7 @@ export default function CreateItemFormComponent({
     setIsCityPopoverOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
-  } = useCreateItemForm({ subcategory, subCatFilters });
+  } = useCreateItemForm({ subcategory, subCatProperties });
 
   const title = useField({ form, name: "commons.title" }).state.value;
   const price = useField({ form, name: "commons.price" }).state.value;
@@ -85,7 +102,7 @@ export default function CreateItemFormComponent({
     const selectedConditionId = conditionProperty?.value;
 
     if (selectedConditionId) {
-      const conditionFilter = subCatFilters?.find(
+      const conditionFilter = subCatProperties?.find(
         (item) => item.slug === "condition",
       );
       const extractedCondition = conditionFilter?.options.find(
@@ -111,7 +128,7 @@ export default function CreateItemFormComponent({
       Array.isArray(selectedDeliveryMethodsIds) &&
       selectedDeliveryMethodsIds.length
     ) {
-      const deliveryMethodFilter = subCatFilters?.find(
+      const deliveryMethodFilter = subCatProperties?.find(
         (item) => item.slug === "delivery_method",
       );
 
@@ -129,7 +146,7 @@ export default function CreateItemFormComponent({
     } else {
       setSelectedDeliveryMethod([]);
     }
-  }, [properties, subCatFilters]);
+  }, [properties, subCatProperties]);
 
   useEffect(() => {
     // if on mount we have a subcategory already settled in query params:
@@ -195,7 +212,7 @@ export default function CreateItemFormComponent({
             }}
             className="space-y-4 w-full h-full flex flex-col justify-between"
           >
-            <div className="overflow-auto flex gap-6 flex-col p-2">
+            <div className="overflow-auto flex gap-6 flex-col">
               <form.Field
                 name="commons.subcategory_id"
                 defaultValue={selectedSubCategory?.id}
@@ -318,6 +335,73 @@ export default function CreateItemFormComponent({
                   );
                 }}
               </form.Field>
+              <form.Field name="commons.is_payable">
+                {(field) => {
+                  const { name, handleBlur, handleChange, state } = field;
+                  const { meta, value } = state;
+                  const { isTouched, errors } = meta;
+
+                  return (
+                    <div className="space-y-2">
+                      <Alert
+                        className="py-4 cursor-pointer"
+                        onClick={() => handleChange(!value)}
+                      >
+                        <AlertTitle className="mb-2 flex gap-2 justify-between">
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <div className="flex gap-2 items-center">
+                                  <p className="font-bold text-lg">Easy Pay</p>
+                                  <Info className="h-4 w-4 text-blue-500" />
+                                </div>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader>
+                                  <DialogTitle>What is Easy Pay?</DialogTitle>
+                                  <DialogDescription className="my-2">
+                                    With Easy Pay, selling your items online is
+                                    simple and secure.
+                                    <br />
+                                    <br />
+                                    Once a buyer completes the purchase, the
+                                    payment is safely held by our system until
+                                    you ship the item.
+                                    <br />
+                                    After the buyer confirms delivery, we
+                                    promptly release the funds to your account.
+                                    <br />
+                                    <br />
+                                    This process helps protect both you and the
+                                    buyer, ensuring a smooth and trustworthy
+                                    transaction.
+                                  </DialogDescription>
+                                </DialogHeader>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <Switch
+                              id={name}
+                              name={name}
+                              onCheckedChange={(checked) => {
+                                handleChange(checked);
+                              }}
+                              checked={value !== undefined ? value : false}
+                            />
+                          </div>
+                        </AlertTitle>
+                        <AlertDescription>
+                          Enabling this option allows users to instantly
+                          purchase your item, with secure payment processing and
+                          tracking from payment to shipment.
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  );
+                }}
+              </form.Field>
+
               <form.Field name="commons.description">
                 {(field) => {
                   const { name, handleBlur, handleChange, state } = field;
@@ -385,16 +469,21 @@ export default function CreateItemFormComponent({
                 }}
               </form.Field>
               {selectedSubCategory &&
-                (isLoadingCat || isLoadingSubCat || isLoadingSubCatFilters ? (
+                (isLoadingCat ||
+                isLoadingSubCat ||
+                isLoadingSubCatProperties ? (
                   <Spinner />
                 ) : (
-                  subCatFilters &&
-                  subCatFilters?.length > 0 &&
-                  subCatFilters?.map((filter) => {
+                  subCatProperties &&
+                  subCatProperties?.length > 0 &&
+                  subCatProperties?.map((property) => {
                     return (
-                      <form.Field key={filter.id} name="properties">
+                      <form.Field key={property.id} name="properties">
                         {(field) => (
-                          <DynamicProperties filter={filter} field={field} />
+                          <DynamicProperties
+                            property={property}
+                            field={field}
+                          />
                         )}
                       </form.Field>
                     );
@@ -418,7 +507,7 @@ export default function CreateItemFormComponent({
                       isSubmittingForm ||
                       isLoadingCat ||
                       isLoadingSubCat ||
-                      isLoadingSubCatFilters ||
+                      isLoadingSubCatProperties ||
                       !canSubmit
                     }
                     className="sticky bottom-0"

@@ -1,6 +1,6 @@
 import { AnyFieldApi, formOptions } from "@tanstack/react-form";
 
-export interface FilterType {
+export interface PropertyType {
   id: number;
   name: string;
   on_item_create_required: boolean;
@@ -23,6 +23,7 @@ export const formOpts = formOptions({
     images: [],
     commons: {
       title: "",
+      is_payable: false,
       description: "",
       price: 0,
       delivery_method: "shipping",
@@ -36,11 +37,11 @@ export const formOpts = formOptions({
 // Update the properties array with proper types utility
 export function updatePropertiesArray({
   value,
-  filter,
+  property,
   field,
 }: {
   value: string | number | boolean | (string | number)[];
-  filter: NonNullable<FilterType[]>[number];
+  property: NonNullable<PropertyType[]>[number];
   field: AnyFieldApi;
 }) {
   // Ensure we have an array from the field state.
@@ -52,15 +53,15 @@ export function updatePropertiesArray({
 
   // Create the new property object.
   const newProperty = {
-    id: filter.id,
-    slug: filter.slug,
+    id: property.id,
+    slug: property.slug,
     value,
   };
 
   // Find if the property already exists.
   // Convert both IDs to strings for comparison to avoid type mismatches
   const existingIndex = currentProperties.findIndex(
-    (prop) => String(prop.id) === String(filter.id),
+    (prop) => String(prop.id) === String(property.id),
   );
 
   // Check if the value is an empty array

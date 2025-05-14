@@ -30,24 +30,24 @@ export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>)
 		},
 	});
 
-	// Fetch subcategory filters
+	// Fetch subcategory properties
 	const {
-		data: subCatFilters,
-		isLoading: isLoadingSubCatFilters,
-		isError: isErrorSubCatFilters,
+		data: subCatProperties,
+		isLoading: isLoadingSubCatProperties,
+		isError: isErrorSubCatProperties,
 	} = useQuery({
-		queryKey: ['filters_by_subcategories_filters', subcategory?.id],
+		queryKey: ['properties_by_subcategories_properties', subcategory?.id],
 		queryFn: async () => {
 			if (!subcategory?.id) return [];
 
-			const res = await client.filters.subcategory_filters[':id'].$get({
+			const res = await client.properties.subcategory_properties[':id'].$get({
 				param: {
 					id: String(subcategory?.id),
 				},
 			});
 
 			if (!res.ok) {
-				console.error('Failed to fetch subcategories filters');
+				console.error('Failed to fetch subcategories properties');
 				return [];
 			}
 
@@ -59,12 +59,12 @@ export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>)
 	return {
 		allCategories,
 		allSubcategories,
-		subCatFilters,
+		subCatProperties,
 		isLoadingCat,
 		isLoadingSubCat,
-		isLoadingSubCatFilters,
+		isLoadingSubCatProperties,
 		isErrorCat,
 		isErrorSubCat,
-		isErrorSubCatFilters,
+		isErrorSubCatProperties,
 	};
 }

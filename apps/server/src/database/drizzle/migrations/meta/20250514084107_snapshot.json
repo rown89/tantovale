@@ -1,5 +1,5 @@
 {
-	"id": "2520a48a-41a2-4ea8-a78c-c67588272707",
+	"id": "c434ca9b-e5d9-41fd-a7e4-76c1a51ef3e3",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
@@ -1283,8 +1283,14 @@
 					"primaryKey": false,
 					"notNull": true
 				},
-				"fullname": {
-					"name": "fullname",
+				"name": {
+					"name": "name",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"surname": {
+					"name": "surname",
 					"type": "varchar(50)",
 					"primaryKey": false,
 					"notNull": true
@@ -1350,11 +1356,17 @@
 				}
 			},
 			"indexes": {
-				"profiles_fullname_idx": {
-					"name": "profiles_fullname_idx",
+				"profiles_name_surname_idx": {
+					"name": "profiles_name_surname_idx",
 					"columns": [
 						{
-							"expression": "fullname",
+							"expression": "name",
+							"isExpression": false,
+							"asc": true,
+							"nulls": "last"
+						},
+						{
+							"expression": "surname",
 							"isExpression": false,
 							"asc": true,
 							"nulls": "last"

@@ -2,18 +2,18 @@ import { AnyFieldApi } from "@tanstack/react-form";
 
 export function FieldInfo({
   field,
-  filterName,
+  propertyName,
 }: {
   field: AnyFieldApi;
-  filterName?: string;
+  propertyName?: string;
 }) {
   return (
     <>
       {field.state.meta.errors.length ? (
         <em className="text-red-500">
-          {filterName
+          {propertyName
             ? field.state.meta.errors.map((item) =>
-                item.message.includes(filterName) ? item.message : null,
+                item.message.includes(propertyName) ? item.message : null,
               )
             : field.state.meta.errors.map((err) => err.message).join(",")}
         </em>

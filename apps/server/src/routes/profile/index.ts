@@ -59,6 +59,8 @@ export const profileRoute = createRouter()
 				.where(eq(users.username, username))
 				.limit(1);
 
+			console.log(userData);
+
 			if (!userData) return c.json({ message: 'User not found' }, 404);
 
 			// Get the user's city information

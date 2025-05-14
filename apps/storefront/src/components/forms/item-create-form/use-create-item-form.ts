@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FilterType, formOpts } from "./utils";
+import { PropertyType, formOpts } from "./utils";
 import { z } from "zod";
 import { toast } from "sonner";
 import { client } from "@workspace/server/client-rpc";
@@ -21,7 +21,7 @@ interface Category {
 
 export interface UseItemFormProps {
   subcategory?: Omit<Category, "subcategories">;
-  subCatFilters: FilterType[] | undefined;
+  subCatProperties: PropertyType[] | undefined;
 }
 
 const schema = createItemSchema.and(z.object({ images: multipleImagesSchema }));
@@ -29,7 +29,7 @@ type schemaType = z.infer<typeof schema>;
 
 export function useCreateItemForm({
   subcategory,
-  subCatFilters,
+  subCatProperties,
 }: UseItemFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -47,28 +47,28 @@ export function useCreateItemForm({
     validators: {
       onSubmitAsync: schema.superRefine(async (val, ctx) => {
         if (
-          subCatFilters &&
-          Array.isArray(subCatFilters) &&
-          subCatFilters?.length > 0
+          subCatProperties &&
+          Array.isArray(subCatProperties) &&
+          subCatProperties?.length > 0
         ) {
-          const requiredFilters = subCatFilters.filter(
-            (filter) => filter.on_item_create_required,
+          const requiredProperties = subCatProperties.filter(
+            (property) => property.on_item_create_required,
           );
 
           // Check each required filter
-          requiredFilters.forEach((requiredFilter) => {
+          requiredProperties.forEach((requiredProperty) => {
             const propertyExists = val.properties?.some(
               (prop: {
                 id: number;
                 value: string | number | string[] | number[];
                 slug: string;
-              }) => prop.slug === requiredFilter.slug,
+              }) => prop.slug === requiredProperty.slug,
             );
 
             if (!propertyExists) {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
-                message: `Property for required filter "${requiredFilter.name}" is missing.`,
+                message: `Property for required property "${requiredProperty.name}" is missing.`,
                 path: ["properties"],
               });
             }

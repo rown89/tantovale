@@ -48,7 +48,7 @@ export const ItemDetailCard = React.memo(
 							</div>
 
 							<div className='flex items-start justify-between gap-5'>
-								<h1 className='text-2xl font-bold break-all'>{title || 'Your item title...'}</h1>
+								<h1 className='break-all text-2xl font-bold'>{title || 'Your item title...'}</h1>
 							</div>
 
 							<div className='flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between'>
@@ -60,14 +60,14 @@ export const ItemDetailCard = React.memo(
 								<div className='flex items-center gap-1'>
 									{item.deliveryMethods?.length ? (
 										item.deliveryMethods.map((method, i) => (
-											<>
-												<Badge key={i} variant='outline' className='font-normal'>
+											<div key={i}>
+												<Badge variant='outline' className='font-normal'>
 													<span className='flex items-center gap-1'>
 														<Truck className='h-3 w-3' /> {method}
 													</span>
 												</Badge>
 												{item.deliveryMethods && item.deliveryMethods.length > 1 && i === 0 && '/'}
-											</>
+											</div>
 										))
 									) : isPreview ? (
 										<Badge variant='outline' className='font-normal'>
@@ -91,7 +91,7 @@ export const ItemDetailCard = React.memo(
 							)}
 							{!isCompact && description && (
 								<div
-									className={`text-[17px] whitespace-pre-wrap ${isPreview ? 'max-h-80' : ''} overflow-auto break-all text-slate-600 dark:text-slate-400`}>
+									className={`whitespace-pre-wrap text-[17px] ${isPreview ? 'max-h-80' : ''} overflow-auto break-all text-slate-600 dark:text-slate-400`}>
 									{description || 'Your item description will appear here...'}
 								</div>
 							)}

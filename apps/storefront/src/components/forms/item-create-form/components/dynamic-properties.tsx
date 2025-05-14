@@ -17,22 +17,22 @@ import {
 } from "@workspace/ui/components/select";
 import { FieldInfo } from "../../utils/field-info";
 import { AnyFieldApi } from "@tanstack/react-form";
-import { FilterType, getCurrentValue, updatePropertiesArray } from "../utils";
+import { PropertyType, getCurrentValue, updatePropertiesArray } from "../utils";
 
 interface DynamicPropertiesProps {
-  filter: FilterType;
+  property: PropertyType;
   field: AnyFieldApi;
 }
 
-export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
+export function DynamicProperties({ property, field }: DynamicPropertiesProps) {
   return (
     <div className="space-y-2">
       {/* select */}
-      {filter.type === "select" && (
+      {property.type === "select" && (
         <>
           <Label htmlFor={field.name} className="block">
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
@@ -42,21 +42,21 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
               updatePropertiesArray({
                 // If "reset" is selected, clear the selection
                 value: value === "reset" ? [] : value,
-                filter,
+                property,
                 field,
               });
             }}
-            defaultValue={getCurrentValue(field, filter.id)}
+            defaultValue={getCurrentValue(field, property.id)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder={`Select a ${filter.name}`} />
+              <SelectValue placeholder={`Select a ${property.name}`} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                {!filter.on_item_create_required && (
+                {!property.on_item_create_required && (
                   <SelectItem value="reset">--</SelectItem>
                 )}
-                {filter.options?.map((item, i) => (
+                {property.options?.map((item, i) => (
                   <SelectItem key={i} value={item.id?.toString()}>
                     {item.name}
                   </SelectItem>
@@ -64,23 +64,23 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
               </SelectGroup>
             </SelectContent>
           </Select>
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </>
       )}
 
       {/* select_multi */}
-      {filter.type === "select_multi" && (
+      {property.type === "select_multi" && (
         <>
           <Label htmlFor={field.name} className="block">
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
           <MultiSelect
-            options={filter.options.map(({ id, name: label, value }) => ({
+            options={property.options.map(({ id, name: label, value }) => ({
               id,
               label,
               // Multiselect requires id as a value instead of the original value variable
@@ -89,56 +89,56 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
             onValueChange={(value) => {
               updatePropertiesArray({
                 value,
-                filter,
+                property,
                 field,
               });
             }}
-            defaultValue={getCurrentValue(field, filter.id)}
-            placeholder={`Select ${filter.name}`}
+            defaultValue={getCurrentValue(field, property.id)}
+            placeholder={`Select ${property.name}`}
             variant="inverted"
             maxCount={3}
           />
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </>
       )}
 
       {/* boolean */}
-      {filter.type === "boolean" && (
+      {property.type === "boolean" && (
         <div className="flex flex-col gap-2">
           <Label htmlFor={field.name} className="block">
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
           <Switch
             checked={
-              getCurrentValue(field, filter.id) !== undefined
-                ? getCurrentValue(field, filter.id)
+              getCurrentValue(field, property.id) !== undefined
+                ? getCurrentValue(field, property.id)
                 : false
             }
             onCheckedChange={(checked) =>
               updatePropertiesArray({
                 value: checked,
-                filter,
+                property,
                 field,
               })
             }
           />
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </div>
       )}
 
       {/* number */}
-      {filter.type === "number" && (
+      {property.type === "number" && (
         <>
           <Label htmlFor={field.name}>
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
@@ -146,8 +146,8 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
             type="number"
             id={field.name}
             value={
-              getCurrentValue(field, filter.id) !== undefined
-                ? getCurrentValue(field, filter.id).toString()
+              getCurrentValue(field, property.id) !== undefined
+                ? getCurrentValue(field, property.id).toString()
                 : ""
             }
             onChange={(e) => {
@@ -156,46 +156,46 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
                 e.target.value === "" ? "" : Number(e.target.value);
               updatePropertiesArray({
                 value: numValue,
-                filter,
+                property,
                 field,
               });
             }}
           />
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </>
       )}
 
       {/* checkbox */}
-      {filter.type === "checkbox" && (
+      {property.type === "checkbox" && (
         <div className="flex flex-col gap-2">
           <Label htmlFor={field.name}>
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
           <div
             className={`flex gap-4 ${
-              filter.options.length > 3 ? "flex-col" : "flex-row"
+              property.options.length > 3 ? "flex-col" : "flex-row"
             }`}
           >
-            {filter.options.map((item) => (
+            {property.options.map((item) => (
               <div key={item.id} className="flex items-center gap-2">
                 <Checkbox
                   id={`${field.name}-${item.id}`}
                   checked={
-                    Array.isArray(getCurrentValue(field, filter.id)) &&
-                    getCurrentValue(field, filter.id)?.includes(
+                    Array.isArray(getCurrentValue(field, property.id)) &&
+                    getCurrentValue(field, property.id)?.includes(
                       item.id.toString(),
                     )
                   }
                   onCheckedChange={(checked) => {
                     const currentValues = Array.isArray(
-                      getCurrentValue(field, filter.id),
+                      getCurrentValue(field, property.id),
                     )
-                      ? [...getCurrentValue(field, filter.id)]
+                      ? [...getCurrentValue(field, property.id)]
                       : [];
 
                     if (checked) {
@@ -203,7 +203,7 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
                       if (!currentValues.includes(item.id.toString())) {
                         updatePropertiesArray({
                           value: [...currentValues, item.id.toString()],
-                          filter,
+                          property,
                           field,
                         });
                       }
@@ -213,7 +213,7 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
                         value: currentValues.filter(
                           (id) => id !== item.id.toString(),
                         ),
-                        filter,
+                        property,
                         field,
                       });
                     }
@@ -224,35 +224,35 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
             ))}
           </div>
 
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </div>
       )}
 
       {/* radio */}
-      {filter.type === "radio" && (
+      {property.type === "radio" && (
         <div className="flex gap-4 flex-col">
           <Label htmlFor={field.name}>
-            {filter.name}{" "}
-            {filter.on_item_create_required && (
+            {property.name}{" "}
+            {property.on_item_create_required && (
               <span className="text-red-500">*</span>
             )}
           </Label>
           <RadioGroup
-            value={(getCurrentValue(field, filter.id) || "").toString()}
+            value={(getCurrentValue(field, property.id) || "").toString()}
             onValueChange={(val) =>
               updatePropertiesArray({
                 value: val,
-                filter,
+                property,
                 field,
               })
             }
             className={`flex gap-4 ${
-              filter.options.length > 3 ? "flex-col" : "flex-row"
+              property.options.length > 3 ? "flex-col" : "flex-row"
             }`}
           >
-            {filter.options.map((item) => (
+            {property.options.map((item) => (
               <div key={item.id} className="flex items-center gap-2">
                 <RadioGroupItem
                   id={`${field.name}-${item.id}`}
@@ -262,8 +262,8 @@ export function DynamicProperties({ filter, field }: DynamicPropertiesProps) {
               </div>
             ))}
           </RadioGroup>
-          {filter.on_item_create_required && (
-            <FieldInfo field={field} filterName={filter.name} />
+          {property.on_item_create_required && (
+            <FieldInfo field={field} propertyName={property.name} />
           )}
         </div>
       )}

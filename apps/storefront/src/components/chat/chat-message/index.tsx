@@ -13,6 +13,15 @@ import { Spinner } from "@workspace/ui/components/spinner";
 
 import { ChatMessageProps } from "./types";
 import { useChatMessageHook } from "./use-chat-message";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@workspace/ui/components/dialog";
 
 export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
   const {
@@ -128,20 +137,60 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
                         {/* Buyer actions (when not chat owner and proposal is pending) */}
                         {!isChatOwner && proposalStatus === "pending" && (
                           <>
-                            <Button
-                              variant="destructive"
-                              className="flex-1 bg-destructive hover:bg-destructive/70 font-bold"
-                              onClick={handleRejectProposal}
-                            >
-                              Reject
-                            </Button>
-                            <Button
-                              variant="default"
-                              className="flex-1 bg-green-700 hover:bg-green-600 font-bold"
-                              onClick={handleAcceptProposal}
-                            >
-                              Accept
-                            </Button>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="destructive"
+                                  className="flex-1 bg-destructive hover:bg-destructive/70 font-bold"
+                                >
+                                  Reject
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Reject Proposal</DialogTitle>
+                                </DialogHeader>
+                                <DialogDescription>
+                                  Are you sure you want to reject this proposal?
+                                </DialogDescription>
+                                <DialogFooter>
+                                  <Button
+                                    variant="destructive"
+                                    onClick={handleRejectProposal}
+                                  >
+                                    Reject
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="default"
+                                  className="flex-1 bg-green-700 hover:bg-green-600 font-bold"
+                                >
+                                  Accept
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Accept Proposal</DialogTitle>
+                                </DialogHeader>
+                                <DialogDescription>
+                                  Are you sure you want to accept this proposal?
+                                </DialogDescription>
+                                <DialogFooter>
+                                  <Button
+                                    variant="default"
+                                    className="bg-green-700 hover:bg-green-600 font-bold"
+                                    onClick={handleAcceptProposal}
+                                  >
+                                    Accept
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
                           </>
                         )}
 
