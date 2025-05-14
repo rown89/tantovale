@@ -7,10 +7,68 @@ import { orders } from 'src/database/schemas/orders';
 import { orders_items } from 'src/database/schemas/orders_items';
 import { property_values } from 'src/database/schemas/properties_values';
 import { items_properties_values } from 'src/database/schemas/items_properties_values';
+import { items } from 'src/database/schemas/items';
+import { users } from 'src/database/schemas/users';
+import { authPath } from 'src/utils/constants';
+import { OrderStatus } from 'src/database/schemas/enumerated_values';
 
 // TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
-	.get('/:id', authMiddleware, async (c) => {
+	.get(`${authPath}/status/:status`, authMiddleware, async (c) => {
+		const user = c.var.user;
+
+		const { status } = c.req.param();
+
+		const { db } = createClient();
+
+		let userOrders = [];
+
+		// if status is all or undefined, get all orders
+		if (status === 'all' || !status) {
+			userOrders = await db
+				.select()
+				.from(orders)
+				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
+				.innerJoin(items, eq(orders_items.item_id, items.id))
+				.innerJoin(users, eq(orders.seller_id, users.id))
+				.where(eq(orders.buyer_id, user.id));
+		} else {
+			userOrders = await db
+				.select()
+				.from(orders)
+				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
+				.innerJoin(items, eq(orders_items.item_id, items.id))
+				.innerJoin(users, eq(orders.seller_id, users.id))
+				.where(and(eq(orders.buyer_id, user.id), eq(orders_items.order_status, status as OrderStatus)));
+		}
+
+		if (!userOrders.length) return c.json([], 200);
+
+		const orderList = userOrders.map((order) => {
+			const id = order.orders.id;
+			const { order_status, finished_price, created_at } = order.orders_items;
+
+			return {
+				id,
+				order_status,
+				original_price: order.items.price,
+				finished_price,
+				shipping_price: order.items.shipping_price,
+				created_at,
+				item: {
+					id: order.items.id,
+					title: order.items.title,
+				},
+				seller: {
+					id: order.users.id,
+					username: order.users.username,
+				},
+			};
+		});
+
+		return c.json(orderList, 200);
+	})
+	.get(`${authPath}/:id`, authMiddleware, async (c) => {
 		const { db } = createClient();
 
 		const { id } = c.req.param();
@@ -24,7 +82,7 @@ export const ordersRoute = createRouter()
 
 		return c.json(order);
 	})
-	.post('/payment/:id', authMiddleware, async (c) => {
+	.post(`${authPath}/payment/:id`, authMiddleware, async (c) => {
 		const { db } = createClient();
 
 		const { id, delivery_method } = c.req.param();

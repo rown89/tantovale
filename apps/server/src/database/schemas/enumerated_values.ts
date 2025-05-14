@@ -4,7 +4,17 @@ export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 export const orderProposalStatusValues = ['pending', 'accepted', 'rejected', 'expired'] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
-export const orderStatusValues = ['pending_payment', 'payment_confirmed', 'completed', 'cancelled', 'expired'] as const;
+export const orderStatusValues = [
+	'payment_pending',
+	'payment_confirmed',
+	'payment_failed',
+	'payment_refunded',
+	'shipping_pending',
+	'shipping_confirmed',
+	'completed',
+	'cancelled',
+	'expired',
+] as const;
 export type OrderStatus = (typeof orderStatusValues)[number];
 
 export const currencyValues = [
@@ -45,7 +55,7 @@ export type ItemStatus = (typeof itemStatusValues)[number];
 export const itemConditionValues = ['new', 'used-like-new', 'used-good', 'used-fair'] as const;
 export type ItemCondition = (typeof itemConditionValues)[number];
 
-export const deliveryMethodValues = ['shipping', 'pickup'] as const;
+export const deliveryMethodValues = ['shipping', 'shipping_easy_pay', 'pickup'] as const;
 export type DeliveryMethod = (typeof deliveryMethodValues)[number];
 
 export const productConditionValues = ['new', 'used-like-new', 'used-good', 'used-fair'] as const;

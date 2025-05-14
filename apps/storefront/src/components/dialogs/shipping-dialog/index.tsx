@@ -10,23 +10,25 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog";
 
-export function PaymentDialog({
+export function ShippingDialog({
   isOpen,
   setIsOpen,
   order,
-  onPaymentComplete,
+  onShippingComplete,
 }: {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   order: any;
-  onPaymentComplete: () => void;
+  onShippingComplete: () => void;
 }) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Complete Payment</DialogTitle>
-          <DialogDescription>Complete payment for the order.</DialogDescription>
+          <DialogTitle>Complete Shipping</DialogTitle>
+          <DialogDescription>
+            Complete shipping for the order.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4"></div>
         <DialogFooter>

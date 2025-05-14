@@ -304,7 +304,7 @@ export const ordersProposalsRoute = createRouter()
 							order_id: newOrder.id,
 							item_id,
 							finished_price: updatedProposal.proposal_price,
-							order_status: 'pending_payment',
+							order_status: 'payment_pending',
 						})
 						.returning({
 							id: orders_items.id,
