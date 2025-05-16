@@ -192,14 +192,14 @@ export function useCreateItemForm({
       "setValue" in field
     ) {
       (field as { setValue: (value: number) => void }).setValue(subcategory.id);
-
-      handleQueryParamChange(
-        "cat",
-        subcategory?.id?.toString(),
-        searchParams,
-        router,
-      );
     }
+
+    handleQueryParamChange(
+      "cat",
+      subcategory?.id?.toString() ?? "",
+      searchParams,
+      router,
+    );
   }
 
   return {
