@@ -95,7 +95,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
               <CardTitle
                 className={`flex flex-col break-all justify-between items-center gap-3`}
               >
-                {item?.is_payable && (
+                {item?.easy_pay && (
                   <PaymentButton
                     handlePayment={() => {
                       if (!user) {
@@ -107,7 +107,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   />
                 )}
 
-                {item?.is_payable &&
+                {item?.easy_pay &&
                   !orderProposal?.id &&
                   !proposal_created_at && (
                     <ProposalButton

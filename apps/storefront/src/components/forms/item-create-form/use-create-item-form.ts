@@ -1,26 +1,23 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PropertyType, formOpts } from "./utils";
 import { z } from "zod";
 import { toast } from "sonner";
-import { client } from "@workspace/server/client-rpc";
 import imageCompression from "browser-image-compression";
+
+import { client } from "@workspace/server/client-rpc";
 import {
   createItemSchema,
   multipleImagesSchema,
 } from "@workspace/server/extended_schemas";
+
+import { PropertyType, formOpts } from "./utils";
 import { handleQueryParamChange } from "../../../utils/handle-qp";
 
-interface Category {
-  id: number;
-  name: string;
-  slug?: string;
-  subcategories: Category[];
-}
+import type { Category } from "@workspace/server/extended_schemas";
 
 export interface UseItemFormProps {
-  subcategory?: Omit<Category, "subcategories">;
+  subcategory?: Partial<Category>;
   subCatProperties: PropertyType[] | undefined;
 }
 
@@ -34,10 +31,9 @@ export function useCreateItemForm({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [selectedSubCategory, setSelectedSubCategory] = useState<Omit<
-    Category,
-    "subcategories"
-  > | null>(subcategory || null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<
+    Partial<Category> | undefined
+  >(subcategory);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
@@ -46,6 +42,10 @@ export function useCreateItemForm({
     ...formOpts.defaultValues,
     validators: {
       onSubmitAsync: schema.superRefine(async (val, ctx) => {
+        val.properties?.forEach((property) => {
+          console.log(property);
+        });
+
         if (
           subCatProperties &&
           Array.isArray(subCatProperties) &&
@@ -74,6 +74,21 @@ export function useCreateItemForm({
             }
           });
         }
+
+        if (
+          val.properties?.find(
+            (property) => property.slug === "delivery_method",
+          )?.value === "shipping"
+        ) {
+          console.log("shipping");
+          if (!val.commons.shipping_price) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Shipping price is required",
+              path: ["commons", "shipping_price"],
+            });
+          }
+        }
       }),
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
@@ -81,6 +96,21 @@ export function useCreateItemForm({
 
       try {
         const { images, ...rest } = value;
+
+        // if exists a delivery method property, and it's not "shipping_prepaid", and the item is payable, then we need to set property "delivery_method" to "pickup"
+        const deliveryMethodProperty = rest.properties?.find(
+          (property) => property.slug === "delivery_method",
+        );
+
+        if (
+          deliveryMethodProperty &&
+          deliveryMethodProperty.value !== "shipping_prepaid" &&
+          !rest.commons.easy_pay
+        ) {
+          rest.properties = rest.properties?.filter(
+            (property) => property.slug !== "delivery_method",
+          );
+        }
 
         const itemResponse = await client.item.auth.new.$post({
           json: rest,
@@ -132,7 +162,7 @@ export function useCreateItemForm({
           duration: 4000,
         });
 
-        router.push("/");
+        router.push(`/item/${value.commons.title}-${newItem.item_id}`);
       } catch (error) {
         toast(`Error :(`, {
           description:
@@ -149,22 +179,27 @@ export function useCreateItemForm({
     form.setFieldValue("properties", []);
   }
 
-  function handleSubCategorySelect(
-    subcategory: Omit<Category, "subcategories">,
-  ) {
+  function handleSubCategorySelect(subcategory?: Partial<Category>) {
+    if (!subcategory) return;
+
     setSelectedSubCategory(subcategory);
     const field = form.getFieldValue("commons.subcategory_id");
 
-    if (field && typeof field === "object" && "setValue" in field) {
+    if (
+      subcategory?.id &&
+      field &&
+      typeof field === "object" &&
+      "setValue" in field
+    ) {
       (field as { setValue: (value: number) => void }).setValue(subcategory.id);
-    }
 
-    handleQueryParamChange(
-      "cat",
-      subcategory?.id?.toString(),
-      searchParams,
-      router,
-    );
+      handleQueryParamChange(
+        "cat",
+        subcategory?.id?.toString(),
+        searchParams,
+        router,
+      );
+    }
   }
 
   return {

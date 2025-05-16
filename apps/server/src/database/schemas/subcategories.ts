@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, type AnyPgColumn, boolean } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
@@ -22,6 +22,8 @@ export const subcategories = pgTable('subcategories', {
 			onUpdate: 'cascade',
 		})
 		.default(sql.raw('NULL')),
+	is_payable: boolean('is_payable'),
+	is_shippable: boolean('is_shippable'),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

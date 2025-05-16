@@ -39,7 +39,8 @@ export const itemRoute = createRouter()
 						price: items.price,
 						description: items.description,
 						city: cities.name,
-						is_payable: items.is_payable,
+						easy_pay: items.easy_pay,
+						shipping_price: items.shipping_price,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
 						property_name: property_values.name,
@@ -73,7 +74,7 @@ export const itemRoute = createRouter()
 				price: item.item.price,
 				description: item.item.description,
 				city: item.item.city,
-				is_payable: item.item.is_payable,
+				easy_pay: item.item.easy_pay,
 				subcategory: {
 					name: item?.item.subcategory_name,
 					slug: item?.item.subcategory_slug,
@@ -180,8 +181,6 @@ export const itemRoute = createRouter()
 							});
 						}
 					});
-
-					console.log(reshapedProperties);
 
 					// Insert property values
 					await tx.insert(items_properties_values).values(reshapedProperties);

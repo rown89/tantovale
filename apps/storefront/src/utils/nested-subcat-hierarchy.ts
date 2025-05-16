@@ -1,13 +1,8 @@
-import { SelectCategory } from "@workspace/server/database";
-import { SelectSubCategories } from "@workspace/server/database";
-import type { Category } from "@workspace/shared/types/category";
+import { Category } from "@workspace/server/extended_schemas";
 
 export function nestedSubCatHierarchy(
-  subCategories: Omit<
-    SelectSubCategories,
-    "slug" | "created_at" | "updated_at"
-  >[],
-  categories: Pick<SelectCategory, "id" | "name">[],
+  subCategories: Pick<Category, "id" | "name" | "category_id" | "parent_id">[],
+  categories: Pick<Category, "id" | "name">[],
 ) {
   // Convert subcategories array into a nested structure
   const subcategoryMap = new Map<
@@ -17,7 +12,10 @@ export function nestedSubCatHierarchy(
       name: string;
       category_id: number;
       parent_id: number | null;
-      subcategories: Category[];
+      subcategories: Pick<
+        Category,
+        "id" | "name" | "category_id" | "parent_id"
+      >[];
     }
   >();
 
@@ -32,6 +30,7 @@ export function nestedSubCatHierarchy(
       const parent = subcategoryMap.get(sub.parent_id);
       if (parent) {
         const subItem = subcategoryMap.get(sub.id);
+
         if (subItem && parent && parent?.subcategories) {
           parent?.subcategories.push(subItem);
         }

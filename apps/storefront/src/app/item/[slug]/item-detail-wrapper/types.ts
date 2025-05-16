@@ -11,7 +11,7 @@ export interface ItemWrapperProps {
     description: string;
     price: number;
     city: string;
-    is_payable: boolean;
+    easy_pay: boolean;
     images: string[];
     subcategory: {
       name: string;

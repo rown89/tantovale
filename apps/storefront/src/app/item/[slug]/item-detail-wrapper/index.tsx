@@ -131,7 +131,7 @@ export default function ItemWDetailWrapper({
           />
         }
 
-        {isMobile && !isInfoBoxInView && item?.is_payable && (
+        {isMobile && !isInfoBoxInView && item?.easy_pay && (
           <div className="flex gap-2 justify-center items-center w-full fixed bottom-0 left-0 px-8 pb-4 ">
             {!orderProposal?.id && !proposal_created_at && (
               <ProposalButton
@@ -161,7 +161,12 @@ export default function ItemWDetailWrapper({
         )}
       </div>
 
-      <PaymentDialog isBuyModalOpen={false} setIsBuyModalOpen={() => {}} />
+      <PaymentDialog
+        isOpen={false}
+        setIsOpen={() => {}}
+        order={null}
+        onPaymentComplete={() => {}}
+      />
 
       <ProposalDialog />
 

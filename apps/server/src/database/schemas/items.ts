@@ -29,7 +29,7 @@ export const items = pgTable(
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
 		shipping_price: integer('shipping_price'),
-		is_payable: boolean('is_payable').notNull().default(false),
+		easy_pay: boolean('easy_pay').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 		deleted_at: timestamp('deleted_at', { mode: 'date' }),
@@ -39,7 +39,7 @@ export const items = pgTable(
 		index('city_idx').on(table.city),
 		index('title_idx').on(table.title),
 		index('subcategory_id_idx').on(table.subcategory_id),
-		index('is_payable_idx').on(table.is_payable),
+		index('easy_pay_idx').on(table.easy_pay),
 		index('published_idx').on(table.published),
 		index('status_idx').on(table.status),
 	],
@@ -65,4 +65,5 @@ export type InsertItem = typeof items.$inferInsert;
 
 export const selectItemsSchema = createSelectSchema(items);
 export const insertItemsSchema = createInsertSchema(items);
+
 export const patchItemsSchema = insertItemsSchema.partial();

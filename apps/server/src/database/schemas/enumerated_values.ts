@@ -55,7 +55,7 @@ export type ItemStatus = (typeof itemStatusValues)[number];
 export const itemConditionValues = ['new', 'used-like-new', 'used-good', 'used-fair'] as const;
 export type ItemCondition = (typeof itemConditionValues)[number];
 
-export const deliveryMethodValues = ['shipping', 'shipping_easy_pay', 'pickup'] as const;
+export const deliveryMethodValues = ['shipping', 'shipping_prepaid', 'pickup'] as const;
 export type DeliveryMethod = (typeof deliveryMethodValues)[number];
 
 export const productConditionValues = ['new', 'used-like-new', 'used-good', 'used-fair'] as const;

@@ -23,10 +23,10 @@ export const formOpts = formOptions({
     images: [],
     commons: {
       title: "",
-      is_payable: false,
+      easy_pay: false,
       description: "",
       price: 0,
-      delivery_method: "shipping",
+      shipping_price: 0,
       subcategory_id: 0,
       city: 0,
     },

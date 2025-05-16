@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { client } from '@workspace/server/client-rpc';
-import { Category } from '../types/category';
 
-export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>) {
+export function useCategoriesData(subcategoryId?: number) {
 	const {
 		data: allCategories,
 		isLoading: isLoadingCat,
@@ -36,13 +35,13 @@ export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>)
 		isLoading: isLoadingSubCatProperties,
 		isError: isErrorSubCatProperties,
 	} = useQuery({
-		queryKey: ['properties_by_subcategories_properties', subcategory?.id],
+		queryKey: ['properties_by_subcategories_properties', subcategoryId],
 		queryFn: async () => {
-			if (!subcategory?.id) return [];
+			if (!subcategoryId) return [];
 
 			const res = await client.properties.subcategory_properties[':id'].$get({
 				param: {
-					id: String(subcategory?.id),
+					id: String(subcategoryId),
 				},
 			});
 
@@ -53,7 +52,7 @@ export function useCategoriesData(subcategory?: Omit<Category, 'subcategories'>)
 
 			return await res.json();
 		},
-		enabled: !!subcategory?.id,
+		enabled: !!subcategoryId,
 	});
 
 	return {

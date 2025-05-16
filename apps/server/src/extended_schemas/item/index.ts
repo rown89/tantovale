@@ -29,7 +29,7 @@ export const createItemSchema = z.object({
 			schema
 				.min(50, 'Description must be at least 50 characters')
 				.max(2500, 'Description must be less than 2500 characters'),
-		is_payable: boolean().optional(),
+		easy_pay: boolean().optional(),
 		price: number().min(0.01, 'Price must be greater than 0.01').max(1000000, 'Price must be less or equal to 10.000'),
 		shipping_price: number().optional(),
 	}).omit({
@@ -42,5 +42,7 @@ export const createItemSchema = z.object({
 	}),
 	properties: z.array(propertySchema).optional(),
 });
+// if easy_pay is true, shipping_price is optional and if "delivery_method" property exists and "shipping" is selected, shipping_price is required
+// use superRefine to validate the schema
 
 export type createItemTypes = z.infer<typeof createItemSchema>;
