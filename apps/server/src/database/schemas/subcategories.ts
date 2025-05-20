@@ -22,8 +22,7 @@ export const subcategories = pgTable('subcategories', {
 			onUpdate: 'cascade',
 		})
 		.default(sql.raw('NULL')),
-	is_payable: boolean('is_payable'),
-	is_shippable: boolean('is_shippable'),
+	easy_pay: boolean('easy_pay'),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

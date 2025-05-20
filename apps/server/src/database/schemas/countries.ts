@@ -1,4 +1,3 @@
-import type { ZodSchema } from 'zod';
 import { relations } from 'drizzle-orm';
 import { pgTable, varchar, numeric, json, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
@@ -60,4 +59,4 @@ export const selectCountriesSchema = createSelectSchema(countries);
 
 export const insertCountriesSchema = createInsertSchema(countries);
 
-export const patchCountriesSchema: ZodSchema = insertCountriesSchema.partial();
+export const patchCountriesSchema = insertCountriesSchema.partial();

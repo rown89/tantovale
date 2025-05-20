@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useField } from "@tanstack/react-form";
+import { AnyFieldApi, useField } from "@tanstack/react-form";
 import Link from "next/link";
 import Image from "next/image";
-import { motion, AnimatePresence, progress } from "framer-motion";
-import { Info, Euro, ArrowLeft } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Info, ArrowLeft } from "lucide-react";
 
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -36,17 +36,25 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog";
 import { Progress } from "@workspace/ui/components/progress";
+import {
+  createItemSchema,
+  maxDescriptionLength,
+  multipleImagesSchema,
+  type Category,
+} from "@workspace/server/extended_schemas";
 
 import { CitySelector } from "#components/forms/commons/city-selector";
 import { useCreateItemForm } from "./use-create-item-form";
 import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
-
-import type { Category } from "@workspace/server/extended_schemas";
-
-const step_one = 50;
-const step_two = 100;
-const maxImages = 5;
+import {
+  maxImages,
+  step_one,
+  step_two,
+  updatePropertiesArray,
+  PropertyType,
+} from "./utils";
+import { z } from "zod";
 
 export default function CreateItemFormComponent({
   subcategory,
@@ -54,21 +62,19 @@ export default function CreateItemFormComponent({
   subcategory?: Omit<Category, "category_id" | "parent_id" | "subcategories">;
 }) {
   const [progress, setProgress] = useState(step_one);
-
-  const [nestedSubcategories, setNestedSubcategories] = useState<
+  const [subcategoriesMenu, setSubcategoriesMenu] = useState<
     Pick<Category, "id" | "name" | "subcategories">[]
   >([]);
   const [searchedCityName, setSearchedCityName] = useState("");
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [selectedCondition, setSelectedCondition] = useState<
-    { id: number; name: string; slug: string } | undefined
+    Pick<PropertyType, "id" | "name" | "slug"> | undefined
   >();
-  const [selectedDeliveryMethod, setSelectedDeliveryMethod] =
-    useState<string[]>();
-  const [isCustomShippingPriceEnabled, setIsCustomShippingPriceEnabled] =
-    useState(false);
+  const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState<
+    Pick<PropertyType, "id" | "name" | "slug"> | undefined
+  >();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   const {
@@ -87,28 +93,44 @@ export default function CreateItemFormComponent({
     isSubmittingForm,
     selectedSubCategory,
     isCityPopoverOpen,
+    isPickup,
+    isManualShipping,
+    deliveryMethodProperty,
     setIsCityPopoverOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
+    handlePickupChange,
+    handlePayableChange,
+    setIsManualShipping,
+    setIsPickup,
+    removeDeliveryMethodProperty,
   } = useCreateItemForm({
     subcategory,
     subCatProperties,
   });
 
-  const title = useField({ form, name: "commons.title" }).state.value;
-  const price = useField({ form, name: "commons.price" }).state.value;
-  const description = useField({ form, name: "commons.description" }).state
-    .value;
-  const easyPay = useField({ form, name: "commons.easy_pay" }).state.value;
-  const city = useField({ form, name: "commons.city" }).state.value;
-  const images = useField({ form, name: "images" }).state
-    .value as unknown as File[];
-  const properties = useField({ form, name: "properties" }).state.value;
+  const titleField = useField({ form, name: "commons.title" });
+  const title = titleField.state.value;
+  const titleIsTouched = titleField.state.meta.isTouched;
+  const priceField = useField({ form, name: "commons.price" });
+  const price = priceField.state.value;
+  const priceIsTouched = priceField.state.meta.isTouched;
+  const descriptionField = useField({ form, name: "commons.description" });
+  const description = descriptionField.state.value;
+  const descriptionIsTouched = descriptionField.state.meta.isTouched;
+  const easyPayField = useField({ form, name: "commons.easy_pay" });
+  const easyPay = easyPayField.state.value;
+  const cityField = useField({ form, name: "commons.city" });
+  const city = cityField.state.value;
+  const cityIsTouched = cityField.state.meta.isTouched;
+  const imagesField = useField({ form, name: "images" });
+  const images = imagesField.state.value;
+  const imagesIsTouched = imagesField.state.meta.isTouched;
+  const propertiesField = useField({ form, name: "properties" });
+  const properties = propertiesField.state.value;
+  const propertiesIsTouched = propertiesField.state.meta.isTouched;
 
-  const deliveryMethodProperty = useMemo(() => {
-    return subCatProperties?.find((item) => item.slug === "delivery_method");
-  }, [subCatProperties]);
-
+  // Handle part of Item preview
   useEffect(() => {
     if (!properties?.length) return;
 
@@ -141,43 +163,35 @@ export default function CreateItemFormComponent({
     );
     const selectedDeliveryMethodsIds = deliveryProperty?.value;
 
-    if (
-      Array.isArray(selectedDeliveryMethodsIds) &&
-      selectedDeliveryMethodsIds.length
-    ) {
+    if (selectedDeliveryMethodsIds) {
       const deliveryMethodFilter = subCatProperties?.find(
         (item) => item.slug === "delivery_method",
       );
 
-      const extractedDeliveryMethods = selectedDeliveryMethodsIds
-        .map(
-          (methodId) =>
-            deliveryMethodFilter?.options.find(
-              (option) => option.id === Number(methodId),
-            )?.value,
-        )
-        .filter(Boolean)
-        .map(String);
+      const extractedDeliveryMethods = deliveryMethodFilter?.options.find(
+        (option) => option.id === Number(selectedDeliveryMethodsIds),
+      );
 
-      setSelectedDeliveryMethod(extractedDeliveryMethods);
-    } else {
-      setSelectedDeliveryMethod([]);
+      if (extractedDeliveryMethods) {
+        setSelectedDeliveryMethod({
+          id: extractedDeliveryMethods.id,
+          name: extractedDeliveryMethods.name,
+          slug: String(extractedDeliveryMethods.value),
+        });
+      }
     }
   }, [properties, subCatProperties]);
 
+  // If we have one, set the subcategory from query params
   useEffect(() => {
-    // if on mount we have a subcategory already settled in query params:
-    if (subcategory) {
-      handleSubCategorySelect(subcategory);
-    }
+    if (subcategory) handleSubCategorySelect(subcategory);
   }, []);
 
+  // build subcategories Menu Hierarchy:
   useEffect(() => {
-    // build menu hierarchy:
     if (allCategories?.length && allSubcategories?.length) {
       const nestedMenu = nestedSubCatHierarchy(allSubcategories, allCategories);
-
-      if (nestedMenu.length) setNestedSubcategories(nestedMenu);
+      if (nestedMenu.length) setSubcategoriesMenu(nestedMenu);
     }
   }, [allCategories, allSubcategories]);
 
@@ -195,7 +209,9 @@ export default function CreateItemFormComponent({
 
   // Create image URLs for preview - properly formatted for the Slider component
   const imageUrls = useMemo(() => {
-    return images?.map((file, i) => {
+    if (!images || images.length === 0) return [];
+
+    return images.map((file, i) => {
       const imageUrl = URL.createObjectURL(file);
       return (
         <div
@@ -215,18 +231,24 @@ export default function CreateItemFormComponent({
     });
   }, [images]);
 
-  function removeDeliveryMethodProperty() {
-    const properties = form.getFieldValue("properties") || [];
+  function handleNextButtonClick() {
+    const stepOneSchema = z.object({
+      commons: createItemSchema.shape.commons,
+      images: multipleImagesSchema,
+    });
 
-    form.setFieldValue("properties", [
-      ...properties.filter(
-        (property) =>
-          property.id !== deliveryMethodProperty?.id &&
-          property.slug !== deliveryMethodProperty?.slug,
-      ),
-    ]);
+    const validation = stepOneSchema.safeParse(form.state.values);
 
-    return properties;
+    // Get required subcat properties length, excluding "delivery_method" and require "on_item_create_required"
+    const requiredSubcatPropertiesLength = subCatProperties?.filter(
+      (item) => item.slug !== "delivery_method" && item.on_item_create_required,
+    ).length;
+
+    // Check if all required subcat properties are satisfied
+    const satisfiedSubcatProperties =
+      properties?.length === requiredSubcatPropertiesLength;
+
+    if (validation.success && satisfiedSubcatProperties) setProgress(step_two);
   }
 
   return (
@@ -234,23 +256,24 @@ export default function CreateItemFormComponent({
       <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
         <div className="w-full xl:max-w-[500px] h-full break-words">
-          {/* 
-            Debug stringify
-            JSON.stringify(form.state.errors, null, 4) 
-          */}
-          <div className="sticky top-0 mb-4">
-            <Progress value={progress} />
-          </div>
+          {/* test debug output */}
+          {JSON.stringify(form.state.errors, null, 4)}
+          {subcategory?.easy_pay && (
+            <div className="sticky top-0 mb-4">
+              <Progress value={progress} />
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               e.stopPropagation();
               form.handleSubmit();
             }}
-            className="space-y-4 w-full h-full flex flex-col justify-between"
+            className="space-y-4 w-full flex flex-col justify-between"
           >
             <div className="overflow-auto flex gap-6 flex-col p-0 md:pr-3">
-              {progress === 50 && (
+              {/* STEP ONE */}
+              {progress === step_one && (
                 <>
                   <form.Field
                     name="commons.subcategory_id"
@@ -264,7 +287,7 @@ export default function CreateItemFormComponent({
                           </Label>
                           <CategorySelector
                             isLoading={isLoadingCat || isLoadingSubCat}
-                            categories={nestedSubcategories}
+                            categories={subcategoriesMenu}
                             selectedCategoryControlled={
                               selectedSubCategory || subcategory
                             }
@@ -281,6 +304,28 @@ export default function CreateItemFormComponent({
                       );
                     }}
                   </form.Field>
+
+                  <form.Field name="images">
+                    {(field) => {
+                      const { handleChange } = field;
+
+                      return (
+                        <div className="space-y-2">
+                          <MultiImageUpload
+                            isError={field.state.meta.errors?.length > 0}
+                            fileInputRef={uploadInputRef}
+                            maxImages={maxImages}
+                            initialImages={images}
+                            onImagesChange={(images) => {
+                              if (images) handleChange(images as any);
+                            }}
+                          />
+                          <FieldInfo field={field} />
+                        </div>
+                      );
+                    }}
+                  </form.Field>
+
                   <form.Field name="commons.title">
                     {(field) => {
                       const { name, handleBlur, handleChange, state } = field;
@@ -326,91 +371,34 @@ export default function CreateItemFormComponent({
                           <Label htmlFor={name} className="block">
                             Price <span className="text-red-500">*</span>
                           </Label>
-                          <div className="flex gap-1 items-center">
-                            <Euro className="h-4 w-4" />
-                            <Input
-                              id={name}
-                              name={name}
-                              disabled={isSubmittingForm}
-                              type="number"
-                              min=".01"
-                              step=".01"
-                              placeholder="0.20"
-                              value={
-                                value !== undefined
-                                  ? ((value as number) / 100).toString()
-                                  : ""
-                              }
-                              onBlur={handleBlur}
-                              onChange={(e) => {
-                                handleChange(
-                                  e.target.value
-                                    ? formatPriceToCents(e.target.valueAsNumber)
-                                    : 0,
-                                );
-                              }}
-                              aria-invalid={
-                                isTouched && errors?.length ? "true" : "false"
-                              }
-                              className={
-                                isTouched && errors?.length
-                                  ? "border-red-500"
-                                  : ""
-                              }
-                            />
-                          </div>
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
-                  <form.Field name="images">
-                    {(field) => {
-                      const { handleChange } = field;
-
-                      return (
-                        <div className="space-y-2">
-                          <MultiImageUpload
-                            fileInputRef={fileInputRef}
-                            maxImages={maxImages}
-                            onImagesChange={(images) => {
-                              if (images) handleChange(images as any);
-                            }}
-                          />
-                          <FieldInfo field={field} />
-                        </div>
-                      );
-                    }}
-                  </form.Field>
-                  <form.Field name="commons.description">
-                    {(field) => {
-                      const { name, handleBlur, handleChange, state } = field;
-                      const { meta, value } = state;
-                      const { isTouched, errors } = meta;
-
-                      return (
-                        <div className="space-y-2">
-                          <Label htmlFor={name} className="block">
-                            Description <span className="text-red-500">*</span>
-                          </Label>
-                          <Textarea
+                          <Input
                             id={name}
                             name={name}
                             disabled={isSubmittingForm}
-                            rows={6}
-                            minLength={50}
-                            maxLength={2500}
-                            value={value !== undefined ? value?.toString() : ""}
+                            type="number"
+                            min=".01"
+                            step=".01"
+                            placeholder="0.20"
+                            value={
+                              value !== undefined
+                                ? ((value as number) / 100).toString()
+                                : ""
+                            }
                             onBlur={handleBlur}
-                            onChange={(e) => handleChange(e.target.value)}
-                            placeholder="Enter a description for your item"
+                            onChange={(e) => {
+                              handleChange(
+                                e.target.value
+                                  ? formatPriceToCents(e.target.valueAsNumber)
+                                  : 0,
+                              );
+                            }}
                             aria-invalid={
                               isTouched && errors?.length ? "true" : "false"
                             }
                             className={
                               isTouched && errors?.length
-                                ? "border-red-500 max-h-52"
-                                : "max-h-52"
+                                ? "border-red-500"
+                                : ""
                             }
                           />
                           <FieldInfo field={field} />
@@ -449,6 +437,45 @@ export default function CreateItemFormComponent({
                       );
                     }}
                   </form.Field>
+                  <form.Field name="commons.description">
+                    {(field) => {
+                      const { name, handleBlur, handleChange, state } = field;
+                      const { meta, value } = state;
+                      const { isTouched, errors } = meta;
+
+                      return (
+                        <div className="space-y-2">
+                          <Label htmlFor={name} className="block">
+                            Description <span className="text-red-500">*</span>{" "}
+                            <span className="text-sm">{`- ${value?.length || 0}/${maxDescriptionLength} chars`}</span>
+                          </Label>
+                          <Textarea
+                            id={name}
+                            name={name}
+                            disabled={isSubmittingForm}
+                            rows={6}
+                            minLength={50}
+                            maxLength={2500}
+                            value={value !== undefined ? value?.toString() : ""}
+                            onBlur={handleBlur}
+                            onChange={(e) => handleChange(e.target.value)}
+                            placeholder="Enter a description for your item"
+                            aria-invalid={
+                              isTouched && errors?.length ? "true" : "false"
+                            }
+                            className={
+                              isTouched && errors?.length
+                                ? "border-red-500 max-h-52"
+                                : "max-h-52"
+                            }
+                          />
+                          <FieldInfo field={field} />
+                        </div>
+                      );
+                    }}
+                  </form.Field>
+
+                  {/* DYNAMIC PROPERTIES FIELDS */}
                   {selectedSubCategory &&
                     (isLoadingCat ||
                     isLoadingSubCat ||
@@ -457,250 +484,285 @@ export default function CreateItemFormComponent({
                     ) : (
                       subCatProperties &&
                       subCatProperties?.length > 0 &&
-                      subCatProperties?.map((property) => {
-                        return (
-                          <form.Field key={property.id} name="properties">
-                            {(field) => (
-                              <DynamicProperties
-                                property={property}
-                                field={field}
-                              />
-                            )}
-                          </form.Field>
-                        );
-                      })
+                      subCatProperties
+                        ?.filter(
+                          (property) => property.slug !== "delivery_method",
+                        )
+                        .map((property) => {
+                          return (
+                            <form.Field key={property.id} name="properties">
+                              {(field) => (
+                                <DynamicProperties
+                                  property={property}
+                                  field={field}
+                                />
+                              )}
+                            </form.Field>
+                          );
+                        })
                     ))}
                 </>
               )}
+
+              {/* STEP TWO */}
               {/* Only show Easy Pay if the subcategory is payable and deliveryMethodPropertyId exists */}
-              {progress === 100 &&
-                subcategory?.is_payable &&
-                deliveryMethodProperty?.id && (
-                  <form.Field name="commons.easy_pay">
+              {progress === step_two && (
+                <div className="border-1 border-dashed p-3 rounded-md flex flex-col gap-2">
+                  <form.Field name="properties">
                     {(field) => {
-                      const { name, handleChange, state } = field;
-                      const { meta, value } = state;
-
-                      function handlePayableChange(checked: boolean) {
-                        handleChange(checked);
-
-                        const properties =
-                          form.getFieldValue("properties") || [];
-
-                        if (checked) {
-                          form.setFieldValue("commons.shipping_price", 0);
-                          setIsCustomShippingPriceEnabled(false);
-
-                          if (deliveryMethodProperty?.id) {
-                            removeDeliveryMethodProperty();
-                            // add the delivery method "shipping_prepaid" to the properties array
-                            form.setFieldValue("properties", [
-                              ...properties,
-                              {
-                                id: deliveryMethodProperty?.id,
-                                slug: deliveryMethodProperty.slug,
-                                value: "shipping_prepaid",
-                              },
-                            ]);
-                          }
-                        } else {
-                          // remove the delivery method "shipping_prepaid" from the properties array if it exists
-                          if (deliveryMethodProperty?.id) {
-                            const updatedProperties =
-                              removeDeliveryMethodProperty();
-
-                            form.setFieldValue("properties", updatedProperties);
-                          }
-                        }
-                      }
-
                       return (
-                        <div className="space-y-2">
-                          <Alert
-                            className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
-                            onClick={() => handlePayableChange(!value)}
-                          >
-                            <AlertTitle className="mb-2 flex gap-2 justify-between">
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <div className="flex gap-2 items-center">
-                                      <p
-                                        className={`font-bold text-lg ${easyPay ? "text-primary" : ""}`}
-                                      >
-                                        Easy Pay
-                                      </p>
-                                      <Info className="h-4 w-4 text-blue-500" />
-                                    </div>
-                                  </DialogTrigger>
-                                  <DialogContent className="sm:max-w-[425px]">
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        What is Easy Pay?
-                                      </DialogTitle>
-                                      <DialogDescription className="my-2">
-                                        With Easy Pay, selling your items online
-                                        is simple and secure.
-                                        <br />
-                                        <br />
-                                        Once a buyer completes the purchase, the
-                                        payment is safely held by our system
-                                        until you ship the item.
-                                        <br />
-                                        After the buyer confirms delivery, we
-                                        promptly release the funds to your
-                                        account.
-                                        <br />
-                                        <br />
-                                        This process helps protect both you and
-                                        the buyer, ensuring a smooth and
-                                        trustworthy transaction.
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Switch
-                                  id={name}
-                                  name={name}
-                                  onCheckedChange={(checked) => {
-                                    handlePayableChange(checked);
-                                    // When enabling Easy Pay, disable manual shipping
-                                    if (checked) {
-                                      setIsCustomShippingPriceEnabled(false);
-
-                                      form.setFieldValue(
-                                        "commons.shipping_price",
-                                        0,
-                                      );
-                                    }
-                                  }}
-                                  checked={value !== undefined ? value : false}
-                                />
-                              </div>
-                            </AlertTitle>
-                            <AlertDescription>
-                              Enabling this option allows users to instantly
-                              purchase your item, with secure payment processing
-                              and tracking from payment to shipment.
-                            </AlertDescription>
-                          </Alert>
-                        </div>
+                        <Alert
+                          className={`py-4 cursor-pointer ${isPickup ? "border-1 border-primary" : ""}`}
+                          onClick={() => {
+                            const value = !isPickup;
+                            handlePickupChange(value, field, easyPay);
+                          }}
+                        >
+                          <AlertTitle className="mb-2 flex gap-2 justify-between">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <p
+                                className={`font-bold text-lg ${isPickup ? "text-primary" : ""}`}
+                              >
+                                Pickup
+                              </p>
+                            </div>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <Switch
+                                onCheckedChange={(checked) => {
+                                  handlePickupChange(checked, field, easyPay);
+                                }}
+                                checked={isPickup}
+                              />
+                            </div>
+                          </AlertTitle>
+                          <AlertDescription>
+                            Enable this option to let buyers pick up the item
+                            themselves from your location.
+                          </AlertDescription>
+                        </Alert>
                       );
                     }}
                   </form.Field>
-                )}
 
-              {progress === 100 && subcategory?.is_payable && (
-                <form.Field name="commons.shipping_price">
-                  {(field) => {
-                    const { name, handleChange, state } = field;
-                    const { meta, value } = state;
-                    const { isTouched, errors } = meta;
+                  {subcategory?.easy_pay && deliveryMethodProperty?.id && (
+                    <form.Field name="commons.easy_pay">
+                      {(field) => {
+                        const { name, state } = field;
+                        const { value } = state;
 
-                    console.log(value);
-
-                    return (
-                      <div className="space-y-2">
-                        <div className="space-y-2">
-                          <Alert
-                            className={`py-4 cursor-pointer ${isCustomShippingPriceEnabled ? "border-1 border-primary" : ""}`}
-                            onClick={() => {
-                              setIsCustomShippingPriceEnabled(
-                                !isCustomShippingPriceEnabled,
-                              );
-
-                              const properties =
-                                form.getFieldValue("properties") || [];
-
-                              if (easyPay) {
-                                form.setFieldValue("commons.easy_pay", false);
-                                setIsCustomShippingPriceEnabled(true);
+                        return (
+                          <div className="space-y-2">
+                            <Alert
+                              className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
+                              onClick={() =>
+                                handlePayableChange(
+                                  !value,
+                                  field,
+                                  propertiesField,
+                                )
                               }
-
-                              // if "delivery_method" property exists and "custom shipping" is not enabled
-                              if (
-                                deliveryMethodProperty?.id &&
-                                !isCustomShippingPriceEnabled
-                              ) {
-                                form.setFieldValue("commons.easy_pay", false);
-                                // remove "shipping_prepaid" from the properties array
-                                removeDeliveryMethodProperty();
-
-                                // add "shipping" to the properties array
-                                form.setFieldValue("properties", [
-                                  ...properties,
-                                  {
-                                    id: deliveryMethodProperty?.id,
-                                    slug: deliveryMethodProperty.slug,
-                                    value: "shipping",
-                                  },
-                                ]);
-                              } else {
-                                // remove "shipping" from the properties array
-                                removeDeliveryMethodProperty();
-                              }
-                            }}
-                          >
-                            <AlertTitle className="mb-2 flex gap-2 justify-between">
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <p
-                                  className={`font-bold text-lg ${isCustomShippingPriceEnabled ? "text-primary" : ""}`}
-                                >
-                                  Manual shipping
-                                </p>
-                              </div>
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <Switch
-                                  onCheckedChange={(checked) => {
-                                    setIsCustomShippingPriceEnabled(checked);
-
-                                    // When enabling manual shipping, disable Easy Pay
-                                    if (checked && easyPay) {
-                                      form.setFieldValue(
-                                        "commons.easy_pay",
-                                        false,
+                            >
+                              <AlertTitle className="mb-2 flex gap-2 justify-between">
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <div className="flex gap-2 items-center">
+                                        <p
+                                          className={`font-bold text-lg ${easyPay ? "text-primary" : ""}`}
+                                        >
+                                          Easy Pay
+                                        </p>
+                                        <Info className="h-4 w-4 text-blue-500" />
+                                      </div>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-[425px]">
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          What is Easy Pay?
+                                        </DialogTitle>
+                                        <DialogDescription className="my-2">
+                                          With Easy Pay, selling your items
+                                          online is simple and secure.
+                                          <br />
+                                          <br />
+                                          Once a buyer completes the purchase,
+                                          the payment is safely held by our
+                                          system until you ship the item.
+                                          <br />
+                                          After the buyer confirms delivery, we
+                                          promptly release the funds to your
+                                          account.
+                                          <br />
+                                          <br />
+                                          This process helps protect both you
+                                          and the buyer, ensuring a smooth and
+                                          trustworthy transaction.
+                                        </DialogDescription>
+                                      </DialogHeader>
+                                    </DialogContent>
+                                  </Dialog>
+                                </div>
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <Switch
+                                    id={name}
+                                    name={name}
+                                    onCheckedChange={(checked) => {
+                                      handlePayableChange(
+                                        checked,
+                                        field,
+                                        propertiesField,
                                       );
+                                      // When enabling Easy Pay, disable manual shipping
+                                      if (checked) {
+                                        setIsManualShipping(false);
+
+                                        form.setFieldValue("shipping_price", 0);
+                                      }
+                                    }}
+                                    checked={
+                                      value !== undefined ? value : false
                                     }
-                                  }}
-                                  checked={isCustomShippingPriceEnabled}
-                                />
-                              </div>
-                            </AlertTitle>
-                            <AlertDescription>
-                              Enable this option to arrange the shipment by
-                              yourself.
-                              <div className="flex flex-col gap-2">
-                                <div className="flex gap-1 items-center">
-                                  <Euro className="h-4 w-4" />
-                                  <Input
-                                    id={field.name}
-                                    name={field.name}
-                                    className="my-4"
-                                    disabled={
-                                      easyPay ||
-                                      !isCustomShippingPriceEnabled ||
-                                      isSubmittingForm
-                                    }
-                                    onClick={(e) => e.stopPropagation()}
-                                    type="number"
-                                    min=".01"
-                                    step=".01"
-                                    placeholder="ex: 15.50"
                                   />
                                 </div>
-                                <FieldInfo field={field} />
-                              </div>
-                            </AlertDescription>
-                          </Alert>
+                              </AlertTitle>
+                              <AlertDescription>
+                                Enabling this option allows users to instantly
+                                purchase your item, with secure payment
+                                processing and tracking from payment to
+                                shipment.
+                              </AlertDescription>
+                            </Alert>
+                          </div>
+                        );
+                      }}
+                    </form.Field>
+                  )}
+
+                  {subcategory?.easy_pay && (
+                    <form.Field name="shipping_price">
+                      {(field) => {
+                        const { name, handleChange, state } = field;
+                        const { value } = state;
+                        function handleManualShippingChange(
+                          value: boolean,
+                          field: AnyFieldApi,
+                        ) {
+                          setIsManualShipping(value);
+
+                          if (!value) {
+                            form.setFieldValue("shipping_price", 0);
+                          }
+
+                          // Disable Easy Pay box UI & set easyPay to false
+                          if (easyPay && value) {
+                            form.setFieldValue("commons.easy_pay", false);
+                          }
+
+                          // Disable pickup box UI
+                          if (isPickup) setIsPickup(false);
+
+                          // if "delivery_method" property exists and "manual shipping" is enabled
+                          if (deliveryMethodProperty?.id) {
+                            removeDeliveryMethodProperty();
+
+                            // Add "shipping" to the properties array, use the field of properties to update the array
+                            updatePropertiesArray({
+                              value: "shipping",
+                              property: deliveryMethodProperty,
+                              field: propertiesField,
+                            });
+                          }
+                        }
+
+                        return (
+                          <>
+                            <Alert
+                              className={`py-4 cursor-pointer ${isManualShipping ? "border-1 border-primary" : ""}`}
+                              onClick={() => {
+                                const value = !isManualShipping;
+                                handleManualShippingChange(value, field);
+                              }}
+                            >
+                              <AlertTitle className="mb-2 flex gap-2 justify-between">
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <p
+                                    className={`font-bold text-lg ${isManualShipping ? "text-primary" : ""}`}
+                                  >
+                                    Manual shipping
+                                  </p>
+                                </div>
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <Switch
+                                    onCheckedChange={(checked) => {
+                                      handleManualShippingChange(
+                                        checked,
+                                        field,
+                                      );
+                                    }}
+                                    checked={isManualShipping}
+                                  />
+                                </div>
+                              </AlertTitle>
+                              <AlertDescription>
+                                Enable this option to arrange the shipment by
+                                yourself.
+                                {isManualShipping && (
+                                  <div className="flex flex-col gap-2">
+                                    <Input
+                                      className="my-4"
+                                      id={name}
+                                      name={name}
+                                      value={
+                                        value !== undefined
+                                          ? ((value as number) / 100).toString()
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        handleChange(
+                                          e.target.value
+                                            ? formatPriceToCents(
+                                                e.target.valueAsNumber,
+                                              )
+                                            : 0,
+                                        );
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      disabled={
+                                        easyPay ||
+                                        !isManualShipping ||
+                                        isSubmittingForm
+                                      }
+                                      type="number"
+                                      min=".01"
+                                      step=".01"
+                                      placeholder="ex: 15.50€"
+                                    />
+
+                                    <FieldInfo field={field} />
+                                  </div>
+                                )}
+                              </AlertDescription>
+                            </Alert>
+                          </>
+                        );
+                      }}
+                    </form.Field>
+                  )}
+
+                  {/* Show error if "delivery_method" property is not selected */}
+                  {form.state.errors.map((err, index) => {
+                    if (err?.["properties.delivery_method"]) {
+                      return (
+                        <div key={index} className="text-red-500">
+                          Select a delivery method
                         </div>
-                      </div>
-                    );
-                  }}
-                </form.Field>
+                      );
+                    }
+                  })}
+                </div>
               )}
             </div>
+
             <form.Subscribe
               selector={(formState) => ({
                 canSubmit: formState.canSubmit,
@@ -710,18 +772,29 @@ export default function CreateItemFormComponent({
             >
               {(state) => {
                 const { canSubmit, isSubmitting } = state;
+
+                const isSubmitDisabled =
+                  !selectedSubCategory ||
+                  isSubmittingForm ||
+                  isLoadingCat ||
+                  isLoadingSubCat ||
+                  isLoadingSubCatProperties ||
+                  !canSubmit;
+
                 return (
-                  <div className="flex gap-2 sticky bottom-2">
-                    {progress === step_one && (
+                  <div className="flex gap-2 sticky bottom-2 p-0 md:pr-3">
+                    {subcategory?.easy_pay && progress === step_one && (
                       <Button
                         className="flex-1"
                         variant="outline"
-                        onClick={() => setProgress(step_two)}
+                        type="button"
+                        onClick={handleNextButtonClick}
                       >
                         Next
                       </Button>
                     )}
-                    {progress === step_two && (
+
+                    {subcategory?.easy_pay && progress === step_two && (
                       <div className="flex w-full gap-2">
                         <Button
                           className="flex-1"
@@ -732,19 +805,22 @@ export default function CreateItemFormComponent({
                         </Button>
                         <Button
                           className="flex-1"
+                          disabled={isSubmitDisabled}
                           type="submit"
-                          disabled={
-                            !selectedSubCategory ||
-                            isSubmittingForm ||
-                            isLoadingCat ||
-                            isLoadingSubCat ||
-                            isLoadingSubCatProperties ||
-                            !canSubmit
-                          }
                         >
-                          {isSubmitting ? "..." : "Submit"}
+                          {isSubmitting ? "Submitting..." : "Submit"}
                         </Button>
                       </div>
+                    )}
+
+                    {!subcategory?.easy_pay && (
+                      <Button
+                        className="flex-1"
+                        type="submit"
+                        disabled={isSubmitDisabled}
+                      >
+                        {isSubmitting ? "Submitting..." : "Submit"}
+                      </Button>
                     )}
                   </div>
                 );
@@ -758,7 +834,7 @@ export default function CreateItemFormComponent({
           <div className="w-full overflow-hidden h-full max-w-[760px] mx-auto">
             <ItemDetailCard
               isPreview
-              imagesRef={fileInputRef}
+              imagesRef={uploadInputRef}
               maxImages={maxImages}
               item={{
                 title: title !== undefined ? String(title) : "",
@@ -773,7 +849,10 @@ export default function CreateItemFormComponent({
                     target="_blank"
                     className="mb-2"
                   >
-                    <Badge variant="outline" className="text-sm bg-accent px-3">
+                    <Badge
+                      variant="outline"
+                      className="text-sm bg-accent px-3 text-white"
+                    >
                       {selectedSubCategory.name}
                     </Badge>
                   </Link>
@@ -786,13 +865,13 @@ export default function CreateItemFormComponent({
                   >
                     <Badge
                       variant="outline"
-                      className="text-sm bg-primary px-3"
+                      className="text-sm bg-primary px-3 text-white"
                     >
                       {selectedCondition.name}
                     </Badge>
                   </Link>
                 ),
-                deliveryMethods: selectedDeliveryMethod,
+                deliveryMethods: selectedDeliveryMethod?.name,
               }}
             />
 

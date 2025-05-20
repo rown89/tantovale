@@ -21,7 +21,7 @@ export interface ItemDetailCardrops {
 		images: ReactNode[];
 		subcategory?: ReactNode;
 		condition?: ReactNode;
-		deliveryMethods?: string[];
+		deliveryMethods?: string;
 	};
 }
 
@@ -58,17 +58,14 @@ export const ItemDetailCard = React.memo(
 								</div>
 
 								<div className='flex items-center gap-1'>
-									{item.deliveryMethods?.length ? (
-										item.deliveryMethods.map((method, i) => (
-											<div key={i}>
-												<Badge variant='outline' className='font-normal'>
-													<span className='flex items-center gap-1'>
-														<Truck className='h-3 w-3' /> {method}
-													</span>
-												</Badge>
-												{item.deliveryMethods && item.deliveryMethods.length > 1 && i === 0 && '/'}
-											</div>
-										))
+									{item.deliveryMethods ? (
+										<div>
+											<Badge variant='outline' className='font-normal'>
+												<span className='flex items-center gap-1'>
+													<Truck className='h-3 w-3' /> {item.deliveryMethods}
+												</span>
+											</Badge>
+										</div>
 									) : isPreview ? (
 										<Badge variant='outline' className='font-normal'>
 											<span className='flex items-center gap-1'>Delivery mode</span>

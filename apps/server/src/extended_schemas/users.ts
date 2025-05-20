@@ -11,7 +11,7 @@ export const UserSchema = z.object({
 	}),
 	password: z.string().min(8, 'La password deve contenere almeno 8 caratteri').max(100).nonempty(),
 	privacy_policy: z.literal(true, {
-		errorMap: () => ({ message: 'Devi accettare la privacy policy' }),
+		message: 'Devi accettare la privacy policy',
 	}),
 	marketing_policy: z.boolean(),
 });

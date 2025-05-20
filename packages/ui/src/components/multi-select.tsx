@@ -165,16 +165,6 @@ export const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>
 			onValueChange(newSelectedValues);
 		};
 
-		const toggleAll = () => {
-			if (selectedValues.length === options.length) {
-				handleClear();
-			} else {
-				const allValues = options.map((option) => option.value);
-				setSelectedValues(allValues);
-				onValueChange(allValues);
-			}
-		};
-
 		return (
 			<Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen} modal={modalPopover}>
 				<PopoverTrigger asChild>
@@ -192,6 +182,7 @@ export const MultiSelect = React.forwardRef<HTMLButtonElement, MultiSelectProps>
 									{selectedValues.slice(0, maxCount).map((value) => {
 										const option = options.find((o) => o.value === value);
 										const IconComponent = option?.icon;
+
 										return (
 											<Badge
 												key={value}

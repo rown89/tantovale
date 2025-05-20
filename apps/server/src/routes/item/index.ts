@@ -94,7 +94,9 @@ export const itemRoute = createRouter()
 				ACCESS_TOKEN_SECRET: string;
 			}>(c);
 
-			const { commons, properties } = c.req.valid('json');
+			const { commons, properties, shipping_price } = c.req.valid('json');
+
+			console.log(shipping_price);
 
 			// Auth TOKEN
 			const accessToken = getCookie(c, 'access_token');

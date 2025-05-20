@@ -267,6 +267,7 @@ export function DynamicProperties({ property, field }: DynamicPropertiesProps) {
           )}
         </div>
       )}
+      <FieldInfo field={field} />
     </div>
   );
 }

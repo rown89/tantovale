@@ -28,7 +28,6 @@ export const items = pgTable(
 		status: itemStatusEnum('status').notNull().default('available'),
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
-		shipping_price: integer('shipping_price'),
 		easy_pay: boolean('easy_pay').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

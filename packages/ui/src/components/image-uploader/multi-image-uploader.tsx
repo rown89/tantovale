@@ -30,6 +30,8 @@ export type MultiImageUploadProps = {
 	acceptedFileTypes?: string[];
 	className?: string;
 	initialImageUrls?: string[];
+	initialImages?: File[];
+	isError?: boolean;
 };
 
 export default function MultiImageUpload({
@@ -40,12 +42,40 @@ export default function MultiImageUpload({
 	acceptedFileTypes = ['image/jpeg', 'image/png'],
 	className,
 	initialImageUrls = [],
+	initialImages = [],
+	isError = false,
 }: MultiImageUploadProps) {
 	const [useTouchBackend, setUseTouchBackend] = useState(false);
 	const [images, setImages] = useState<UploadedImage[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [isDraggingOver, setIsDraggingOver] = useState(false);
 	const isMobile = useIsMobile();
+
+	// Process initialImages if provided (used for form state persistence)
+	useEffect(() => {
+		if (initialImages.length > 0 && images.length === 0) {
+			const fileImages = initialImages.map((file) => ({
+				id: crypto.randomUUID(),
+				file,
+				preview: URL.createObjectURL(file),
+				isExternalUrl: false,
+			}));
+
+			// Check if adding these files would exceed the maximum
+			if (fileImages.length > maxImages) {
+				setError(`You can only have a maximum of ${maxImages} images`);
+				// Still load up to the maximum
+				setImages(fileImages.slice(0, maxImages));
+			} else {
+				setImages(fileImages);
+			}
+
+			// Call the onChange callback to ensure form state is updated
+			if (onImagesChange) {
+				onImagesChange(initialImages.slice(0, maxImages));
+			}
+		}
+	}, [initialImages, maxImages, images.length, onImagesChange]);
 
 	// Load initial image URLs when component mounts
 	useEffect(() => {
@@ -227,6 +257,12 @@ export default function MultiImageUpload({
 		window.addEventListener('resize', handleResize);
 		return () => {
 			window.removeEventListener('resize', handleResize);
+		};
+	}, [isMobile]);
+
+	// Clean up effect will run when component unmounts or images change
+	useEffect(() => {
+		return () => {
 			// Clean up object URLs to prevent memory leaks
 			images.forEach((image) => {
 				if (!image.isExternalUrl && image.preview) {
@@ -234,7 +270,7 @@ export default function MultiImageUpload({
 				}
 			});
 		};
-	}, [images, isMobile]);
+	}, [images]);
 
 	return (
 		<div className={cn('space-y-4', className)}>
@@ -242,7 +278,11 @@ export default function MultiImageUpload({
 				<div
 					className={cn(
 						'cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors',
-						isDraggingOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50',
+						isDraggingOver
+							? 'border-primary bg-primary/5'
+							: isError
+								? 'border-destructive bg-destructive/5'
+								: 'border-muted-foreground/25 hover:border-primary/50',
 					)}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
@@ -289,7 +329,11 @@ export default function MultiImageUpload({
 					</div>
 
 					<DndProvider backend={backend} options={backendOptions}>
-						<div className='grid grid-cols-4 gap-4'>
+						<div
+							className={cn(
+								'grid grid-cols-4 gap-4',
+								isError && 'border-destructive bg-destructive/5 rounded-lg border-2 border-dashed p-4',
+							)}>
 							{images.map((image, index) => (
 								<DraggableImageItem
 									key={image.id}
@@ -310,7 +354,9 @@ export default function MultiImageUpload({
 										'flex cursor-pointer justify-center rounded-lg border-2 border-dashed p-2 text-center transition-colors',
 										isDraggingOver
 											? 'border-primary bg-primary/5'
-											: 'border-muted-foreground/25 hover:border-primary/50',
+											: isError
+												? 'border-destructive'
+												: 'border-muted-foreground/25 hover:border-primary/50',
 									)}
 									onDragOver={handleDragOver}
 									onDragLeave={handleDragLeave}

@@ -50,7 +50,9 @@ export function useCategoriesData(subcategoryId?: number) {
 				return [];
 			}
 
-			return await res.json();
+			const data = await res.json();
+
+			return data;
 		},
 		enabled: !!subcategoryId,
 	});

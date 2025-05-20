@@ -117,7 +117,7 @@ export const PropertyTypes = {
 export const PROPERTY_SEEDS: PropertySeed[] = [
 	// Generic
 	{ name: 'Condition', slug: Properties.CONDITION, type: PropertyTypes.SELECT },
-	{ name: 'Delivery Methods', slug: Properties.DELIVERY_METHOD, type: PropertyTypes.SELECT_MULTI },
+	{ name: 'Delivery Methods', slug: Properties.DELIVERY_METHOD, type: PropertyTypes.SELECT },
 	{ name: 'Gender', slug: Properties.GENDER, type: PropertyTypes.RADIO },
 	{ name: 'Color', slug: Properties.COLOR, type: PropertyTypes.SELECT_MULTI },
 	// Clothing

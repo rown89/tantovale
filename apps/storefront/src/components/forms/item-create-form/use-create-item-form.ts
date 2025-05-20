@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useMemo, useState } from "react";
+import { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -9,9 +9,10 @@ import { client } from "@workspace/server/client-rpc";
 import {
   createItemSchema,
   multipleImagesSchema,
+  propertySchema,
 } from "@workspace/server/extended_schemas";
 
-import { PropertyType, formOpts } from "./utils";
+import { PropertyType, formOpts, updatePropertiesArray } from "./utils";
 import { handleQueryParamChange } from "../../../utils/handle-qp";
 
 import type { Category } from "@workspace/server/extended_schemas";
@@ -21,8 +22,57 @@ export interface UseItemFormProps {
   subCatProperties: PropertyType[] | undefined;
 }
 
-const schema = createItemSchema.and(z.object({ images: multipleImagesSchema }));
-type schemaType = z.infer<typeof schema>;
+export const finalCreateItemSchema = ({
+  propertiesData,
+  isManualShipping,
+}: {
+  propertiesData?: PropertyType[];
+  isManualShipping?: boolean;
+}) => {
+  return createItemSchema
+    .and(
+      z.object({
+        images: multipleImagesSchema,
+      }),
+    )
+    .and(
+      z
+        .object({
+          properties: propertySchema,
+        })
+        // use refine and not superRefine to check if all required subcat properties are satisfied
+        .superRefine((val, ctx) => {
+          propertiesData?.forEach((property) => {
+            if (
+              property.on_item_create_required &&
+              !val.properties?.find((p) => p.slug === property.slug)?.value
+            ) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["properties", property.slug],
+              });
+            }
+          });
+        }),
+    )
+    .and(
+      z.object({
+        shipping_price: z.number().refine(
+          (val) => {
+            // if isManualShipping is true, then shipping_price must be greater than 0, else it must be 0 or undefined
+            if (isManualShipping) return val > 0;
+            return val === 0 || val === undefined;
+          },
+          {
+            message: "Shipping price must be greater than 0",
+          },
+        ),
+      }),
+    );
+};
+
+type schemaType = z.infer<ReturnType<typeof finalCreateItemSchema>>;
 
 export function useCreateItemForm({
   subcategory,
@@ -36,59 +86,20 @@ export function useCreateItemForm({
   >(subcategory);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isPickup, setIsPickup] = useState(false);
+  const [isManualShipping, setIsManualShipping] = useState(false);
 
-  // Initialize form
+  const deliveryMethodProperty = useMemo(() => {
+    return subCatProperties?.find((item) => item.slug === "delivery_method");
+  }, [subCatProperties]);
+
   const form = useForm({
     ...formOpts.defaultValues,
+    asyncAlways: true,
     validators: {
-      onSubmitAsync: schema.superRefine(async (val, ctx) => {
-        val.properties?.forEach((property) => {
-          console.log(property);
-        });
-
-        if (
-          subCatProperties &&
-          Array.isArray(subCatProperties) &&
-          subCatProperties?.length > 0
-        ) {
-          const requiredProperties = subCatProperties.filter(
-            (property) => property.on_item_create_required,
-          );
-
-          // Check each required filter
-          requiredProperties.forEach((requiredProperty) => {
-            const propertyExists = val.properties?.some(
-              (prop: {
-                id: number;
-                value: string | number | string[] | number[];
-                slug: string;
-              }) => prop.slug === requiredProperty.slug,
-            );
-
-            if (!propertyExists) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Property for required property "${requiredProperty.name}" is missing.`,
-                path: ["properties"],
-              });
-            }
-          });
-        }
-
-        if (
-          val.properties?.find(
-            (property) => property.slug === "delivery_method",
-          )?.value === "shipping"
-        ) {
-          console.log("shipping");
-          if (!val.commons.shipping_price) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Shipping price is required",
-              path: ["commons", "shipping_price"],
-            });
-          }
-        }
+      onChange: finalCreateItemSchema({
+        propertiesData: subCatProperties ?? [],
+        isManualShipping,
       }),
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
@@ -96,21 +107,6 @@ export function useCreateItemForm({
 
       try {
         const { images, ...rest } = value;
-
-        // if exists a delivery method property, and it's not "shipping_prepaid", and the item is payable, then we need to set property "delivery_method" to "pickup"
-        const deliveryMethodProperty = rest.properties?.find(
-          (property) => property.slug === "delivery_method",
-        );
-
-        if (
-          deliveryMethodProperty &&
-          deliveryMethodProperty.value !== "shipping_prepaid" &&
-          !rest.commons.easy_pay
-        ) {
-          rest.properties = rest.properties?.filter(
-            (property) => property.slug !== "delivery_method",
-          );
-        }
 
         const itemResponse = await client.item.auth.new.$post({
           json: rest,
@@ -132,9 +128,9 @@ export function useCreateItemForm({
           };
 
           const compressedImages = await Promise.all(
+            // @ts-ignore TODO: check it
             images.map(async (image) => {
               try {
-                // @ts-expect-error need to fix it
                 return await imageCompression(image, compressionOptions);
               } catch (error) {
                 console.error("Error compressing image:", error);
@@ -175,6 +171,20 @@ export function useCreateItemForm({
     },
   });
 
+  function removeDeliveryMethodProperty() {
+    const properties = form.getFieldValue("properties") || [];
+
+    form.setFieldValue("properties", [
+      ...properties.filter(
+        (property) =>
+          property.id !== deliveryMethodProperty?.id &&
+          property.slug !== deliveryMethodProperty?.slug,
+      ),
+    ]);
+
+    return properties;
+  }
+
   function handlePropertiesReset() {
     form.setFieldValue("properties", []);
   }
@@ -202,13 +212,83 @@ export function useCreateItemForm({
     );
   }
 
+  function handlePickupChange(
+    value: boolean,
+    field: AnyFieldApi,
+    easyPay?: boolean,
+  ) {
+    if (easyPay) {
+      form.setFieldValue("commons.easy_pay", false);
+      form.setFieldValue("shipping_price", 0);
+      setIsManualShipping(false);
+    }
+
+    setIsPickup(value);
+
+    if (value) {
+      form.setFieldValue("shipping_price", 0);
+      setIsManualShipping(false);
+
+      if (deliveryMethodProperty?.id) {
+        updatePropertiesArray({
+          value: "pickup",
+          property: deliveryMethodProperty,
+          field,
+        });
+      }
+    } else {
+      // remove "pickup" from the properties array
+      removeDeliveryMethodProperty();
+    }
+  }
+
+  function handlePayableChange(
+    checked: boolean,
+    field: AnyFieldApi,
+    propertiesField: AnyFieldApi,
+  ) {
+    // Update the Easy Pay form field value
+    field.handleChange(checked);
+
+    // Handle shipping and delivery method properties
+    if (checked) {
+      // When enabling Easy Pay, reset shipping price and disable manual shipping
+
+      form.setFieldValue("shipping_price", 0);
+      setIsManualShipping(false);
+
+      // Disable pickup
+      if (isPickup) setIsPickup(false);
+
+      // Only update delivery methods if the property exists
+      if (deliveryMethodProperty?.id) {
+        // Add the shipping_prepaid delivery method required for Easy Pay
+        updatePropertiesArray({
+          value: "shipping_prepaid",
+          property: deliveryMethodProperty,
+          field: propertiesField,
+        });
+      }
+    } else {
+      removeDeliveryMethodProperty();
+    }
+  }
+
   return {
     form,
     isSubmittingForm,
     selectedSubCategory,
     isCityPopoverOpen,
+    isPickup,
+    isManualShipping,
+    deliveryMethodProperty,
+    setIsManualShipping,
+    setIsPickup,
     setIsCityPopoverOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
+    handlePickupChange,
+    handlePayableChange,
+    removeDeliveryMethodProperty,
   };
 }

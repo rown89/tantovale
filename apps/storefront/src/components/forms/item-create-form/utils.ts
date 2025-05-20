@@ -13,10 +13,12 @@ export interface PropertyType {
   type: string;
 }
 
-export const delivery_method_types = [
-  { id: "pickup", name: "Pickup" },
-  { id: "shipping", name: "Shipping" },
-];
+// Progress steps
+export const step_one = 50;
+export const step_two = 100;
+
+// max upload images
+export const maxImages = 5;
 
 export const formOpts = formOptions({
   defaultValues: {
@@ -31,6 +33,7 @@ export const formOpts = formOptions({
       city: 0,
     },
     properties: [],
+    shipping_price: 0,
   },
 });
 
