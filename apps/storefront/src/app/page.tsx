@@ -371,7 +371,7 @@ export default function Home() {
           <div
             className={`flex gap-2 items-center flex-col md:flex-row transition-opacity duration-1000 ease-in-out ${githubVisible ? "opacity-100" : "opacity-0"}`}
           >
-            <h2 className="mb-2 text-xl font-medium">Stato:</h2>
+            <h2 className="text-xl font-medium">Stato:</h2>
             <div className="inline-block px-3 py-1 text-sm font-medium rounded-full bg-blue-500/30">
               In costruzione
             </div>
