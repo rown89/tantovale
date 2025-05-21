@@ -2,6 +2,7 @@ export interface BaseSubcategorySeed {
 	name: string;
 	slug: string;
 	easy_pay?: boolean;
+	menu_order?: number;
 }
 
 export interface ParentGroupSeed {

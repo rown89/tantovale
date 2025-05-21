@@ -3,7 +3,6 @@ import { pgTable, integer, text, index, boolean } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { properties } from './properties';
-import { PropertyValuesEnum } from './enumerated_types';
 
 export const property_values = pgTable(
 	'property_values',
@@ -14,7 +13,7 @@ export const property_values = pgTable(
 			.references(() => properties.id, { onDelete: 'cascade' }),
 		name: text('name').notNull(),
 		// Constraint Reminder: value & boolean_value can't both co-exist, only one is allowed.
-		value: PropertyValuesEnum('value'),
+		value: text('value'),
 		boolean_value: boolean('boolean_value'),
 		numeric_value: integer('numeric_value'),
 		icon: text('icon'),

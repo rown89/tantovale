@@ -59,11 +59,14 @@ import { z } from "zod";
 export default function CreateItemFormComponent({
   subcategory,
 }: {
-  subcategory?: Omit<Category, "category_id" | "parent_id" | "subcategories">;
+  subcategory?: Omit<
+    Category,
+    "category_id" | "parent_id" | "subcategories" | "menu_order"
+  >;
 }) {
   const [progress, setProgress] = useState(step_one);
   const [subcategoriesMenu, setSubcategoriesMenu] = useState<
-    Pick<Category, "id" | "name" | "subcategories">[]
+    Partial<Category>[]
   >([]);
   const [searchedCityName, setSearchedCityName] = useState("");
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);

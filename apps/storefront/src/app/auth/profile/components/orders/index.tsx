@@ -33,7 +33,6 @@ import {
 import { Button } from "@workspace/ui/components/button";
 import { PaymentDialog } from "#components/dialogs/pay-dialog";
 import { client } from "@workspace/server/client-rpc";
-import { OrderStatus } from "@workspace/server/enumerated_values";
 import { formatPrice } from "@workspace/ui/lib/utils";
 import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 import { getStatusBadge } from "./order-status-badges";
@@ -41,8 +40,20 @@ import { ShippingDialog } from "#components/dialogs/shipping-dialog";
 import { Spinner } from "@workspace/ui/components/spinner";
 import { Label } from "@workspace/ui/components/label";
 
+type OrderStatus =
+  | "payment_pending"
+  | "payment_confirmed"
+  | "payment_failed"
+  | "payment_refunded"
+  | "shipping_pending"
+  | "shipping_confirmed"
+  | "completed"
+  | "cancelled"
+  | "expired"
+  | "all";
+
 export default function UserSellingItemsComponent() {
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus>("all");
   const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
 
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);

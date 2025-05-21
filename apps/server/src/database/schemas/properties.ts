@@ -1,13 +1,11 @@
 import { integer, pgTable, text } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
-import { propertiesEnum, propertyTypeEnum } from './enumerated_types';
-
 export const properties = pgTable('properties', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
 	name: text('name').notNull(),
-	slug: propertiesEnum('slug').notNull().unique(),
-	type: propertyTypeEnum('type').notNull(),
+	slug: text('slug').notNull().unique(),
+	type: text('type').notNull(),
 });
 
 export type SelectProperty = typeof properties.$inferSelect;

@@ -1,21 +1,14 @@
-CREATE TYPE "public"."property_values_enum" AS ENUM('null', 'shipping', 'pickup', 'new', 'used-like-new', 'used-good', 'used-fair', 'unisex', 'men', 'women', 'leather', 'cotton', 'wool', 'silk', 'linen', 'polyester', 'nylon', 'rayon', 'spandex', 'acrylic', 'viscose', 'denim', 'suede', 'velvet', 'cashmere', 'corduroy', 'tweed', 'flannel', 'canvas', 'hemp', 'bamboo', 'fleece', 'microfiber', 'modal', 'jacquard', 'chiffon', 'taffeta', 'satin', 'gabardine', 'terrycloth', 'seersucker', 'batiste', 'muslin', 'organza', 'tulle', 'black', 'white', 'red', 'blue', 'yellow', 'green', 'orange', 'purple', 'pink', 'brown', 'gray', 'beige', 'cyan', 'magenta', 'lime', 'olive', 'navy', 'teal', 'maroon', 'turquoise', 'gold', 'silver', 'bronze', 'ivory', 'mustard', 'coral', 'salmon', 'peach', 'lavender', 'charcoal', 'indigo', 'periwinkle', 'burgundy', 'mint', 'ochre', 'plum', 'rust', 'saffron', 'jade', 'violet', 's', 'm', 'l', 'xl', 'xxl', 'xxxl', '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5', '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5', '43', '43.5', '44', '44.5', '45', '45.5', '46', '46.5', '47', '47.5', '48', '48.5', '49', '49.5', '50', '28mm', '30mm', '32mm', '34mm', '36mm', '38mm', '40mm', '41mm', '42mm', '43mm', '44mm', '45mm', '46mm', '47mm', '48mm', '50mm', '52mm', '3.5"', '4.0"', '4.5"', '5.0"', '5.2"', '5.5"', '5.7"', '6.0"', '6.1"', '6.2"', '6.3"', '6.4"', '6.5"', '6.6"', '6.7"', '6.8"', '7.0"', '7.2"', '7.6"', '8.0"', '15"', '17"', '19"', '20"', '21"', '21.5"', '22"', '23"', '23.6"', '24"', '25"', '27"', '28"', '29"', '30"', '32"', '34"', '35"', '37.5"', '38"', '40"', '42"', '43"', '49"', '55"');--> statement-breakpoint
-CREATE TYPE "public"."subcategories_enum" AS ENUM('computers', 'desktop_computer', 'phones', 'smartphones_cellulares', 'accessories', 'photography', 'laptops', 'cameras', 'lenses', 'shoes', 'jeans', 'pants', 'toys', 'book_kids', 'cards', 'single_cards', 'uncut_paper_sheet', 'accessories_phones', 'accessories_photography', 'accessories_computers', 'accessories_clothings');--> statement-breakpoint
-CREATE TYPE "public"."categories_enum" AS ENUM('electronics', 'clothings', 'kids', 'collectables');--> statement-breakpoint
 CREATE TYPE "public"."chat_message_type_enum" AS ENUM('text', 'proposal');--> statement-breakpoint
 CREATE TYPE "public"."transaction_currency_enum" AS ENUM('usd', 'eur', 'gbp', 'cad', 'aud', 'jpy', 'cny', 'inr', 'brl', 'ars', 'clp', 'cop', 'mxn', 'pen', 'pyg', 'uyu', 'vef', 'vnd', 'zar');--> statement-breakpoint
-CREATE TYPE "public"."delivery_method_enum" AS ENUM('shipping', 'pickup');--> statement-breakpoint
 CREATE TYPE "public"."item_images_size_enum" AS ENUM('original', 'small', 'medium', 'thumbnail');--> statement-breakpoint
 CREATE TYPE "public"."status_enum" AS ENUM('available', 'sold', 'pending', 'archived');--> statement-breakpoint
-CREATE TYPE "public"."order_status_enum" AS ENUM('pending_payment', 'payment_confirmed', 'completed', 'cancelled', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."proposal_status_enum" AS ENUM('pending', 'accepted', 'rejected', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."profile_types_enum" AS ENUM('private', 'private_pro', 'shop', 'shop_pro');--> statement-breakpoint
-CREATE TYPE "public"."properties_enum" AS ENUM('condition', 'delivery_method', 'gender', 'color', 'material_clothing', 'size_clothing', 'size_shoes', 'size_watches', 'size_phone_screen', 'size_monitor_screen');--> statement-breakpoint
-CREATE TYPE "public"."property_types_enum" AS ENUM('select', 'select_multi', 'boolean', 'checkbox', 'radio', 'number');--> statement-breakpoint
 CREATE TYPE "public"."sex_enum" AS ENUM('male', 'female');--> statement-breakpoint
 CREATE TABLE "categories" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "categories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"name" text NOT NULL,
-	"slug" "categories_enum" NOT NULL,
+	"slug" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "categories_slug_unique" UNIQUE("slug")
@@ -105,8 +98,7 @@ CREATE TABLE "items" (
 	"status" "status_enum" DEFAULT 'available' NOT NULL,
 	"published" boolean DEFAULT false NOT NULL,
 	"price" integer DEFAULT 0 NOT NULL,
-	"shipping_price" integer,
-	"is_payable" boolean DEFAULT false NOT NULL,
+	"easy_pay" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp
@@ -117,7 +109,7 @@ CREATE TABLE "orders_items" (
 	"order_id" integer,
 	"item_id" integer,
 	"finished_price" integer NOT NULL,
-	"order_status" "order_status_enum" DEFAULT 'pending_payment' NOT NULL,
+	"order_status" text DEFAULT 'payment_pending' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
@@ -170,7 +162,7 @@ CREATE TABLE "property_values" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "property_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"property_id" integer NOT NULL,
 	"name" text NOT NULL,
-	"value" "property_values_enum",
+	"value" text,
 	"boolean_value" boolean,
 	"numeric_value" integer,
 	"icon" text,
@@ -180,8 +172,8 @@ CREATE TABLE "property_values" (
 CREATE TABLE "properties" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "properties_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"name" text NOT NULL,
-	"slug" "properties_enum" NOT NULL,
-	"type" "property_types_enum" NOT NULL,
+	"slug" text NOT NULL,
+	"type" text NOT NULL,
 	CONSTRAINT "properties_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -211,12 +203,13 @@ CREATE TABLE "shippings_orders" (
 --> statement-breakpoint
 CREATE TABLE "shippings" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "shippings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"tracking_number" text NOT NULL,
-	"tracking_url" text NOT NULL,
-	"tracking_status" text NOT NULL,
-	"tracking_status_description" text NOT NULL,
-	"tracking_status_updated_at" timestamp NOT NULL,
+	"item_id" integer,
 	"shipping_price" integer NOT NULL,
+	"tracking_number" text,
+	"tracking_url" text,
+	"tracking_status" text,
+	"tracking_status_description" text,
+	"tracking_status_updated_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
@@ -235,9 +228,10 @@ CREATE TABLE "states" (
 CREATE TABLE "subcategories" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "subcategories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"name" text NOT NULL,
-	"slug" "subcategories_enum" NOT NULL,
+	"slug" text NOT NULL,
 	"category_id" integer NOT NULL,
 	"parent_id" integer DEFAULT NULL,
+	"easy_pay" boolean,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "subcategories_slug_unique" UNIQUE("slug")
@@ -314,6 +308,7 @@ ALTER TABLE "property_values" ADD CONSTRAINT "property_values_property_id_proper
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_username_users_username_fk" FOREIGN KEY ("username") REFERENCES "public"."users"("username") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "shippings_orders" ADD CONSTRAINT "shippings_orders_shipping_id_shippings_id_fk" FOREIGN KEY ("shipping_id") REFERENCES "public"."shippings"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "shippings_orders" ADD CONSTRAINT "shippings_orders_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "shippings" ADD CONSTRAINT "shippings_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "states" ADD CONSTRAINT "states_country_id_countries_id_fk" FOREIGN KEY ("country_id") REFERENCES "public"."countries"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "subcategories" ADD CONSTRAINT "subcategories_parent_id_subcategories_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -328,7 +323,7 @@ CREATE INDEX "user_id_idx" ON "items" USING btree ("user_id");--> statement-brea
 CREATE INDEX "city_idx" ON "items" USING btree ("city");--> statement-breakpoint
 CREATE INDEX "title_idx" ON "items" USING btree ("title");--> statement-breakpoint
 CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> statement-breakpoint
-CREATE INDEX "is_payable_idx" ON "items" USING btree ("is_payable");--> statement-breakpoint
+CREATE INDEX "easy_pay_idx" ON "items" USING btree ("easy_pay");--> statement-breakpoint
 CREATE INDEX "published_idx" ON "items" USING btree ("published");--> statement-breakpoint
 CREATE INDEX "status_idx" ON "items" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "profiles_name_surname_idx" ON "profiles" USING btree ("name","surname");--> statement-breakpoint

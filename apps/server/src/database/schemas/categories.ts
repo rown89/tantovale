@@ -2,13 +2,13 @@ import { pgTable, integer, text, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
-import { categoriesEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 
 export const categories = pgTable('categories', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
 	name: text('name').notNull(),
-	slug: categoriesEnum('slug').notNull().unique(),
+	slug: text('slug').notNull().unique(),
+	menu_order: integer('menu_order').notNull().default(0),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

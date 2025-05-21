@@ -10,7 +10,6 @@ import { items_properties_values } from 'src/database/schemas/items_properties_v
 import { items } from 'src/database/schemas/items';
 import { users } from 'src/database/schemas/users';
 import { authPath } from 'src/utils/constants';
-import { OrderStatus } from 'src/database/schemas/enumerated_values';
 
 // TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
@@ -39,7 +38,7 @@ export const ordersRoute = createRouter()
 				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
 				.innerJoin(items, eq(orders_items.item_id, items.id))
 				.innerJoin(users, eq(orders.seller_id, users.id))
-				.where(and(eq(orders.buyer_id, user.id), eq(orders_items.order_status, status as OrderStatus)));
+				.where(and(eq(orders.buyer_id, user.id), eq(orders_items.order_status, status)));
 		}
 
 		if (!userOrders.length) return c.json([], 200);

@@ -4,12 +4,11 @@ import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { categories } from './categories';
 import { items } from './items';
-import { SubcategoriesEnum } from './enumerated_types';
 
 export const subcategories = pgTable('subcategories', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
 	name: text('name').notNull(),
-	slug: SubcategoriesEnum('slug').notNull().unique(),
+	slug: text('slug').notNull().unique(),
 	category_id: integer('category_id')
 		.notNull()
 		.references(() => categories.id, {
@@ -23,6 +22,7 @@ export const subcategories = pgTable('subcategories', {
 		})
 		.default(sql.raw('NULL')),
 	easy_pay: boolean('easy_pay'),
+	menu_order: integer('menu_order').notNull().default(0),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

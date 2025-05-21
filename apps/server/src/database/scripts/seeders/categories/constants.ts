@@ -1,6 +1,11 @@
-import { PropertyValues } from 'src/database/schemas/enumerated_values';
-
 import type { SubcategorySeeds, PropertySeed } from './types';
+export interface PropertyValues {
+	slug: string;
+	value: string;
+	name: string;
+	icon?: string;
+	meta?: Record<string, any>;
+}
 
 export const Categories = {
 	ELECTRONICS: 'electronics',
@@ -42,6 +47,9 @@ export const Subcategories = {
 	SHOES: 'shoes',
 	JEANS: 'jeans',
 	PANTS: 'pants',
+	SUITS: 'suits',
+	SPORTWEAR: 'sportswear',
+	SWIMWEAR: 'swimwear',
 	KIDS: 'kids',
 	TOYS: 'toys',
 	CARDS: 'cards',
@@ -57,16 +65,16 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
 		{
 			parent: { name: 'Computers', slug: Subcategories.COMPUTERS },
 			children: [
-				{ name: 'Desktops', slug: Subcategories.DESKTOP_COMPUTER, easy_pay: true },
-				{ name: 'Laptops', slug: Subcategories.LAPTOPS, easy_pay: true },
-				{ name: 'Monitors', slug: Subcategories.COMPUTER_MONITORS, easy_pay: true },
-				{ name: 'Mouse', slug: Subcategories.COMPUTER_MOUSE, easy_pay: true },
-				{ name: 'Keyboards', slug: Subcategories.COMPUTER_KEYBOARDS, easy_pay: true },
-				{ name: 'Printers', slug: Subcategories.COMPUTER_PRINTERS, easy_pay: true },
-				{ name: 'Scanners', slug: Subcategories.COMPUTER_SCANNERS, easy_pay: true },
-				{ name: 'Networking', slug: Subcategories.COMPUTER_NETWORKING, easy_pay: true },
-				{ name: 'Storage', slug: Subcategories.COMPUTER_STORAGE, easy_pay: true },
-				{ name: 'Sound', slug: Subcategories.COMPUTER_SOUND, easy_pay: true },
+				{ name: 'Desktops', slug: Subcategories.DESKTOP_COMPUTER, easy_pay: true, menu_order: 1 },
+				{ name: 'Laptops', slug: Subcategories.LAPTOPS, easy_pay: true, menu_order: 2 },
+				{ name: 'Monitors', slug: Subcategories.COMPUTER_MONITORS, easy_pay: true, menu_order: 3 },
+				{ name: 'Mouse', slug: Subcategories.COMPUTER_MOUSE, easy_pay: true, menu_order: 4 },
+				{ name: 'Keyboards', slug: Subcategories.COMPUTER_KEYBOARDS, easy_pay: true, menu_order: 5 },
+				{ name: 'Printers', slug: Subcategories.COMPUTER_PRINTERS, easy_pay: true, menu_order: 6 },
+				{ name: 'Scanners', slug: Subcategories.COMPUTER_SCANNERS, easy_pay: true, menu_order: 7 },
+				{ name: 'Networking', slug: Subcategories.COMPUTER_NETWORKING, easy_pay: true, menu_order: 8 },
+				{ name: 'Storage', slug: Subcategories.COMPUTER_STORAGE, easy_pay: true, menu_order: 9 },
+				{ name: 'Sound', slug: Subcategories.COMPUTER_SOUND, easy_pay: true, menu_order: 10 },
 			],
 		},
 		{
@@ -76,8 +84,9 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
 					name: 'Smartphones & Cellulars',
 					slug: Subcategories.SMARTPHONES_CELLULARS,
 					easy_pay: true,
+					menu_order: 1,
 				},
-				{ name: 'Phone Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true },
+				{ name: 'Phone Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true, menu_order: 2 },
 			],
 		},
 		{
@@ -87,38 +96,42 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
 					name: 'Tablets',
 					slug: Subcategories.TABLETS,
 					easy_pay: true,
+					menu_order: 1,
 				},
-				{ name: 'Smartwatches', slug: Subcategories.SMARTWATCHES, easy_pay: true },
-				{ name: 'Devices Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true },
-				{ name: 'E-Readers', slug: Subcategories.E_READERS, easy_pay: true },
+				{ name: 'Smartwatches', slug: Subcategories.SMARTWATCHES, easy_pay: true, menu_order: 2 },
+				{ name: 'E-Readers', slug: Subcategories.E_READERS, easy_pay: true, menu_order: 3 },
+				{ name: 'Devices Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true, menu_order: 4 },
 			],
 		},
 		{
 			parent: { name: 'Photography', slug: Subcategories.PHOTOGRAPHY },
 			children: [
-				{ name: 'Cameras', slug: Subcategories.CAMERAS, easy_pay: true },
-				{ name: 'Lenses', slug: Subcategories.LENSES, easy_pay: true },
-				{ name: 'Photography Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true },
-				{ name: 'Drones', slug: Subcategories.DRONES, easy_pay: true },
+				{ name: 'Cameras', slug: Subcategories.CAMERAS, easy_pay: true, menu_order: 1 },
+				{ name: 'Lenses', slug: Subcategories.LENSES, easy_pay: true, menu_order: 2 },
+				{ name: 'Drones', slug: Subcategories.DRONES, easy_pay: true, menu_order: 3 },
+				{ name: 'Photography Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true, menu_order: 4 },
 			],
 		},
 	],
 	clothings: [
-		{ name: 'Shoes', slug: Subcategories.SHOES, easy_pay: true },
-		{ name: 'Jeans', slug: Subcategories.JEANS, easy_pay: true },
-		{ name: 'Pants', slug: Subcategories.PANTS, easy_pay: true },
-		{ name: 'Clothing Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true },
+		{ name: 'Shoes', slug: Subcategories.SHOES, easy_pay: true, menu_order: 1 },
+		{ name: 'Jeans', slug: Subcategories.JEANS, easy_pay: true, menu_order: 2 },
+		{ name: 'Pants', slug: Subcategories.PANTS, easy_pay: true, menu_order: 3 },
+		{ name: 'Suits', slug: Subcategories.SUITS, easy_pay: true, menu_order: 4 },
+		{ name: 'Sportswear', slug: Subcategories.SPORTWEAR, easy_pay: true, menu_order: 5 },
+		{ name: 'Swimwear', slug: Subcategories.SWIMWEAR, easy_pay: true, menu_order: 6 },
+		{ name: 'Clothing Accessories', slug: Subcategories.ACCESSORIES, easy_pay: true, menu_order: 7 },
 	],
 	kids: [
-		{ name: 'Toys', slug: Subcategories.TOYS, easy_pay: true },
-		{ name: 'Books', slug: Subcategories.BOOK_KIDS, easy_pay: true },
+		{ name: 'Toys', slug: Subcategories.TOYS, easy_pay: true, menu_order: 1 },
+		{ name: 'Books', slug: Subcategories.BOOK_KIDS, easy_pay: true, menu_order: 2 },
 	],
 	collectables: [
 		{
 			parent: { name: 'Cards', slug: Subcategories.CARDS },
 			children: [
-				{ name: 'Single Cards', slug: Subcategories.SINGLE_CARDS, easy_pay: true },
-				{ name: 'Card Decks', slug: Subcategories.CARD_DECKS, easy_pay: true },
+				{ name: 'Single Cards', slug: Subcategories.SINGLE_CARDS, easy_pay: true, menu_order: 1 },
+				{ name: 'Card Decks', slug: Subcategories.CARD_DECKS, easy_pay: true, menu_order: 2 },
 			],
 		},
 	],
@@ -133,6 +146,7 @@ export const Properties = {
 	SIZE_SHOES: 'size_shoes',
 	SIZE_WATCHES: 'size_watches',
 	SIZE_PHONE_SCREEN: 'size_phone_screen',
+	SIZE_TABLET_SCREEN: 'size_tablet_screen',
 	SIZE_MONITOR_SCREEN: 'size_monitor_screen',
 	DELIVERY_METHOD: 'delivery_method',
 } as const;
@@ -192,13 +206,14 @@ export const PROPERTY_SEEDS: PropertySeed[] = [
 export const PROPERTY_VALUES: PropertyValues[] = [
 	// CONDITIONS
 	{ slug: Properties.CONDITION, name: 'New', value: 'new' },
-	{ slug: Properties.CONDITION, name: 'Used - Like New', value: 'used-like-new' },
 	{ slug: Properties.CONDITION, name: 'Used - Good', value: 'used-good' },
 	{ slug: Properties.CONDITION, name: 'Used - Fair', value: 'used-fair' },
+	{ slug: Properties.CONDITION, name: 'Used - Damaged', value: 'used-damaged' },
 
 	// DELIVERY METHOD
 	{ slug: Properties.DELIVERY_METHOD, name: 'Pickup', value: 'pickup' },
 	{ slug: Properties.DELIVERY_METHOD, name: 'Shipping', value: 'shipping' },
+	{ slug: Properties.DELIVERY_METHOD, name: 'Shipping Pro', value: 'shipping_pro' },
 
 	// GENDER
 	{ slug: Properties.GENDER, name: 'Unisex', value: 'unisex' },
@@ -365,6 +380,24 @@ export const PROPERTY_VALUES: PropertyValues[] = [
 	{ slug: Properties.SIZE_PHONE_SCREEN, name: '7.2"', value: '7.2"' },
 	{ slug: Properties.SIZE_PHONE_SCREEN, name: '7.6"', value: '7.6"' },
 	{ slug: Properties.SIZE_PHONE_SCREEN, name: '8.0"', value: '8.0"' },
+	{ slug: Properties.SIZE_PHONE_SCREEN, name: '8.2"', value: '8.2"' },
+	{ slug: Properties.SIZE_PHONE_SCREEN, name: '8.4"', value: '8.4"' },
+	{ slug: Properties.SIZE_PHONE_SCREEN, name: '8.6"', value: '8.6"' },
+	{ slug: Properties.SIZE_PHONE_SCREEN, name: '8.8"', value: '8.8"' },
+	{ slug: Properties.SIZE_PHONE_SCREEN, name: '9.0"', value: '9.0"' },
+
+	// TABLET SCREEN SIZES
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '7.9"', value: '7.9"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '8.3"', value: '8.3"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '8.9"', value: '8.9"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '9.7"', value: '9.7"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '10.1"', value: '10.1"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '10.2"', value: '10.2"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '10.5"', value: '10.5"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '11"', value: '11"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '12.9"', value: '12.9"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '13"', value: '13"' },
+	{ slug: Properties.SIZE_TABLET_SCREEN, name: '14"', value: '14"' },
 
 	// MONITOR SCREEN SIZES
 	{ slug: Properties.SIZE_MONITOR_SCREEN, name: '15"', value: '15"' },
@@ -401,17 +434,20 @@ export const SUBCATEGORIES_PROPERTIES = [
 			{
 				slug: Subcategories.PANTS,
 				on_item_create_required: true,
-				on_item_update_editable: false,
+				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.JEANS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
 				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -421,17 +457,20 @@ export const SUBCATEGORIES_PROPERTIES = [
 			{
 				slug: Subcategories.PANTS,
 				on_item_create_required: true,
-				on_item_update_editable: false,
+				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.JEANS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
 				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -441,17 +480,20 @@ export const SUBCATEGORIES_PROPERTIES = [
 			{
 				slug: Subcategories.PANTS,
 				on_item_create_required: true,
-				on_item_update_editable: false,
+				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.JEANS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.SHOES,
 				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -460,13 +502,15 @@ export const SUBCATEGORIES_PROPERTIES = [
 		subcategories: [
 			{
 				slug: Subcategories.PANTS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.JEANS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -475,8 +519,9 @@ export const SUBCATEGORIES_PROPERTIES = [
 		subcategories: [
 			{
 				slug: Subcategories.SHOES,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -485,8 +530,20 @@ export const SUBCATEGORIES_PROPERTIES = [
 		subcategories: [
 			{
 				slug: Subcategories.PHONES,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
+			},
+		],
+	},
+	{
+		propertySlug: Properties.SIZE_TABLET_SCREEN,
+		subcategories: [
+			{
+				slug: Subcategories.TABLETS,
+				on_item_create_required: true,
+				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},
@@ -495,13 +552,15 @@ export const SUBCATEGORIES_PROPERTIES = [
 		subcategories: [
 			{
 				slug: Subcategories.LAPTOPS,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 			{
 				slug: Subcategories.DESKTOP_COMPUTER,
-				on_item_create_required: false,
+				on_item_create_required: true,
 				on_item_update_editable: true,
+				searchable: true,
 			},
 		],
 	},

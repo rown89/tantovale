@@ -82,7 +82,10 @@ export function CategorySelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-full min-w-[300px]" align="start">
+      <DropdownMenuContent
+        className="w-full min-w-[250px] max-w-[300px]"
+        align="start"
+      >
         {isLoading ? (
           "--"
         ) : (

@@ -1,5 +1,6 @@
 import { count, eq } from 'drizzle-orm';
 import { createClient, type DrizzleClient } from '../../..';
+
 import {
 	categories,
 	subcategories,
@@ -153,12 +154,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Electronic Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -197,12 +193,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 
 	let insertedChildren: any[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Electronic Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -234,12 +225,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Clothing Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -278,12 +264,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 
 	let insertedChildren: any[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Clothing Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -318,12 +299,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Kids Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -362,12 +338,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 
 	let insertedChildren: any[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Kids Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -405,12 +376,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 		return [];
 	}
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Collectables Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -449,12 +415,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 
 	let insertedChildren: any[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Collectables Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -466,12 +427,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
  * Seeds properties table and returns a map of slug to id
  */
 async function seedProperties(db: DrizzleClient['db']) {
-	const insertedProperties = await db
-		.insert(properties)
-		// @ts-expect-error ignore seeder
-		.values(PROPERTY_SEEDS)
-		.onConflictDoNothing()
-		.returning();
+	const insertedProperties = await db.insert(properties).values(PROPERTY_SEEDS).onConflictDoNothing().returning();
 
 	console.log(`✅ Properties Inserted: ${insertedProperties.length}`);
 
