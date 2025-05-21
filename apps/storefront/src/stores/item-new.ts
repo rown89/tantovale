@@ -1,5 +1,5 @@
 import { StateCreator } from "zustand";
-import type { PropertyType } from "#components/forms/item-create-form/utils";
+import type { PropertyType } from "#components/forms/handle-item-form/utils";
 
 export type NewItemStore = {
   step: number;

@@ -37,33 +37,34 @@ import {
 } from "@workspace/ui/components/dialog";
 import { Progress } from "@workspace/ui/components/progress";
 import {
-  createItemSchema,
   maxDescriptionLength,
-  multipleImagesSchema,
   type Category,
 } from "@workspace/server/extended_schemas";
 
 import { CitySelector } from "#components/forms/commons/city-selector";
-import { useCreateItemForm } from "./use-create-item-form";
+import { useHandleItemForm } from "./use-handle-item-form";
 import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 import {
-  maxImages,
-  step_one,
-  step_two,
   updatePropertiesArray,
-  PropertyType,
+  isNextButtonEnabled,
+  handleItemPreviewProperties,
 } from "./utils";
-import { z } from "zod";
+import { maxImages, step_one, step_two } from "./constants";
+import { PropertyFormValue } from "./types";
 
-export default function CreateItemFormComponent({
-  subcategory,
-}: {
+type HandleItemFormComponent = {
   subcategory?: Omit<
     Category,
     "category_id" | "parent_id" | "subcategories" | "menu_order"
   >;
-}) {
+  formModel: "create" | "edit";
+};
+
+export default function HandleItemFormComponent({
+  subcategory,
+  formModel = "create",
+}: HandleItemFormComponent) {
   const [progress, setProgress] = useState(step_one);
   const [subcategoriesMenu, setSubcategoriesMenu] = useState<
     Partial<Category>[]
@@ -71,10 +72,10 @@ export default function CreateItemFormComponent({
   const [searchedCityName, setSearchedCityName] = useState("");
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [selectedCondition, setSelectedCondition] = useState<
-    Pick<PropertyType, "id" | "name" | "slug"> | undefined
+    Omit<PropertyFormValue, "value"> | undefined
   >();
   const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState<
-    Pick<PropertyType, "id" | "name" | "slug"> | undefined
+    Omit<PropertyFormValue, "value"> | undefined
   >();
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -103,91 +104,54 @@ export default function CreateItemFormComponent({
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,
-    handlePayableChange,
+    handleEasyPayChange,
     setIsManualShipping,
-    setIsPickup,
-    removeDeliveryMethodProperty,
-  } = useCreateItemForm({
+    handleManualShippingChange,
+  } = useHandleItemForm({
     subcategory,
     subCatProperties,
   });
 
   const titleField = useField({ form, name: "commons.title" });
   const title = titleField.state.value;
-  const titleIsTouched = titleField.state.meta.isTouched;
   const priceField = useField({ form, name: "commons.price" });
   const price = priceField.state.value;
-  const priceIsTouched = priceField.state.meta.isTouched;
   const descriptionField = useField({ form, name: "commons.description" });
   const description = descriptionField.state.value;
-  const descriptionIsTouched = descriptionField.state.meta.isTouched;
   const easyPayField = useField({ form, name: "commons.easy_pay" });
   const easyPay = easyPayField.state.value;
   const cityField = useField({ form, name: "commons.city" });
   const city = cityField.state.value;
-  const cityIsTouched = cityField.state.meta.isTouched;
   const imagesField = useField({ form, name: "images" });
   const images = imagesField.state.value;
-  const imagesIsTouched = imagesField.state.meta.isTouched;
   const propertiesField = useField({ form, name: "properties" });
   const properties = propertiesField.state.value;
-  const propertiesIsTouched = propertiesField.state.meta.isTouched;
 
   // Handle part of Item preview
   useEffect(() => {
     if (!properties?.length) return;
 
-    // Handle condition selection
-    const conditionProperty = properties.find(
-      (item) => item.slug === "condition",
-    );
-    const selectedConditionId = conditionProperty?.value;
+    const { selectedCondition, selectedDeliveryMethods } =
+      handleItemPreviewProperties({
+        properties,
+        subCatProperties,
+      });
 
-    if (selectedConditionId) {
-      const conditionFilter = subCatProperties?.find(
-        (item) => item.slug === "condition",
-      );
-      const extractedCondition = conditionFilter?.options.find(
-        (item) => item.id === Number(selectedConditionId),
-      );
+    if (selectedCondition) setSelectedCondition(selectedCondition);
 
-      if (extractedCondition) {
-        setSelectedCondition({
-          id: extractedCondition.id,
-          name: extractedCondition.name,
-          slug: String(extractedCondition.value),
-        });
-      }
-    }
-
-    // Handle delivery methods selection
-    const deliveryProperty = properties.find(
-      (item) => item.slug === "delivery_method",
-    );
-    const selectedDeliveryMethodsIds = deliveryProperty?.value;
-
-    if (selectedDeliveryMethodsIds) {
-      const deliveryMethodFilter = subCatProperties?.find(
-        (item) => item.slug === "delivery_method",
-      );
-
-      const extractedDeliveryMethods = deliveryMethodFilter?.options.find(
-        (option) => option.id === Number(selectedDeliveryMethodsIds),
-      );
-
-      if (extractedDeliveryMethods) {
-        setSelectedDeliveryMethod({
-          id: extractedDeliveryMethods.id,
-          name: extractedDeliveryMethods.name,
-          slug: String(extractedDeliveryMethods.value),
-        });
-      }
+    if (selectedDeliveryMethods) {
+      setSelectedDeliveryMethod(selectedDeliveryMethods);
     }
   }, [properties, subCatProperties]);
 
   // If we have one, set the subcategory from query params
   useEffect(() => {
-    if (subcategory) handleSubCategorySelect(subcategory);
+    // inizialize shipping_price
+    form.setFieldValue("shipping_price", 0);
+
+    if (subcategory) {
+      handleSubCategorySelect(subcategory);
+    }
   }, []);
 
   // build subcategories Menu Hierarchy:
@@ -233,35 +197,6 @@ export default function CreateItemFormComponent({
       );
     });
   }, [images]);
-
-  function isNextButtonEnabled() {
-    // Validate step one
-    const stepOneSchema = z.object({
-      commons: createItemSchema.shape.commons,
-      images: multipleImagesSchema,
-    });
-
-    const step_one_validation = stepOneSchema.safeParse(form.state.values);
-
-    // Get required original subCatProperties length and exclude "delivery_method" but require "on_item_create_required"
-    const requiredProperties =
-      subCatProperties?.filter(
-        (item) =>
-          item.slug !== "delivery_method" && item.on_item_create_required,
-      ) || [];
-
-    // Count how many required properties are satisfied in the form
-    const satisfiedProperties = requiredProperties.filter((requiredProp) =>
-      properties?.some((formProp) => formProp.slug === requiredProp.slug),
-    ).length;
-
-    console.log(satisfiedProperties, requiredProperties.length);
-
-    const isMandatoryPropertiesSatisfied =
-      satisfiedProperties === requiredProperties.length;
-
-    return step_one_validation.success && isMandatoryPropertiesSatisfied;
-  }
 
   return (
     <div className="container mx-auto py-6 px-6 lg:px-2 xl:px-0 h-[calc(100vh-56px)]">
@@ -517,7 +452,6 @@ export default function CreateItemFormComponent({
               )}
 
               {/* STEP TWO */}
-              {/* Only show Easy Pay if the subcategory is payable and deliveryMethodPropertyId exists */}
               {progress === step_two && (
                 <div className="border-1 border-dashed p-3 rounded-md flex flex-col gap-2">
                   <form.Field name="properties">
@@ -556,6 +490,7 @@ export default function CreateItemFormComponent({
                     }}
                   </form.Field>
 
+                  {/* Show Easy Pay only if the subcategory is payable and deliveryMethodPropertyId exists */}
                   {subcategory?.easy_pay && deliveryMethodProperty?.id && (
                     <form.Field name="commons.easy_pay">
                       {(field) => {
@@ -567,7 +502,7 @@ export default function CreateItemFormComponent({
                             <Alert
                               className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
                               onClick={() =>
-                                handlePayableChange(
+                                handleEasyPayChange(
                                   !value,
                                   field,
                                   propertiesField,
@@ -619,7 +554,7 @@ export default function CreateItemFormComponent({
                                     id={name}
                                     name={name}
                                     onCheckedChange={(checked) => {
-                                      handlePayableChange(
+                                      handleEasyPayChange(
                                         checked,
                                         field,
                                         propertiesField,
@@ -655,36 +590,6 @@ export default function CreateItemFormComponent({
                       {(field) => {
                         const { name, handleChange, state } = field;
                         const { value } = state;
-                        function handleManualShippingChange(
-                          value: boolean,
-                          field: AnyFieldApi,
-                        ) {
-                          setIsManualShipping(value);
-
-                          if (!value) {
-                            form.setFieldValue("shipping_price", 0);
-                          }
-
-                          // Disable Easy Pay box UI & set easyPay to false
-                          if (easyPay && value) {
-                            form.setFieldValue("commons.easy_pay", false);
-                          }
-
-                          // Disable pickup box UI
-                          if (isPickup) setIsPickup(false);
-
-                          // if "delivery_method" property exists and "manual shipping" is enabled
-                          if (deliveryMethodProperty?.id) {
-                            removeDeliveryMethodProperty();
-
-                            // Add "shipping" to the properties array, use the field of properties to update the array
-                            updatePropertiesArray({
-                              value: "shipping",
-                              property: deliveryMethodProperty,
-                              field: propertiesField,
-                            });
-                          }
-                        }
 
                         return (
                           <>
@@ -692,7 +597,11 @@ export default function CreateItemFormComponent({
                               className={`py-4 cursor-pointer ${isManualShipping ? "border-1 border-primary" : ""}`}
                               onClick={() => {
                                 const value = !isManualShipping;
-                                handleManualShippingChange(value, field);
+                                handleManualShippingChange(
+                                  value,
+                                  propertiesField,
+                                  easyPay ?? false,
+                                );
                               }}
                             >
                               <AlertTitle className="mb-2 flex gap-2 justify-between">
@@ -708,7 +617,8 @@ export default function CreateItemFormComponent({
                                     onCheckedChange={(checked) => {
                                       handleManualShippingChange(
                                         checked,
-                                        field,
+                                        propertiesField,
+                                        easyPay ?? false,
                                       );
                                     }}
                                     checked={isManualShipping}
@@ -775,6 +685,7 @@ export default function CreateItemFormComponent({
               )}
             </div>
 
+            {/* SUBMIT BUTTONS */}
             <form.Subscribe
               selector={(formState) => ({
                 canSubmit: formState.canSubmit,
@@ -802,9 +713,22 @@ export default function CreateItemFormComponent({
                           className="flex-1"
                           variant="outline"
                           type="button"
-                          disabled={!isNextButtonEnabled()}
+                          disabled={
+                            !isNextButtonEnabled({
+                              form,
+                              subCatProperties,
+                              properties,
+                            })
+                          }
                           onClick={() => {
-                            if (isNextButtonEnabled()) setProgress(step_two);
+                            if (
+                              isNextButtonEnabled({
+                                form,
+                                subCatProperties,
+                                properties,
+                              })
+                            )
+                              setProgress(step_two);
                           }}
                         >
                           Next

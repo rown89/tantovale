@@ -12,8 +12,10 @@ import {
   propertySchema,
 } from "@workspace/server/extended_schemas";
 
-import { PropertyType, formOpts, updatePropertiesArray } from "./utils";
+import { updatePropertiesArray } from "./utils";
 import { handleQueryParamChange } from "../../../utils/handle-qp";
+import { PropertyType } from "./types";
+import { formOpts } from "./constants";
 
 import type { Category } from "@workspace/server/extended_schemas";
 
@@ -22,7 +24,7 @@ export interface UseItemFormProps {
   subCatProperties: PropertyType[] | undefined;
 }
 
-export const finalCreateItemSchema = ({
+export const reshapedCreateItemSchema = ({
   propertiesData,
   isManualShipping,
 }: {
@@ -40,7 +42,7 @@ export const finalCreateItemSchema = ({
         .object({
           properties: propertySchema,
         })
-        // use refine and not superRefine to check if all required subcat properties are satisfied
+        // Check if all required subcat properties are satisfied
         .superRefine((val, ctx) => {
           propertiesData?.forEach((property) => {
             if (
@@ -60,9 +62,12 @@ export const finalCreateItemSchema = ({
       z.object({
         shipping_price: z.number().refine(
           (val) => {
-            // if isManualShipping is true, then shipping_price must be greater than 0, else it must be 0 or undefined
-            if (isManualShipping) return val > 0;
-            return val === 0 || val === undefined;
+            // if isSubcategoryPayable is false, then shipping_price must be 0 or undefined
+            if (isManualShipping) {
+              return val > 0;
+            } else {
+              return val === 0 || val === undefined;
+            }
           },
           {
             message: "Shipping price must be greater than 0",
@@ -72,9 +77,9 @@ export const finalCreateItemSchema = ({
     );
 };
 
-type schemaType = z.infer<ReturnType<typeof finalCreateItemSchema>>;
+type schemaType = z.infer<ReturnType<typeof reshapedCreateItemSchema>>;
 
-export function useCreateItemForm({
+export function useHandleItemForm({
   subcategory,
   subCatProperties,
 }: UseItemFormProps) {
@@ -97,7 +102,7 @@ export function useCreateItemForm({
     ...formOpts.defaultValues,
     asyncAlways: true,
     validators: {
-      onChange: finalCreateItemSchema({
+      onChange: reshapedCreateItemSchema({
         propertiesData: subCatProperties ?? [],
         isManualShipping,
       }),
@@ -230,9 +235,17 @@ export function useCreateItemForm({
       form.setFieldValue("shipping_price", 0);
       setIsManualShipping(false);
 
+      // Only update delivery methods if the property exists
       if (deliveryMethodProperty?.id) {
+        const deliveryValue = deliveryMethodProperty.options.find(
+          (option) => option.value === "pickup",
+        )?.id;
+
+        if (!deliveryValue) return;
+
+        // Add "shipping" to the properties array, use the field of properties to update the array
         updatePropertiesArray({
-          value: "pickup",
+          value: deliveryValue,
           property: deliveryMethodProperty,
           field,
         });
@@ -243,7 +256,7 @@ export function useCreateItemForm({
     }
   }
 
-  function handlePayableChange(
+  function handleEasyPayChange(
     checked: boolean,
     field: AnyFieldApi,
     propertiesField: AnyFieldApi,
@@ -263,15 +276,62 @@ export function useCreateItemForm({
 
       // Only update delivery methods if the property exists
       if (deliveryMethodProperty?.id) {
+        const deliveryValue = deliveryMethodProperty.options.find(
+          (option) => option.value === "shipping_easy_pay",
+        )?.id;
+
+        if (!deliveryValue) return;
+
         // Add the shipping_prepaid delivery method required for Easy Pay
         updatePropertiesArray({
-          value: "shipping_prepaid",
+          value: deliveryValue,
           property: deliveryMethodProperty,
           field: propertiesField,
         });
       }
     } else {
       removeDeliveryMethodProperty();
+    }
+  }
+
+  function handleManualShippingChange(
+    value: boolean,
+    propertiesField: AnyFieldApi,
+    easyPay: boolean,
+  ) {
+    setIsManualShipping(value);
+
+    if (!value) {
+      form.setFieldValue("shipping_price", 0);
+    }
+
+    // Disable Easy Pay box UI & set easyPay to false
+    if (easyPay && value) {
+      form.setFieldValue("commons.easy_pay", false);
+    }
+
+    // Disable pickup box UI
+    if (isPickup) setIsPickup(false);
+
+    // if "delivery_method" property exists and "manual shipping" is enabled
+    if (deliveryMethodProperty?.id) {
+      removeDeliveryMethodProperty();
+
+      // Only update delivery methods if the property exists
+      if (deliveryMethodProperty?.id) {
+        const deliveryValue = deliveryMethodProperty.options.find(
+          (option) => option.value === "shipping",
+        )?.id;
+
+        if (!deliveryValue) return;
+
+        // Add "shipping" to the properties array, use the field of properties to update the array
+        updatePropertiesArray({
+          value: deliveryValue,
+          property: deliveryMethodProperty,
+          field: propertiesField,
+        });
+      }
     }
   }
 
@@ -289,7 +349,8 @@ export function useCreateItemForm({
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,
-    handlePayableChange,
+    handleEasyPayChange,
+    handleManualShippingChange,
     removeDeliveryMethodProperty,
   };
 }

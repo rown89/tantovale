@@ -20,3 +20,12 @@ export interface SubcategorySeeds {
 export interface PropertySeed extends BaseSubcategorySeed {
 	type: 'select' | 'select_multi' | 'boolean' | 'checkbox' | 'radio';
 }
+
+export interface ChildSubcategory {
+	category_id: number;
+	name: string;
+	slug: string;
+	parent_id: number;
+	menu_order: number;
+	easy_pay: boolean;
+}

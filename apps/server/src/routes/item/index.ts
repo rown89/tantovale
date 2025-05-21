@@ -18,6 +18,7 @@ import { items_images } from '../../database/schemas/items_images';
 import { cities } from '../../database/schemas/cities';
 import { property_values } from '../../database/schemas/properties_values';
 import { users } from '../../database/schemas/users';
+import { shippings } from '../../database/schemas/shippings';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -104,13 +105,17 @@ export const itemRoute = createRouter()
 
 			if (!user_id) return c.json({ message: 'Invalid user identifier' }, 400);
 
-			const hasDeliveryMethod = properties?.some((p) => p.slug === 'delivery_method');
+			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
 
 			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
-			if (hasDeliveryMethod && shipping_price) return c.json({ message: 'Shipping price is required' }, 400);
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping_price) {
+				return c.json({ message: 'Shipping price is required' }, 400);
+			}
 
 			// if property value delivery_method is "pickup" and shipping_price is provided, return error
-			if (hasDeliveryMethod && !shipping_price) return c.json({ message: 'Shipping price is not allowed' }, 400);
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping_price) {
+				return c.json({ message: 'Shipping price is not allowed' }, 400);
+			}
 
 			const { db } = createClient();
 
@@ -149,6 +154,8 @@ export const itemRoute = createRouter()
 					throw new Error('Failed to create item');
 				}
 
+				// TODO: CONVERT PROPERTY VALUES TO NUMBERS
+
 				// Handle item properties(properties) if provided
 				if (properties?.length) {
 					// Get valid properties for this subcategory
@@ -169,7 +176,6 @@ export const itemRoute = createRouter()
 					const reshapedProperties: InsertItemPropertyValue[] = [];
 
 					// Reshape properties to match the database schema
-
 					properties.map((p) => {
 						// Check if the property contains an array of values
 						// If so, map through the values and create an object for each
@@ -206,6 +212,17 @@ export const itemRoute = createRouter()
 					if (mandatoryProperties.length > 0) {
 						throw new Error(`This subcategory requires ${mandatoryProperties.length} mandatory properties`);
 					}
+				}
+
+				// Check if delivery_method is "pickup"
+				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
+
+				// if has delivery_method and is not "pickup" and shipping_price is provided, create a shipment
+				if (hasDeliveryMethod && !isPickup && shipping_price) {
+					await tx.insert(shippings).values({
+						item_id: newItem.id,
+						shipping_price,
+					});
 				}
 
 				// Return the created item

@@ -17,7 +17,8 @@ import {
 } from "@workspace/ui/components/select";
 import { FieldInfo } from "../../utils/field-info";
 import { AnyFieldApi } from "@tanstack/react-form";
-import { PropertyType, getCurrentValue, updatePropertiesArray } from "../utils";
+import { getCurrentValue, updatePropertiesArray } from "../utils";
+import { PropertyType } from "../types";
 
 interface DynamicPropertiesProps {
   property: PropertyType;

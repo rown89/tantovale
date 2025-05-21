@@ -213,7 +213,7 @@ export const PROPERTY_VALUES: PropertyValues[] = [
 	// DELIVERY METHOD
 	{ slug: Properties.DELIVERY_METHOD, name: 'Pickup', value: 'pickup' },
 	{ slug: Properties.DELIVERY_METHOD, name: 'Shipping', value: 'shipping' },
-	{ slug: Properties.DELIVERY_METHOD, name: 'Shipping Pro', value: 'shipping_pro' },
+	{ slug: Properties.DELIVERY_METHOD, name: 'Shipping Easy Pay', value: 'shipping_easy_pay' },
 
 	// GENDER
 	{ slug: Properties.GENDER, name: 'Unisex', value: 'unisex' },

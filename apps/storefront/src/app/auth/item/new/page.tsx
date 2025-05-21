@@ -1,8 +1,8 @@
-import CreateItemFormComponent from "#components/forms/item-create-form";
+import HandleItemFormComponent from "#components/forms/handle-item-form";
 import { client } from "@workspace/server/client-rpc";
 import { redirect } from "next/navigation";
 
-export default async function CreateItemPage({
+export default async function NewItemPage({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -24,8 +24,8 @@ export default async function CreateItemPage({
 
     const subcategory = await response.json();
 
-    return <CreateItemFormComponent subcategory={subcategory?.[0]} />;
+    return <HandleItemFormComponent subcategory={subcategory?.[0]} />;
   }
 
-  return <CreateItemFormComponent />;
+  return <HandleItemFormComponent />;
 }

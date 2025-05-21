@@ -19,7 +19,7 @@ import {
 	SUBCATEGORIES_PROPERTIES,
 } from './constants';
 
-import type { BaseSubcategorySeed, ParentGroupSeed } from './types';
+import type { BaseSubcategorySeed, ChildSubcategory, ParentGroupSeed } from './types';
 
 // Type guard to check if an item is a ParentGroupSeed
 function isParentGroupSeed(item: BaseSubcategorySeed | ParentGroupSeed): item is ParentGroupSeed {
@@ -165,12 +165,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.electronics) {
 		if (isParentGroupSeed(group)) {
@@ -185,6 +180,8 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 				name: child.name,
 				slug: createUniqueSlug(child.slug, group.parent.slug),
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
@@ -236,12 +233,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.clothings) {
 		if (isParentGroupSeed(group)) {
@@ -256,6 +248,8 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 				name: child.name,
 				slug: createUniqueSlug(child.slug, group.parent.slug),
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
@@ -310,12 +304,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.kids) {
 		if (isParentGroupSeed(group)) {
@@ -330,6 +319,8 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 				name: child.name,
 				slug: child.slug,
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
@@ -387,12 +378,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.collectables) {
 		if (isParentGroupSeed(group)) {
@@ -407,6 +393,8 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 				name: child.name,
 				slug: child.slug,
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
