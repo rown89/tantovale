@@ -66,11 +66,15 @@ export const categoriesEnum = pgEnum('categories_enum', [
 export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 	Subcategories.COMPUTERS,
 	Subcategories.DESKTOP_COMPUTER,
+	Subcategories.LAPTOPS,
 	Subcategories.PHONES,
 	Subcategories.SMARTPHONES_CELLULARS,
 	Subcategories.ACCESSORIES,
 	Subcategories.PHOTOGRAPHY,
-	Subcategories.LAPTOPS,
+	Subcategories.TABLETS,
+	Subcategories.DEVICES,
+	Subcategories.SMARTWATCHES,
+	Subcategories.E_READERS,
 	Subcategories.CAMERAS,
 	Subcategories.LENSES,
 	Subcategories.SHOES,
@@ -80,11 +84,12 @@ export const SubcategoriesEnum = pgEnum('subcategories_enum', [
 	Subcategories.BOOK_KIDS,
 	Subcategories.CARDS,
 	Subcategories.SINGLE_CARDS,
-	Subcategories.UNCUT_PAPER_SHEET,
+	Subcategories.CARD_DECKS,
 	`${Subcategories.ACCESSORIES}_${Subcategories.PHONES}`,
 	`${Subcategories.ACCESSORIES}_${Subcategories.PHOTOGRAPHY}`,
 	`${Subcategories.ACCESSORIES}_${Subcategories.COMPUTERS}`,
 	`${Subcategories.ACCESSORIES}_${Categories.CLOTHINGS}`,
+	`${Subcategories.ACCESSORIES}_${Subcategories.DEVICES}`,
 ]);
 
 export const PropertyValuesEnum = pgEnum('property_values_enum', [

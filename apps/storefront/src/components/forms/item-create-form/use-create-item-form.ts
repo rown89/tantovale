@@ -131,6 +131,7 @@ export function useCreateItemForm({
             // @ts-ignore TODO: check it
             images.map(async (image) => {
               try {
+                // @ts-ignore TODO: check it
                 return await imageCompression(image, compressionOptions);
               } catch (error) {
                 console.error("Error compressing image:", error);

@@ -40,7 +40,6 @@ export const itemRoute = createRouter()
 						description: items.description,
 						city: cities.name,
 						easy_pay: items.easy_pay,
-						shipping_price: items.shipping_price,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
 						property_name: property_values.name,
@@ -96,8 +95,6 @@ export const itemRoute = createRouter()
 
 			const { commons, properties, shipping_price } = c.req.valid('json');
 
-			console.log(shipping_price);
-
 			// Auth TOKEN
 			const accessToken = getCookie(c, 'access_token');
 
@@ -106,6 +103,14 @@ export const itemRoute = createRouter()
 			const user_id = Number(payload.id);
 
 			if (!user_id) return c.json({ message: 'Invalid user identifier' }, 400);
+
+			const hasDeliveryMethod = properties?.some((p) => p.slug === 'delivery_method');
+
+			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
+			if (hasDeliveryMethod && shipping_price) return c.json({ message: 'Shipping price is required' }, 400);
+
+			// if property value delivery_method is "pickup" and shipping_price is provided, return error
+			if (hasDeliveryMethod && !shipping_price) return c.json({ message: 'Shipping price is not allowed' }, 400);
 
 			const { db } = createClient();
 

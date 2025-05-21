@@ -53,7 +53,6 @@ export const ordersRoute = createRouter()
 				order_status,
 				original_price: order.items.price,
 				finished_price,
-				shipping_price: order.items.shipping_price,
 				created_at,
 				item: {
 					id: order.items.id,

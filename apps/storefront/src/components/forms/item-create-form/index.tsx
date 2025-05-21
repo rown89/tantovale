@@ -212,7 +212,7 @@ export default function CreateItemFormComponent({
     if (!images || images.length === 0) return [];
 
     return images.map((file, i) => {
-      const imageUrl = URL.createObjectURL(file);
+      const imageUrl = URL.createObjectURL(file as unknown as Blob);
       return (
         <div
           key={i}
@@ -231,24 +231,33 @@ export default function CreateItemFormComponent({
     });
   }, [images]);
 
-  function handleNextButtonClick() {
+  function isNextButtonEnabled() {
+    // Validate step one
     const stepOneSchema = z.object({
       commons: createItemSchema.shape.commons,
       images: multipleImagesSchema,
     });
 
-    const validation = stepOneSchema.safeParse(form.state.values);
+    const step_one_validation = stepOneSchema.safeParse(form.state.values);
 
-    // Get required subcat properties length, excluding "delivery_method" and require "on_item_create_required"
-    const requiredSubcatPropertiesLength = subCatProperties?.filter(
-      (item) => item.slug !== "delivery_method" && item.on_item_create_required,
+    // Get required original subCatProperties length and exclude "delivery_method" but require "on_item_create_required"
+    const requiredProperties =
+      subCatProperties?.filter(
+        (item) =>
+          item.slug !== "delivery_method" && item.on_item_create_required,
+      ) || [];
+
+    // Count how many required properties are satisfied in the form
+    const satisfiedProperties = requiredProperties.filter((requiredProp) =>
+      properties?.some((formProp) => formProp.slug === requiredProp.slug),
     ).length;
 
-    // Check if all required subcat properties are satisfied
-    const satisfiedSubcatProperties =
-      properties?.length === requiredSubcatPropertiesLength;
+    console.log(satisfiedProperties, requiredProperties.length);
 
-    if (validation.success && satisfiedSubcatProperties) setProgress(step_two);
+    const isMandatoryPropertiesSatisfied =
+      satisfiedProperties === requiredProperties.length;
+
+    return step_one_validation.success && isMandatoryPropertiesSatisfied;
   }
 
   return (
@@ -315,7 +324,7 @@ export default function CreateItemFormComponent({
                             isError={field.state.meta.errors?.length > 0}
                             fileInputRef={uploadInputRef}
                             maxImages={maxImages}
-                            initialImages={images}
+                            initialImages={images as unknown as File[]}
                             onImagesChange={(images) => {
                               if (images) handleChange(images as any);
                             }}
@@ -783,37 +792,44 @@ export default function CreateItemFormComponent({
 
                 return (
                   <div className="flex gap-2 sticky bottom-2 p-0 md:pr-3">
-                    {subcategory?.easy_pay && progress === step_one && (
-                      <Button
-                        className="flex-1"
-                        variant="outline"
-                        type="button"
-                        onClick={handleNextButtonClick}
-                      >
-                        Next
-                      </Button>
-                    )}
-
-                    {subcategory?.easy_pay && progress === step_two && (
-                      <div className="flex w-full gap-2">
+                    {subcategory &&
+                      subcategory?.easy_pay &&
+                      progress === step_one && (
                         <Button
                           className="flex-1"
                           variant="outline"
-                          onClick={() => setProgress(step_one)}
+                          type="button"
+                          disabled={!isNextButtonEnabled()}
+                          onClick={() => {
+                            if (isNextButtonEnabled()) setProgress(step_two);
+                          }}
                         >
-                          <ArrowLeft className="h-4 w-4" /> Back
+                          Next
                         </Button>
-                        <Button
-                          className="flex-1"
-                          disabled={isSubmitDisabled}
-                          type="submit"
-                        >
-                          {isSubmitting ? "Submitting..." : "Submit"}
-                        </Button>
-                      </div>
-                    )}
+                      )}
 
-                    {!subcategory?.easy_pay && (
+                    {subcategory &&
+                      subcategory?.easy_pay &&
+                      progress === step_two && (
+                        <div className="flex w-full gap-2">
+                          <Button
+                            className="flex-1"
+                            variant="outline"
+                            onClick={() => setProgress(step_one)}
+                          >
+                            <ArrowLeft className="h-4 w-4" /> Back
+                          </Button>
+                          <Button
+                            className="flex-1"
+                            disabled={isSubmitDisabled}
+                            type="submit"
+                          >
+                            {isSubmitting ? "Submitting..." : "Submit"}
+                          </Button>
+                        </div>
+                      )}
+
+                    {subcategory && !subcategory?.easy_pay && (
                       <Button
                         className="flex-1"
                         type="submit"
