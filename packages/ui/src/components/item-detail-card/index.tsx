@@ -17,7 +17,16 @@ export interface ItemDetailCardrops {
 		title: string;
 		price: number;
 		description?: string;
-		city: string;
+		location: {
+			city: {
+				id: number;
+				name: string;
+			};
+			province: {
+				id: number;
+				name: string;
+			};
+		};
 		images: ReactNode[];
 		subcategory?: ReactNode;
 		condition?: ReactNode;
@@ -27,7 +36,7 @@ export interface ItemDetailCardrops {
 
 export const ItemDetailCard = React.memo(
 	({ isPreview = false, isCompact = false, item, imagesRef, maxImages }: ItemDetailCardrops) => {
-		const { title, price, description, city, images, condition, subcategory } = item;
+		const { title, price, description, location, images, condition, subcategory } = item;
 
 		const formattedPrice = price ? (price / 100).toFixed(2) : '0.00';
 
@@ -54,7 +63,7 @@ export const ItemDetailCard = React.memo(
 							<div className='flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between'>
 								<div className='text-muted-foreground flex items-center gap-1.5'>
 									<MapPin className='h-4 w-4' />
-									<span className='text-sm font-medium'>{city || 'Location'}</span>
+									<span className='text-sm font-medium'>{location.city.name || 'Location'}</span>
 								</div>
 
 								<div className='flex items-center gap-1'>

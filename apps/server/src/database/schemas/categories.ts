@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
@@ -9,6 +9,7 @@ export const categories = pgTable('categories', {
 	name: text('name').notNull(),
 	slug: text('slug').notNull().unique(),
 	menu_order: integer('menu_order').notNull().default(0),
+	published: boolean('published').notNull().default(true),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

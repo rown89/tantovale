@@ -8,6 +8,7 @@ import {
 	subcategory_properties,
 	property_values,
 } from '../../../schemas/schema';
+
 import {
 	CATEGORY_SEEDS,
 	SUBCATEGORY_SEEDS,
@@ -19,6 +20,7 @@ import {
 	SUBCATEGORIES_PROPERTIES,
 } from './constants';
 
+import type { SelectSubCategories } from '../../../schemas/subcategories';
 import type { BaseSubcategorySeed, ChildSubcategory, ParentGroupSeed } from './types';
 
 // Type guard to check if an item is a ParentGroupSeed
@@ -188,7 +190,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
 		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
@@ -256,7 +258,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
 		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
@@ -327,7 +329,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
 		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
@@ -401,7 +403,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
 		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 

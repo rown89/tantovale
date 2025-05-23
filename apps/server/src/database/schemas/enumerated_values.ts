@@ -41,3 +41,6 @@ export type ItemCondition = (typeof itemConditionValues)[number];
 
 export const sexValues = ['male', 'female'] as const;
 export type Sex = (typeof sexValues)[number];
+
+export const addressStatusValues = ['active', 'inactive', 'deleted'] as const;
+export type AddressStatus = (typeof addressStatusValues)[number];

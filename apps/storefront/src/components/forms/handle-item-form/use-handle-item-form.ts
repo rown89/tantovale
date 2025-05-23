@@ -133,10 +133,10 @@ export function useHandleItemForm({
           };
 
           const compressedImages = await Promise.all(
-            // @ts-ignore TODO: check it
+            // @ts-expect-error TODO: check it
             images.map(async (image) => {
               try {
-                // @ts-ignore TODO: check it
+                // @ts-expect-error TODO: check it
                 return await imageCompression(image, compressionOptions);
               } catch (error) {
                 console.error("Error compressing image:", error);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
 import {
@@ -12,14 +13,11 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import { CitySelector } from "#components/forms/commons/city-selector";
-import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
+import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { useProfileData } from "@workspace/shared/hooks/use-profile-data";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import { Button } from "@workspace/ui/components/button";
-
 import { useProfileInfoForm } from "./use-profile-info";
-import { FieldInfo } from "#components/forms/utils/field-info";
 import { Separator } from "@workspace/ui/components/separator";
 import {
   Card,
@@ -29,14 +27,32 @@ import {
   CardContent,
 } from "@workspace/ui/components/card";
 
+import { FieldInfo } from "#components/forms/utils/field-info";
+import { CitySelector } from "#components/city-selector";
+
 export default function UserInfoComponent() {
   const [searchedCity, setSearchedCityName] = useState("");
+  const [searchedProvince, setSearchedProvinceName] = useState("");
 
-  const { cities, isLoadingCities } = useCitiesData(searchedCity);
+  const { cities, isLoadingLocations: isLoadingCities } = useLocationData(
+    "city",
+    searchedCity,
+  );
+
+  const { provinces, isLoadingLocations: isLoadingProvinces } = useLocationData(
+    "province",
+    searchedProvince,
+  );
+
   const { profile, isLoadingProfile, isPaymentProviderConnected } =
     useProfileData();
-  const { form, isCityPopoverOpen, setIsCityPopoverOpen, isSubmittingForm } =
-    useProfileInfoForm({ ...profile, city: profile?.city?.id });
+
+  const {
+    profileForm,
+    isCityPopoverOpen,
+    setIsCityPopoverOpen,
+    isSubmittingProfileForm,
+  } = useProfileInfoForm({ ...profile });
 
   return (
     <div className="flex flex-col w-full gap-8 px-4">
@@ -55,50 +71,9 @@ export default function UserInfoComponent() {
           <div className="flex flex-col gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Payment provider</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  {!isPaymentProviderConnected ? (
-                    <span>
-                      Connect a{" "}
-                      <Link href="#" target="_blank" className="text-blue-500">
-                        payment provider
-                      </Link>{" "}
-                      account to start selling and accepting payments.
-                    </span>
-                  ) : (
-                    "Stripe account connected"
-                  )}
-
-                  {!isPaymentProviderConnected && (
-                    <Button className="w-full max-w-full md:max-w-fit">
-                      Connect Stripe
-                    </Button>
-                  )}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Phone validation</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  <span>
-                    Secure your account by verifying your phone number.
-                  </span>
-                  <Button className="w-full max-w-full md:max-w-fit">
-                    Verify phone number
-                  </Button>
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle>Account information</CardTitle>
-                <CardDescription></CardDescription>
               </CardHeader>
               <CardContent>
-                <Separator className="mb-4" />
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-3 mb-4">
                     <>
@@ -130,93 +105,124 @@ export default function UserInfoComponent() {
                     onSubmit={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      form.handleSubmit();
+                      profileForm.handleSubmit();
                     }}
                   >
-                    <div className="space-y-4">
-                      <form.Field name="name">
-                        {(field) => {
-                          const { name, state, handleChange } = field;
-                          const { value } = state;
+                    <profileForm.Field name="name">
+                      {(field) => {
+                        const { name, state, handleChange } = field;
+                        const { value } = state;
 
+                        return (
+                          <div className="space-y-2">
+                            <Label htmlFor={name} className="block">
+                              Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={name}
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              onChange={(e) => handleChange(e.target.value)}
+                              value={value}
+                            />
+                            <FieldInfo field={field} />
+                          </div>
+                        );
+                      }}
+                    </profileForm.Field>
+                    <profileForm.Field name="surname">
+                      {(field) => {
+                        const { name, state, handleChange } = field;
+                        const { value } = state;
+
+                        return (
+                          <div className="space-y-2">
+                            <Label htmlFor={name} className="block">
+                              Surname <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={name}
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              onChange={(e) => handleChange(e.target.value)}
+                              value={value}
+                            />
+                            <FieldInfo field={field} />
+                          </div>
+                        );
+                      }}
+                    </profileForm.Field>
+                    <profileForm.Field name="gender">
+                      {(field) => {
+                        const { name, handleChange } = field;
+
+                        return (
+                          <>
+                            <Label htmlFor={name}>
+                              Gender <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              defaultValue={profile?.gender ?? ""}
+                              onValueChange={(e: "male" | "female") => {
+                                console.log(e);
+                                handleChange(e);
+                              }}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue
+                                  placeholder={`Select your gender`}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {["male", "female"]?.map((item, i) => (
+                                    <SelectItem key={i} value={item}>
+                                      {item}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <FieldInfo field={field} />
+                          </>
+                        );
+                      }}
+                    </profileForm.Field>
+
+                    <div className="w-full">
+                      <profileForm.Subscribe
+                        selector={(formState) => ({
+                          canSubmit: formState.canSubmit,
+                          isSubmitting: formState.isSubmitting,
+                          isDirty: formState.isDirty,
+                        })}
+                      >
+                        {(state) => {
+                          const { canSubmit, isSubmitting, isDirty } = state;
                           return (
-                            <div className="space-y-2">
-                              <Label htmlFor={name} className="block">
-                                Name <span className="text-red-500">*</span>
-                              </Label>
-                              <Input
-                                id={name}
-                                name={name}
-                                disabled={isLoadingProfile || isSubmittingForm}
-                                onChange={(e) => handleChange(e.target.value)}
-                                value={value}
-                              />
-                              <FieldInfo field={field} />
-                            </div>
+                            <Button
+                              type="submit"
+                              disabled={isSubmitting || !isDirty || !canSubmit}
+                              className="w-full"
+                            >
+                              {isSubmitting ? "..." : "Submit"}
+                            </Button>
                           );
                         }}
-                      </form.Field>
-                      <form.Field name="surname">
-                        {(field) => {
-                          const { name, state, handleChange } = field;
-                          const { value } = state;
+                      </profileForm.Subscribe>
+                    </div>
+                  </form>
 
-                          return (
-                            <div className="space-y-2">
-                              <Label htmlFor={name} className="block">
-                                Surname <span className="text-red-500">*</span>
-                              </Label>
-                              <Input
-                                id={name}
-                                name={name}
-                                disabled={isLoadingProfile || isSubmittingForm}
-                                onChange={(e) => handleChange(e.target.value)}
-                                value={value}
-                              />
-                              <FieldInfo field={field} />
-                            </div>
-                          );
-                        }}
-                      </form.Field>
-                      <form.Field name="gender">
-                        {(field) => {
-                          const { name, handleChange } = field;
-
-                          return (
-                            <>
-                              <Label htmlFor={name}>
-                                Gender <span className="text-red-500">*</span>
-                              </Label>
-                              <Select
-                                name={name}
-                                disabled={isLoadingProfile || isSubmittingForm}
-                                defaultValue={profile?.gender ?? ""}
-                                onValueChange={(e: "male" | "female") => {
-                                  console.log(e);
-                                  handleChange(e);
-                                }}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue
-                                    placeholder={`Select your gender`}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {["male", "female"]?.map((item, i) => (
-                                      <SelectItem key={i} value={item}>
-                                        {item}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                              <FieldInfo field={field} />
-                            </>
-                          );
-                        }}
-                      </form.Field>
-                      <form.Field name="city">
+                  {/* TODO: add address form */}
+                  {/* <form.Field name="city">
                         {(field) => {
                           const { name, state, handleChange, handleBlur } =
                             field;
@@ -255,33 +261,48 @@ export default function UserInfoComponent() {
                           );
                         }}
                       </form.Field>
-                    </div>
-
-                    <div className="w-full">
-                      <form.Subscribe
-                        selector={(formState) => ({
-                          canSubmit: formState.canSubmit,
-                          isSubmitting: formState.isSubmitting,
-                          isDirty: formState.isDirty,
-                        })}
-                      >
-                        {(state) => {
-                          const { canSubmit, isSubmitting, isDirty } = state;
-                          return (
-                            <Button
-                              type="submit"
-                              disabled={isSubmitting || !isDirty || !canSubmit}
-                              className="w-full"
-                            >
-                              {isSubmitting ? "..." : "Submit"}
-                            </Button>
-                          );
-                        }}
-                      </form.Subscribe>
-                    </div>
-                  </form>
+                  */}
                 </div>
               </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment provider</CardTitle>
+                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
+                  {!isPaymentProviderConnected ? (
+                    <span>
+                      Connect a{" "}
+                      <Link href="#" target="_blank" className="text-blue-500">
+                        payment provider
+                      </Link>{" "}
+                      account to start selling and accepting payments.
+                    </span>
+                  ) : (
+                    "Stripe account connected"
+                  )}
+
+                  {!isPaymentProviderConnected && (
+                    <Button className="w-full max-w-full md:max-w-fit">
+                      Connect Stripe
+                    </Button>
+                  )}
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Phone validation</CardTitle>
+                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
+                  <span>
+                    Secure your account by verifying your phone number.
+                  </span>
+                  <Button className="w-full max-w-full md:max-w-fit">
+                    Verify phone number
+                  </Button>
+                </CardDescription>
+              </CardHeader>
             </Card>
           </div>
         )}

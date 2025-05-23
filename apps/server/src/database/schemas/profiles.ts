@@ -20,12 +20,8 @@ export const profiles = pgTable(
 		vat_number: varchar('vat_number', { length: 50 }),
 		birthday: date('birthday'),
 		gender: sexEnum('gender').notNull(),
-		city: integer('city')
-			.notNull()
-			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-		street_address: text('street_address'),
-		privacy_policy: boolean('privacy_policy').default(false),
-		marketing_policy: boolean('marketing_policy').default(false),
+		privacy_policy: boolean('privacy_policy').default(false).notNull(),
+		marketing_policy: boolean('marketing_policy').default(false).notNull(),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

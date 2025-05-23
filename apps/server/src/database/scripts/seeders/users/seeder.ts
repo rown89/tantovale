@@ -2,7 +2,7 @@ import { createClient, DrizzleClient } from '../../..';
 import { hashPassword } from '../../../../lib/password';
 import { users } from '../../../../database/schemas/users';
 import { profiles, InsertProfile } from 'src/database/schemas/profiles';
-import { profileEnum, sexEnum } from '../../../../database/schemas/enumerated_types';
+import { addresses } from 'src/database/schemas/addresses';
 
 export const seedDatabase = async (): Promise<void> => {
 	console.log('🌱 Starting database seeding...');
@@ -55,6 +55,8 @@ async function seedUsers(db: DrizzleClient['db']) {
 			])
 			.returning();
 
+		console.log('🔍 Seeded Users:', users_response.length);
+
 		await tx.insert(profiles).values(
 			users_response.map(
 				(user) =>
@@ -65,13 +67,28 @@ async function seedUsers(db: DrizzleClient['db']) {
 						surname: user.username,
 						birthday: new Date('1990-01-01').toISOString(),
 						gender: 'male' as const,
-						city: 61165,
+
 						privacy_policy: true,
 						marketing_policy: true,
 					}) satisfies InsertProfile,
 			),
 		);
 
-		console.log('🔍 Seed Users:', users_response.length);
+		console.log('🔍 Seeded Profiles:', users_response.length);
+
+		await tx.insert(addresses).values(
+			users_response.map((user) => ({
+				profile_id: user.id,
+				city_id: 61165,
+				province_id: 10,
+				street_address: 'Via Roma 1',
+				postal_code: 10010,
+				country_code: 'IT',
+			})),
+		);
+
+		console.log('🔍 Seeded Addresses:', users_response.length);
+
+		console.log('🌱 Finished seeding users, profiles and addresses');
 	});
 }

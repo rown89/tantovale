@@ -1,3 +1,4 @@
+CREATE TYPE "public"."address_status_enum" AS ENUM('active', 'inactive', 'deleted');--> statement-breakpoint
 CREATE TYPE "public"."chat_message_type_enum" AS ENUM('text', 'proposal');--> statement-breakpoint
 CREATE TYPE "public"."transaction_currency_enum" AS ENUM('usd', 'eur', 'gbp', 'cad', 'aud', 'jpy', 'cny', 'inr', 'brl', 'ars', 'clp', 'cop', 'mxn', 'pen', 'pyg', 'uyu', 'vef', 'vnd', 'zar');--> statement-breakpoint
 CREATE TYPE "public"."item_images_size_enum" AS ENUM('original', 'small', 'medium', 'thumbnail');--> statement-breakpoint
@@ -5,10 +6,25 @@ CREATE TYPE "public"."status_enum" AS ENUM('available', 'sold', 'pending', 'arch
 CREATE TYPE "public"."proposal_status_enum" AS ENUM('pending', 'accepted', 'rejected', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."profile_types_enum" AS ENUM('private', 'private_pro', 'shop', 'shop_pro');--> statement-breakpoint
 CREATE TYPE "public"."sex_enum" AS ENUM('male', 'female');--> statement-breakpoint
+CREATE TABLE "addresses" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "addresses_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"profile_id" integer,
+	"street_address" text NOT NULL,
+	"city_id" integer NOT NULL,
+	"province_id" integer NOT NULL,
+	"postal_code" integer NOT NULL,
+	"country_code" varchar(50) DEFAULT 'IT' NOT NULL,
+	"status" "address_status_enum" DEFAULT 'active' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "categories" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "categories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"name" text NOT NULL,
 	"slug" text NOT NULL,
+	"menu_order" integer DEFAULT 0 NOT NULL,
+	"published" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "categories_slug_unique" UNIQUE("slug")
@@ -37,7 +53,7 @@ CREATE TABLE "cities" (
 	"id" integer PRIMARY KEY NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"state_id" integer NOT NULL,
-	"state_code" varchar(255) NOT NULL,
+	"state_code" varchar(10) NOT NULL,
 	"country_id" integer NOT NULL,
 	"country_code" varchar(2) NOT NULL,
 	"latitude" numeric(10, 8) NOT NULL,
@@ -92,7 +108,7 @@ CREATE TABLE "items" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"user_id" integer NOT NULL,
 	"subcategory_id" integer NOT NULL,
-	"city" integer NOT NULL,
+	"address_id" integer NOT NULL,
 	"title" text NOT NULL,
 	"description" text NOT NULL,
 	"status" "status_enum" DEFAULT 'available' NOT NULL,
@@ -149,10 +165,8 @@ CREATE TABLE "profiles" (
 	"vat_number" varchar(50),
 	"birthday" date,
 	"gender" "sex_enum" NOT NULL,
-	"city" integer NOT NULL,
-	"street_address" text,
-	"privacy_policy" boolean DEFAULT false,
-	"marketing_policy" boolean DEFAULT false,
+	"privacy_policy" boolean DEFAULT false NOT NULL,
+	"marketing_policy" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "profiles_user_id_unique" UNIQUE("user_id")
@@ -232,6 +246,8 @@ CREATE TABLE "subcategories" (
 	"category_id" integer NOT NULL,
 	"parent_id" integer DEFAULT NULL,
 	"easy_pay" boolean,
+	"menu_order" integer DEFAULT 0 NOT NULL,
+	"published" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "subcategories_slug_unique" UNIQUE("slug")
@@ -280,6 +296,9 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
+ALTER TABLE "addresses" ADD CONSTRAINT "addresses_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "addresses" ADD CONSTRAINT "addresses_city_id_cities_id_fk" FOREIGN KEY ("city_id") REFERENCES "public"."cities"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "addresses" ADD CONSTRAINT "addresses_province_id_cities_id_fk" FOREIGN KEY ("province_id") REFERENCES "public"."cities"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_chat_room_id_chat_rooms_id_fk" FOREIGN KEY ("chat_room_id") REFERENCES "public"."chat_rooms"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_order_proposal_id_orders_proposals_id_fk" FOREIGN KEY ("order_proposal_id") REFERENCES "public"."orders_proposals"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -294,7 +313,7 @@ ALTER TABLE "items_properties_values" ADD CONSTRAINT "items_properties_values_it
 ALTER TABLE "items_properties_values" ADD CONSTRAINT "items_properties_values_property_value_id_property_values_id_fk" FOREIGN KEY ("property_value_id") REFERENCES "public"."property_values"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "items" ADD CONSTRAINT "items_subcategory_id_subcategories_id_fk" FOREIGN KEY ("subcategory_id") REFERENCES "public"."subcategories"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "items" ADD CONSTRAINT "items_city_cities_id_fk" FOREIGN KEY ("city") REFERENCES "public"."cities"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "items_address_id_addresses_id_fk" FOREIGN KEY ("address_id") REFERENCES "public"."addresses"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "orders_items" ADD CONSTRAINT "orders_items_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "orders_items" ADD CONSTRAINT "orders_items_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "orders_proposals" ADD CONSTRAINT "orders_proposals_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -303,7 +322,6 @@ ALTER TABLE "orders" ADD CONSTRAINT "orders_buyer_id_users_id_fk" FOREIGN KEY ("
 ALTER TABLE "orders" ADD CONSTRAINT "orders_seller_id_users_id_fk" FOREIGN KEY ("seller_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "profiles" ADD CONSTRAINT "profiles_city_cities_id_fk" FOREIGN KEY ("city") REFERENCES "public"."cities"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "property_values" ADD CONSTRAINT "property_values_property_id_properties_id_fk" FOREIGN KEY ("property_id") REFERENCES "public"."properties"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_username_users_username_fk" FOREIGN KEY ("username") REFERENCES "public"."users"("username") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "shippings_orders" ADD CONSTRAINT "shippings_orders_shipping_id_shippings_id_fk" FOREIGN KEY ("shipping_id") REFERENCES "public"."shippings"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
@@ -320,7 +338,7 @@ ALTER TABLE "user_items_favorites" ADD CONSTRAINT "user_items_favorites_item_id_
 CREATE INDEX "cities_name_idx" ON "cities" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "item_id_idx" ON "items_images" USING btree ("item_id");--> statement-breakpoint
 CREATE INDEX "user_id_idx" ON "items" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "city_idx" ON "items" USING btree ("city");--> statement-breakpoint
+CREATE INDEX "address_id_idx" ON "items" USING btree ("address_id");--> statement-breakpoint
 CREATE INDEX "title_idx" ON "items" USING btree ("title");--> statement-breakpoint
 CREATE INDEX "subcategory_id_idx" ON "items" USING btree ("subcategory_id");--> statement-breakpoint
 CREATE INDEX "easy_pay_idx" ON "items" USING btree ("easy_pay");--> statement-breakpoint

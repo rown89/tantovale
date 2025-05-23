@@ -1,23 +1,30 @@
 import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { z } from 'zod';
 
-import { items } from 'src/database/schemas/items';
-import { users } from 'src/database/schemas/users';
-import { property_values } from 'src/database/schemas/properties_values';
-import { items_properties_values } from 'src/database/schemas/items_properties_values';
-import { properties } from 'src/database/schemas/properties';
-import { cities } from 'src/database/schemas/cities';
-import { user_items_favorites } from 'src/database/schemas/user_items_favorites';
+import {
+	items,
+	users,
+	cities,
+	properties,
+	property_values,
+	addresses,
+	subcategories,
+	items_images,
+	user_items_favorites,
+} from '../../database/schemas/schema';
+
+import { items_properties_values } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
 import { createClient } from '../../database';
-import { items_images } from '../../database/schemas/items_images';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { subcategories } from '../../database/schemas/subcategories';
 import { authPath } from '../../utils/constants';
+
+import type { ItemWithProperties } from './types';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -138,13 +145,19 @@ export const itemsRoute = createRouter()
 
 			const userId = Number(existingUsername?.[0]?.id);
 
+			const city = alias(cities, 'city');
+			const province = alias(cities, 'province');
+
 			const userItems = await db
 				.select({
 					id: items.id,
 					title: items.title,
 					price: items.price,
 					category: subcategories.slug,
-					city: cities.name,
+					city_id: city.id,
+					city_name: city.name,
+					province_id: province.id,
+					province_name: province.name,
 					property_id: properties.id,
 					property_slug: properties.slug,
 					property_name: properties.name,
@@ -153,7 +166,9 @@ export const itemsRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
-				.innerJoin(cities, eq(cities.id, items.city))
+				.innerJoin(addresses, eq(addresses.id, items.address_id))
+				.innerJoin(city, eq(city.id, addresses.city_id))
+				.innerJoin(province, eq(province.id, addresses.province_id))
 				.leftJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
 				.leftJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
 				.leftJoin(properties, eq(properties.id, property_values.property_id))
@@ -161,18 +176,10 @@ export const itemsRoute = createRouter()
 					items_images,
 					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
-				.where(and(eq(items.user_id, userId), eq(items.published, true), eq(items.status, 'available')));
+				.where(and(eq(items.user_id, userId), eq(items.published, true), eq(items.status, 'available')))
+				.orderBy(items.created_at);
 
 			// Group properties by item and organize by filter_slug
-			interface ItemWithProperties {
-				id: number;
-				title: string;
-				price: number;
-				subcategory: string;
-				city: string;
-				imageUrl: string | null;
-				properties: Record<string, string[]>;
-			}
 
 			// Group properties by item and organize by filter_slug
 			const itemsMap: Map<number, ItemWithProperties> = new Map();
@@ -185,7 +192,16 @@ export const itemsRoute = createRouter()
 						title: row.title,
 						price: row.price,
 						subcategory: row.category,
-						city: row.city,
+						location: {
+							city: {
+								id: row.city_id,
+								name: row.city_name,
+							},
+							province: {
+								id: row.province_id,
+								name: row.province_name,
+							},
+						},
 						imageUrl: row.imageUrl,
 						properties: {},
 					});

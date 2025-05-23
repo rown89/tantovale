@@ -1,11 +1,12 @@
 import { count, eq, and } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '../../database';
-import { cities, items, profiles, users } from '../../database/schemas/schema';
+import { addresses, cities, items, profiles, users } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
-import { UserSchema } from '../../extended_schemas/users';
+import { UserProfileSchema } from '../../extended_schemas/users';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 
@@ -16,6 +17,9 @@ export const profileRoute = createRouter()
 
 		const { db } = createClient();
 
+		const city = alias(cities, 'city');
+		const province = alias(cities, 'province');
+
 		const [userProfileData] = await db
 			.select({
 				username: users.username,
@@ -23,14 +27,19 @@ export const profileRoute = createRouter()
 				name: profiles.name,
 				surname: profiles.surname,
 				gender: profiles.gender,
-				city: {
-					id: cities.id,
-					name: cities.name,
+				location: {
+					street_address: addresses.street_address,
+					city: city.name,
+					province: province.name,
+					postal_code: addresses.postal_code,
+					country_code: addresses.country_code,
 				},
 			})
 			.from(users)
 			.innerJoin(profiles, eq(users.id, profiles.user_id))
-			.innerJoin(cities, eq(cities.id, profiles.city))
+			.innerJoin(addresses, eq(addresses.profile_id, profiles.id))
+			.innerJoin(city, eq(addresses.city_id, city.id))
+			.innerJoin(province, eq(addresses.province_id, province.id))
 			.where(eq(users.id, user.id))
 			.limit(1);
 
@@ -59,18 +68,23 @@ export const profileRoute = createRouter()
 				.where(eq(users.username, username))
 				.limit(1);
 
-			console.log(userData);
-
 			if (!userData) return c.json({ message: 'User not found' }, 404);
+
+			const city = alias(cities, 'city');
+			const province = alias(cities, 'province');
 
 			// Get the user's city information
 			const [cityData] = await db
 				.select({
-					city_id: cities.id,
-					city_name: cities.name,
+					city_id: city.id,
+					city_name: city.name,
+					province_id: province.id,
+					province_name: province.name,
 				})
 				.from(profiles)
-				.innerJoin(cities, eq(cities.id, profiles.city))
+				.innerJoin(addresses, eq(addresses.profile_id, profiles.id))
+				.innerJoin(city, eq(addresses.city_id, city.id))
+				.innerJoin(province, eq(addresses.province_id, province.id))
 				.where(eq(profiles.user_id, userData.id));
 
 			// Get the count of selling items separately
@@ -86,21 +100,21 @@ export const profileRoute = createRouter()
 			const data = {
 				...userData,
 				selling_items: sellingItemsCount?.count || 0,
-				city: {
-					id: cityData.city_id,
-					name: cityData.city_name,
+				location: {
+					city: {
+						id: cityData.city_id,
+						name: cityData.city_name,
+					},
+					province: {
+						id: cityData.province_id,
+						name: cityData.province_name,
+					},
 				},
 			};
 
 			return c.json(data, 200);
 		} catch (error) {
-			console.log(error);
-			return c.json(
-				{
-					message: 'Failed to fetch user profile',
-				},
-				500,
-			);
+			return c.json({ message: 'Failed to fetch user profile' }, 500);
 		}
 	})
 	// update profile
@@ -109,11 +123,10 @@ export const profileRoute = createRouter()
 		authMiddleware,
 		zValidator(
 			'json',
-			UserSchema.pick({
+			UserProfileSchema.pick({
 				name: true,
 				surname: true,
 				gender: true,
-				city: true,
 			}),
 		),
 		async (c) => {

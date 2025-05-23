@@ -19,7 +19,7 @@ import {
 	categoriesRoute,
 	propertiesRoute,
 	uploadsRoute,
-	citiesRoute,
+	locationsRoute,
 	chatRoute,
 	userRoute,
 	favoritesRoute,
@@ -37,29 +37,29 @@ configureOpenAPI(app);
 app.use('/*', serveStatic({ root: './dist' }));
 
 const apiRoutes = app
-	.route(`/signup`, signupRoute)
-	.route(`/login`, loginRoute)
-	.route(`/verify`, verifyRoute)
+	.route(`/categories`, categoriesRoute)
+	.route(`/chat`, chatRoute)
+	.route(`/favorites`, favoritesRoute)
 	.route(`/item`, itemRoute)
 	.route(`/items`, itemsRoute)
-	.route(`/categories`, categoriesRoute)
-	.route(`/cities`, citiesRoute)
-	.route(`/properties`, propertiesRoute)
-	.route(`/subcategories`, subcategoriesRoute)
-	.route(`/subcategory_properties`, subcategoryPropertiesRoute)
-	.route(`/uploads`, uploadsRoute)
-	.route(`/chat`, chatRoute)
+	.route(`/locations`, locationsRoute)
+	.route(`/login`, loginRoute)
 	.route(`/logout`, logoutRoute)
-	.route(`/refresh`, refreshRoute)
+	.route(`/orders`, ordersRoute)
+	.route(`/orders_proposals`, ordersProposalsRoute)
 	.route(`/password`, passwordForgotRoute)
 	.route(`/password`, passwordResetRoute)
 	.route(`/password`, passwordResetVerifyToken)
 	.route(`/profile`, profileRoute)
-	.route(`/favorites`, favoritesRoute)
+	.route(`/properties`, propertiesRoute)
+	.route(`/refresh`, refreshRoute)
+	.route(`/signup`, signupRoute)
+	.route(`/subcategories`, subcategoriesRoute)
+	.route(`/subcategory_properties`, subcategoryPropertiesRoute)
+	.route(`/uploads`, uploadsRoute)
 	.route(`/user`, userRoute)
-	.route(`/webhooks`, webhooksRoute)
-	.route(`/orders`, ordersRoute)
-	.route(`/orders_proposals`, ordersProposalsRoute);
+	.route(`/verify`, verifyRoute)
+	.route(`/webhooks`, webhooksRoute);
 
 export { app };
 export type ApiRoutesType = typeof apiRoutes;

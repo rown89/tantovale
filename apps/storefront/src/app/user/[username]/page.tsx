@@ -94,7 +94,7 @@ async function UserItems({ username }: { username: string }) {
                     />,
                   ],
                   subcategory: <div>{item.subcategory}</div>,
-                  city: item.city || "Location",
+                  location: item.location,
                 }}
               />
             </Link>

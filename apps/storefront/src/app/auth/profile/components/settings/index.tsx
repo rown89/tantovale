@@ -70,12 +70,14 @@ export default function UserSettingsPage() {
           Manage your account settings and preferences.
         </p>
         <Separator />
-        <Tabs defaultValue="notifications" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="appearance" className="space-y-6">
+          {/* 
+            <TabsList>
+              <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            </TabsList> 
+          */}
 
+          {/*
           <TabsContent value="notifications" className="space-y-6">
             <Card>
               <CardHeader>
@@ -162,6 +164,7 @@ export default function UserSettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          */}
 
           <TabsContent value="appearance" className="space-y-6">
             <Card>

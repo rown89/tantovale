@@ -23,6 +23,7 @@ export const subcategories = pgTable('subcategories', {
 		.default(sql.raw('NULL')),
 	easy_pay: boolean('easy_pay'),
 	menu_order: integer('menu_order').notNull().default(0),
+	published: boolean('published').notNull().default(true),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -16,7 +16,7 @@ export const cities = pgTable(
 				onDelete: 'cascade',
 				onUpdate: 'cascade',
 			}),
-		state_code: varchar('state_code', { length: 255 }).notNull(),
+		state_code: varchar('state_code', { length: 10 }).notNull(),
 		country_id: integer('country_id')
 			.notNull()
 			.references(() => countries.id, {
@@ -47,7 +47,6 @@ export type SelectCity = typeof cities.$inferSelect;
 export type InsertCity = typeof cities.$inferInsert;
 
 export const selectCitiesSchema = createSelectSchema(cities);
-
 export const insertCitiesSchema = createInsertSchema(cities);
 
 export const patchCitiesSchema = insertCitiesSchema.partial();

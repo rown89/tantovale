@@ -9,7 +9,7 @@ import type { AppBindings } from '../../lib/types';
 export const getSubcategories = async (c: Context<AppBindings>) => {
 	const { db } = createClient();
 
-	return await db
+	const subcategories_ = await db
 		.select({
 			id: subcategories.id,
 			name: subcategories.name,
@@ -17,13 +17,16 @@ export const getSubcategories = async (c: Context<AppBindings>) => {
 			parent_id: subcategories.parent_id,
 			menu_order: subcategories.menu_order,
 		})
-		.from(subcategories);
+		.from(subcategories)
+		.where(eq(subcategories.published, true));
+
+	return subcategories_;
 };
 
 export const getSubcategoriesById = async (c: Context<AppBindings>, id: number) => {
 	const { db } = createClient();
 
-	return await db
+	const subcategories_ = await db
 		.select({
 			id: subcategories.id,
 			name: subcategories.name,
@@ -32,17 +35,21 @@ export const getSubcategoriesById = async (c: Context<AppBindings>, id: number) 
 			menu_order: subcategories.menu_order,
 		})
 		.from(subcategories)
-		.where(eq(subcategories.id, Number(id)));
+		.where(and(eq(subcategories.id, id), eq(subcategories.published, true)));
+
+	return subcategories_;
 };
 
 export const getSubcategoriesWithoutParentById = async (c: Context<AppBindings>, id: number) => {
 	const { db } = createClient();
 
-	return await db
+	const subcategories_ = await db
 		.select({
 			id: subcategories.id,
 			name: subcategories.name,
 		})
 		.from(subcategories)
-		.where(and(isNull(subcategories.parent_id), eq(subcategories.id, Number(id))));
+		.where(and(isNull(subcategories.parent_id), eq(subcategories.id, id), eq(subcategories.published, true)));
+
+	return subcategories_;
 };

@@ -6,6 +6,7 @@ import { users } from './users';
 import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 import { cities } from './cities';
+import { addresses } from './addresses';
 
 export const items = pgTable(
 	'items',
@@ -20,9 +21,9 @@ export const items = pgTable(
 				onDelete: 'cascade',
 				onUpdate: 'cascade',
 			}),
-		city: integer('city')
+		address_id: integer('address_id')
 			.notNull()
-			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+			.references(() => addresses.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		title: text('title').notNull(),
 		description: text('description').notNull(),
 		status: itemStatusEnum('status').notNull().default('available'),
@@ -35,7 +36,7 @@ export const items = pgTable(
 	},
 	(table) => [
 		index('user_id_idx').on(table.user_id),
-		index('city_idx').on(table.city),
+		index('address_id_idx').on(table.address_id),
 		index('title_idx').on(table.title),
 		index('subcategory_id_idx').on(table.subcategory_id),
 		index('easy_pay_idx').on(table.easy_pay),
@@ -53,9 +54,9 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
 		fields: [items.subcategory_id],
 		references: [subcategories.id],
 	}),
-	city: one(cities, {
-		fields: [items.city],
-		references: [cities.id],
+	address: one(addresses, {
+		fields: [items.address_id],
+		references: [addresses.id],
 	}),
 }));
 

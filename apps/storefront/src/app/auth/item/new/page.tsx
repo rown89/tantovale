@@ -24,8 +24,13 @@ export default async function NewItemPage({
 
     const subcategory = await response.json();
 
-    return <HandleItemFormComponent subcategory={subcategory?.[0]} />;
+    return (
+      <HandleItemFormComponent
+        formModel="create"
+        subcategory={subcategory?.[0]}
+      />
+    );
   }
 
-  return <HandleItemFormComponent />;
+  return <HandleItemFormComponent formModel="create" />;
 }

@@ -139,6 +139,7 @@ export const SUBCATEGORY_SEEDS: SubcategorySeeds = {
 
 export const Properties = {
 	CONDITION: 'condition',
+	DELIVERY_METHOD: 'delivery_method',
 	GENDER: 'gender',
 	COLOR: 'color',
 	MATERIAL_CLOTHING: 'material_clothing',
@@ -148,7 +149,6 @@ export const Properties = {
 	SIZE_PHONE_SCREEN: 'size_phone_screen',
 	SIZE_TABLET_SCREEN: 'size_tablet_screen',
 	SIZE_MONITOR_SCREEN: 'size_monitor_screen',
-	DELIVERY_METHOD: 'delivery_method',
 } as const;
 
 export type PropertiesTypes = (typeof Properties)[keyof typeof Properties];
@@ -181,14 +181,15 @@ export const PROPERTY_SEEDS: PropertySeed[] = [
 		type: PropertyTypes.SELECT,
 	},
 	{
-		name: 'Watches size',
-		slug: Properties.SIZE_WATCHES,
-		type: PropertyTypes.SELECT,
-	},
-	{
 		name: 'Clothing Materials',
 		slug: Properties.MATERIAL_CLOTHING,
 		type: PropertyTypes.SELECT_MULTI,
+	},
+	// Watches
+	{
+		name: 'Watches size',
+		slug: Properties.SIZE_WATCHES,
+		type: PropertyTypes.SELECT,
 	},
 	// Phone
 	{
@@ -196,9 +197,16 @@ export const PROPERTY_SEEDS: PropertySeed[] = [
 		slug: Properties.SIZE_PHONE_SCREEN,
 		type: PropertyTypes.SELECT,
 	},
+	// Computer
 	{
 		name: 'Monitor Screen Sizes',
 		slug: Properties.SIZE_MONITOR_SCREEN,
+		type: PropertyTypes.SELECT,
+	},
+	// Devices
+	{
+		name: 'Tablet Screen Sizes',
+		slug: Properties.SIZE_TABLET_SCREEN,
 		type: PropertyTypes.SELECT,
 	},
 ];

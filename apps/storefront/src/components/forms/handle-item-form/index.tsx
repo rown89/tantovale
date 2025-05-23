@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnyFieldApi, useField } from "@tanstack/react-form";
+import { useField } from "@tanstack/react-form";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,7 +15,7 @@ import { Spinner } from "@workspace/ui/components/spinner";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
-import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
+import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
@@ -41,22 +41,18 @@ import {
   type Category,
 } from "@workspace/server/extended_schemas";
 
-import { CitySelector } from "#components/forms/commons/city-selector";
+import { CitySelector } from "#components/city-selector";
 import { useHandleItemForm } from "./use-handle-item-form";
 import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
-import {
-  updatePropertiesArray,
-  isNextButtonEnabled,
-  handleItemPreviewProperties,
-} from "./utils";
+import { isNextButtonEnabled, handleItemPreviewProperties } from "./utils";
 import { maxImages, step_one, step_two } from "./constants";
 import { PropertyFormValue } from "./types";
 
 type HandleItemFormComponent = {
-  subcategory?: Omit<
+  subcategory?: Pick<
     Category,
-    "category_id" | "parent_id" | "subcategories" | "menu_order"
+    "id" | "name" | "slug" | "easy_pay" | "menu_order"
   >;
   formModel: "create" | "edit";
 };
@@ -90,7 +86,10 @@ export default function HandleItemFormComponent({
     isLoadingSubCatProperties,
   } = useCategoriesData(subcategory?.id);
 
-  const { cities, isLoadingCities } = useCitiesData(searchedCityName);
+  const { cities, isLoadingLocations: isLoadingCities } = useLocationData(
+    "city",
+    searchedCityName,
+  );
 
   const {
     form,
@@ -120,6 +119,7 @@ export default function HandleItemFormComponent({
   const description = descriptionField.state.value;
   const easyPayField = useField({ form, name: "commons.easy_pay" });
   const easyPay = easyPayField.state.value;
+  // TODO: add user address fieldef
   const cityField = useField({ form, name: "commons.city" });
   const city = cityField.state.value;
   const imagesField = useField({ form, name: "images" });

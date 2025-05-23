@@ -6,19 +6,23 @@ import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 
 import { createClient } from '../../database';
-import { subcategories } from '../../database/schemas/subcategories';
-import { subcategory_properties } from '../../database/schemas/subcategory_properties';
-import { createItemSchema } from '../../extended_schemas';
-import { items } from '../../database/schemas/items';
+import {
+	subcategories,
+	subcategory_properties,
+	items,
+	cities,
+	users,
+	shippings,
+	addresses,
+	items_images,
+	property_values,
+} from '../../database/schemas/schema';
 import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
+import { createItemSchema } from '../../extended_schemas';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { items_images } from '../../database/schemas/items_images';
-import { cities } from '../../database/schemas/cities';
-import { property_values } from '../../database/schemas/properties_values';
-import { users } from '../../database/schemas/users';
-import { shippings } from '../../database/schemas/shippings';
+import { alias } from 'drizzle-orm/pg-core';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -28,6 +32,9 @@ export const itemRoute = createRouter()
 		if (isNaN(id)) return c.json({ message: 'Invalid item ID' }, 400);
 
 		const { db } = createClient();
+
+		const city = alias(cities, 'city');
+		const province = alias(cities, 'province');
 
 		try {
 			const [item] = await db
@@ -39,7 +46,10 @@ export const itemRoute = createRouter()
 						title: items.title,
 						price: items.price,
 						description: items.description,
-						city: cities.name,
+						city_id: city.id,
+						city_name: city.name,
+						province_id: province.id,
+						province_name: province.name,
 						easy_pay: items.easy_pay,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
@@ -51,7 +61,9 @@ export const itemRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
-				.innerJoin(cities, eq(cities.id, items.city))
+				.innerJoin(addresses, eq(addresses.id, items.address_id))
+				.innerJoin(city, eq(city.id, addresses.city_id))
+				.innerJoin(province, eq(province.id, addresses.province_id))
 				.innerJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
 				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.innerJoin(users, eq(users.id, items.user_id))
@@ -73,7 +85,16 @@ export const itemRoute = createRouter()
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,
-				city: item.item.city,
+				location: {
+					city: {
+						id: item.item.city_id,
+						name: item.item.city_name,
+					},
+					province: {
+						id: item.item.province_id,
+						name: item.item.province_name,
+					},
+				},
 				easy_pay: item.item.easy_pay,
 				subcategory: {
 					name: item?.item.subcategory_name,

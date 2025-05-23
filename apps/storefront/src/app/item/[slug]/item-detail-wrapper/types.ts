@@ -10,7 +10,16 @@ export interface ItemWrapperProps {
     title: string;
     description: string;
     price: number;
-    city: string;
+    location: {
+      city: {
+        id: number;
+        name: string;
+      };
+      province: {
+        id: number;
+        name: string;
+      };
+    };
     easy_pay: boolean;
     images: string[];
     subcategory: {
@@ -23,9 +32,15 @@ export interface ItemWrapperProps {
     phone_verified: boolean;
     email_verified: boolean;
     selling_items: number;
-    city: {
-      id: number;
-      name: string;
+    location: {
+      city: {
+        id: number;
+        name: string;
+      };
+      province: {
+        id: number;
+        name: string;
+      };
     };
   };
   chatId?: number;

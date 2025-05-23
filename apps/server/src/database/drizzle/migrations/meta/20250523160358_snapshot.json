@@ -1,9 +1,126 @@
 {
-	"id": "38a5147b-9f72-46dc-a508-a23348922e08",
+	"id": "a8edfbce-c238-4072-b627-f4d70814feb0",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
+		"public.addresses": {
+			"name": "addresses",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"identity": {
+						"type": "always",
+						"name": "addresses_id_seq",
+						"schema": "public",
+						"increment": "1",
+						"startWith": "1",
+						"minValue": "1",
+						"maxValue": "2147483647",
+						"cache": "1",
+						"cycle": false
+					}
+				},
+				"profile_id": {
+					"name": "profile_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"street_address": {
+					"name": "street_address",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"city_id": {
+					"name": "city_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"province_id": {
+					"name": "province_id",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"postal_code": {
+					"name": "postal_code",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"country_code": {
+					"name": "country_code",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'IT'"
+				},
+				"status": {
+					"name": "status",
+					"type": "address_status_enum",
+					"typeSchema": "public",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "'active'"
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {
+				"addresses_profile_id_profiles_id_fk": {
+					"name": "addresses_profile_id_profiles_id_fk",
+					"tableFrom": "addresses",
+					"tableTo": "profiles",
+					"columnsFrom": ["profile_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				},
+				"addresses_city_id_cities_id_fk": {
+					"name": "addresses_city_id_cities_id_fk",
+					"tableFrom": "addresses",
+					"tableTo": "cities",
+					"columnsFrom": ["city_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				},
+				"addresses_province_id_cities_id_fk": {
+					"name": "addresses_province_id_cities_id_fk",
+					"tableFrom": "addresses",
+					"tableTo": "cities",
+					"columnsFrom": ["province_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
 		"public.categories": {
 			"name": "categories",
 			"schema": "",
@@ -36,6 +153,20 @@
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true
+				},
+				"menu_order": {
+					"name": "menu_order",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"published": {
+					"name": "published",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
 				},
 				"created_at": {
 					"name": "created_at",
@@ -268,7 +399,7 @@
 				},
 				"state_code": {
 					"name": "state_code",
-					"type": "varchar(255)",
+					"type": "varchar(10)",
 					"primaryKey": false,
 					"notNull": true
 				},
@@ -713,8 +844,8 @@
 					"primaryKey": false,
 					"notNull": true
 				},
-				"city": {
-					"name": "city",
+				"address_id": {
+					"name": "address_id",
 					"type": "integer",
 					"primaryKey": false,
 					"notNull": true
@@ -797,11 +928,11 @@
 					"method": "btree",
 					"with": {}
 				},
-				"city_idx": {
-					"name": "city_idx",
+				"address_id_idx": {
+					"name": "address_id_idx",
 					"columns": [
 						{
-							"expression": "city",
+							"expression": "address_id",
 							"isExpression": false,
 							"asc": true,
 							"nulls": "last"
@@ -907,11 +1038,11 @@
 					"onDelete": "cascade",
 					"onUpdate": "cascade"
 				},
-				"items_city_cities_id_fk": {
-					"name": "items_city_cities_id_fk",
+				"items_address_id_addresses_id_fk": {
+					"name": "items_address_id_addresses_id_fk",
 					"tableFrom": "items",
-					"tableTo": "cities",
-					"columnsFrom": ["city"],
+					"tableTo": "addresses",
+					"columnsFrom": ["address_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "cascade"
@@ -1306,30 +1437,18 @@
 					"primaryKey": false,
 					"notNull": true
 				},
-				"city": {
-					"name": "city",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": true
-				},
-				"street_address": {
-					"name": "street_address",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false
-				},
 				"privacy_policy": {
 					"name": "privacy_policy",
 					"type": "boolean",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"default": false
 				},
 				"marketing_policy": {
 					"name": "marketing_policy",
 					"type": "boolean",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"default": false
 				},
 				"created_at": {
@@ -1376,15 +1495,6 @@
 					"tableFrom": "profiles",
 					"tableTo": "users",
 					"columnsFrom": ["user_id"],
-					"columnsTo": ["id"],
-					"onDelete": "cascade",
-					"onUpdate": "cascade"
-				},
-				"profiles_city_cities_id_fk": {
-					"name": "profiles_city_cities_id_fk",
-					"tableFrom": "profiles",
-					"tableTo": "cities",
-					"columnsFrom": ["city"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "cascade"
@@ -1946,6 +2056,20 @@
 					"primaryKey": false,
 					"notNull": false
 				},
+				"menu_order": {
+					"name": "menu_order",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"published": {
+					"name": "published",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "timestamp with time zone",
@@ -2401,6 +2525,11 @@
 		}
 	},
 	"enums": {
+		"public.address_status_enum": {
+			"name": "address_status_enum",
+			"schema": "public",
+			"values": ["active", "inactive", "deleted"]
+		},
 		"public.chat_message_type_enum": {
 			"name": "chat_message_type_enum",
 			"schema": "public",
