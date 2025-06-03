@@ -3,29 +3,30 @@ import { configureOpenAPI } from './lib/configureOpenApi';
 import { serveStatic } from '@hono/node-server/serve-static';
 
 import {
+	addressesRoute,
+	categoriesRoute,
+	chatRoute,
+	favoritesRoute,
+	itemRoute,
 	itemsRoute,
+	locationsRoute,
 	loginRoute,
-	signupRoute,
-	refreshRoute,
 	logoutRoute,
-	profileRoute,
+	ordersProposalsRoute,
+	ordersRoute,
 	passwordForgotRoute,
 	passwordResetRoute,
 	passwordResetVerifyToken,
-	verifyRoute,
-	itemRoute,
+	profileRoute,
+	propertiesRoute,
+	refreshRoute,
+	signupRoute,
 	subcategoriesRoute,
 	subcategoryPropertiesRoute,
-	categoriesRoute,
-	propertiesRoute,
 	uploadsRoute,
-	locationsRoute,
-	chatRoute,
 	userRoute,
-	favoritesRoute,
+	verifyRoute,
 	webhooksRoute,
-	ordersProposalsRoute,
-	ordersRoute,
 } from './routes';
 
 const app = createApp();
@@ -37,6 +38,7 @@ configureOpenAPI(app);
 app.use('/*', serveStatic({ root: './dist' }));
 
 const apiRoutes = app
+	.route(`/addresses`, addressesRoute)
 	.route(`/categories`, categoriesRoute)
 	.route(`/chat`, chatRoute)
 	.route(`/favorites`, favoritesRoute)

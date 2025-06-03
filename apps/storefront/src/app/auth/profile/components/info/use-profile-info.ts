@@ -17,10 +17,6 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
   const [isSubmittingProfileForm, setIsSubmittingProfileForm] = useState(false);
   const [isSubmittingAddressForm, setIsSubmittingAddressForm] = useState(false);
 
-  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
-  const [isProvincePopoverOpen, setIsProvincePopoverOpen] = useState(false);
-  const [isAddressPopoverOpen, setIsAddressPopoverOpen] = useState(false);
-
   // Initialize form
   const profileForm = useForm({
     defaultValues: {
@@ -52,20 +48,14 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
           duration: 4000,
         });
       } finally {
-        setIsSubmittingForm(false);
+        setIsSubmittingProfileForm(false);
       }
     },
   });
 
   return {
     profileForm,
-    isCityPopoverOpen,
-    isProvincePopoverOpen,
-    isAddressPopoverOpen,
     isSubmittingProfileForm,
     isSubmittingAddressForm,
-    setIsCityPopoverOpen,
-    setIsProvincePopoverOpen,
-    setIsAddressPopoverOpen,
   };
 }

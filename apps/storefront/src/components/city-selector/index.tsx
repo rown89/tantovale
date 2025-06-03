@@ -18,6 +18,7 @@ import {
   CommandList,
 } from "@workspace/ui/components/command";
 import { cn } from "@workspace/ui/lib/utils";
+import { LocationTypes } from "@workspace/shared/hooks/use-locations-data";
 
 export interface City {
   id: number;
@@ -30,12 +31,13 @@ interface CitySelectorProps {
   onBlur?: () => void;
   name?: string;
   isTouched?: boolean;
+  isDisabled?: boolean;
   hasErrors?: boolean;
-  cities: City[] | undefined;
+  cities: LocationTypes[];
   isLoadingCities: boolean;
   isSubmittingForm: boolean;
   onSearchChange: (searchTerm: string) => void;
-  defaultValue?: number;
+  defaultValue?: string;
   isCityPopoverOpen: boolean;
   setIsCityPopoverOpen: (isOpen: boolean) => void;
 }
@@ -46,6 +48,7 @@ export function CitySelector({
   onBlur,
   name,
   isTouched,
+  isDisabled,
   hasErrors,
   cities,
   isLoadingCities,
@@ -59,12 +62,16 @@ export function CitySelector({
 
   return (
     <div className="space-y-2">
-      <Popover open={isCityPopoverOpen} onOpenChange={setIsCityPopoverOpen}>
+      <Popover
+        open={!isDisabled && isCityPopoverOpen}
+        onOpenChange={setIsCityPopoverOpen}
+      >
         <PopoverTrigger asChild>
           <Button
             variant="outline"
             role="combobox"
             aria-expanded={isCityPopoverOpen}
+            disabled={isDisabled}
             className={`w-full justify-between`}
           >
             {cities?.find((city) => city.id === value)?.name ?? "Location..."}
@@ -79,7 +86,7 @@ export function CitySelector({
                 id={name}
                 name={name}
                 defaultValue={defaultValue}
-                disabled={isSubmittingForm}
+                disabled={isSubmittingForm || isDisabled}
                 onBlur={onBlur}
                 onChange={(e) => {
                   setSearchedCityName(e.target.value);

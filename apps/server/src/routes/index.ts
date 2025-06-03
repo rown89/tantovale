@@ -1,3 +1,4 @@
+export * from './addresses';
 export * from './categories';
 export * from './chat';
 export * from './favorites';

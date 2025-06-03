@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { LogOut, MessageSquare, Plus, User } from "lucide-react";
+import { Heart, LogOut, MessageSquare, Plus, User } from "lucide-react";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {
@@ -83,6 +83,13 @@ export default function NavBar() {
                   onClick={() => router.push("/auth/chat")}
                 >
                   <MessageSquare />
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="relative h-10 w-10 rounded-full"
+                  onClick={() => router.push("/auth/favorites")}
+                >
+                  <Heart />
                 </Button>
                 <DropdownMenu open={open} onOpenChange={setOpen}>
                   <DropdownMenuTrigger asChild>

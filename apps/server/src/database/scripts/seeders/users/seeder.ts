@@ -81,9 +81,11 @@ async function seedUsers(db: DrizzleClient['db']) {
 				profile_id: user.id,
 				city_id: 61165,
 				province_id: 10,
-				street_address: 'Via Roma 1',
+				street_address: 'Via Roma',
 				postal_code: 10010,
 				country_code: 'IT',
+				status: 'active' as const,
+				civic_number: '1',
 			})),
 		);
 

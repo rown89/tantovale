@@ -9,7 +9,9 @@ import { addressStatusEnum } from './enumerated_types';
 export const addresses = pgTable('addresses', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
 	profile_id: integer('profile_id').references(() => profiles.id),
+	label: text('label').notNull().default('Home'),
 	street_address: text('street_address').notNull(),
+	civic_number: text('civic_number').notNull(),
 	city_id: integer('city_id')
 		.notNull()
 		.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),

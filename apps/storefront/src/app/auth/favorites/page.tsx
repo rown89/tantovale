@@ -1,4 +1,4 @@
-import ProfileFavorites from "../components/favorites";
+import ProfileFavorites from ".";
 
 export default async function UserFavoritesPage() {
   return <ProfileFavorites />;

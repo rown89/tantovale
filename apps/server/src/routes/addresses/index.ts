@@ -1,0 +1,218 @@
+import { and, asc, eq, ne, or } from 'drizzle-orm';
+
+import { profiles } from '../../database/schemas/profiles';
+import { createClient } from '../../database';
+import { addresses, SelectAddress } from '../../database/schemas/addresses';
+import { createRouter } from '../../lib/create-app';
+import { authPath } from '../../utils/constants';
+import { authMiddleware } from 'src/middlewares/authMiddleware';
+import { cities } from 'src/database/schemas/cities';
+import { alias } from 'drizzle-orm/pg-core';
+import { zValidator } from '@hono/zod-validator';
+import { addAddressSchema } from 'src/extended_schemas';
+
+export const addressesRoute = createRouter()
+	.get(`/${authPath}/addresses_profile`, authMiddleware, async (c) => {
+		try {
+			const user = c.get('user');
+
+			const { db } = createClient();
+
+			// get user profile_id
+			const [userProfile] = await db
+				.select({
+					id: profiles.id,
+				})
+				.from(profiles)
+				.where(eq(profiles.user_id, user.id));
+
+			if (!userProfile?.id) {
+				return c.json({ message: 'User profile not found' }, 404);
+			}
+
+			// add city and province name to user address
+
+			const city = alias(cities, 'city');
+			const province = alias(cities, 'province');
+
+			const userAddress = await db
+				.select({
+					id: addresses.id,
+					label: addresses.label,
+					city_id: addresses.city_id,
+					province_id: addresses.province_id,
+					street_address: addresses.street_address,
+					civic_number: addresses.civic_number,
+					postal_code: addresses.postal_code,
+					country_code: addresses.country_code,
+					city_name: city.name,
+					province_name: province.name,
+					status: addresses.status,
+					province_country_code: province.country_code,
+					city_country_code: city.country_code,
+				})
+				.from(addresses)
+				.innerJoin(city, eq(city.id, addresses.city_id))
+				.innerJoin(province, eq(province.id, addresses.province_id))
+				// get all addresses for the user, active and inactive
+				.where(
+					and(
+						eq(addresses.profile_id, userProfile.id),
+						or(eq(addresses.status, 'active'), eq(addresses.status, 'inactive')),
+					),
+				)
+				.orderBy(asc(addresses.id));
+
+			if (!userAddress?.length) {
+				return c.json({ message: 'User address not found' }, 404);
+			}
+
+			return c.json(userAddress, 200);
+		} catch (error) {
+			return c.json({ message: 'addressesRoute error' }, 500);
+		}
+	})
+	.get(`/${authPath}/addresses_profile_by_status`, authMiddleware, async (c) => {
+		try {
+			const status = c.req.query('status');
+
+			if (!status) {
+				return c.json({ message: 'Status is required' }, 400);
+			}
+
+			const user = c.get('user');
+
+			const { db } = createClient();
+
+			const [userAddress] = await db
+				.select()
+				.from(addresses)
+				.where(and(eq(addresses.profile_id, user.id), eq(addresses.status, status as SelectAddress['status'])));
+
+			return c.json(userAddress, 200);
+		} catch (error) {
+			return c.json({ message: 'addressesRoute error' }, 500);
+		}
+	})
+	.post(`/${authPath}/add_address_to_profile`, authMiddleware, zValidator('json', addAddressSchema), async (c) => {
+		try {
+			const user = c.get('user');
+
+			const { db } = createClient();
+
+			const { address_id, ...values } = c.req.valid('json');
+
+			const userAddress = await db.insert(addresses).values({
+				profile_id: user.id,
+				...values,
+			});
+
+			if (!userAddress) {
+				return c.json({ message: 'Failed to add address to profile' }, 500);
+			}
+
+			return c.json(userAddress, 200);
+		} catch (error) {
+			return c.json({ message: 'addressesRoute error' }, 500);
+		}
+	})
+	.put(`/${authPath}/update_address_to_profile`, authMiddleware, zValidator('json', addAddressSchema), async (c) => {
+		try {
+			const user = c.get('user');
+
+			const { db } = createClient();
+
+			const { ...values } = c.req.valid('json');
+
+			if (!values.address_id) {
+				return c.json({ message: 'Address ID is required' }, 400);
+			}
+
+			const [profile] = await db
+				.select({ profile_id: profiles.id })
+				.from(profiles)
+				.where(eq(profiles.user_id, user.id));
+
+			if (!profile?.profile_id) {
+				return c.json({ message: 'Profile not found' }, 404);
+			}
+
+			return await db.transaction(async (tx) => {
+				// check if the current address is the active one and received status is "inactive"
+				const [currentAddress] = await tx
+					.select()
+					.from(addresses)
+					.where(and(eq(addresses.id, values.address_id), eq(addresses.profile_id, profile.profile_id)));
+
+				if (currentAddress?.status === 'active' && values.status === 'inactive') {
+					return c.json({ message: 'You can not disable the active address' }, 400);
+				}
+
+				// disable all other addresses that not are in "deleted" status
+				await tx
+					.update(addresses)
+					.set({ status: 'inactive' })
+					.where(
+						and(
+							eq(addresses.profile_id, profile.profile_id),
+							ne(addresses.id, values.address_id),
+							ne(addresses.status, 'deleted'),
+						),
+					);
+
+				const userAddress = await tx
+					.update(addresses)
+					.set({
+						...values,
+					})
+					.where(and(eq(addresses.id, values.address_id), eq(addresses.profile_id, profile.profile_id)));
+
+				if (!userAddress) {
+					throw new Error('Failed to update address to profile');
+				}
+
+				return c.json(userAddress, 200);
+			});
+		} catch (error) {
+			return c.json({ message: 'addressesRoute error' }, 500);
+		}
+	})
+	.put(
+		`/${authPath}/delete_address_to_profile`,
+		authMiddleware,
+		zValidator('json', addAddressSchema.pick({ address_id: true })),
+		async (c) => {
+			try {
+				const user = c.get('user');
+
+				const { db } = createClient();
+
+				const { address_id } = c.req.valid('json');
+
+				const [profile] = await db
+					.select({ profile_id: profiles.id })
+					.from(profiles)
+					.where(eq(profiles.user_id, user.id));
+
+				if (!profile?.profile_id) {
+					return c.json({ message: 'Profile not found' }, 404);
+				}
+
+				const userAddress = await db
+					.update(addresses)
+					.set({ status: 'deleted' })
+					.where(and(eq(addresses.id, address_id), eq(addresses.profile_id, profile.profile_id)))
+					.returning({
+						id: addresses.id,
+					});
+
+				if (!userAddress) {
+					throw new Error('Failed to delete address to profile');
+				}
+
+				return c.json(userAddress, 200);
+			} catch (error) {
+				return c.json({ message: 'addressesRoute error' }, 500);
+			}
+		},
+	);

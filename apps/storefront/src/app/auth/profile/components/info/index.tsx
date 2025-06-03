@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { Edit, Plus, Trash } from "lucide-react";
 
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
@@ -18,7 +18,6 @@ import { useProfileData } from "@workspace/shared/hooks/use-profile-data";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import { Button } from "@workspace/ui/components/button";
 import { useProfileInfoForm } from "./use-profile-info";
-import { Separator } from "@workspace/ui/components/separator";
 import {
   Card,
   CardDescription,
@@ -26,33 +25,59 @@ import {
   CardTitle,
   CardContent,
 } from "@workspace/ui/components/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@workspace/ui/components/dialog";
+import { useAddressesRetrieval } from "@workspace/shared/hooks/use-user-address-retrieval";
 
 import { FieldInfo } from "#components/forms/utils/field-info";
-import { CitySelector } from "#components/city-selector";
+import AddressForm from "#components/forms/address-form";
+import { AddressStatus } from "@workspace/server/enumerated_values";
+import useAddressForm from "#components/forms/address-form/use-address-form";
 
 export default function UserInfoComponent() {
-  const [searchedCity, setSearchedCityName] = useState("");
-  const [searchedProvince, setSearchedProvinceName] = useState("");
+  const [editAddressStates, setEditAddressStates] = useState<
+    Record<number, boolean>
+  >({});
+  const [deleteAddressStates, setDeleteAddressStates] = useState<
+    Record<number, boolean>
+  >({});
 
-  const { cities, isLoadingLocations: isLoadingCities } = useLocationData(
-    "city",
-    searchedCity,
-  );
+  const toggleEditAddress = (addressId: number) => {
+    setEditAddressStates((prev) => ({
+      ...prev,
+      [addressId]: !prev[addressId],
+    }));
+  };
 
-  const { provinces, isLoadingLocations: isLoadingProvinces } = useLocationData(
-    "province",
-    searchedProvince,
-  );
+  const toggleDeleteAddress = (addressId: number) => {
+    setDeleteAddressStates((prev) => ({
+      ...prev,
+      [addressId]: !prev[addressId],
+    }));
+  };
 
-  const { profile, isLoadingProfile, isPaymentProviderConnected } =
-    useProfileData();
+  const { profile, isLoadingProfile } = useProfileData();
+  const { profileForm, isSubmittingProfileForm } = useProfileInfoForm({
+    ...profile,
+  });
 
-  const {
-    profileForm,
-    isCityPopoverOpen,
-    setIsCityPopoverOpen,
-    isSubmittingProfileForm,
-  } = useProfileInfoForm({ ...profile });
+  const { userAddress } = useAddressesRetrieval();
+  const { deleteAddress } = useAddressForm((e) => {
+    if (e?.id) {
+      setDeleteAddressStates((prev) => {
+        const newState = { ...prev };
+        delete newState[e.id];
+        return newState;
+      });
+    }
+  });
 
   return (
     <div className="flex flex-col w-full gap-8 px-4">
@@ -69,9 +94,13 @@ export default function UserInfoComponent() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <Card>
+            {/* Basic Informations */}
+            <Card id="info">
               <CardHeader>
-                <CardTitle>Account information</CardTitle>
+                <CardTitle>Basic Informations</CardTitle>
+                <CardDescription>
+                  Manage your basic informations
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col gap-4">
@@ -213,96 +242,130 @@ export default function UserInfoComponent() {
                               disabled={isSubmitting || !isDirty || !canSubmit}
                               className="w-full"
                             >
-                              {isSubmitting ? "..." : "Submit"}
+                              {isSubmitting ? "Saving..." : "Save"}
                             </Button>
                           );
                         }}
                       </profileForm.Subscribe>
                     </div>
                   </form>
-
-                  {/* TODO: add address form */}
-                  {/* <form.Field name="city">
-                        {(field) => {
-                          const { name, state, handleChange, handleBlur } =
-                            field;
-                          const { value, meta } = state;
-                          const { isTouched, errors } = meta;
-                          return (
-                            <div className="space-y-2">
-                              <Label htmlFor={field.name} className="block">
-                                Item location{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <CitySelector
-                                name={name}
-                                value={value}
-                                onChange={(e) => {
-                                  handleChange(e);
-                                }}
-                                onBlur={handleBlur}
-                                isTouched={isTouched}
-                                hasErrors={errors?.length > 0}
-                                cities={
-                                  cities?.length
-                                    ? cities
-                                    : profile
-                                      ? [profile?.city]
-                                      : []
-                                }
-                                isLoadingCities={isLoadingCities}
-                                isSubmittingForm={isSubmittingForm}
-                                onSearchChange={setSearchedCityName}
-                                isCityPopoverOpen={isCityPopoverOpen}
-                                setIsCityPopoverOpen={setIsCityPopoverOpen}
-                              />
-                              <FieldInfo field={field} />
-                            </div>
-                          );
-                        }}
-                      </form.Field>
-                  */}
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment provider</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  {!isPaymentProviderConnected ? (
-                    <span>
-                      Connect a{" "}
-                      <Link href="#" target="_blank" className="text-blue-500">
-                        payment provider
-                      </Link>{" "}
-                      account to start selling and accepting payments.
-                    </span>
-                  ) : (
-                    "Stripe account connected"
-                  )}
-
-                  {!isPaymentProviderConnected && (
-                    <Button className="w-full max-w-full md:max-w-fit">
-                      Connect Stripe
-                    </Button>
-                  )}
-                </CardDescription>
+            {/* Addresses */}
+            <Card id="address">
+              <CardHeader className="flex flex-row justify-between gap-2">
+                <span className="flex flex-col gap-2">
+                  <CardTitle>Addresses</CardTitle>
+                  <CardDescription>
+                    The default address will be used to calculate shipment cost
+                    when you buy or make a proposal
+                  </CardDescription>{" "}
+                </span>
+                <Button variant="default">
+                  <Plus className="w-4 h-4" />
+                  Add
+                </Button>
               </CardHeader>
-            </Card>
+              <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {userAddress?.map((address, i) => {
+                  const activeStatus = address.status === "active";
+                  const addressInfo = `${address.street_address} ${address.civic_number}, ${address.city_name} ${`(${address.province_name}) - ${address.postal_code} - (${address.country_code})`}`;
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Phone validation</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  <span>
-                    Secure your account by verifying your phone number.
-                  </span>
-                  <Button className="w-full max-w-full md:max-w-fit">
-                    Verify phone number
-                  </Button>
-                </CardDescription>
-              </CardHeader>
+                  return (
+                    <Card
+                      key={address.id}
+                      className={`${
+                        activeStatus ? "border-primary shadow-md" : ""
+                      }`}
+                    >
+                      <CardHeader>
+                        <CardTitle>
+                          <div className="flex justify-between gap-2">
+                            <p className="text-lg truncate max-w-[250px]">
+                              {address.label}
+                            </p>
+                            <div className="flex items-center gap-5">
+                              <Dialog
+                                key={`edit-address-${address.id}`}
+                                open={editAddressStates[address.id] || false}
+                                onOpenChange={(open) => {
+                                  toggleEditAddress(address.id);
+                                }}
+                              >
+                                <DialogTrigger className="flex items-center gap-2 hover:text-accent">
+                                  <Edit className="w-4 h-4" />
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>{address.label}</DialogTitle>
+                                  </DialogHeader>
+                                  <DialogDescription>
+                                    <Label
+                                      htmlFor={"address"}
+                                      className="block"
+                                    >
+                                      Edit your address information
+                                    </Label>
+                                  </DialogDescription>
+                                  <AddressForm
+                                    values={{
+                                      ...address,
+                                      address_id: address.id,
+                                      status: address.status as Exclude<
+                                        AddressStatus,
+                                        "deleted"
+                                      >,
+                                    }}
+                                    onComplete={() => {
+                                      toggleEditAddress(address.id);
+                                    }}
+                                  />
+                                </DialogContent>
+                              </Dialog>
+
+                              <Dialog
+                                open={deleteAddressStates[address.id] || false}
+                                onOpenChange={(open) => {
+                                  toggleDeleteAddress(address.id);
+                                }}
+                              >
+                                <DialogTrigger className="flex items-center gap-2 hover:text-accent">
+                                  <Trash className="w-4 h-4" />
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Delete Address</DialogTitle>
+                                  </DialogHeader>
+                                  <DialogDescription>
+                                    Are you sure you want to delete this
+                                    address?
+                                  </DialogDescription>
+                                  <DialogFooter>
+                                    <Button
+                                      variant="destructive"
+                                      onClick={() => {
+                                        const response = deleteAddress({
+                                          address_id: address.id,
+                                        });
+                                      }}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </div>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <CardDescription>{addressInfo}</CardDescription>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </CardContent>
             </Card>
           </div>
         )}
