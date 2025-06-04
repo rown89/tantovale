@@ -42,34 +42,23 @@ import { AddressStatus } from "@workspace/server/enumerated_values";
 import useAddressForm from "#components/forms/address-form/use-address-form";
 
 export default function UserInfoComponent() {
-  const [editAddressStates, setEditAddressStates] = useState<
-    Record<number, boolean>
-  >({});
-  const [deleteAddressStates, setDeleteAddressStates] = useState<
-    Record<number, boolean>
-  >({});
-
-  const toggleEditAddress = (addressId: number) => {
-    setEditAddressStates((prev) => ({
-      ...prev,
-      [addressId]: !prev[addressId],
-    }));
-  };
-
-  const toggleDeleteAddress = (addressId: number) => {
-    setDeleteAddressStates((prev) => ({
-      ...prev,
-      [addressId]: !prev[addressId],
-    }));
-  };
-
   const { profile, isLoadingProfile } = useProfileData();
   const { profileForm, isSubmittingProfileForm } = useProfileInfoForm({
     ...profile,
   });
 
   const { userAddress } = useAddressesRetrieval();
-  const { deleteAddress } = useAddressForm((e) => {
+
+  const {
+    deleteAddress,
+    addAddressStates,
+    setAddAddressStates,
+    editAddressStates,
+    toggleEditAddress,
+    deleteAddressStates,
+    toggleDeleteAddress,
+    setDeleteAddressStates,
+  } = useAddressForm((e) => {
     if (e?.id) {
       setDeleteAddressStates((prev) => {
         const newState = { ...prev };
@@ -254,18 +243,12 @@ export default function UserInfoComponent() {
             </Card>
             {/* Addresses */}
             <Card id="address">
-              <CardHeader className="flex flex-row justify-between gap-2">
-                <span className="flex flex-col gap-2">
-                  <CardTitle>Addresses</CardTitle>
-                  <CardDescription>
-                    The default address will be used to calculate shipment cost
-                    when you buy or make a proposal
-                  </CardDescription>{" "}
-                </span>
-                <Button variant="default">
-                  <Plus className="w-4 h-4" />
-                  Add
-                </Button>
+              <CardHeader>
+                <CardTitle>Addresses</CardTitle>
+                <CardDescription>
+                  The default address will be used to calculate shipment cost
+                  when you buy or make a proposal
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {userAddress?.map((address, i) => {
@@ -276,7 +259,9 @@ export default function UserInfoComponent() {
                     <Card
                       key={address.id}
                       className={`${
-                        activeStatus ? "border-primary shadow-md" : ""
+                        activeStatus
+                          ? "border-primary shadow-md bg-gradient-to-r from-transparent to-primary/10"
+                          : ""
                       }`}
                     >
                       <CardHeader>
@@ -288,7 +273,7 @@ export default function UserInfoComponent() {
                             <div className="flex items-center gap-5">
                               <Dialog
                                 key={`edit-address-${address.id}`}
-                                open={editAddressStates[address.id] || false}
+                                open={editAddressStates?.[address.id]}
                                 onOpenChange={(open) => {
                                   toggleEditAddress(address.id);
                                 }}
@@ -309,6 +294,7 @@ export default function UserInfoComponent() {
                                     </Label>
                                   </DialogDescription>
                                   <AddressForm
+                                    mode="edit"
                                     values={{
                                       ...address,
                                       address_id: address.id,
@@ -317,44 +303,48 @@ export default function UserInfoComponent() {
                                         "deleted"
                                       >,
                                     }}
-                                    onComplete={() => {
-                                      toggleEditAddress(address.id);
-                                    }}
+                                    onComplete={() =>
+                                      toggleEditAddress(address.id)
+                                    }
                                   />
                                 </DialogContent>
                               </Dialog>
 
-                              <Dialog
-                                open={deleteAddressStates[address.id] || false}
-                                onOpenChange={(open) => {
-                                  toggleDeleteAddress(address.id);
-                                }}
-                              >
-                                <DialogTrigger className="flex items-center gap-2 hover:text-accent">
-                                  <Trash className="w-4 h-4" />
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Delete Address</DialogTitle>
-                                  </DialogHeader>
-                                  <DialogDescription>
-                                    Are you sure you want to delete this
-                                    address?
-                                  </DialogDescription>
-                                  <DialogFooter>
-                                    <Button
-                                      variant="destructive"
-                                      onClick={() => {
-                                        const response = deleteAddress({
-                                          address_id: address.id,
-                                        });
-                                      }}
-                                    >
-                                      Delete
-                                    </Button>
-                                  </DialogFooter>
-                                </DialogContent>
-                              </Dialog>
+                              {!activeStatus && (
+                                <Dialog
+                                  open={
+                                    deleteAddressStates[address.id] || false
+                                  }
+                                  onOpenChange={(open) => {
+                                    toggleDeleteAddress(address.id);
+                                  }}
+                                >
+                                  <DialogTrigger className="flex items-center gap-2 hover:text-accent">
+                                    <Trash className="w-4 h-4" />
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Delete Address</DialogTitle>
+                                    </DialogHeader>
+                                    <DialogDescription>
+                                      Are you sure you want to delete this
+                                      address?
+                                    </DialogDescription>
+                                    <DialogFooter>
+                                      <Button
+                                        variant="destructive"
+                                        onClick={() => {
+                                          deleteAddress({
+                                            address_id: address.id,
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
                             </div>
                           </div>
                         </CardTitle>
@@ -365,6 +355,34 @@ export default function UserInfoComponent() {
                     </Card>
                   );
                 })}
+                {/* TODO: Currently I want handle only one address at a time */}
+                {/* 
+                  <div className="flex justify-end md:justify-start items-center">
+                    <Dialog
+                      open={addAddressStates}
+                      onOpenChange={(open) => {
+                        setAddAddressStates(open);
+                      }}
+                    >
+                      <DialogTrigger className="flex justify-center items-center w-full">
+                        <Plus className="w-4 h-4" />
+                        Add new
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Address</DialogTitle>
+                        </DialogHeader>
+                        <DialogDescription>
+                          New address will be added to your profile
+                        </DialogDescription>
+                        <AddressForm
+                          mode="add"
+                          onComplete={() => setAddAddressStates(false)}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                */}
               </CardContent>
             </Card>
           </div>

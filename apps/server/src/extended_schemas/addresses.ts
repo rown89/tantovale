@@ -3,6 +3,7 @@ import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
 export const addAddressSchema = createInsertSchema(addresses, {
+	label: (schema) => schema.min(1, 'Label is required').max(50, 'Label must be less than 50 characters'),
 	province_id: (schema) =>
 		schema.min(1, 'Province is required').refine((val) => val !== 0, { message: 'Province is required' }),
 	city_id: (schema) =>
@@ -20,10 +21,9 @@ export const addAddressSchema = createInsertSchema(addresses, {
 })
 	.omit({
 		profile_id: true,
-		label: true,
 		updated_at: true,
 		created_at: true,
 	})
 	.extend({
-		address_id: z.number().min(1, 'Address ID is required'),
+		address_id: z.number().optional(),
 	});

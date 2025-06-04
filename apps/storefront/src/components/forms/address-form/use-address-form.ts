@@ -1,14 +1,24 @@
 import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { addAddressSchema } from "@workspace/server/extended_schemas";
 import { client } from "@workspace/server/client-rpc";
 
-type schemaType = z.infer<typeof addAddressSchema>;
+const addSchema = addAddressSchema.omit({ address_id: true }).extend({
+  mode: z.literal("add"),
+});
 
-export default function useAddressForm(onComplete: (e?: any) => void) {
+const editSchema = addAddressSchema.extend({
+  mode: z.literal("edit"),
+});
+
+const schema = z.union([addSchema, editSchema]);
+
+type schemaType = z.infer<typeof schema>;
+
+export default function useAddressForm(onComplete?: (e?: any) => void) {
   const [searchedCityName, setSearchedCityName] = useState("");
   const [selectedCity, setSelectedCity] = useState(0);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
@@ -17,24 +27,93 @@ export default function useAddressForm(onComplete: (e?: any) => void) {
   const [selectedProvince, setSelectedProvince] = useState(0);
   const [isProvincePopoverOpen, setIsProvincePopoverOpen] = useState(false);
 
+  const [addAddressStates, setAddAddressStates] = useState<boolean>(false);
+  const [editAddressStates, setEditAddressStates] = useState<
+    Record<number, boolean>
+  >({});
+  const [deleteAddressStates, setDeleteAddressStates] = useState<
+    Record<number, boolean>
+  >({});
+
+  const toggleEditAddress = (addressId: number) => {
+    setEditAddressStates((prev) => ({
+      ...prev,
+      [addressId]: !prev[addressId],
+    }));
+  };
+
+  const toggleDeleteAddress = (addressId: number) => {
+    setDeleteAddressStates((prev) => ({
+      ...prev,
+      [addressId]: !prev[addressId],
+    }));
+  };
+
   const queryClient = useQueryClient();
 
   const form = useForm({
     defaultValues: {
       address_id: 0,
-      province_id: selectedProvince,
-      city_id: selectedCity,
+      label: "",
+      province_id: 0,
+      city_id: 0,
       street_address: "",
       civic_number: "",
       postal_code: 0,
       country_code: "IT",
       status: "inactive",
+      mode: "edit" as "add" | "edit",
     },
     validators: {
-      onSubmit: addAddressSchema,
+      onSubmit: schema,
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
-      updateAddress(value);
+      if (value.mode === "add") {
+        const { mode, ...rest } = value;
+        addAddress(rest);
+      } else {
+        const { mode, ...rest } = value;
+        updateAddress(rest);
+      }
+    },
+  });
+
+  function invalidateAddresses() {
+    queryClient.invalidateQueries({ queryKey: ["userAddress"] });
+  }
+
+  const {
+    mutate: addAddress,
+    isPending: isAddingAddress,
+    error: addAddressError,
+    isSuccess: isAddingAddressSuccess,
+  } = useMutation({
+    mutationFn: async (value: Omit<z.infer<typeof addSchema>, "mode">) => {
+      try {
+        const response =
+          await client.addresses.auth.add_address_to_profile.$post({
+            json: value,
+          });
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to add address: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        return response.json();
+      } catch (error) {
+        throw error;
+      }
+    },
+    onError: (error) => {
+      console.error("AddAddress mutation error:", error);
+    },
+    onSuccess: (data) => {
+      console.log("AddAddress mutation success:", data);
+      invalidateAddresses();
+
+      if (onComplete) onComplete();
     },
   });
 
@@ -42,26 +121,30 @@ export default function useAddressForm(onComplete: (e?: any) => void) {
     mutate: updateAddress,
     isPending: isUpdatingAddress,
     error: updateAddressError,
+    isSuccess: isUpdatingAddressSuccess,
   } = useMutation({
-    mutationFn: async (value: schemaType) => {
+    mutationFn: async (value: Omit<z.infer<typeof editSchema>, "mode">) => {
       try {
         const response =
           await client.addresses.auth.update_address_to_profile.$put({
             json: value,
           });
 
-        if (!response.ok) {
-          throw new Error("Failed to update address");
-        }
-
-        queryClient.invalidateQueries({ queryKey: ["userAddress"] });
+        if (!response.ok) throw new Error("Failed to update address");
 
         return response.json();
       } catch (error) {
         throw error;
-      } finally {
-        onComplete();
       }
+    },
+    onError: (error, variables) => {
+      console.error("UpdateAddress mutation error:", error);
+    },
+    onSuccess: (data, variables) => {
+      console.log("UpdateAddress mutation success:", data);
+      invalidateAddresses();
+
+      if (onComplete) onComplete();
     },
   });
 
@@ -69,6 +152,7 @@ export default function useAddressForm(onComplete: (e?: any) => void) {
     mutate: deleteAddress,
     isPending: isDeletingAddress,
     error: deleteAddressError,
+    isSuccess: isDeletingAddressSuccess,
   } = useMutation({
     mutationFn: async ({ address_id }: { address_id: number }) => {
       try {
@@ -77,17 +161,18 @@ export default function useAddressForm(onComplete: (e?: any) => void) {
             json: { address_id },
           });
 
-        if (!response.ok) {
-          throw new Error("Failed to delete address");
-        }
-
-        queryClient.invalidateQueries({ queryKey: ["userAddress"] });
+        if (!response.ok) throw new Error("Failed to delete address");
 
         return response.json();
       } catch (error) {
         throw error;
-      } finally {
-        onComplete();
+      }
+    },
+    onSettled: (data, error, variables) => {
+      invalidateAddresses();
+
+      if (variables.address_id) {
+        toggleDeleteAddress(variables.address_id);
       }
     },
   });
@@ -104,7 +189,20 @@ export default function useAddressForm(onComplete: (e?: any) => void) {
     updateAddressError,
     isDeletingAddress,
     deleteAddressError,
+    addAddressError,
+    isAddingAddress,
     deleteAddress,
+    addAddressStates,
+    editAddressStates,
+    deleteAddressStates,
+    isAddingAddressSuccess,
+    isUpdatingAddressSuccess,
+    isDeletingAddressSuccess,
+    setAddAddressStates,
+    setEditAddressStates,
+    setDeleteAddressStates,
+    toggleEditAddress,
+    toggleDeleteAddress,
     onComplete,
     setSearchedProvinceName,
     setSelectedCity,

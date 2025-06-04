@@ -13,9 +13,13 @@ import { Checkbox } from "@workspace/ui/components/checkbox";
 import { toast } from "sonner";
 
 export default function AddressForm({
+  firstAddress = false,
+  mode,
   values,
   onComplete,
 }: {
+  firstAddress?: boolean;
+  mode: "add" | "edit";
   // if address_id is 0, it means the address is new
   values?: typeof addAddressSchema._type & {
     province_name: string;
@@ -23,7 +27,7 @@ export default function AddressForm({
     province_country_code: string;
     city_country_code: string;
   };
-  onComplete: () => void;
+  onComplete?: () => void;
 }) {
   const {
     form,
@@ -33,6 +37,8 @@ export default function AddressForm({
     selectedProvince,
     isCityPopoverOpen,
     isProvincePopoverOpen,
+    addAddressError,
+    isAddingAddress,
     isUpdatingAddress,
     updateAddressError,
     setSearchedProvinceName,
@@ -59,8 +65,9 @@ export default function AddressForm({
   });
 
   useEffect(() => {
-    if (values) {
+    if (values && mode === "edit") {
       form.setFieldValue("address_id", values.address_id);
+      form.setFieldValue("label", values.label);
       form.setFieldValue("province_id", values.province_id);
       form.setFieldValue("city_id", values.city_id);
       form.setFieldValue("street_address", values.street_address);
@@ -72,7 +79,37 @@ export default function AddressForm({
       setSelectedCity(values.city_id);
       setSelectedProvince(values.province_id);
     }
-  }, [values]);
+
+    if (mode === "add") {
+      form.setFieldValue("mode", "add");
+    }
+
+    if (firstAddress) {
+      form.setFieldValue("status", "active");
+    }
+  }, [values, mode]);
+
+  // Sync form values with selected province and city
+  useEffect(() => {
+    if (selectedProvince > 0) {
+      form.setFieldValue("province_id", selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  useEffect(() => {
+    if (selectedCity > 0) {
+      form.setFieldValue("city_id", selectedCity);
+    }
+  }, [selectedCity]);
+
+  useEffect(() => {
+    if (addAddressError) {
+      toast.error(``, {
+        description: `Something went wrong, address not added correctly.\n ${addAddressError.message}`,
+        duration: 4000,
+      });
+    }
+  }, [addAddressError]);
 
   useEffect(() => {
     if (updateAddressError) {
@@ -93,6 +130,31 @@ export default function AddressForm({
         }}
         className="space-y-4 w-full flex flex-col justify-between"
       >
+        <form.Field name="label">
+          {(field) => {
+            const { name, handleBlur, handleChange, state } = field;
+            const { meta, value } = state;
+            const { isTouched, errors } = meta;
+
+            return (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="block">
+                  Label <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id={name}
+                  name={name}
+                  value={value}
+                  placeholder="Home"
+                  onChange={(e) => handleChange(e.target.value)}
+                  onBlur={handleBlur}
+                />
+                <FieldInfo field={field} />
+              </div>
+            );
+          }}
+        </form.Field>
+
         <form.Field name="province_id">
           {(field) => {
             const { name, handleBlur, setValue, state } = field;
@@ -270,38 +332,45 @@ export default function AddressForm({
           }}
         </form.Field>
 
-        <form.Field name="status">
-          {(field) => {
-            const { name, handleBlur, handleChange, state } = field;
-            const { meta, value } = state;
-            const { isTouched, errors } = meta;
+        {!firstAddress && (
+          <form.Field name="status">
+            {(field) => {
+              const { name, handleBlur, handleChange, state } = field;
+              const { meta, value } = state;
+              const { isTouched, errors } = meta;
 
-            return (
-              <div className="flex gap-3">
-                <Checkbox
-                  id={name}
-                  name={name}
-                  className="shadow-md border-primary"
-                  checked={value === "active"}
-                  disabled={values?.status === "active"}
-                  onCheckedChange={(checked) => {
-                    handleChange(checked ? "active" : "inactive");
-                  }}
-                  onBlur={handleBlur}
-                />
+              return (
+                <div className="flex gap-3">
+                  <Checkbox
+                    id={name}
+                    name={name}
+                    className="shadow-md border-primary"
+                    checked={value === "active"}
+                    disabled={values?.status === "active"}
+                    onCheckedChange={(checked) => {
+                      handleChange(checked ? "active" : "inactive");
+                    }}
+                    onBlur={handleBlur}
+                  />
 
-                <div className="grid gap-2">
-                  <Label htmlFor={field.name}>Default address</Label>
-                  <p className="text-muted-foreground text-sm">
-                    This address will be used as the default address for your
-                    account.
-                  </p>
+                  <div className="grid gap-2">
+                    <Label htmlFor={field.name}>Default address</Label>
+                    <p className="text-muted-foreground text-sm">
+                      This address will be used as the default address for your
+                      account.
+                    </p>
+                    <p className="text-muted-foreground font-bold text-sm p-2 border border-dashed border-muted-foreground border-opacity-50 rounded-md">
+                      Care, if you have on going proposals, they will be sent to
+                      the default address at the proposal time.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            );
-          }}
-        </form.Field>
+              );
+            }}
+          </form.Field>
+        )}
 
+        {/* SUBMIT BUTTON */}
         <form.Subscribe
           selector={(formState) => ({
             canSubmit: formState.canSubmit,
@@ -316,11 +385,14 @@ export default function AddressForm({
 
             return (
               <Button
-                className="flex-1"
                 type="submit"
-                disabled={isSubmitDisabled || isUpdatingAddress}
+                disabled={
+                  isSubmitDisabled || isUpdatingAddress || isAddingAddress
+                }
               >
-                {isSubmitting || isUpdatingAddress ? "Saving..." : "Save"}
+                {isSubmitting || isUpdatingAddress || isAddingAddress
+                  ? "Saving..."
+                  : "Save"}
               </Button>
             );
           }}

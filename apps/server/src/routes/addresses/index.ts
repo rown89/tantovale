@@ -94,28 +94,40 @@ export const addressesRoute = createRouter()
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}
 	})
-	.post(`/${authPath}/add_address_to_profile`, authMiddleware, zValidator('json', addAddressSchema), async (c) => {
-		try {
-			const user = c.get('user');
+	.post(
+		`/${authPath}/add_address_to_profile`,
+		authMiddleware,
+		zValidator('json', addAddressSchema.omit({ address_id: true })),
+		async (c) => {
+			try {
+				const user = c.get('user');
 
-			const { db } = createClient();
+				const { db } = createClient();
 
-			const { address_id, ...values } = c.req.valid('json');
+				const { ...values } = c.req.valid('json');
 
-			const userAddress = await db.insert(addresses).values({
-				profile_id: user.id,
-				...values,
-			});
+				// if user is adding the address for the first time, force it to be active by default
+				const [firstAddress] = await db.select().from(addresses).where(eq(addresses.profile_id, user.id));
 
-			if (!userAddress) {
-				return c.json({ message: 'Failed to add address to profile' }, 500);
+				if (!firstAddress) {
+					values.status = 'active';
+				}
+
+				const userAddress = await db.insert(addresses).values({
+					profile_id: user.id,
+					...values,
+				});
+
+				if (!userAddress) {
+					return c.json({ message: 'Failed to add address to profile' }, 500);
+				}
+
+				return c.json(userAddress, 200);
+			} catch (error) {
+				return c.json({ message: 'addressesRoute error' }, 500);
 			}
-
-			return c.json(userAddress, 200);
-		} catch (error) {
-			return c.json({ message: 'addressesRoute error' }, 500);
-		}
-	})
+		},
+	)
 	.put(`/${authPath}/update_address_to_profile`, authMiddleware, zValidator('json', addAddressSchema), async (c) => {
 		try {
 			const user = c.get('user');
@@ -142,20 +154,20 @@ export const addressesRoute = createRouter()
 				const [currentAddress] = await tx
 					.select()
 					.from(addresses)
-					.where(and(eq(addresses.id, values.address_id), eq(addresses.profile_id, profile.profile_id)));
+					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
 
 				if (currentAddress?.status === 'active' && values.status === 'inactive') {
 					return c.json({ message: 'You can not disable the active address' }, 400);
 				}
 
-				// disable all other addresses that not are in "deleted" status
+				// make "inactive" all other addresses that not are in "deleted" status
 				await tx
 					.update(addresses)
 					.set({ status: 'inactive' })
 					.where(
 						and(
 							eq(addresses.profile_id, profile.profile_id),
-							ne(addresses.id, values.address_id),
+							ne(addresses.id, Number(values.address_id)),
 							ne(addresses.status, 'deleted'),
 						),
 					);
@@ -165,7 +177,7 @@ export const addressesRoute = createRouter()
 					.set({
 						...values,
 					})
-					.where(and(eq(addresses.id, values.address_id), eq(addresses.profile_id, profile.profile_id)));
+					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
 
 				if (!userAddress) {
 					throw new Error('Failed to update address to profile');
@@ -201,7 +213,7 @@ export const addressesRoute = createRouter()
 				const userAddress = await db
 					.update(addresses)
 					.set({ status: 'deleted' })
-					.where(and(eq(addresses.id, address_id), eq(addresses.profile_id, profile.profile_id)))
+					.where(and(eq(addresses.id, Number(address_id)), eq(addresses.profile_id, profile.profile_id)))
 					.returning({
 						id: addresses.id,
 					});
