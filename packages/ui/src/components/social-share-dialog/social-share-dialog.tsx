@@ -27,7 +27,7 @@ export function ShareSocialModal({ isOpen, onClose, item }: ShareModalProps) {
 	const shareUrl = `${baseUrl}/${linkBuilder({
 		id: Number(item.id),
 		title: item.title,
-	})}}`;
+	})}`;
 
 	const shareText = `Check out this item: ${item.title}`;
 

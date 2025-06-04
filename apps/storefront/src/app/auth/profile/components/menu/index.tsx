@@ -25,7 +25,7 @@ export default function ProfileMenu() {
         <div className="border rounded-lg shadow-md w-full min-w-[300px] md:max-w-[300px] h-fit">
           <Command defaultValue={"-"}>
             <CommandList className="overflow-hidden">
-              <CommandGroup heading="Profile" className="flex flex-col gap-1">
+              <CommandGroup heading="Menu" className="flex flex-col gap-1">
                 <div className={`flex flex-col gap-1 font-bold`}>
                   {profileOptions.map((item, i) => (
                     <CommandItem

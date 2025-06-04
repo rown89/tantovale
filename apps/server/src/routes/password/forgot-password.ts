@@ -4,7 +4,7 @@ import { env } from 'hono/adapter';
 import { getNodeEnvMode } from '../../utils/constants';
 import { sendForgotPasswordEmail } from '../../mailer/templates/forgot-password-email';
 import { createClient } from '../../database';
-import { passwordResetTokens } from '../../database/schemas/schema';
+import { password_reset_tokens } from '../../database/schemas/schema';
 
 import { createRouter } from '../../lib/create-app';
 
@@ -37,8 +37,8 @@ export const passwordForgotRoute = createRouter().post('/forgot-password', async
 	const resetToken = await sign({ id: user.id, email }, RESET_TOKEN_SECRET);
 
 	// Store token in DB (optional but safer)
-	await db.insert(passwordResetTokens).values({
-		userId: user.id,
+	await db.insert(password_reset_tokens).values({
+		user_id: user.id,
 		token: resetToken,
 		expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins
 	});

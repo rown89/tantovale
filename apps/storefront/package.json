@@ -32,7 +32,7 @@
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
     "@edge-runtime/cookies": "^6.0.0",
-    "@tanstack/react-form": "^1.2.1",
+    "@tanstack/react-form": "^1.11.1",
     "@tanstack/react-query": "*",
     "browser-image-compression": "^2.0.2",
     "framer-motion": "^12.6.3",

@@ -6,7 +6,7 @@ import { users } from './users';
 import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 import { cities } from './cities';
-import { chat_room } from './chat_room';
+import { addresses } from './addresses';
 
 export const items = pgTable(
 	'items',
@@ -21,26 +21,25 @@ export const items = pgTable(
 				onDelete: 'cascade',
 				onUpdate: 'cascade',
 			}),
-		city: integer('city')
+		address_id: integer('address_id')
 			.notNull()
-			.references(() => cities.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+			.references(() => addresses.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		title: text('title').notNull(),
 		description: text('description').notNull(),
 		status: itemStatusEnum('status').notNull().default('available'),
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
-		shipping_price: integer('shipping_price'),
-		is_payable: boolean('is_payable').notNull().default(false),
+		easy_pay: boolean('easy_pay').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 		deleted_at: timestamp('deleted_at', { mode: 'date' }),
 	},
 	(table) => [
 		index('user_id_idx').on(table.user_id),
-		index('city_idx').on(table.city),
+		index('address_id_idx').on(table.address_id),
 		index('title_idx').on(table.title),
 		index('subcategory_id_idx').on(table.subcategory_id),
-		index('is_payable_idx').on(table.is_payable),
+		index('easy_pay_idx').on(table.easy_pay),
 		index('published_idx').on(table.published),
 		index('status_idx').on(table.status),
 	],
@@ -55,11 +54,10 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
 		fields: [items.subcategory_id],
 		references: [subcategories.id],
 	}),
-	city: one(cities, {
-		fields: [items.city],
-		references: [cities.id],
+	address: one(addresses, {
+		fields: [items.address_id],
+		references: [addresses.id],
 	}),
-	chatRooms: many(chat_room),
 }));
 
 export type SelectItem = typeof items.$inferSelect;
@@ -67,4 +65,5 @@ export type InsertItem = typeof items.$inferInsert;
 
 export const selectItemsSchema = createSelectSchema(items);
 export const insertItemsSchema = createInsertSchema(items);
+
 export const patchItemsSchema = insertItemsSchema.partial();

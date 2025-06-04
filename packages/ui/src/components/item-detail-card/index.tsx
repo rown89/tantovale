@@ -17,17 +17,26 @@ export interface ItemDetailCardrops {
 		title: string;
 		price: number;
 		description?: string;
-		city: string;
+		location: {
+			city: {
+				id: number;
+				name: string;
+			};
+			province: {
+				id: number;
+				name: string;
+			};
+		};
 		images: ReactNode[];
 		subcategory?: ReactNode;
 		condition?: ReactNode;
-		deliveryMethods?: string[];
+		deliveryMethods?: string;
 	};
 }
 
 export const ItemDetailCard = React.memo(
 	({ isPreview = false, isCompact = false, item, imagesRef, maxImages }: ItemDetailCardrops) => {
-		const { title, price, description, city, images, condition, subcategory } = item;
+		const { title, price, description, location, images, condition, subcategory } = item;
 
 		const formattedPrice = price ? (price / 100).toFixed(2) : '0.00';
 
@@ -48,27 +57,24 @@ export const ItemDetailCard = React.memo(
 							</div>
 
 							<div className='flex items-start justify-between gap-5'>
-								<h1 className='text-2xl font-bold break-all'>{title || 'Your item title...'}</h1>
+								<h1 className='break-all text-2xl font-bold'>{title || 'Your item title...'}</h1>
 							</div>
 
 							<div className='flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between'>
 								<div className='text-muted-foreground flex items-center gap-1.5'>
 									<MapPin className='h-4 w-4' />
-									<span className='text-sm font-medium'>{city || 'Location'}</span>
+									<span className='text-sm font-medium'>{location.city.name || 'Location'}</span>
 								</div>
 
 								<div className='flex items-center gap-1'>
-									{item.deliveryMethods?.length ? (
-										item.deliveryMethods.map((method, i) => (
-											<>
-												<Badge key={i} variant='outline' className='font-normal'>
-													<span className='flex items-center gap-1'>
-														<Truck className='h-3 w-3' /> {method}
-													</span>
-												</Badge>
-												{item.deliveryMethods && item.deliveryMethods.length > 1 && i === 0 && '/'}
-											</>
-										))
+									{item.deliveryMethods ? (
+										<div>
+											<Badge variant='outline' className='font-normal'>
+												<span className='flex items-center gap-1'>
+													<Truck className='h-3 w-3' /> {item.deliveryMethods}
+												</span>
+											</Badge>
+										</div>
 									) : isPreview ? (
 										<Badge variant='outline' className='font-normal'>
 											<span className='flex items-center gap-1'>Delivery mode</span>
@@ -91,7 +97,7 @@ export const ItemDetailCard = React.memo(
 							)}
 							{!isCompact && description && (
 								<div
-									className={`text-[17px] whitespace-pre-wrap ${isPreview ? 'max-h-80' : ''} overflow-auto break-all text-slate-600 dark:text-slate-400`}>
+									className={`whitespace-pre-wrap text-[17px] ${isPreview ? 'max-h-80' : ''} overflow-auto break-all text-slate-600 dark:text-slate-400`}>
 									{description || 'Your item description will appear here...'}
 								</div>
 							)}

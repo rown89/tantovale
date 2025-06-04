@@ -9,10 +9,10 @@
 		"lint": "turbo lint",
 		"dev-server": "pnpm run --filter=@workspace/server hono:dev",
 		"dev-storefront": "pnpm run --filter=@workspace/storefront next:dev",
-		"dev-db-push": "pnpm run --filter=@workspace/server db:push",
-		"dev-seed-users": "pnpm run --filter=@workspace/server seed:users",
-		"dev-seed-categories": "pnpm run --filter=@workspace/server seed:categories",
-		"dev-seed-countries": "pnpm run --filter=@workspace/server seed:countries",
+		"db-push": "pnpm run --filter=@workspace/server db:push",
+		"seed-users": "pnpm run --filter=@workspace/server seed:users",
+		"seed-categories": "pnpm run --filter=@workspace/server seed:categories",
+		"seed-countries": "pnpm run --filter=@workspace/server seed:countries",
 		"seed-all": "bash seed-all.sh",
 		"clean-all": "bash clean-project.sh",
 		"prepare": "husky"
@@ -34,8 +34,8 @@
 		"drizzle-kit": "^0.31.1",
 		"drizzle-orm": "^0.43.1",
 		"drizzle-zod": "^0.7.1",
-		"hono": "^4.7.8",
-		"zod": "^3.24.4"
+		"hono": "^4.7.11",
+		"zod": "^3.25.0"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^19.8.1",

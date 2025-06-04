@@ -1,6 +1,6 @@
 "use server";
 
-import { UserSchema } from "@workspace/server/extended_schemas";
+import { UserProfileSchema } from "@workspace/server/extended_schemas";
 import { client } from "@workspace/server/client-rpc";
 
 import { SignupActionResponse, SignupFormData } from "./types";
@@ -12,16 +12,16 @@ export async function signupAction(
   try {
     const rawData: SignupFormData = {
       username: formData.get("username") as string,
-      fullname: formData.get("fullname") as string,
+      name: formData.get("name") as string,
+      surname: formData.get("surname") as string,
       gender: formData.get("gender") as "male" | "female",
-      city: Number(formData.get("city")),
       email: formData.get("email") as string,
       password: formData.get("password") as string,
       privacy_policy: Boolean(formData.get("privacy_policy")) as boolean,
       marketing_policy: Boolean(formData.get("marketing_policy")) as boolean,
     };
 
-    const validatedFields = UserSchema.safeParse(rawData);
+    const validatedFields = UserProfileSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
       return {
@@ -66,12 +66,10 @@ export async function signupAction(
       return {
         success: true,
         inputs: rawData,
-        message: "Signup successful!",
+        message: "Signup successful! Check your email for verification.",
       };
     }
   } catch (error) {
-    console.error("signup form err: ", error);
-
     return {
       success: false,
       message: "An unexpected error occurred with signup form",

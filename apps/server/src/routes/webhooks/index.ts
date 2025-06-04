@@ -1,5 +1,10 @@
-import { eq } from 'drizzle-orm';
 import { createRouter } from 'src/lib/create-app';
-import { parseEnv } from 'src/env';
 
-export const webhooksRoute = createRouter();
+export const webhooksRoute = createRouter().get('/pp_events', async (c) => {
+	return c.json(
+		{
+			message: 'ok',
+		},
+		200,
+	);
+});

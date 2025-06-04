@@ -1,19 +1,27 @@
 import { count, eq } from 'drizzle-orm';
-
 import { createClient, type DrizzleClient } from '../../..';
-import { categories, subcategories, filters, subCategoryFilters, filterValues } from '../../../schemas/schema';
+
+import {
+	categories,
+	subcategories,
+	properties,
+	subcategory_properties,
+	property_values,
+} from '../../../schemas/schema';
+
 import {
 	CATEGORY_SEEDS,
 	SUBCATEGORY_SEEDS,
-	FILTER_SEEDS,
+	PROPERTY_SEEDS,
 	Categories,
 	Subcategories,
-	FILTER_VALUES,
-	Filters,
-	SUBCATEGORIES_FILTERS,
+	PROPERTY_VALUES,
+	Properties,
+	SUBCATEGORIES_PROPERTIES,
 } from './constants';
 
-import type { BaseSubcategorySeed, ParentGroupSeed } from './types';
+import type { SelectSubCategories } from '../../../schemas/subcategories';
+import type { BaseSubcategorySeed, ChildSubcategory, ParentGroupSeed } from './types';
 
 // Type guard to check if an item is a ParentGroupSeed
 function isParentGroupSeed(item: BaseSubcategorySeed | ParentGroupSeed): item is ParentGroupSeed {
@@ -35,13 +43,13 @@ export const seedDatabase = async (): Promise<void> => {
 		// Seed subcategories using the category map
 		const subcategoryMap = await seedSubcategories(db, categoryMap);
 
-		// Seed filters
-		const filterMap = await seedFilters(db);
+		// Seed properties
+		const propertyMap = await seedProperties(db);
 
-		await seedFilterValues(db, filterMap);
+		await seedPropertyValues(db, propertyMap);
 
-		// Link filters to subcategories
-		await linkFiltersToSubcategories(db, subcategoryMap, filterMap);
+		// Link properties to subcategories
+		await linkPropertiesToSubcategories(db, subcategoryMap, propertyMap);
 
 		// Run a verification query to show the results
 		await verifySeeding(db);
@@ -148,12 +156,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Electronic Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -164,12 +167,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.electronics) {
 		if (isParentGroupSeed(group)) {
@@ -184,20 +182,17 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 				name: child.name,
 				slug: createUniqueSlug(child.slug, group.parent.slug),
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Electronic Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -229,12 +224,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Clothing Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -245,12 +235,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.clothings) {
 		if (isParentGroupSeed(group)) {
@@ -265,20 +250,17 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 				name: child.name,
 				slug: createUniqueSlug(child.slug, group.parent.slug),
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Clothing Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -313,12 +295,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 
 	const allParents = [...parentSubcategories, ...standaloneSubcategories];
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Kids Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -329,12 +306,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.kids) {
 		if (isParentGroupSeed(group)) {
@@ -349,20 +321,17 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 				name: child.name,
 				slug: child.slug,
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Kids Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -400,12 +369,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 		return [];
 	}
 
-	const insertedParents = await db
-		.insert(subcategories)
-		// @ts-expect-error ignore seeder
-		.values(allParents)
-		.onConflictDoNothing()
-		.returning();
+	const insertedParents = await db.insert(subcategories).values(allParents).onConflictDoNothing().returning();
 
 	console.log(`✅ Collectables Parent Subcategories Inserted: ${insertedParents.length}`);
 
@@ -416,12 +380,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 	}, {});
 
 	// Then insert children subcategories
-	let childSubcategories: Array<{
-		category_id: number;
-		name: string;
-		slug: string;
-		parent_id: number;
-	}> = [];
+	let childSubcategories: ChildSubcategory[] = [];
 
 	for (const group of SUBCATEGORY_SEEDS.collectables) {
 		if (isParentGroupSeed(group)) {
@@ -436,20 +395,17 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 				name: child.name,
 				slug: child.slug,
 				parent_id: parentId,
+				menu_order: child.menu_order || 0,
+				easy_pay: child.easy_pay || false,
 			}));
 
 			childSubcategories = childSubcategories.concat(children);
 		}
 	}
 
-	let insertedChildren: any[] = [];
+	let insertedChildren: SelectSubCategories[] = [];
 	if (childSubcategories.length > 0) {
-		insertedChildren = await db
-			.insert(subcategories)
-			// @ts-expect-error ignore seeder
-			.values(childSubcategories)
-			.onConflictDoNothing()
-			.returning();
+		insertedChildren = await db.insert(subcategories).values(childSubcategories).onConflictDoNothing().returning();
 
 		console.log(`✅ Collectables Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
@@ -458,22 +414,17 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 }
 
 /**
- * Seeds filters table and returns a map of slug to id
+ * Seeds properties table and returns a map of slug to id
  */
-async function seedFilters(db: DrizzleClient['db']) {
-	const insertedFilters = await db
-		.insert(filters)
-		// @ts-expect-error ignore seeder
-		.values(FILTER_SEEDS)
-		.onConflictDoNothing()
-		.returning();
+async function seedProperties(db: DrizzleClient['db']) {
+	const insertedProperties = await db.insert(properties).values(PROPERTY_SEEDS).onConflictDoNothing().returning();
 
-	console.log(`✅ Filters Inserted: ${insertedFilters.length}`);
+	console.log(`✅ Properties Inserted: ${insertedProperties.length}`);
 
 	// Create a map for easier lookup by slug
-	return insertedFilters.reduce(
-		(map, filter) => {
-			map[filter.slug] = filter.id;
+	return insertedProperties.reduce(
+		(map, property) => {
+			map[property.slug] = property.id;
 			return map;
 		},
 		{} as Record<string, number>,
@@ -481,18 +432,18 @@ async function seedFilters(db: DrizzleClient['db']) {
 }
 
 /**
- * Links filters to subcategories based on predefined rules
+ * Links properties to subcategories based on predefined rules
  */
-async function linkFiltersToSubcategories(
+async function linkPropertiesToSubcategories(
 	db: DrizzleClient['db'],
 	subcategoryMap: Record<string, number>,
-	filterMap: Record<string, number>,
+	propertyMap: Record<string, number>,
 ) {
 	// Define filter assignments by subcategory type
-	const filterAssignments = [
+	const propertyAssignments = [
 		// For filters that apply to all subcategories with the same flags, you can still use a flat array:
 		{
-			filterSlug: Filters.CONDITION,
+			propertySlug: Properties.CONDITION,
 			subcategories: Object.keys(subcategoryMap).map((slug) => ({
 				slug,
 				on_item_create_required: true,
@@ -500,24 +451,24 @@ async function linkFiltersToSubcategories(
 			})),
 		},
 		{
-			filterSlug: Filters.DELIVERY_METHOD,
+			propertySlug: Properties.DELIVERY_METHOD,
 			subcategories: Object.keys(subcategoryMap).map((slug) => ({
 				slug,
 				on_item_create_required: true,
 				on_item_update_editable: true,
 			})),
 		},
-		...SUBCATEGORIES_FILTERS,
+		...SUBCATEGORIES_PROPERTIES,
 	];
 
-	// Create subcategory-filter links
+	// Create subcategory-property links
 
-	const subCategoryFilterLinks = [];
+	const subCategoryPropertyLinks = [];
 
-	for (const assignment of filterAssignments) {
-		const filterId = filterMap[assignment.filterSlug];
-		if (!filterId) {
-			console.warn(`Filter with slug ${assignment.filterSlug} not found, skipping`);
+	for (const assignment of propertyAssignments) {
+		const propertyId = propertyMap[assignment.propertySlug];
+		if (!propertyId) {
+			console.warn(`Property with slug ${assignment.propertySlug} not found, skipping`);
 			continue;
 		}
 
@@ -529,19 +480,19 @@ async function linkFiltersToSubcategories(
 				continue;
 			}
 
-			subCategoryFilterLinks.push({
+			subCategoryPropertyLinks.push({
 				subcategory_id: subcategoryId,
-				filter_id: filterId,
+				property_id: propertyId,
 				on_item_create_required: sub.on_item_create_required,
 				on_item_update_editable: sub.on_item_update_editable,
 			});
 		}
 	}
 
-	if (subCategoryFilterLinks.length > 0) {
+	if (subCategoryPropertyLinks.length > 0) {
 		const insertedLinks = await db
-			.insert(subCategoryFilters)
-			.values(subCategoryFilterLinks)
+			.insert(subcategory_properties)
+			.values(subCategoryPropertyLinks)
 			.onConflictDoNothing()
 			.returning();
 
@@ -555,34 +506,34 @@ async function linkFiltersToSubcategories(
 /**
  * Seeds sample filter values
  */
-async function seedFilterValues(db: DrizzleClient['db'], insertedFilters: Record<string, number>) {
+async function seedPropertyValues(db: DrizzleClient['db'], insertedProperties: Record<string, number>) {
 	// Map over the FILTER_VALUES constant to create the records for insertion
-	const valuesToInsert = FILTER_VALUES.map((fv) => {
-		const filterId = insertedFilters[fv.slug];
-		if (!filterId) {
-			console.warn(`Filter with slug "${fv.slug}" not found, skipping value "${fv.value}"`);
+	const valuesToInsert = PROPERTY_VALUES.map((fv) => {
+		const propertyId = insertedProperties[fv.slug];
+		if (!propertyId) {
+			console.warn(`Property with slug "${fv.slug}" not found, skipping value "${fv.value}"`);
 			return null;
 		}
 		return {
-			filter_id: filterId,
+			property_id: propertyId,
 			...fv,
 		};
 	});
 
 	if (valuesToInsert.length === 0) {
-		console.warn('No filter values to insert.');
+		console.warn('No property values to insert.');
 		return [];
 	}
 
-	const insertedFilterValues = await db
-		.insert(filterValues)
+	const insertedPropertyValues = await db
+		.insert(property_values)
 		// @ts-expect-error ignore seeder
 		.values(valuesToInsert)
 		.onConflictDoNothing()
 		.returning();
 
-	console.log(`✅ Filter values Inserted: ${insertedFilterValues.length}`);
-	return insertedFilterValues;
+	console.log(`✅ Property values Inserted: ${insertedPropertyValues.length}`);
+	return insertedPropertyValues;
 }
 
 /**
@@ -590,17 +541,17 @@ async function seedFilterValues(db: DrizzleClient['db'], insertedFilters: Record
  */
 async function verifySeeding(db: DrizzleClient['db']) {
 	// Query to get human-readable subcategory-filter relationships
-	const subCategoryFiltersWithLabels = await db
+	const subCategoryPropertiesWithLabels = await db
 		.select({
-			subcategoryFilterId: subCategoryFilters.id,
+			subcategoryPropertyId: subcategory_properties.id,
 			subcategoryName: subcategories.name,
-			filterName: filters.name,
+			propertyName: properties.name,
 		})
-		.from(subCategoryFilters)
-		.innerJoin(subcategories, eq(subCategoryFilters.subcategory_id, subcategories.id))
-		.innerJoin(filters, eq(subCategoryFilters.filter_id, filters.id));
+		.from(subcategory_properties)
+		.innerJoin(subcategories, eq(subcategory_properties.subcategory_id, subcategories.id))
+		.innerJoin(properties, eq(subcategory_properties.property_id, properties.id));
 
-	console.log('🔍 Verification: SubCategory-Filter Relationships:', subCategoryFiltersWithLabels.length);
+	console.log('🔍 Verification: SubCategory-Property Relationships:', subCategoryPropertiesWithLabels.length);
 
 	// Optional: Count categories and subcategories
 	const categoryCount = await db.select({ count: count() }).from(categories);

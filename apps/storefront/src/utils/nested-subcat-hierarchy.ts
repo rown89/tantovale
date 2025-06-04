@@ -1,13 +1,13 @@
-import { SelectCategory } from "@workspace/server/database";
-import { SelectSubCategories } from "@workspace/server/database";
-import type { Category } from "@workspace/shared/types/category";
+import { Category } from "@workspace/server/extended_schemas";
+
+type SubCategory = Pick<
+  Category,
+  "id" | "name" | "category_id" | "parent_id" | "menu_order"
+>;
 
 export function nestedSubCatHierarchy(
-  subCategories: Omit<
-    SelectSubCategories,
-    "slug" | "created_at" | "updated_at"
-  >[],
-  categories: Pick<SelectCategory, "id" | "name">[],
+  subCategories: SubCategory[],
+  categories: Pick<Category, "id" | "name" | "menu_order">[],
 ) {
   // Convert subcategories array into a nested structure
   const subcategoryMap = new Map<
@@ -17,7 +17,8 @@ export function nestedSubCatHierarchy(
       name: string;
       category_id: number;
       parent_id: number | null;
-      subcategories: Category[];
+      menu_order: number;
+      subcategories: SubCategory[];
     }
   >();
 
@@ -32,6 +33,7 @@ export function nestedSubCatHierarchy(
       const parent = subcategoryMap.get(sub.parent_id);
       if (parent) {
         const subItem = subcategoryMap.get(sub.id);
+
         if (subItem && parent && parent?.subcategories) {
           parent?.subcategories.push(subItem);
         }
@@ -42,13 +44,19 @@ export function nestedSubCatHierarchy(
   if (categories?.length && categories?.length) {
     // Attach subcategories to categories
     const categoriesWithSubcategories = categories?.map((category) => ({
-      ...category,
+      id: category.id,
+      name: category.name,
+      // Default menu_order to 0 for categories if not provided
+      menu_order: category.menu_order || 0,
       subcategories: subCategories
         ?.filter((sub) => sub.category_id === category.id && !sub.parent_id)
         .map((sub) => subcategoryMap.get(sub.id))
         .filter((sub): sub is NonNullable<typeof sub> => sub !== undefined),
     }));
 
-    return categoriesWithSubcategories;
+    // return sorted by menu_order
+    return categoriesWithSubcategories.sort(
+      (a, b) => a.menu_order - b.menu_order,
+    );
   } else return [];
 }

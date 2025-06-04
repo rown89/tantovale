@@ -9,39 +9,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog";
-import { Input } from "@workspace/ui/components/input";
-import { Label } from "@workspace/ui/components/label";
 
 export function PaymentDialog({
-  isBuyModalOpen,
-  setIsBuyModalOpen,
+  isOpen,
+  setIsOpen,
+  order,
+  onPaymentComplete,
 }: {
-  isBuyModalOpen: boolean;
-  setIsBuyModalOpen: (open: boolean) => void;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  order: any;
+  onPaymentComplete: () => void;
 }) {
   return (
-    <Dialog open={isBuyModalOpen} onOpenChange={setIsBuyModalOpen}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit profile</DialogTitle>
-          <DialogDescription>
-            Make changes to your profile here. Click save when you're done.
-          </DialogDescription>
+          <DialogTitle>Complete Payment</DialogTitle>
+          <DialogDescription>Complete payment for the order.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
-              Name
-            </Label>
-            <Input id="name" value="Pedro Duarte" className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="username" className="text-right">
-              Username
-            </Label>
-            <Input id="username" value="@peduarte" className="col-span-3" />
-          </div>
-        </div>
+        <div className="grid gap-4 py-4"></div>
         <DialogFooter>
           <Button type="submit">Save changes</Button>
         </DialogFooter>

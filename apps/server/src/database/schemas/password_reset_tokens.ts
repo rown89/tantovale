@@ -4,9 +4,9 @@ import { relations } from 'drizzle-orm';
 
 import { users } from './users';
 
-export const passwordResetTokens = pgTable('password_reset_tokens', {
+export const password_reset_tokens = pgTable('password_reset_tokens', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
-	userId: integer('user_id')
+	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 	token: text('token').notNull(),
@@ -15,14 +15,14 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
-	resetTokens: many(passwordResetTokens),
+	resetTokens: many(password_reset_tokens),
 }));
 
-export type SelectPasswordResetToken = typeof passwordResetTokens.$inferSelect;
-export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+export type SelectPasswordResetToken = typeof password_reset_tokens.$inferSelect;
+export type InsertPasswordResetToken = typeof password_reset_tokens.$inferInsert;
 
-export const selectPasswordResetTokensSchema = createSelectSchema(passwordResetTokens);
+export const selectPasswordResetTokensSchema = createSelectSchema(password_reset_tokens);
 
-export const insertPasswordResetTokensSchema = createInsertSchema(passwordResetTokens);
+export const insertPasswordResetTokensSchema = createInsertSchema(password_reset_tokens);
 
 export const patchPasswordResetTokensSchema = insertPasswordResetTokensSchema.partial();

@@ -3,29 +3,30 @@ import { configureOpenAPI } from './lib/configureOpenApi';
 import { serveStatic } from '@hono/node-server/serve-static';
 
 import {
+	addressesRoute,
+	categoriesRoute,
+	chatRoute,
+	favoritesRoute,
+	itemRoute,
 	itemsRoute,
+	locationsRoute,
 	loginRoute,
-	signupRoute,
-	refreshRoute,
 	logoutRoute,
-	profileRoute,
+	ordersProposalsRoute,
+	ordersRoute,
 	passwordForgotRoute,
 	passwordResetRoute,
 	passwordResetVerifyToken,
-	verifyRoute,
-	itemRoute,
+	profileRoute,
+	propertiesRoute,
+	refreshRoute,
+	signupRoute,
 	subcategoriesRoute,
-	subcategoryFiltersRoute,
-	categoriesRoute,
-	filtersRoute,
+	subcategoryPropertiesRoute,
 	uploadsRoute,
-	citiesRoute,
-	chatRoute,
 	userRoute,
-	favoritesRoute,
+	verifyRoute,
 	webhooksRoute,
-	ordersProposalsRoute,
-	ordersRoute,
 } from './routes';
 
 const app = createApp();
@@ -37,29 +38,30 @@ configureOpenAPI(app);
 app.use('/*', serveStatic({ root: './dist' }));
 
 const apiRoutes = app
-	.route(`/signup`, signupRoute)
-	.route(`/login`, loginRoute)
-	.route(`/verify`, verifyRoute)
+	.route(`/addresses`, addressesRoute)
+	.route(`/categories`, categoriesRoute)
+	.route(`/chat`, chatRoute)
+	.route(`/favorites`, favoritesRoute)
 	.route(`/item`, itemRoute)
 	.route(`/items`, itemsRoute)
-	.route(`/categories`, categoriesRoute)
-	.route(`/cities`, citiesRoute)
-	.route(`/filters`, filtersRoute)
-	.route(`/subcategories`, subcategoriesRoute)
-	.route(`/subcategory_fitlers`, subcategoryFiltersRoute)
-	.route(`/uploads`, uploadsRoute)
-	.route(`/chat`, chatRoute)
+	.route(`/locations`, locationsRoute)
+	.route(`/login`, loginRoute)
 	.route(`/logout`, logoutRoute)
-	.route(`/refresh`, refreshRoute)
+	.route(`/orders`, ordersRoute)
+	.route(`/orders_proposals`, ordersProposalsRoute)
 	.route(`/password`, passwordForgotRoute)
 	.route(`/password`, passwordResetRoute)
 	.route(`/password`, passwordResetVerifyToken)
 	.route(`/profile`, profileRoute)
-	.route(`/favorites`, favoritesRoute)
+	.route(`/properties`, propertiesRoute)
+	.route(`/refresh`, refreshRoute)
+	.route(`/signup`, signupRoute)
+	.route(`/subcategories`, subcategoriesRoute)
+	.route(`/subcategory_properties`, subcategoryPropertiesRoute)
+	.route(`/uploads`, uploadsRoute)
 	.route(`/user`, userRoute)
-	.route(`/webhooks`, webhooksRoute)
-	.route(`/orders`, ordersRoute)
-	.route(`/orders_proposals`, ordersProposalsRoute);
+	.route(`/verify`, verifyRoute)
+	.route(`/webhooks`, webhooksRoute);
 
 export { app };
 export type ApiRoutesType = typeof apiRoutes;

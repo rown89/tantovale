@@ -1,9 +1,10 @@
 import { verify } from 'hono/jwt';
 import { env } from 'hono/adapter';
 import { eq } from 'drizzle-orm';
+
 import { hashPassword } from '../../lib/password';
 import { createClient } from '../../database';
-import { users, passwordResetTokens } from '../../database/schemas/schema';
+import { users, password_reset_tokens } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
@@ -26,7 +27,7 @@ export const passwordResetRoute = createRouter()
 
 			const { db } = createClient();
 			// Check if token exists in DB
-			const storedToken = await db.query.passwordResetTokens.findFirst({
+			const storedToken = await db.query.password_reset_tokens.findFirst({
 				where: (tbl) => eq(tbl.token, token),
 			});
 
@@ -43,7 +44,7 @@ export const passwordResetRoute = createRouter()
 				.where(eq(users.id, Number(payload.id)));
 
 			// Delete reset token from DB
-			await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+			await db.delete(password_reset_tokens).where(eq(password_reset_tokens.token, token));
 
 			return c.json({ message: 'Password updated successfully!' });
 		} catch (error) {

@@ -40,23 +40,23 @@ import { useAuth } from "#providers/auth-providers";
 import { FieldInfo } from "#components/forms/utils/field-info";
 import useTantovaleStore from "#stores";
 
-interface UserInfoBoxProps {
-  item: ItemWrapperProps["item"];
+interface UserInfoBoxProps extends ItemWrapperProps {
   itemOwnerData: Pick<
     ItemWrapperProps["itemOwnerData"],
-    "phone_verified" | "email_verified" | "selling_items"
+    "id" | "location" | "phone_verified" | "email_verified" | "selling_items"
   >;
-  orderProposal?: {
-    id: number;
-    created_at: string;
-  };
-  isFavorite: boolean;
-  chatId?: number;
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
   function UserInfoBox(
-    { item, itemOwnerData, orderProposal, isFavorite, chatId },
+    {
+      item,
+      itemOwnerData,
+      orderProposal,
+      isFavorite,
+      chatId,
+      isCurrentUserTheItemOwner,
+    },
     ref,
   ) {
     const item_id = item.id;
@@ -77,8 +77,6 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
       isFavorite,
     });
 
-    const itemOwnerIsNotCurrentUser = item?.user?.id !== user?.id;
-
     const proposal_date = format(
       new Date(orderProposal?.created_at || proposal_created_at || new Date()),
       "dd/MM/yyyy - HH:mm",
@@ -90,12 +88,12 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
         className="flex flex-col w-full xl:max-w-[450px] h-auto gap-4"
       >
         <Card className="xl:sticky xl:top-4 w-full">
-          {itemOwnerIsNotCurrentUser && (
+          {!isCurrentUserTheItemOwner && (
             <CardHeader>
               <CardTitle
                 className={`flex flex-col break-all justify-between items-center gap-3`}
               >
-                {item?.is_payable && (
+                {item?.easy_pay && (
                   <PaymentButton
                     handlePayment={() => {
                       if (!user) {
@@ -107,7 +105,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
                   />
                 )}
 
-                {item?.is_payable &&
+                {item?.easy_pay &&
                   !orderProposal?.id &&
                   !proposal_created_at && (
                     <ProposalButton
@@ -209,7 +207,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
             </div>
           </CardContent>
 
-          {itemOwnerIsNotCurrentUser && (
+          {!isCurrentUserTheItemOwner && (
             <CardFooter className="flex flex-col gap-2 items-start">
               <Label className="mb-1">Richiedi informazioni</Label>
               {!chatIdClient ? (
@@ -287,7 +285,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
           )}
         </Card>
 
-        {itemOwnerIsNotCurrentUser && (
+        {!isCurrentUserTheItemOwner && (
           <span className="w-full text-center">
             Annuncio sospetto?{" "}
             <Link

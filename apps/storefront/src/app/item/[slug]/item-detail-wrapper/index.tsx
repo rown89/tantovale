@@ -26,8 +26,8 @@ export default function ItemWDetailWrapper({
   chatId,
   orderProposal,
   isFavorite,
+  isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
-  const item_id = item.id;
   const { images } = item;
 
   const {
@@ -63,6 +63,7 @@ export default function ItemWDetailWrapper({
 
   const { setIsProposalModalOpen } = useTantovaleStore();
 
+  // Effect to check if the UserInfoBox is in view
   useEffect(() => {
     if (!infoBoxRef.current) return;
 
@@ -128,10 +129,11 @@ export default function ItemWDetailWrapper({
             itemOwnerData={itemOwnerData}
             orderProposal={orderProposal}
             isFavorite={isFavorite}
+            isCurrentUserTheItemOwner={isCurrentUserTheItemOwner}
           />
         }
 
-        {isMobile && !isInfoBoxInView && item?.is_payable && (
+        {isMobile && !isInfoBoxInView && item?.easy_pay && (
           <div className="flex gap-2 justify-center items-center w-full fixed bottom-0 left-0 px-8 pb-4 ">
             {!orderProposal?.id && !proposal_created_at && (
               <ProposalButton
@@ -161,7 +163,12 @@ export default function ItemWDetailWrapper({
         )}
       </div>
 
-      <PaymentDialog isBuyModalOpen={false} setIsBuyModalOpen={() => {}} />
+      <PaymentDialog
+        isOpen={false}
+        setIsOpen={() => {}}
+        order={null}
+        onPaymentComplete={() => {}}
+      />
 
       <ProposalDialog />
 

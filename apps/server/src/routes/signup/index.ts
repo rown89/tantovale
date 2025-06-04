@@ -18,7 +18,7 @@ import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 
 import { createRouter } from '../../lib/create-app';
 import { parseEnv } from '../../env';
-import { UserSchema } from '../../extended_schemas/users';
+import { UserProfileSchema } from '../../extended_schemas/users';
 
 export const signupRoute = createRouter().post(
 	'/',
@@ -30,7 +30,7 @@ export const signupRoute = createRouter().post(
 			},
 		},
 	}),
-	zValidator('json', UserSchema),
+	zValidator('json', UserProfileSchema),
 	async (c) => {
 		const { NODE_ENV, EMAIL_VERIFY_TOKEN_SECRET } = env<{
 			NODE_ENV: string;

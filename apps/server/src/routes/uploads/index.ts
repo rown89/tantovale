@@ -8,7 +8,7 @@ import { createRouter } from '../../lib/create-app';
 import { s3Client } from '../../lib/s3client';
 import { parseEnv } from '../../env';
 import { createClient } from '../../database';
-import { itemsImages, type InsertItemImage } from '../../database/schemas/schema';
+import { items_images, type InsertItemImage } from '../../database/schemas/schema';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 
@@ -192,7 +192,7 @@ export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, auth
 		]);
 
 		// Insert records into the database
-		await db.insert(itemsImages).values(imageRecords);
+		await db.insert(items_images).values(imageRecords);
 
 		return c.json(
 			{

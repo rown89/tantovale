@@ -5,7 +5,7 @@ import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { users } from './users';
 import { items } from './items';
 
-export const userItemsFavorites = pgTable(
+export const user_items_favorites = pgTable(
 	'user_items_favorites',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
@@ -25,22 +25,22 @@ export const userItemsFavorites = pgTable(
 	],
 );
 
-export const userItemsFavoritesRelations = relations(userItemsFavorites, ({ one }) => ({
+export const user_items_favoritesRelations = relations(user_items_favorites, ({ one }) => ({
 	user: one(users, {
-		fields: [userItemsFavorites.user_id],
+		fields: [user_items_favorites.user_id],
 		references: [users.id],
 	}),
 	item: one(items, {
-		fields: [userItemsFavorites.item_id],
+		fields: [user_items_favorites.item_id],
 		references: [items.id],
 	}),
 }));
 
-export type SelectUserFavorite = typeof userItemsFavorites.$inferSelect;
-export type InsertUserFavorite = typeof userItemsFavorites.$inferInsert;
+export type SelectUserFavorite = typeof user_items_favorites.$inferSelect;
+export type InsertUserFavorite = typeof user_items_favorites.$inferInsert;
 
-export const selectUserItemsFavoritesSchema = createSelectSchema(userItemsFavorites);
+export const selectUserItemsFavoritesSchema = createSelectSchema(user_items_favorites);
 
-export const insertUserItemsFavoritesSchema = createInsertSchema(userItemsFavorites);
+export const insertUserItemsFavoritesSchema = createInsertSchema(user_items_favorites);
 
 export const patchUserFavoritesSchema = insertUserItemsFavoritesSchema.partial();

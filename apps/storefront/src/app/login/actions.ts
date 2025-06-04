@@ -3,7 +3,7 @@
 import { client } from "@workspace/server/client-rpc";
 import { LoginActionResponse, LoginFormData } from "./types";
 import { cookies } from "next/headers";
-import { UserSchema } from "@workspace/server/extended_schemas";
+import { UserProfileSchema } from "@workspace/server/extended_schemas";
 
 export async function submitLogin(
   prevState: LoginActionResponse | null,
@@ -15,7 +15,7 @@ export async function submitLogin(
   };
 
   try {
-    const validateData = UserSchema.pick({
+    const validateData = UserProfileSchema.pick({
       email: true,
       password: true,
     }).safeParse(rawData);

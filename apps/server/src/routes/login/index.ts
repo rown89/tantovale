@@ -17,13 +17,13 @@ import {
 } from '../../utils/constants';
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
-import { UserSchema } from '../../extended_schemas/users';
+import { UserProfileSchema } from '../../extended_schemas/users';
 
 export const loginRoute = createRouter().post(
 	'/',
 	zValidator(
 		'json',
-		UserSchema.pick({
+		UserProfileSchema.pick({
 			email: true,
 			password: true,
 		}),

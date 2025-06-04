@@ -261,12 +261,12 @@ export default function Home() {
     displayText: text1,
     showCaret: showCaret1,
     isComplete: isComplete1,
-  } = useTypewriter("Un marketplace", 100, 100);
+  } = useTypewriter("Un marketplace C2C,", 100, 100);
 
   const { displayText: text2, showCaret: showCaret2 } = useTypewriter(
     "open source.",
     100,
-    100 + "Un marketplace".length * 100,
+    100 + "Un marketplace C2C,".length * 100,
   );
 
   const logoPosition = useSmoothLogoMovement(mousePosition);
@@ -331,7 +331,7 @@ export default function Home() {
             <Logo className="w-full h-full" />
           </div>
 
-          <h1 className="gap-0 md:gap-2 mb-8 text-3xl font-bold leading-tight md:text-4xl lg:text-5xl bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-purple-200 to-pink-200 inline-flex flex-wrap justify-center items-center">
+          <h1 className="gap-2 md:gap-2 mb-8 text-3xl font-bold leading-tight md:text-4xl lg:text-5xl bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-purple-200 to-pink-200 inline-flex flex-wrap justify-center items-center">
             {text1}
             {showCaret1 && !isComplete1 && (
               <span className="text-white ml-1 animate-pulse text-3xl md:text-4xl lg:text-5xl opacity-60">

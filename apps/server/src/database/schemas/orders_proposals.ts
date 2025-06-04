@@ -6,7 +6,7 @@ import { users } from './users';
 import { items } from './items';
 import { ordersProposalStatusEnum } from './enumerated_types';
 
-export const ordersProposals = pgTable('orders_proposals', {
+export const orders_proposals = pgTable('orders_proposals', {
 	id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
 	item_id: integer('item_id').references(() => items.id, {
 		onDelete: 'cascade',
@@ -22,19 +22,19 @@ export const ordersProposals = pgTable('orders_proposals', {
 	updated_at: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const ordersProposalsRelations = relations(ordersProposals, ({ one }) => ({
+export const orders_proposalsRelations = relations(orders_proposals, ({ one }) => ({
 	item: one(items, {
-		fields: [ordersProposals.item_id],
+		fields: [orders_proposals.item_id],
 		references: [items.id],
 	}),
 	user: one(users, {
-		fields: [ordersProposals.user_id],
+		fields: [orders_proposals.user_id],
 		references: [users.id],
 	}),
 }));
 
-export type SelectOrderProposal = typeof ordersProposals.$inferSelect;
-export type InsertOrderProposal = typeof ordersProposals.$inferInsert;
+export type SelectOrderProposal = typeof orders_proposals.$inferSelect;
+export type InsertOrderProposal = typeof orders_proposals.$inferInsert;
 
-export const ordersProposalsSelectSchema = createSelectSchema(ordersProposals);
-export const ordersProposalsInsertSchema = createInsertSchema(ordersProposals);
+export const orders_proposalsSelectSchema = createSelectSchema(orders_proposals);
+export const orders_proposalsInsertSchema = createInsertSchema(orders_proposals);

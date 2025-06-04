@@ -7,13 +7,13 @@ import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from 'src/database';
 import { createRouter } from 'src/lib/create-app';
-import { ordersProposals } from 'src/database/schemas/orders_proposals';
+import { orders_proposals } from 'src/database/schemas/orders_proposals';
 import { authPath, cronPath } from 'src/utils/constants';
 import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
 import { items } from 'src/database/schemas/items';
 import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
 import { users } from 'src/database/schemas/users';
-import { chat_room } from 'src/database/schemas/chat_room';
+import { chat_rooms } from 'src/database/schemas/chat_rooms';
 import { chat_messages } from 'src/database/schemas/chat_messages';
 import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
 import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
@@ -46,12 +46,12 @@ export const ordersProposalsRoute = createRouter()
 				// check if the user already has a proposal in pending status for this item
 				const [proposalAlreadyExists] = await tx
 					.select()
-					.from(ordersProposals)
+					.from(orders_proposals)
 					.where(
 						and(
-							eq(ordersProposals.item_id, item_id),
-							eq(ordersProposals.user_id, user.id),
-							eq(ordersProposals.status, 'pending'),
+							eq(orders_proposals.item_id, item_id),
+							eq(orders_proposals.user_id, user.id),
+							eq(orders_proposals.status, 'pending'),
 						),
 					)
 					.limit(1);
@@ -60,7 +60,7 @@ export const ordersProposalsRoute = createRouter()
 
 				// create a new proposal
 				const [proposal] = await tx
-					.insert(ordersProposals)
+					.insert(orders_proposals)
 					.values({
 						item_id,
 						user_id: user.id,
@@ -82,8 +82,8 @@ export const ordersProposalsRoute = createRouter()
 				// check if user already has an ongoing chat with the item owner
 				const [chatRoom] = await tx
 					.select()
-					.from(chat_room)
-					.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, user.id)))
+					.from(chat_rooms)
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.id)))
 					.limit(1);
 
 				let chatRoomId = null;
@@ -107,7 +107,7 @@ export const ordersProposalsRoute = createRouter()
 				} else {
 					// create a new chat room
 					const [newChatRoom] = await tx
-						.insert(chat_room)
+						.insert(chat_rooms)
 						.values({
 							item_id,
 							buyer_id: user.id,
@@ -155,12 +155,12 @@ export const ordersProposalsRoute = createRouter()
 
 		const proposal = await db
 			.select({
-				status: ordersProposals.status,
-				proposal_price: ordersProposals.proposal_price,
-				created_at: ordersProposals.created_at,
+				status: orders_proposals.status,
+				proposal_price: orders_proposals.proposal_price,
+				created_at: orders_proposals.created_at,
 			})
-			.from(ordersProposals)
-			.where(eq(ordersProposals.id, id))
+			.from(orders_proposals)
+			.where(eq(orders_proposals.id, id))
 			.limit(1);
 
 		if (!proposal[0]) return c.json({ error: 'Proposal not found' }, 404);
@@ -185,16 +185,16 @@ export const ordersProposalsRoute = createRouter()
 
 			const [proposal] = await db
 				.select({
-					id: ordersProposals.id,
-					status: ordersProposals.status,
-					created_at: ordersProposals.created_at,
+					id: orders_proposals.id,
+					status: orders_proposals.status,
+					created_at: orders_proposals.created_at,
 				})
-				.from(ordersProposals)
+				.from(orders_proposals)
 				.where(
 					and(
-						eq(ordersProposals.item_id, item_id),
-						eq(ordersProposals.user_id, user.id),
-						eq(ordersProposals.status, status as OrderProposalStatus),
+						eq(orders_proposals.item_id, item_id),
+						eq(orders_proposals.user_id, user.id),
+						eq(orders_proposals.status, status as OrderProposalStatus),
 					),
 				)
 				.limit(1);
@@ -219,8 +219,8 @@ export const ordersProposalsRoute = createRouter()
 
 		// remove proposals in pending status with created_at date equal or older than 7 days
 		await db
-			.delete(ordersProposals)
-			.where(and(eq(ordersProposals.status, 'pending'), lt(ordersProposals.created_at, subDays(new Date(), 7))));
+			.delete(orders_proposals)
+			.where(and(eq(orders_proposals.status, 'pending'), lt(orders_proposals.created_at, subDays(new Date(), 7))));
 
 		return c.json({ message: 'Expired proposals removed' }, 200);
 	})
@@ -243,16 +243,16 @@ export const ordersProposalsRoute = createRouter()
 		// check if the proposal is not expired
 		const [proposal] = await db
 			.select()
-			.from(ordersProposals)
-			.where(and(eq(ordersProposals.id, id), eq(ordersProposals.status, 'expired')))
+			.from(orders_proposals)
+			.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, 'expired')))
 			.limit(1);
 
 		if (proposal) return c.json({ error: 'Proposal expired' }, 400);
 
 		const [updatedProposal] = await db
-			.update(ordersProposals)
+			.update(orders_proposals)
 			.set({ status })
-			.where(eq(ordersProposals.id, id))
+			.where(eq(orders_proposals.id, id))
 			.returning();
 
 		if (!updatedProposal) return c.json({ error: 'Proposal not found' }, 404);
@@ -263,9 +263,9 @@ export const ordersProposalsRoute = createRouter()
 
 		// get the chat room
 		const [chatRoom] = await db
-			.select({ id: chat_room.id })
-			.from(chat_room)
-			.where(and(eq(chat_room.item_id, item_id), eq(chat_room.buyer_id, updatedProposal.user_id)))
+			.select({ id: chat_rooms.id })
+			.from(chat_rooms)
+			.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, updatedProposal.user_id)))
 			.limit(1);
 
 		if (!chatRoom) return c.json({ error: 'Chat room not found, cannot send the proposal update	 message' }, 404);
@@ -304,7 +304,7 @@ export const ordersProposalsRoute = createRouter()
 							order_id: newOrder.id,
 							item_id,
 							finished_price: updatedProposal.proposal_price,
-							order_status: 'pending_payment',
+							order_status: 'payment_pending',
 						})
 						.returning({
 							id: orders_items.id,
@@ -337,7 +337,7 @@ export const ordersProposalsRoute = createRouter()
 
 		if (status === 'rejected') {
 			// reject the proposal
-			await db.update(ordersProposals).set({ status: 'rejected' }).where(eq(ordersProposals.id, id));
+			await db.update(orders_proposals).set({ status: 'rejected' }).where(eq(orders_proposals.id, id));
 
 			sendProposalRejectedMessage({
 				to: userProposal.email,

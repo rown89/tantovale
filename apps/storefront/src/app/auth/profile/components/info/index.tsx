@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { Edit, Plus, Trash } from "lucide-react";
+
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
 import {
@@ -12,15 +13,11 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import { CitySelector } from "#components/forms/commons/city-selector";
-import { useCitiesData } from "@workspace/shared/hooks/use-cities-data";
+import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { useProfileData } from "@workspace/shared/hooks/use-profile-data";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import { Button } from "@workspace/ui/components/button";
-
 import { useProfileInfoForm } from "./use-profile-info";
-import { FieldInfo } from "#components/forms/utils/field-info";
-import { Separator } from "@workspace/ui/components/separator";
 import {
   Card,
   CardDescription,
@@ -28,15 +25,48 @@ import {
   CardTitle,
   CardContent,
 } from "@workspace/ui/components/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@workspace/ui/components/dialog";
+import { useAddressesRetrieval } from "@workspace/shared/hooks/use-user-address-retrieval";
+
+import { FieldInfo } from "#components/forms/utils/field-info";
+import AddressForm from "#components/forms/address-form";
+import { AddressStatus } from "@workspace/server/enumerated_values";
+import useAddressForm from "#components/forms/address-form/use-address-form";
 
 export default function UserInfoComponent() {
-  const [searchedCity, setSearchedCityName] = useState("");
+  const { profile, isLoadingProfile } = useProfileData();
+  const { profileForm, isSubmittingProfileForm } = useProfileInfoForm({
+    ...profile,
+  });
 
-  const { cities, isLoadingCities } = useCitiesData(searchedCity);
-  const { profile, isLoadingProfile, isPaymentProviderConnected } =
-    useProfileData();
-  const { form, isCityPopoverOpen, setIsCityPopoverOpen, isSubmittingForm } =
-    useProfileInfoForm({ ...profile, city: profile?.city?.id });
+  const { userAddress } = useAddressesRetrieval();
+
+  const {
+    deleteAddress,
+    addAddressStates,
+    setAddAddressStates,
+    editAddressStates,
+    toggleEditAddress,
+    deleteAddressStates,
+    toggleDeleteAddress,
+    setDeleteAddressStates,
+  } = useAddressForm((e) => {
+    if (e?.id) {
+      setDeleteAddressStates((prev) => {
+        const newState = { ...prev };
+        delete newState[e.id];
+        return newState;
+      });
+    }
+  });
 
   return (
     <div className="flex flex-col w-full gap-8 px-4">
@@ -53,52 +83,15 @@ export default function UserInfoComponent() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <Card>
+            {/* Basic Informations */}
+            <Card id="info">
               <CardHeader>
-                <CardTitle>Payment provider</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  {!isPaymentProviderConnected ? (
-                    <span>
-                      Connect a{" "}
-                      <Link href="#" target="_blank" className="text-blue-500">
-                        payment provider
-                      </Link>{" "}
-                      account to start selling and accepting payments.
-                    </span>
-                  ) : (
-                    "Stripe account connected"
-                  )}
-
-                  {!isPaymentProviderConnected && (
-                    <Button className="w-full max-w-full md:max-w-fit">
-                      Connect Stripe
-                    </Button>
-                  )}
+                <CardTitle>Basic Informations</CardTitle>
+                <CardDescription>
+                  Manage your basic informations
                 </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Phone validation</CardTitle>
-                <CardDescription className="flex flex-col md:flex-row gap-2 justify-between">
-                  <span>
-                    Secure your account by verifying your phone number.
-                  </span>
-                  <Button className="w-full max-w-full md:max-w-fit">
-                    Verify phone number
-                  </Button>
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Account information</CardTitle>
-                <CardDescription></CardDescription>
               </CardHeader>
               <CardContent>
-                <Separator className="mb-4" />
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-3 mb-4">
                     <>
@@ -130,114 +123,100 @@ export default function UserInfoComponent() {
                     onSubmit={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      form.handleSubmit();
+                      profileForm.handleSubmit();
                     }}
                   >
-                    <div className="space-y-4">
-                      <form.Field name="fullname">
-                        {(field) => {
-                          const { name, state, handleChange } = field;
-                          const { value } = state;
+                    <profileForm.Field name="name">
+                      {(field) => {
+                        const { name, state, handleChange } = field;
+                        const { value } = state;
 
-                          return (
-                            <div className="space-y-2">
-                              <Label htmlFor={name} className="block">
-                                Full name{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <Input
-                                id={name}
-                                name={name}
-                                disabled={isLoadingProfile || isSubmittingForm}
-                                onChange={(e) => handleChange(e.target.value)}
-                                value={value}
-                              />
-                              <FieldInfo field={field} />
-                            </div>
-                          );
-                        }}
-                      </form.Field>
-                      <form.Field name="gender">
-                        {(field) => {
-                          const { name, handleChange } = field;
+                        return (
+                          <div className="space-y-2">
+                            <Label htmlFor={name} className="block">
+                              Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={name}
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              onChange={(e) => handleChange(e.target.value)}
+                              value={value}
+                            />
+                            <FieldInfo field={field} />
+                          </div>
+                        );
+                      }}
+                    </profileForm.Field>
+                    <profileForm.Field name="surname">
+                      {(field) => {
+                        const { name, state, handleChange } = field;
+                        const { value } = state;
 
-                          return (
-                            <>
-                              <Label htmlFor={name}>
-                                Gender <span className="text-red-500">*</span>
-                              </Label>
-                              <Select
-                                name={name}
-                                disabled={isLoadingProfile || isSubmittingForm}
-                                defaultValue={profile?.gender ?? ""}
-                                onValueChange={(e: "male" | "female") => {
-                                  console.log(e);
-                                  handleChange(e);
-                                }}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue
-                                    placeholder={`Select your gender`}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectGroup>
-                                    {["male", "female"]?.map((item, i) => (
-                                      <SelectItem key={i} value={item}>
-                                        {item}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                </SelectContent>
-                              </Select>
-                              <FieldInfo field={field} />
-                            </>
-                          );
-                        }}
-                      </form.Field>
-                      <form.Field name="city">
-                        {(field) => {
-                          const { name, state, handleChange, handleBlur } =
-                            field;
-                          const { value, meta } = state;
-                          const { isTouched, errors } = meta;
-                          return (
-                            <div className="space-y-2">
-                              <Label htmlFor={field.name} className="block">
-                                Item location{" "}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <CitySelector
-                                name={name}
-                                value={value}
-                                onChange={(e) => {
-                                  handleChange(e);
-                                }}
-                                onBlur={handleBlur}
-                                isTouched={isTouched}
-                                hasErrors={errors?.length > 0}
-                                cities={
-                                  cities?.length
-                                    ? cities
-                                    : profile
-                                      ? [profile?.city]
-                                      : []
-                                }
-                                isLoadingCities={isLoadingCities}
-                                isSubmittingForm={isSubmittingForm}
-                                onSearchChange={setSearchedCityName}
-                                isCityPopoverOpen={isCityPopoverOpen}
-                                setIsCityPopoverOpen={setIsCityPopoverOpen}
-                              />
-                              <FieldInfo field={field} />
-                            </div>
-                          );
-                        }}
-                      </form.Field>
-                    </div>
+                        return (
+                          <div className="space-y-2">
+                            <Label htmlFor={name} className="block">
+                              Surname <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={name}
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              onChange={(e) => handleChange(e.target.value)}
+                              value={value}
+                            />
+                            <FieldInfo field={field} />
+                          </div>
+                        );
+                      }}
+                    </profileForm.Field>
+                    <profileForm.Field name="gender">
+                      {(field) => {
+                        const { name, handleChange } = field;
+
+                        return (
+                          <>
+                            <Label htmlFor={name}>
+                              Gender <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                              name={name}
+                              disabled={
+                                isLoadingProfile || isSubmittingProfileForm
+                              }
+                              defaultValue={profile?.gender ?? ""}
+                              onValueChange={(e: "male" | "female") => {
+                                console.log(e);
+                                handleChange(e);
+                              }}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue
+                                  placeholder={`Select your gender`}
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {["male", "female"]?.map((item, i) => (
+                                    <SelectItem key={i} value={item}>
+                                      {item}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <FieldInfo field={field} />
+                          </>
+                        );
+                      }}
+                    </profileForm.Field>
 
                     <div className="w-full">
-                      <form.Subscribe
+                      <profileForm.Subscribe
                         selector={(formState) => ({
                           canSubmit: formState.canSubmit,
                           isSubmitting: formState.isSubmitting,
@@ -252,14 +231,158 @@ export default function UserInfoComponent() {
                               disabled={isSubmitting || !isDirty || !canSubmit}
                               className="w-full"
                             >
-                              {isSubmitting ? "..." : "Submit"}
+                              {isSubmitting ? "Saving..." : "Save"}
                             </Button>
                           );
                         }}
-                      </form.Subscribe>
+                      </profileForm.Subscribe>
                     </div>
                   </form>
                 </div>
+              </CardContent>
+            </Card>
+            {/* Addresses */}
+            <Card id="address">
+              <CardHeader>
+                <CardTitle>Addresses</CardTitle>
+                <CardDescription>
+                  The default address will be used to calculate shipment cost
+                  when you buy or make a proposal
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {userAddress?.map((address, i) => {
+                  const activeStatus = address.status === "active";
+                  const addressInfo = `${address.street_address} ${address.civic_number}, ${address.city_name} ${`(${address.province_name}) - ${address.postal_code} - (${address.country_code})`}`;
+
+                  return (
+                    <Card
+                      key={address.id}
+                      className={`${
+                        activeStatus
+                          ? "border-primary shadow-md bg-gradient-to-r from-transparent to-primary/10"
+                          : ""
+                      }`}
+                    >
+                      <CardHeader>
+                        <CardTitle>
+                          <div className="flex justify-between gap-2">
+                            <p className="text-lg truncate max-w-[250px]">
+                              {address.label}
+                            </p>
+                            <div className="flex items-center gap-5">
+                              <Dialog
+                                key={`edit-address-${address.id}`}
+                                open={editAddressStates?.[address.id]}
+                                onOpenChange={(open) => {
+                                  toggleEditAddress(address.id);
+                                }}
+                              >
+                                <DialogTrigger className="flex items-center gap-2 hover:text-accent">
+                                  <Edit className="w-4 h-4" />
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>{address.label}</DialogTitle>
+                                  </DialogHeader>
+                                  <DialogDescription>
+                                    <Label
+                                      htmlFor={"address"}
+                                      className="block"
+                                    >
+                                      Edit your address information
+                                    </Label>
+                                  </DialogDescription>
+                                  <AddressForm
+                                    mode="edit"
+                                    values={{
+                                      ...address,
+                                      address_id: address.id,
+                                      status: address.status as Exclude<
+                                        AddressStatus,
+                                        "deleted"
+                                      >,
+                                    }}
+                                    onComplete={() =>
+                                      toggleEditAddress(address.id)
+                                    }
+                                  />
+                                </DialogContent>
+                              </Dialog>
+
+                              {!activeStatus && (
+                                <Dialog
+                                  open={
+                                    deleteAddressStates[address.id] || false
+                                  }
+                                  onOpenChange={(open) => {
+                                    toggleDeleteAddress(address.id);
+                                  }}
+                                >
+                                  <DialogTrigger className="flex items-center gap-2 hover:text-accent">
+                                    <Trash className="w-4 h-4" />
+                                  </DialogTrigger>
+                                  <DialogContent>
+                                    <DialogHeader>
+                                      <DialogTitle>Delete Address</DialogTitle>
+                                    </DialogHeader>
+                                    <DialogDescription>
+                                      Are you sure you want to delete this
+                                      address?
+                                    </DialogDescription>
+                                    <DialogFooter>
+                                      <Button
+                                        variant="destructive"
+                                        onClick={() => {
+                                          deleteAddress({
+                                            address_id: address.id,
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
+                            </div>
+                          </div>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <CardDescription>{addressInfo}</CardDescription>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+                {/* TODO: Currently I want handle only one address at a time */}
+                {/* 
+                  <div className="flex justify-end md:justify-start items-center">
+                    <Dialog
+                      open={addAddressStates}
+                      onOpenChange={(open) => {
+                        setAddAddressStates(open);
+                      }}
+                    >
+                      <DialogTrigger className="flex justify-center items-center w-full">
+                        <Plus className="w-4 h-4" />
+                        Add new
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Address</DialogTitle>
+                        </DialogHeader>
+                        <DialogDescription>
+                          New address will be added to your profile
+                        </DialogDescription>
+                        <AddressForm
+                          mode="add"
+                          onComplete={() => setAddAddressStates(false)}
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                */}
               </CardContent>
             </Card>
           </div>

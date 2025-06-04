@@ -2,32 +2,33 @@ import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import { UserSchema } from "@workspace/server/extended_schemas";
+import { UserProfileSchema } from "@workspace/server/extended_schemas";
 import { client } from "@workspace/server/client-rpc";
 
-const schema = UserSchema.pick({
-  fullname: true,
+const schema = UserProfileSchema.pick({
+  name: true,
+  surname: true,
   gender: true,
-  city: true,
 });
+
 type schemaType = z.infer<typeof schema>;
 
 export function useProfileInfoForm(profiles?: Partial<schemaType>) {
-  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
+  const [isSubmittingProfileForm, setIsSubmittingProfileForm] = useState(false);
+  const [isSubmittingAddressForm, setIsSubmittingAddressForm] = useState(false);
 
   // Initialize form
-  const form = useForm({
+  const profileForm = useForm({
     defaultValues: {
-      fullname: profiles?.fullname ?? "",
+      name: profiles?.name ?? "",
+      surname: profiles?.surname ?? "",
       gender: profiles?.gender ?? "male",
-      city: profiles?.city ?? 0,
     },
     validators: {
       onSubmit: schema,
     },
     onSubmit: async ({ value }: { value: schemaType }) => {
-      setIsSubmittingForm(true);
+      setIsSubmittingProfileForm(true);
 
       try {
         const response = await client.profile.auth.$put({ json: value });
@@ -47,15 +48,14 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
           duration: 4000,
         });
       } finally {
-        setIsSubmittingForm(false);
+        setIsSubmittingProfileForm(false);
       }
     },
   });
 
   return {
-    form,
-    isCityPopoverOpen,
-    setIsCityPopoverOpen,
-    isSubmittingForm,
+    profileForm,
+    isSubmittingProfileForm,
+    isSubmittingAddressForm,
   };
 }

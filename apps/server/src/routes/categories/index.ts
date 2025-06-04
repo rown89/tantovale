@@ -10,6 +10,7 @@ export const categoriesRoute = createRouter().get('/', async (c) => {
 			.select({
 				id: categories.id,
 				name: categories.name,
+				menu_order: categories.menu_order,
 			})
 			.from(categories);
 

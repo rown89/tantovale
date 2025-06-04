@@ -1,7 +1,6 @@
 import {
   ClipboardList,
   LucideProps,
-  Save,
   Settings,
   StretchHorizontal,
   UserPen,
@@ -33,12 +32,6 @@ export const profileOptions: ProfileOptionsProps[] = [
     label: "Orders",
     url: "/auth/profile/orders",
     slug: "orders",
-  },
-  {
-    Icon: Save,
-    label: "Favorites",
-    url: "/auth/profile/favorites",
-    slug: "favorites",
   },
   {
     Icon: Settings,

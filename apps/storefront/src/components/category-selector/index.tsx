@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { ChevronRight, ChevronLeft, ChevronsUpDown } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { Button } from "@workspace/ui/components/button";
 import { ScrollArea } from "@workspace/ui/components/scroll-area";
 import {
@@ -9,19 +11,16 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu";
-import { ChevronRight, ChevronLeft, ChevronsUpDown } from "lucide-react";
 import { cn } from "@workspace/ui/lib/utils";
 
-interface Category {
-  id: number;
-  name: string;
-  subcategories: Category[];
-}
+import type { Category } from "@workspace/server/extended_schemas";
+
+type CategoryWithSubcategories = Partial<Category>;
 
 interface MobileCategorySelectorProps {
-  categories: Category[];
-  onSelect: (category: Category) => void;
-  selectedCategoryControlled?: Omit<Category, "subcategories"> | null;
+  categories: CategoryWithSubcategories[];
+  onSelect: (category: CategoryWithSubcategories) => void;
+  selectedCategoryControlled?: CategoryWithSubcategories | null;
   className?: string;
   isLoading: boolean;
 }
@@ -33,16 +32,19 @@ export function CategorySelector({
   className,
   isLoading,
 }: MobileCategorySelectorProps) {
-  const [currentCategories, setCurrentCategories] = useState(categories);
-  const [breadcrumbs, setBreadcrumbs] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Omit<
-    Category,
-    "subcategories"
-  > | null>(selectedCategoryControlled || null);
+  const [currentCategories, setCurrentCategories] =
+    useState<CategoryWithSubcategories[]>(categories);
+  const [breadcrumbs, setBreadcrumbs] = useState<CategoryWithSubcategories[]>(
+    [],
+  );
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryWithSubcategories | null>(
+      selectedCategoryControlled || null,
+    );
   const [isOpen, setIsOpen] = useState(false);
 
-  const handleCategoryClick = (category: Category) => {
-    if (category.subcategories.length > 0) {
+  const handleCategoryClick = (category: CategoryWithSubcategories) => {
+    if (category?.subcategories && category?.subcategories?.length) {
       setCurrentCategories(category.subcategories);
       setBreadcrumbs([...breadcrumbs, category]);
     } else {
@@ -74,13 +76,16 @@ export function CategorySelector({
         <Button
           autoFocus
           variant="outline"
-          className={cn("w-full justify-between", className)}
+          className={cn("w-full justify-between font-bold", className)}
         >
           {selectedCategory ? selectedCategory.name : "Select a category"}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-full min-w-[300px]" align="start">
+      <DropdownMenuContent
+        className="w-full min-w-[250px] max-w-[300px]"
+        align="start"
+      >
         {isLoading ? (
           "--"
         ) : (
@@ -115,15 +120,16 @@ export function CategorySelector({
                       key={`${category.id}-${category.name}`}
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start mb-1",
+                        "w-full justify-start mb-1 font-bold",
                         selectedCategory?.id === category.id && "bg-muted",
                       )}
                       onClick={() => handleCategoryClick(category)}
                     >
                       {category.name}
-                      {category.subcategories.length > 0 && (
-                        <ChevronRight className="ml-auto h-4 w-4" />
-                      )}
+                      {category?.subcategories &&
+                        category?.subcategories?.length > 0 && (
+                          <ChevronRight className="ml-auto h-4 w-4" />
+                        )}
                     </Button>
                   ))}
               </div>

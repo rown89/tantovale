@@ -1,23 +1,28 @@
+import { eq, and } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
-import { eq, and } from 'drizzle-orm';
 
 import { createClient } from '../../database';
-import { subcategories } from '../../database/schemas/subcategories';
-import { subCategoryFilters } from '../../database/schemas/subcategory_filters';
-import { createItemSchema } from '../../extended_schemas';
-import { items } from '../../database/schemas/items';
-import { itemsFiltersValues, InsertItemFilterValue } from '../../database/schemas/items_filter_values';
+import {
+	subcategories,
+	subcategory_properties,
+	items,
+	cities,
+	users,
+	shippings,
+	addresses,
+	items_images,
+	property_values,
+} from '../../database/schemas/schema';
+import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
+import { createItemSchema } from '../../extended_schemas';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { itemsImages } from '../../database/schemas/items_images';
-import { cities } from '../../database/schemas/cities';
-import { filterValues } from 'src/database/schemas/filter_values';
-import { users } from 'src/database/schemas/users';
+import { alias } from 'drizzle-orm/pg-core';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -27,6 +32,9 @@ export const itemRoute = createRouter()
 		if (isNaN(id)) return c.json({ message: 'Invalid item ID' }, 400);
 
 		const { db } = createClient();
+
+		const city = alias(cities, 'city');
+		const province = alias(cities, 'province');
 
 		try {
 			const [item] = await db
@@ -38,28 +46,33 @@ export const itemRoute = createRouter()
 						title: items.title,
 						price: items.price,
 						description: items.description,
-						city: cities.name,
-						is_payable: items.is_payable,
+						city_id: city.id,
+						city_name: city.name,
+						province_id: province.id,
+						province_name: province.name,
+						easy_pay: items.easy_pay,
 						subcategory_name: subcategories.name,
 						subcategory_slug: subcategories.slug,
-						property_name: filterValues.name,
-						property_value: filterValues.value,
-						property_boolean_value: filterValues.boolean_value,
-						property_numeric_value: filterValues.numeric_value,
+						property_name: property_values.name,
+						property_value: property_values.value,
+						property_boolean_value: property_values.boolean_value,
+						property_numeric_value: property_values.numeric_value,
 					},
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
-				.innerJoin(cities, eq(cities.id, items.city))
-				.innerJoin(itemsFiltersValues, eq(itemsFiltersValues.item_id, items.id))
-				.innerJoin(filterValues, eq(itemsFiltersValues.filter_value_id, filterValues.id))
+				.innerJoin(addresses, eq(addresses.id, items.address_id))
+				.innerJoin(city, eq(city.id, addresses.city_id))
+				.innerJoin(province, eq(province.id, addresses.province_id))
+				.innerJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
+				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.innerJoin(users, eq(users.id, items.user_id))
 				.where(and(eq(items.id, id), eq(items.published, true)));
 
 			const itemImages = await db
-				.select({ url: itemsImages.url })
-				.from(itemsImages)
-				.where(and(eq(itemsImages.item_id, id), eq(itemsImages.size, 'original')));
+				.select({ url: items_images.url })
+				.from(items_images)
+				.where(and(eq(items_images.item_id, id), eq(items_images.size, 'original')));
 
 			if (!item) throw new Error('No item found');
 
@@ -72,8 +85,17 @@ export const itemRoute = createRouter()
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,
-				city: item.item.city,
-				is_payable: item.item.is_payable,
+				location: {
+					city: {
+						id: item.item.city_id,
+						name: item.item.city_name,
+					},
+					province: {
+						id: item.item.province_id,
+						name: item.item.province_name,
+					},
+				},
+				easy_pay: item.item.easy_pay,
 				subcategory: {
 					name: item?.item.subcategory_name,
 					slug: item?.item.subcategory_slug,
@@ -93,7 +115,7 @@ export const itemRoute = createRouter()
 				ACCESS_TOKEN_SECRET: string;
 			}>(c);
 
-			const { commons, properties } = c.req.valid('json');
+			const { commons, properties, shipping_price } = c.req.valid('json');
 
 			// Auth TOKEN
 			const accessToken = getCookie(c, 'access_token');
@@ -103,6 +125,18 @@ export const itemRoute = createRouter()
 			const user_id = Number(payload.id);
 
 			if (!user_id) return c.json({ message: 'Invalid user identifier' }, 400);
+
+			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
+
+			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping_price) {
+				return c.json({ message: 'Shipping price is required' }, 400);
+			}
+
+			// if property value delivery_method is "pickup" and shipping_price is provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping_price) {
+				return c.json({ message: 'Shipping price is not allowed' }, 400);
+			}
 
 			const { db } = createClient();
 
@@ -141,65 +175,75 @@ export const itemRoute = createRouter()
 					throw new Error('Failed to create item');
 				}
 
-				// Handle item properties(filters) if provided
-				if (properties?.length) {
-					// Get valid filters for this subcategory
-					const subcategoryFilters = await tx
-						.select()
-						.from(subCategoryFilters)
-						.where(eq(subCategoryFilters.subcategory_id, commons.subcategory_id));
+				// TODO: CONVERT PROPERTY VALUES TO NUMBERS
 
-					const validFilterIds = new Set(subcategoryFilters.map((f) => f.filter_id));
+				// Handle item properties(properties) if provided
+				if (properties?.length) {
+					// Get valid properties for this subcategory
+					const subcategoryProperties = await tx
+						.select()
+						.from(subcategory_properties)
+						.where(eq(subcategory_properties.subcategory_id, commons.subcategory_id));
+
+					const validPropertyIds = new Set(subcategoryProperties.map((p) => p.property_id));
 
 					// Validate all properties exist
-					const invalidProperties = properties.filter((p) => !validFilterIds.has(p.id));
+					const invalidProperties = properties.filter((p) => !validPropertyIds.has(p.id));
 
 					if (invalidProperties.length) {
-						throw new Error('Some properties have invalid filter IDs');
+						throw new Error('Some properties have invalid property IDs');
 					}
 
-					const reshapedProperties: InsertItemFilterValue[] = [];
+					const reshapedProperties: InsertItemPropertyValue[] = [];
 
 					// Reshape properties to match the database schema
-
 					properties.map((p) => {
-						// Check if the filter contains an array of values
+						// Check if the property contains an array of values
 						// If so, map through the values and create an object for each
 						// Otherwise, create a single object
 						if (Array.isArray(p.value)) {
 							p.value.map((v) => {
 								reshapedProperties.push({
 									item_id: newItem.id,
-									filter_value_id: Number(v),
+									property_value_id: Number(v),
 								});
 							});
 						} else {
 							reshapedProperties.push({
 								item_id: newItem.id,
-								filter_value_id: Number(p.value),
+								property_value_id: Number(p.value),
 							});
 						}
 					});
 
-					console.log(reshapedProperties);
-
-					// Insert filter values
-					await tx.insert(itemsFiltersValues).values(reshapedProperties);
+					// Insert property values
+					await tx.insert(items_properties_values).values(reshapedProperties);
 				} else {
 					// Check if the selected subcategory has mandatory properties
-					const mandatoryFilters = await tx
+					const mandatoryProperties = await tx
 						.select()
-						.from(subCategoryFilters)
+						.from(subcategory_properties)
 						.where(
 							and(
-								eq(subCategoryFilters.subcategory_id, commons.subcategory_id),
-								eq(subCategoryFilters.on_item_create_required, true),
+								eq(subcategory_properties.subcategory_id, commons.subcategory_id),
+								eq(subcategory_properties.on_item_create_required, true),
 							),
 						);
 
-					if (mandatoryFilters.length > 0) {
-						throw new Error(`This subcategory requires ${mandatoryFilters.length} mandatory properties`);
+					if (mandatoryProperties.length > 0) {
+						throw new Error(`This subcategory requires ${mandatoryProperties.length} mandatory properties`);
 					}
+				}
+
+				// Check if delivery_method is "pickup"
+				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
+
+				// if has delivery_method and is not "pickup" and shipping_price is provided, create a shipment
+				if (hasDeliveryMethod && !isPickup && shipping_price) {
+					await tx.insert(shippings).values({
+						item_id: newItem.id,
+						shipping_price,
+					});
 				}
 
 				// Return the created item

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 
 import { createClient } from 'src/database';
-import { userItemsFavorites } from 'src/database/schemas/user_items_favorites';
+import { user_items_favorites } from 'src/database/schemas/user_items_favorites';
 import { createRouter } from 'src/lib/create-app';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { authPath } from 'src/utils/constants';
@@ -22,10 +22,10 @@ export const favoritesRoute = createRouter()
 		try {
 			const [itemIsFavorite] = await db
 				.select({
-					item_id: userItemsFavorites.id,
+					item_id: user_items_favorites.id,
 				})
-				.from(userItemsFavorites)
-				.where(and(eq(userItemsFavorites.item_id, item_id), eq(userItemsFavorites.user_id, user.id)));
+				.from(user_items_favorites)
+				.where(and(eq(user_items_favorites.item_id, item_id), eq(user_items_favorites.user_id, user.id)));
 
 			return c.json(itemIsFavorite?.item_id ? true : false, 200);
 		} catch (error) {
@@ -52,14 +52,14 @@ export const favoritesRoute = createRouter()
 
 			try {
 				if (action === 'add') {
-					await db.insert(userItemsFavorites).values({
+					await db.insert(user_items_favorites).values({
 						user_id: user.id,
 						item_id,
 					});
 
 					return c.json(true);
 				} else {
-					await db.delete(userItemsFavorites).where(eq(userItemsFavorites.item_id, item_id));
+					await db.delete(user_items_favorites).where(eq(user_items_favorites.item_id, item_id));
 
 					return c.json(false);
 				}
