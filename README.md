@@ -1,6 +1,6 @@
 ## 🚀 Overview
 
-**Tantovale** is an open-source marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.  
+**Tantovale** is an open-source C2C marketplace for buying and selling new and used items, with a special focus on collectibles and bundles.  
 Built with passion and community collaboration in mind, Tantovale welcomes contributions from anyone who wants to help shape the future of online marketplaces.
 
 - Current Phase: _INITIAL BUILDING BLOCKS_
