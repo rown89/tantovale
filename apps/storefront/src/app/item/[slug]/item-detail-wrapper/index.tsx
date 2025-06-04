@@ -26,8 +26,8 @@ export default function ItemWDetailWrapper({
   chatId,
   orderProposal,
   isFavorite,
+  isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
-  const item_id = item.id;
   const { images } = item;
 
   const {
@@ -63,6 +63,7 @@ export default function ItemWDetailWrapper({
 
   const { setIsProposalModalOpen } = useTantovaleStore();
 
+  // Effect to check if the UserInfoBox is in view
   useEffect(() => {
     if (!infoBoxRef.current) return;
 
@@ -128,6 +129,7 @@ export default function ItemWDetailWrapper({
             itemOwnerData={itemOwnerData}
             orderProposal={orderProposal}
             isFavorite={isFavorite}
+            isCurrentUserTheItemOwner={isCurrentUserTheItemOwner}
           />
         }
 

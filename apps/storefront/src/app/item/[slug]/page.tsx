@@ -20,7 +20,7 @@ export default async function ItemDetailPage() {
   const accessToken = cookieStore.get("access_token")?.value;
   const refreshToken = cookieStore.get("refresh_token")?.value;
 
-  // get item
+  // get item data
   const itemResponse = await client.item[":id"].$get({
     param: {
       id,
@@ -46,6 +46,7 @@ export default async function ItemDetailPage() {
   let chatId = undefined;
 
   if (accessToken) {
+    // get chat id
     const chatResponse = await client.chat.auth.rooms.id[":item_id"].$get(
       {
         param: {
@@ -69,6 +70,7 @@ export default async function ItemDetailPage() {
   let orderProposal = undefined;
 
   if (accessToken) {
+    // get order proposal
     const orderProposalResponse = await client.orders_proposals.auth.by_item[
       ":item_id"
     ].$get(
@@ -96,6 +98,7 @@ export default async function ItemDetailPage() {
   let isFavorite = false;
 
   if (accessToken) {
+    // check if item is favorite
     const isFavoriteResponse = await client.favorites.auth.check[
       ":item_id"
     ].$get(
@@ -117,6 +120,29 @@ export default async function ItemDetailPage() {
     }
   }
 
+  let user = null;
+
+  if (accessToken) {
+    // get user data
+    let userResponse = await client.verify.$get(
+      {
+        credentials: "include",
+      },
+      {
+        headers: {
+          cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+        },
+      },
+    );
+
+    if (userResponse.ok) {
+      const response = await userResponse.json();
+      user = response.user;
+    }
+  }
+
+  const isCurrentUserTheItemOwner = item.user.id === user?.id;
+
   return (
     <Suspense fallback={<Spinner />}>
       <ItemWDetailWrapper
@@ -125,6 +151,7 @@ export default async function ItemDetailPage() {
         isFavorite={isFavorite}
         chatId={chatId}
         orderProposal={orderProposal}
+        isCurrentUserTheItemOwner={isCurrentUserTheItemOwner}
       />
     </Suspense>
   );
