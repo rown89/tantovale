@@ -30,8 +30,7 @@ export const addressesRoute = createRouter()
 				return c.json({ message: 'User profile not found' }, 404);
 			}
 
-			// add city and province name to user address
-
+			// add city and province name to profile address
 			const city = alias(cities, 'city');
 			const province = alias(cities, 'province');
 
@@ -72,24 +71,43 @@ export const addressesRoute = createRouter()
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}
 	})
-	.get(`/${authPath}/addresses_profile_by_status`, authMiddleware, async (c) => {
+	.get(`/${authPath}/default_address`, authMiddleware, async (c) => {
 		try {
-			const status = c.req.query('status');
-
-			if (!status) {
-				return c.json({ message: 'Status is required' }, 400);
-			}
-
 			const user = c.get('user');
 
 			const { db } = createClient();
 
-			const [userAddress] = await db
-				.select()
-				.from(addresses)
-				.where(and(eq(addresses.profile_id, user.id), eq(addresses.status, status as SelectAddress['status'])));
+			const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user.id));
 
-			return c.json(userAddress, 200);
+			if (!profile?.id) {
+				return c.json({ message: 'Profile not found' }, 404);
+			}
+
+			// add city and province name to profile address
+			const city = alias(cities, 'city');
+			const province = alias(cities, 'province');
+
+			const [activeAddress] = await db
+				.select({
+					id: addresses.id,
+					label: addresses.label,
+					city_id: addresses.city_id,
+					province_id: addresses.province_id,
+					street_address: addresses.street_address,
+					civic_number: addresses.civic_number,
+					postal_code: addresses.postal_code,
+					country_code: addresses.country_code,
+					city_name: city.name,
+					province_name: province.name,
+					province_country_code: province.country_code,
+					city_country_code: city.country_code,
+				})
+				.from(addresses)
+				.innerJoin(city, eq(city.id, addresses.city_id))
+				.innerJoin(province, eq(province.id, addresses.province_id))
+				.where(and(eq(addresses.profile_id, profile.id), eq(addresses.status, 'active')));
+
+			return c.json(activeAddress, 200);
 		} catch (error) {
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}

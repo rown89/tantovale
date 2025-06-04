@@ -25,39 +25,9 @@ export function useAddressesRetrieval({ status }: { status?: 'active' | 'inactiv
 		},
 	});
 
-	const {
-		data: userAddressByStatus,
-		isLoading: isUserAddressByStatusLoading,
-		isError: isUserAddressByStatusError,
-	} = useQuery({
-		queryKey: ['userAddressByStatus', status],
-		queryFn: async () => {
-			if (status) {
-				const addressesResponse = await client.addresses.auth.addresses_profile_by_status.$get({
-					query: {
-						status: status,
-					} as const,
-				});
-
-				const addresses = await addressesResponse.json();
-
-				if (!addressesResponse.ok) {
-					throw new Error('Failed to fetch user address by status');
-				}
-
-				return addresses;
-			}
-
-			return null;
-		},
-	});
-
 	return {
 		userAddress,
 		isUserAddressLoading,
 		isUserAddressError,
-		userAddressByStatus,
-		isUserAddressByStatusLoading,
-		isUserAddressByStatusError,
 	};
 }

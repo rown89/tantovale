@@ -8,7 +8,7 @@ import { Input } from "@workspace/ui/components/input";
 import { CitySelector } from "#components/city-selector";
 import useAddressForm from "./use-address-form";
 import { FieldInfo } from "../utils/field-info";
-import { addAddressSchema } from "@workspace/server/extended_schemas";
+import { ExtendedAddress } from "@workspace/server/extended_schemas";
 import { Checkbox } from "@workspace/ui/components/checkbox";
 import { toast } from "sonner";
 
@@ -21,12 +21,7 @@ export default function AddressForm({
   firstAddress?: boolean;
   mode: "add" | "edit";
   // if address_id is 0, it means the address is new
-  values?: typeof addAddressSchema._type & {
-    province_name: string;
-    city_name: string;
-    province_country_code: string;
-    city_country_code: string;
-  };
+  values?: ExtendedAddress;
   onComplete?: () => void;
 }) {
   const {

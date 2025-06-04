@@ -6,6 +6,5 @@ export default async function ItemCategoryPage() {
 
   const categoryPathname = pathname?.split("/item/")?.[1];
 
-  console.log(categoryPathname);
   return <div>ItemCategoryPage</div>;
 }

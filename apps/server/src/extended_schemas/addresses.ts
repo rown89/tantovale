@@ -27,3 +27,11 @@ export const addAddressSchema = createInsertSchema(addresses, {
 	.extend({
 		address_id: z.number().optional(),
 	});
+
+export interface ExtendedAddress extends z.infer<typeof addAddressSchema> {
+	id?: number;
+	city_name: string;
+	province_name: string;
+	province_country_code: string;
+	city_country_code: string;
+}

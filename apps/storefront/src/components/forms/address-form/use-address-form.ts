@@ -18,7 +18,9 @@ const schema = z.union([addSchema, editSchema]);
 
 type schemaType = z.infer<typeof schema>;
 
-export default function useAddressForm(onComplete?: (e?: any) => void) {
+export default function useAddressForm(
+  onComplete?: (e?: { id: number }) => void,
+) {
   const [searchedCityName, setSearchedCityName] = useState("");
   const [selectedCity, setSelectedCity] = useState(0);
   const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);

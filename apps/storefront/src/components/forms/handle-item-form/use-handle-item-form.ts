@@ -1,87 +1,28 @@
 import { useMemo, useState } from "react";
 import { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { useRouter, useSearchParams } from "next/navigation";
-import { z } from "zod";
 import { toast } from "sonner";
 import imageCompression from "browser-image-compression";
 
 import { client } from "@workspace/server/client-rpc";
-import {
-  createItemSchema,
-  multipleImagesSchema,
-  propertySchema,
-} from "@workspace/server/extended_schemas";
-
-import { updatePropertiesArray } from "./utils";
-import { handleQueryParamChange } from "../../../utils/handle-qp";
-import { PropertyType } from "./types";
-import { formOpts } from "./constants";
-
 import type { Category } from "@workspace/server/extended_schemas";
+
+import { handleQueryParamChange } from "../../../utils/handle-qp";
+import { PropertyType, reshapedSchemaType } from "./types";
+import { reshapedCreateItemSchema } from "./reshaped-create-item-schema";
+import { updatePropertiesArray } from "./utils";
+import { defaultValues } from "./constants";
 
 export interface UseItemFormProps {
   subcategory?: Partial<Category>;
   subCatProperties: PropertyType[] | undefined;
+  defaultValues: reshapedSchemaType;
 }
-
-export const reshapedCreateItemSchema = ({
-  propertiesData,
-  isManualShipping,
-}: {
-  propertiesData?: PropertyType[];
-  isManualShipping?: boolean;
-}) => {
-  return createItemSchema
-    .and(
-      z.object({
-        images: multipleImagesSchema,
-      }),
-    )
-    .and(
-      z
-        .object({
-          properties: propertySchema,
-        })
-        // Check if all required subcat properties are satisfied
-        .superRefine((val, ctx) => {
-          propertiesData?.forEach((property) => {
-            if (
-              property.on_item_create_required &&
-              !val.properties?.find((p) => p.slug === property.slug)?.value
-            ) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: "This field is required",
-                path: ["properties", property.slug],
-              });
-            }
-          });
-        }),
-    )
-    .and(
-      z.object({
-        shipping_price: z.number().refine(
-          (val) => {
-            // if isSubcategoryPayable is false, then shipping_price must be 0 or undefined
-            if (isManualShipping) {
-              return val > 0;
-            } else {
-              return val === 0 || val === undefined;
-            }
-          },
-          {
-            message: "Shipping price must be greater than 0",
-          },
-        ),
-      }),
-    );
-};
-
-type schemaType = z.infer<ReturnType<typeof reshapedCreateItemSchema>>;
 
 export function useHandleItemForm({
   subcategory,
   subCatProperties,
+  defaultValues,
 }: UseItemFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -89,7 +30,7 @@ export function useHandleItemForm({
   const [selectedSubCategory, setSelectedSubCategory] = useState<
     Partial<Category> | undefined
   >(subcategory);
-  const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
+  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isPickup, setIsPickup] = useState(false);
   const [isManualShipping, setIsManualShipping] = useState(false);
@@ -99,7 +40,7 @@ export function useHandleItemForm({
   }, [subCatProperties]);
 
   const form = useForm({
-    ...formOpts.defaultValues,
+    defaultValues,
     asyncAlways: true,
     validators: {
       onChange: reshapedCreateItemSchema({
@@ -107,7 +48,7 @@ export function useHandleItemForm({
         isManualShipping,
       }),
     },
-    onSubmit: async ({ value }: { value: schemaType }) => {
+    onSubmit: async ({ value }: { value: reshapedSchemaType }) => {
       setIsSubmittingForm(true);
 
       try {
@@ -133,10 +74,9 @@ export function useHandleItemForm({
           };
 
           const compressedImages = await Promise.all(
-            // @ts-expect-error TODO: check it
             images.map(async (image) => {
               try {
-                // @ts-expect-error TODO: check it
+                // @ts-ignore
                 return await imageCompression(image, compressionOptions);
               } catch (error) {
                 console.error("Error compressing image:", error);
@@ -339,13 +279,13 @@ export function useHandleItemForm({
     form,
     isSubmittingForm,
     selectedSubCategory,
-    isCityPopoverOpen,
+    isLocationDialogOpen,
     isPickup,
     isManualShipping,
     deliveryMethodProperty,
     setIsManualShipping,
     setIsPickup,
-    setIsCityPopoverOpen,
+    setIsLocationDialogOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,

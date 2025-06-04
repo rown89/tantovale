@@ -15,7 +15,6 @@ import { Spinner } from "@workspace/ui/components/spinner";
 import MultiImageUpload from "@workspace/ui/components/image-uploader/multi-image-uploader";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
 import { useCategoriesData } from "@workspace/shared/hooks/use-categories-data";
-import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { CategorySelector } from "#components/category-selector";
 import { DynamicProperties } from "./components/dynamic-properties";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
@@ -39,15 +38,15 @@ import { Progress } from "@workspace/ui/components/progress";
 import {
   maxDescriptionLength,
   type Category,
+  ExtendedAddress,
 } from "@workspace/server/extended_schemas";
 
-import { CitySelector } from "#components/city-selector";
 import { useHandleItemForm } from "./use-handle-item-form";
 import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 import { isNextButtonEnabled, handleItemPreviewProperties } from "./utils";
-import { maxImages, step_one, step_two } from "./constants";
-import { PropertyFormValue } from "./types";
+import { defaultValues, maxImages, step_one, step_two } from "./constants";
+import { PropertyFormValue, reshapedSchemaType } from "./types";
 
 type HandleItemFormComponent = {
   subcategory?: Pick<
@@ -55,11 +54,15 @@ type HandleItemFormComponent = {
     "id" | "name" | "slug" | "easy_pay" | "menu_order"
   >;
   formModel: "create" | "edit";
+  profileAddress: ExtendedAddress;
+  defaultValues: reshapedSchemaType;
 };
 
 export default function HandleItemFormComponent({
   subcategory,
   formModel = "create",
+  profileAddress,
+  defaultValues,
 }: HandleItemFormComponent) {
   const [progress, setProgress] = useState(step_one);
   const [subcategoriesMenu, setSubcategoriesMenu] = useState<
@@ -86,20 +89,15 @@ export default function HandleItemFormComponent({
     isLoadingSubCatProperties,
   } = useCategoriesData(subcategory?.id);
 
-  const { cities, isLoadingLocations: isLoadingCities } = useLocationData(
-    "city",
-    searchedCityName,
-  );
-
   const {
     form,
     isSubmittingForm,
     selectedSubCategory,
-    isCityPopoverOpen,
+    isLocationDialogOpen,
     isPickup,
     isManualShipping,
     deliveryMethodProperty,
-    setIsCityPopoverOpen,
+    setIsLocationDialogOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,
@@ -109,6 +107,7 @@ export default function HandleItemFormComponent({
   } = useHandleItemForm({
     subcategory,
     subCatProperties,
+    defaultValues,
   });
 
   const titleField = useField({ form, name: "commons.title" });
@@ -119,13 +118,26 @@ export default function HandleItemFormComponent({
   const description = descriptionField.state.value;
   const easyPayField = useField({ form, name: "commons.easy_pay" });
   const easyPay = easyPayField.state.value;
-  // TODO: add user address fieldef
-  const cityField = useField({ form, name: "commons.city" });
-  const city = cityField.state.value;
   const imagesField = useField({ form, name: "images" });
   const images = imagesField.state.value;
   const propertiesField = useField({ form, name: "properties" });
   const properties = propertiesField.state.value;
+
+  // Initialize some form fields
+  useEffect(() => {
+    // inizialize shipping_price
+    form.setFieldValue("shipping_price", 0);
+
+    // inizialize address_id
+    if (profileAddress.id) {
+      form.setFieldValue("commons.address_id", profileAddress.id);
+    }
+
+    // If we have one, set the subcategory from query params
+    if (subcategory) {
+      handleSubCategorySelect(subcategory);
+    }
+  }, []);
 
   // Handle part of Item preview
   useEffect(() => {
@@ -144,16 +156,6 @@ export default function HandleItemFormComponent({
     }
   }, [properties, subCatProperties]);
 
-  // If we have one, set the subcategory from query params
-  useEffect(() => {
-    // inizialize shipping_price
-    form.setFieldValue("shipping_price", 0);
-
-    if (subcategory) {
-      handleSubCategorySelect(subcategory);
-    }
-  }, []);
-
   // build subcategories Menu Hierarchy:
   useEffect(() => {
     if (allCategories?.length && allSubcategories?.length) {
@@ -162,6 +164,7 @@ export default function HandleItemFormComponent({
     }
   }, [allCategories, allSubcategories]);
 
+  // TODO: need to improve the slider component and remove this abomination
   // Close fullscreen image on Escape key
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -353,7 +356,7 @@ export default function HandleItemFormComponent({
                       );
                     }}
                   </form.Field>
-                  <form.Field name="commons.city">
+                  <form.Field name="commons.address_id">
                     {(field) => {
                       const { name, handleBlur, setValue, state } = field;
                       const { meta, value } = state;
@@ -365,20 +368,7 @@ export default function HandleItemFormComponent({
                             Item location{" "}
                             <span className="text-red-500">*</span>
                           </Label>
-                          <CitySelector
-                            value={Number(value)}
-                            onChange={setValue}
-                            onBlur={handleBlur}
-                            name={name}
-                            isTouched={isTouched}
-                            hasErrors={errors?.length > 0}
-                            cities={cities}
-                            isLoadingCities={isLoadingCities}
-                            isSubmittingForm={isSubmittingForm}
-                            onSearchChange={setSearchedCityName}
-                            isCityPopoverOpen={isCityPopoverOpen}
-                            setIsCityPopoverOpen={setIsCityPopoverOpen}
-                          />
+
                           <FieldInfo field={field} />
                         </div>
                       );
@@ -782,7 +772,16 @@ export default function HandleItemFormComponent({
               item={{
                 title: title !== undefined ? String(title) : "",
                 price: price !== undefined ? Number(price) : 0,
-                city: cities?.find((item) => item.id === city)?.name || "",
+                location: {
+                  city: {
+                    id: profileAddress.city_id,
+                    name: profileAddress.city_name,
+                  },
+                  province: {
+                    id: profileAddress.province_id,
+                    name: profileAddress.province_name,
+                  },
+                },
                 description:
                   description !== undefined ? String(description) : "",
                 images: imageUrls?.length ? imageUrls : [],

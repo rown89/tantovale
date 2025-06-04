@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { reshapedCreateItemSchema } from "./reshaped-create-item-schema";
+
 export interface PropertyType {
   id: number;
   name: string;
@@ -14,3 +17,7 @@ export interface PropertyType {
 export type PropertyFormValue = Pick<PropertyType, "id" | "slug" | "name"> & {
   value: PropertyType["options"][number]["value"];
 };
+
+export type reshapedSchemaType = z.infer<
+  ReturnType<typeof reshapedCreateItemSchema>
+>;
