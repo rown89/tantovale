@@ -1,7 +1,7 @@
 /* eslint-disable node/no-process-env */
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
-import path from 'node:path';
+import path from 'path';
 import { z } from 'zod';
 
 // Load .env first
