@@ -1,14 +1,5 @@
 {
-	"build": {
-		"env": {
-			"NODE_ENV": "production"
-		},
-		"envFiles": [],
-		"includeFilesOutsideRoot": true,
-		"rootDirectory": "apps/storefront",
-		"commands": {
-			"install": "pnpm install --frozen-lockfile",
-			"build": "pnpm --filter @workspace/storefront run build"
-		}
-	}
+	"buildCommand": "pnpm --filter @workspace/storefront... run build",
+	"outputDirectory": "apps/storefront/.next",
+	"rootDirectory": "apps/storefront"
 }

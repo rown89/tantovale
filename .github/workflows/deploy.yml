@@ -50,13 +50,8 @@ jobs:
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.10.0 --activate
-          pnpm install
-          pnpm --filter @workspace/storefront run build
-          pnpm dlx vercel --prod --yes --token $VERCEL_TOKEN
-        working-directory: apps/storefront
+        working-directory: .
+        run: pnpm dlx vercel --prod --yes --token $VERCEL_TOKEN
 
   deploy-server:
     name: Deploy Server to Droplet
