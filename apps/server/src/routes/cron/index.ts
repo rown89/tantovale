@@ -11,7 +11,7 @@ import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { parseEnv } from 'src/env';
 
 export const cronRoute = createRouter()
-	.get(`${authPath}/cron/expired-orders-check`, authMiddleware, async (c) => {
+	.get(`${authPath}/expired-orders-check`, authMiddleware, async (c) => {
 		const { db } = createClient();
 
 		const { key } = c.req.param();
