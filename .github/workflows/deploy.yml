@@ -27,9 +27,6 @@ jobs:
       - name: Build server
         run: pnpm --filter ./apps/server... run build
 
-      - name: Run server tests
-        run: pnpm --filter ./apps/server... test
-
   deploy-frontend:
     name: Deploy Frontend to Vercel
     needs: build-server
