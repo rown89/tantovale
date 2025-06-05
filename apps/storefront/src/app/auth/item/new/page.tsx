@@ -2,7 +2,6 @@ import HandleItemFormComponent from "#components/forms/handle-item-form";
 import { defaultValues } from "#components/forms/handle-item-form/constants";
 import { reshapedSchemaType } from "#components/forms/handle-item-form/types";
 import { client } from "@workspace/server/client-rpc";
-import { ExtendedAddress } from "@workspace/server/extended_schemas";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -19,8 +18,6 @@ export default async function NewItemPage({
 
   const subCatIdNumber = Number(subcatId);
 
-  let profileAddress: ExtendedAddress;
-
   const getProfileAddress = await client.addresses.auth.default_address.$get(
     {},
     {
@@ -33,8 +30,6 @@ export default async function NewItemPage({
   if (!getProfileAddress.ok) redirect("/");
 
   const address = await getProfileAddress.json();
-
-  profileAddress = address;
 
   if (subcatId) {
     if (isNaN(subCatIdNumber)) redirect("/item/new");
@@ -53,7 +48,7 @@ export default async function NewItemPage({
       <HandleItemFormComponent
         formModel="create"
         subcategory={subcategory?.[0]}
-        profileAddress={profileAddress}
+        profileAddress={address}
         defaultValues={defaultValues as unknown as reshapedSchemaType}
       />
     );
@@ -62,7 +57,7 @@ export default async function NewItemPage({
   return (
     <HandleItemFormComponent
       formModel="create"
-      profileAddress={profileAddress}
+      profileAddress={address}
       defaultValues={defaultValues as unknown as reshapedSchemaType}
     />
   );

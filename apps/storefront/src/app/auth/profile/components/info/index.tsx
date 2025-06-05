@@ -253,7 +253,7 @@ export default function UserInfoComponent() {
 
                   return (
                     <Card
-                      key={address.id}
+                      key={`${i}-${address.id}`}
                       className={`${
                         activeStatus
                           ? "border-primary shadow-md bg-gradient-to-r from-transparent to-primary/10"
@@ -270,7 +270,7 @@ export default function UserInfoComponent() {
                               <Dialog
                                 key={`edit-address-${address.id}`}
                                 open={editAddressStates?.[address.id]}
-                                onOpenChange={(open) => {
+                                onOpenChange={() => {
                                   toggleEditAddress(address.id);
                                 }}
                               >

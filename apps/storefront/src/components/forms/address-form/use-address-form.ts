@@ -91,22 +91,19 @@ export default function useAddressForm(
     isSuccess: isAddingAddressSuccess,
   } = useMutation({
     mutationFn: async (value: Omit<z.infer<typeof addSchema>, "mode">) => {
-      try {
-        const response =
-          await client.addresses.auth.add_address_to_profile.$post({
-            json: value,
-          });
+      const response = await client.addresses.auth.add_address_to_profile.$post(
+        {
+          json: value,
+        },
+      );
 
-        if (!response.ok) {
-          throw new Error(
-            `Failed to add address: ${response.status} ${response.statusText}`,
-          );
-        }
-
-        return response.json();
-      } catch (error) {
-        throw error;
+      if (!response.ok) {
+        throw new Error(
+          `Failed to add address: ${response.status} ${response.statusText}`,
+        );
       }
+
+      return response.json();
     },
     onError: (error) => {
       console.error("AddAddress mutation error:", error);

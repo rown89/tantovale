@@ -274,7 +274,6 @@ export default function Home() {
   // Animation states
   const [logoVisible, setLogoVisible] = useState(false);
   const [githubVisible, setGithubVisible] = useState(false);
-  const [statusVisible, setStatusVisible] = useState(false);
 
   // Sequence the fade-in animations
   useEffect(() => {
@@ -282,13 +281,10 @@ export default function Home() {
     const logoTimer = setTimeout(() => setLogoVisible(true), 300);
     // Then GitHub button
     const githubTimer = setTimeout(() => setGithubVisible(true), 800);
-    // Then project status
-    const statusTimer = setTimeout(() => setStatusVisible(true), 1300);
 
     return () => {
       clearTimeout(logoTimer);
       clearTimeout(githubTimer);
-      clearTimeout(statusTimer);
     };
   }, []);
 

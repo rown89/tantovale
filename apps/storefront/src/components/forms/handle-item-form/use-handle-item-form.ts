@@ -11,7 +11,6 @@ import { handleQueryParamChange } from "../../../utils/handle-qp";
 import { PropertyType, reshapedSchemaType } from "./types";
 import { reshapedCreateItemSchema } from "./reshaped-create-item-schema";
 import { updatePropertiesArray } from "./utils";
-import { defaultValues } from "./constants";
 
 export interface UseItemFormProps {
   subcategory?: Partial<Category>;

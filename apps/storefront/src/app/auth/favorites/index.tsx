@@ -24,11 +24,7 @@ export interface Item {
 export default function ProfileFavorites() {
   const [shareItem, setShareItem] = useState<Item | null>(null);
 
-  const {
-    data: favorites,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data: favorites, isLoading } = useQuery({
     queryKey: ["get_user_favorites"],
     queryFn: async () => {
       const response = await client.items.auth.user.favorites.$get();

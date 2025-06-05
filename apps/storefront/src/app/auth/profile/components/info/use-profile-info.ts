@@ -15,7 +15,6 @@ type schemaType = z.infer<typeof schema>;
 
 export function useProfileInfoForm(profiles?: Partial<schemaType>) {
   const [isSubmittingProfileForm, setIsSubmittingProfileForm] = useState(false);
-  const [isSubmittingAddressForm, setIsSubmittingAddressForm] = useState(false);
 
   // Initialize form
   const profileForm = useForm({
@@ -56,6 +55,5 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
   return {
     profileForm,
     isSubmittingProfileForm,
-    isSubmittingAddressForm,
   };
 }

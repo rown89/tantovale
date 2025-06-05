@@ -128,8 +128,7 @@ export default function AddressForm({
         <form.Field name="label">
           {(field) => {
             const { name, handleBlur, handleChange, state } = field;
-            const { meta, value } = state;
-            const { isTouched, errors } = meta;
+            const { value } = state;
 
             return (
               <div className="space-y-2">
@@ -255,8 +254,7 @@ export default function AddressForm({
         <form.Field name="street_address">
           {(field) => {
             const { name, handleBlur, handleChange, state } = field;
-            const { meta, value } = state;
-            const { isTouched, errors } = meta;
+            const { value } = state;
 
             return (
               <div className="space-y-2">
@@ -280,7 +278,7 @@ export default function AddressForm({
         <form.Field name="civic_number">
           {(field) => {
             const { name, handleBlur, handleChange, state } = field;
-            const { meta, value } = state;
+            const { value } = state;
 
             return (
               <div className="space-y-2">
@@ -304,8 +302,7 @@ export default function AddressForm({
         <form.Field name="postal_code">
           {(field) => {
             const { name, handleBlur, handleChange, state } = field;
-            const { meta, value } = state;
-            const { isTouched, errors } = meta;
+            const { value } = state;
 
             return (
               <div className="space-y-2">
@@ -331,8 +328,7 @@ export default function AddressForm({
           <form.Field name="status">
             {(field) => {
               const { name, handleBlur, handleChange, state } = field;
-              const { meta, value } = state;
-              const { isTouched, errors } = meta;
+              const { value } = state;
 
               return (
                 <div className="flex gap-3">

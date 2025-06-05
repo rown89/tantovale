@@ -3,14 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { User } from "lucide-react";
-import { Suspense } from "react";
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Separator } from "@workspace/ui/components/separator";
 import { client } from "@workspace/server/client-rpc";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
-import { Spinner } from "@workspace/ui/components/spinner";
 
 // User profile component that fetches and displays user data
 async function UserProfile({ username }: { username: string }) {

@@ -81,7 +81,7 @@ export function DynamicProperties({ property, field }: DynamicPropertiesProps) {
             )}
           </Label>
           <MultiSelect
-            options={property.options.map(({ id, name: label, value }) => ({
+            options={property.options.map(({ id, name: label }) => ({
               id,
               label,
               // Multiselect requires id as a value instead of the original value variable

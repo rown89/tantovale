@@ -5,7 +5,7 @@ export const step_two = 100;
 // max upload images
 export const maxImages = 5;
 
-export let defaultValues = {
+export const defaultValues = {
   images: [],
   commons: {
     title: "",
