@@ -27,9 +27,8 @@ jobs:
       - name: Build server
         run: pnpm --filter @workspace/server... run build
 
-  deploy-frontend:
-    name: Deploy Frontend to Vercel
-    needs: build-server
+  build-frontend:
+    name: Build Frontend Locally
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -47,15 +46,12 @@ jobs:
       - name: Install dependencies (workspace root)
         run: pnpm install
 
-      - name: Deploy to Vercel
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        working-directory: .
-        run: pnpm dlx vercel --prod --yes --token $VERCEL_TOKEN
+      - name: Build frontend locally
+        run: pnpm --filter @workspace/storefront... run build
 
   deploy-server:
     name: Deploy Server to Droplet
-    needs: [build-server, deploy-frontend]
+    needs: [build-server, build-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -84,3 +80,29 @@ jobs:
             cd /${{ secrets.DROPLET_USER }}/tantovale
             pm2 restart server
           EOF
+
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    needs: deploy-server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Enable Corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.10.0 --activate
+
+      - name: Install dependencies (workspace root)
+        run: pnpm install
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: .
+        run: pnpm dlx vercel --prod --yes --token $VERCEL_TOKEN
