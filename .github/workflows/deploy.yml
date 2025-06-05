@@ -25,7 +25,7 @@ jobs:
         run: pnpm install
 
       - name: Build server
-        run: pnpm --filter ./apps/server... run build
+        run: pnpm --filter @workspace/server run build
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
@@ -50,7 +50,7 @@ jobs:
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: pnpm --filter ./apps/storefront... dlx vercel --prod --token $VERCEL_TOKEN
+        run: pnpm --filter @workspace/storefront dlx vercel --prod --token $VERCEL_TOKEN
 
   deploy-server:
     name: Deploy Server to Droplet
@@ -74,7 +74,7 @@ jobs:
             corepack enable
             corepack prepare pnpm@8.15.1 --activate
             pnpm install
-            pnpm --filter ./apps/server... run build
+            pnpm --filter @workspace/server run build
           EOF
 
       - name: Restart PM2 process
