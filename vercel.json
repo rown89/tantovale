@@ -1,5 +1,0 @@
-{
-	"buildCommand": "pnpm --filter @workspace/storefront... run build",
-	"outputDirectory": "apps/storefront/.next",
-	"rootDirectory": "apps/storefront"
-}
