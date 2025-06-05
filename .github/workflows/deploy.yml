@@ -14,18 +14,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Enable Corepack and prepare pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@8.15.1 --activate
+          corepack prepare pnpm@10.10.0 --activate
 
       - name: Install dependencies (workspace root)
         run: pnpm install
 
       - name: Build server
-        run: pnpm --filter @workspace/server run build
+        run: pnpm --filter @workspace/server... run build
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
@@ -37,12 +37,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Enable Corepack and prepare pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@8.15.1 --activate
+          corepack prepare pnpm@10.10.0 --activate
 
       - name: Install dependencies (workspace root)
         run: pnpm install
@@ -50,7 +50,7 @@ jobs:
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: pnpm --filter @workspace/storefront dlx vercel --prod --token $VERCEL_TOKEN
+        run: pnpm --filter @workspace/storefront... dlx vercel --prod --token $VERCEL_TOKEN
 
   deploy-server:
     name: Deploy Server to Droplet
@@ -72,9 +72,9 @@ jobs:
             cd /${{ secrets.DROPLET_USER }}/tantovale
             git pull origin main
             corepack enable
-            corepack prepare pnpm@8.15.1 --activate
+            corepack prepare pnpm@10.10.0 --activate
             pnpm install
-            pnpm --filter @workspace/server run build
+            pnpm --filter @workspace/server... run build
           EOF
 
       - name: Restart PM2 process

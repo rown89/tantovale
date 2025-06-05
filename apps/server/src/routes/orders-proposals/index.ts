@@ -1,6 +1,7 @@
-import { subDays } from 'date-fns';
+import { startOfDay } from 'date-fns';
 import { env } from 'hono/adapter';
 import { eq, and, lt } from 'drizzle-orm';
+import { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
@@ -20,6 +21,7 @@ import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal
 import { create_order_proposal_schema, update_order_proposal_schema } from 'src/extended_schemas/order_proposals';
 import { orders } from 'src/database/schemas/orders';
 import { orders_items } from 'src/database/schemas/orders_items';
+import { parseEnv } from 'src/env';
 
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
@@ -204,26 +206,6 @@ export const ordersProposalsRoute = createRouter()
 			return c.json(proposal, 200);
 		},
 	)
-	.get(`${cronPath}/expired-proposals-check`, authMiddleware, async (c) => {
-		const { DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY } = env<{
-			DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: string;
-		}>(c);
-
-		const { key } = c.req.query();
-
-		if (key !== DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY) {
-			return c.json({ error: 'Invalid key' }, 401);
-		}
-
-		const { db } = createClient();
-
-		// remove proposals in pending status with created_at date equal or older than 7 days
-		await db
-			.delete(orders_proposals)
-			.where(and(eq(orders_proposals.status, 'pending'), lt(orders_proposals.created_at, subDays(new Date(), 7))));
-
-		return c.json({ message: 'Expired proposals removed' }, 200);
-	})
 	.put(`${authPath}`, authMiddleware, zValidator('json', update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 		const { id, status, item_id } = await c.req.valid('json');

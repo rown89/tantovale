@@ -6,6 +6,7 @@ import {
 	addressesRoute,
 	categoriesRoute,
 	chatRoute,
+	cronRoute,
 	favoritesRoute,
 	itemRoute,
 	itemsRoute,
@@ -41,6 +42,7 @@ const apiRoutes = app
 	.route(`/addresses`, addressesRoute)
 	.route(`/categories`, categoriesRoute)
 	.route(`/chat`, chatRoute)
+	.route(`/cron`, cronRoute)
 	.route(`/favorites`, favoritesRoute)
 	.route(`/item`, itemRoute)
 	.route(`/items`, itemsRoute)

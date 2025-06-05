@@ -50,6 +50,8 @@ const EnvSchema = z.object({
 	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
 	SHIPPING_PROVIDER_SECRET_KEY: z.string(),
 	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),
+	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
+	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),
 });
 
 export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
