@@ -1,4 +1,5 @@
 import { createMailer } from '../lib/createMailer';
+import { parseEnv } from '../../env';
 
 export async function sendNewProposalMessage({
 	to,
@@ -16,7 +17,7 @@ export async function sendNewProposalMessage({
 	const transporter = createMailer(process);
 
 	await transporter.sendMail({
-		from: `"Tantovale" <${process.env.SMTP_USER}>`,
+		from: `"Tantovale" <${parseEnv(process.env).SMTP_USER}>`,
 		to,
 		subject: `Tantovale - Proposal received from ${buyer_username}`,
 		html: `
@@ -24,7 +25,7 @@ export async function sendNewProposalMessage({
         <p>Proposal from ${buyer_username} for the object ${itemName}:</p>
         <p>${message}</p>
         <br>
-        <a href="${process.env.STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
+        <a href="${parseEnv(process.env).STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
       </div>
     `,
 	});

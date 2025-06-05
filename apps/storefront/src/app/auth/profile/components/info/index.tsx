@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Edit, Plus, Trash } from "lucide-react";
+import { Edit, Trash } from "lucide-react";
 
 import { Label } from "@workspace/ui/components/label";
 import { Input } from "@workspace/ui/components/input";
@@ -13,11 +12,9 @@ import {
   SelectGroup,
   SelectItem,
 } from "@workspace/ui/components/select";
-import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { useProfileData } from "@workspace/shared/hooks/use-profile-data";
 import { Skeleton } from "@workspace/ui/components/skeleton";
 import { Button } from "@workspace/ui/components/button";
-import { useProfileInfoForm } from "./use-profile-info";
 import {
   Card,
   CardDescription,
@@ -40,6 +37,7 @@ import { FieldInfo } from "#components/forms/utils/field-info";
 import AddressForm from "#components/forms/address-form";
 import { AddressStatus } from "@workspace/server/enumerated_values";
 import useAddressForm from "#components/forms/address-form/use-address-form";
+import { useProfileInfoForm } from "./use-profile-info";
 
 export default function UserInfoComponent() {
   const { profile, isLoadingProfile } = useProfileData();
@@ -51,8 +49,6 @@ export default function UserInfoComponent() {
 
   const {
     deleteAddress,
-    addAddressStates,
-    setAddAddressStates,
     editAddressStates,
     toggleEditAddress,
     deleteAddressStates,

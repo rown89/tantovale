@@ -4,14 +4,25 @@ import { expand } from 'dotenv-expand';
 import path from 'node:path';
 import { z } from 'zod';
 
+// Load .env first
 expand(
 	config({
-		path: path.resolve(process.cwd(), process.env.NODE_ENV === 'test' ? '.env.test' : '.env'),
+		path: path.resolve(process.cwd(), '.env'),
 	}),
 );
 
+// In development, also load .env.local which will override .env values
+if (process.env.NODE_ENV === 'development') {
+	expand(
+		config({
+			path: path.resolve(process.cwd(), '.env.local'),
+		}),
+	);
+}
+
 const EnvSchema = z.object({
 	NODE_ENV: z.string().default('development'),
+	NEXT_PUBLIC_HONO_API_URL: z.string().default('http://localhost:4000'),
 	STOREFRONT_HOSTNAME: z.string().default('localhost'),
 	STOREFRONT_PORT: z.coerce.number().default(3000),
 	SERVER_HOSTNAME: z.string().default('localhost'),
@@ -26,7 +37,7 @@ const EnvSchema = z.object({
 	AWS_BUCKET_NAME: z.string(),
 	AWS_SECRET_ACCESS_KEY: z.string(),
 	SMTP_HOST: z.string(),
-	SMTP_PORT: z.string(),
+	SMTP_PORT: z.coerce.number().default(465),
 	SMTP_USER: z.string(),
 	SMTP_PASS: z.string(),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),

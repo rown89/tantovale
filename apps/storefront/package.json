@@ -26,14 +26,14 @@
     ]
   },
   "dependencies": {
+    "@edge-runtime/cookies": "^6.0.0",
+    "@tanstack/react-form": "^1.11.1",
+    "@tanstack/react-query": "*",
     "@workspace/eslint-config": "workspace:*",
     "@workspace/server": "workspace:*",
     "@workspace/shared": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "@edge-runtime/cookies": "^6.0.0",
-    "@tanstack/react-form": "^1.11.1",
-    "@tanstack/react-query": "*",
     "browser-image-compression": "^2.0.2",
     "framer-motion": "^12.6.3",
     "hono": "*",
@@ -45,6 +45,7 @@
     "react-dom": "19.0.0",
     "sonner": "*",
     "typescript": "*",
+    "vercel": "^42.3.0",
     "zod": "*",
     "zustand": "^5.0.3"
   },

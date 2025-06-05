@@ -1,0 +1,88 @@
+name: Build & Deploy CI/CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-server:
+    name: Build Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Enable Corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.1 --activate
+
+      - name: Install dependencies (workspace root)
+        run: pnpm install
+
+      - name: Build server
+        run: pnpm --filter ./apps/server... run build
+
+      - name: Run server tests
+        run: pnpm --filter ./apps/server... test
+
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    needs: build-server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Enable Corepack and prepare pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.1 --activate
+
+      - name: Install dependencies (workspace root)
+        run: pnpm install
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: pnpm --filter ./apps/storefront... dlx vercel --prod --token $VERCEL_TOKEN
+
+  deploy-server:
+    name: Deploy Server to Droplet
+    needs: [build-server, deploy-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Git pull and build on droplet
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
+            cd /${{ secrets.DROPLET_USER }}/tantovale
+            git pull origin main
+            corepack enable
+            corepack prepare pnpm@8.15.1 --activate
+            pnpm install
+            pnpm --filter ./apps/server... run build
+          EOF
+
+      - name: Restart PM2 process
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << EOF
+            cd /${{ secrets.DROPLET_USER }}/tantovale
+            pm2 restart server
+          EOF

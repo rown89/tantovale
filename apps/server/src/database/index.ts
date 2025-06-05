@@ -10,7 +10,7 @@ export type DrizzleClient = {
 
 export const dbConnection = {
 	host: parseEnv(process.env).DATABASE_HOST,
-	port: Number(parseEnv(process.env).DATABASE_PORT),
+	port: parseEnv(process.env).DATABASE_PORT,
 	user: parseEnv(process.env).POSTGRES_USER,
 	password: parseEnv(process.env).POSTGRES_PASSWORD,
 	database: parseEnv(process.env).POSTGRES_DB,

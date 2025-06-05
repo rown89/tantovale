@@ -47,6 +47,7 @@ const env = parseEnv(process.env);
 
 export const environment: Environment = {
 	NODE_ENV: env.NODE_ENV,
+	NEXT_PUBLIC_HONO_API_URL: env.NEXT_PUBLIC_HONO_API_URL,
 	LOG_LEVEL: env.LOG_LEVEL,
 
 	STOREFRONT_HOSTNAME: env.STOREFRONT_HOSTNAME,
