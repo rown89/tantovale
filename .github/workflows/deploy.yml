@@ -36,12 +36,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup SSH
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/git_action_deploy_key
+          echo "$DROPLET_SSH_KEY" > ~/.ssh/git_action_deploy_key
           chmod 600 ~/.ssh/git_action_deploy_key
-          echo "Checksum of the key in the runner:"
-          sha256sum ~/.ssh/git_action_deploy_key
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/git_action_deploy_key
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
