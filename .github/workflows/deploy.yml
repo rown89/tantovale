@@ -44,6 +44,11 @@ jobs:
           ssh-add ~/.ssh/git_action_deploy_key
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Debug SSH Key
+        run: |
+          echo "Checksum of the key in the runner:"
+          sha256sum ~/.ssh/git_action_deploy_key
+
       - name: Pull, Build, and Restart on Droplet
         run: |
           ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
@@ -58,7 +63,7 @@ jobs:
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
-    needs: [build]
+    needs: [deploy-server]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
