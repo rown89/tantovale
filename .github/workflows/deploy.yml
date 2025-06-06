@@ -37,8 +37,11 @@ jobs:
     steps:
       - name: Setup SSH
         run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           eval "$(ssh-agent -s)"
-          echo "${{ secrets.DROPLET_SSH_KEY }}" | ssh-add -
+          ssh-add ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
       - name: Pull, Build, and Restart on Droplet
