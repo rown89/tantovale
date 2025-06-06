@@ -38,7 +38,7 @@ jobs:
       - name: Setup SSH
         run: |
           eval "$(ssh-agent -s)"
-          ssh-add <(echo "${{ secrets.DROPLET_SSH_KEY }}")
+          echo "${{ secrets.DROPLET_SSH_KEY }}" | ssh-add -
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
       - name: Pull, Build, and Restart on Droplet
