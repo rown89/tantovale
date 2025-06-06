@@ -51,7 +51,6 @@ pnpm-debug.log*
 
 #package-lock and pnpm-lock
 package-lock.json
-pnpm-lock.yaml
 
 # act secrets
 .secrets

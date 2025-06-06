@@ -49,11 +49,36 @@ jobs:
             echo "--- Pulling latest changes from Git ---"
             git pull origin main
 
-            echo "--- Checking for Node.js ---"
-            if ! command -v node &> /dev/null
-            then
-                echo "Node.js is not installed. Please install Node.js on the droplet."
-                exit 1
+            echo "--- Setting up Node.js environment ---"
+            # Check if node is already available
+            if command -v node &> /dev/null; then
+                echo "Node.js already available: $(node --version)"
+            else
+                echo "Node.js not in PATH, checking for version managers..."
+                
+                # Check for nvm
+                if [ -f "$HOME/.nvm/nvm.sh" ]; then
+                    echo "Found nvm, loading it..."
+                    source "$HOME/.nvm/nvm.sh"
+                    nvm use default 2>/dev/null || nvm use node 2>/dev/null || echo "No default node version set in nvm"
+                # Check for fnm
+                elif [ -f "$HOME/.local/share/fnm/fnm" ] || command -v fnm &> /dev/null; then
+                    echo "Found fnm, loading it..."
+                    eval "$(fnm env --use-on-cd)"
+                    fnm use default 2>/dev/null || echo "No default node version set in fnm"
+                else
+                    echo "No version manager found. Installing Node.js via NodeSource repository..."
+                    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+                    sudo apt-get install -y nodejs
+                fi
+                
+                # Verify node is now available
+                if command -v node &> /dev/null; then
+                    echo "Node.js is now available: $(node --version)"
+                else
+                    echo "Failed to make Node.js available"
+                    exit 1
+                fi
             fi
 
             echo "--- Setting up pnpm via corepack ---"
@@ -61,9 +86,22 @@ jobs:
             corepack prepare pnpm@10.10.0 --activate
 
             echo "--- Installing dependencies ---"
-            pnpm install
+            # Set Node.js memory limit to prevent OOM
+            export NODE_OPTIONS="--max-old-space-size=768"
+
+            # Clear any existing cache
+            pnpm store prune || echo "No store to prune"
+
+            # Install with memory-efficient options
+            pnpm install --prefer-offline --no-optional --ignore-scripts
+
+            # Run install scripts separately if needed
+            pnpm rebuild || echo "No rebuild needed"
 
             echo "--- Building server ---"
+            # Set memory limit for build process
+            export NODE_OPTIONS="--max-old-space-size=512"
+
             if pnpm --filter @workspace/server... run build; then
               echo "Build successful. Restarting application..."
               pm2 restart server
