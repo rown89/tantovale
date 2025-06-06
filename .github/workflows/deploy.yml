@@ -93,7 +93,7 @@ jobs:
             pnpm store prune || echo "No store to prune"
 
             # Install with memory-efficient options
-            pnpm install --prefer-offline --no-optional --ignore-scripts
+            pnpm install --frozen-lockfile --prefer-offline --no-optional --ignore-scripts
 
             # Run install scripts separately if needed
             pnpm rebuild || echo "No rebuild needed"
@@ -104,7 +104,7 @@ jobs:
 
             if pnpm --filter @workspace/server... run build; then
               echo "Build successful. Restarting application..."
-              pm2 restart server
+              pm2 restart tantovale_server
             else
               echo "Build failed. Server will not be restarted."
               exit 1
