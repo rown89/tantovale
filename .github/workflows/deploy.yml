@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build's
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -40,14 +40,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/git_action_deploy_key
           chmod 600 ~/.ssh/git_action_deploy_key
+          echo "Checksum of the key in the runner:"
+          sha256sum ~/.ssh/git_action_deploy_key
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/git_action_deploy_key
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Debug SSH Key
-        run: |
-          echo "Checksum of the key in the runner:"
-          sha256sum ~/.ssh/git_action_deploy_key
 
       - name: Pull, Build, and Restart on Droplet
         run: |
