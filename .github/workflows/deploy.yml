@@ -5,8 +5,8 @@ on:
     branches: [main]
 
 jobs:
-  build-server:
-    name: Build Server
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -21,41 +21,20 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.10.0 --activate
 
-      - name: Install dependencies (workspace root)
+      - name: Install dependencies
         run: pnpm install
 
       - name: Build server
         run: pnpm --filter @workspace/server... run build
 
-  build-frontend:
-    name: Build Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 22
-
-      - name: Enable Corepack and prepare pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.10.0 --activate
-
-      - name: Install dependencies (workspace root)
-        run: pnpm install
-
-      - name: Build frontend locally
+      - name: Build frontend
         run: pnpm --filter @workspace/storefront... run build
 
   deploy-server:
     name: Deploy Server to Droplet
-    needs: [build-server, build-frontend]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -63,7 +42,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Git pull and build on droplet
+      - name: Pull, Build, and Restart on Droplet
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
             cd /${{ secrets.DROPLET_USER }}/tantovale
@@ -72,18 +51,12 @@ jobs:
             corepack prepare pnpm@10.10.0 --activate
             pnpm install
             pnpm --filter @workspace/server... run build
-          EOF
-
-      - name: Restart PM2 process
-        run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << EOF
-            cd /${{ secrets.DROPLET_USER }}/tantovale
             pm2 restart server
           EOF
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
-    needs: deploy-server
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -98,7 +71,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.10.0 --activate
 
-      - name: Install dependencies (workspace root)
+      - name: Install dependencies
         run: pnpm install
 
       - name: Deploy to Vercel
