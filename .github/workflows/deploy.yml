@@ -35,28 +35,42 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - name: Setup SSH
-        env:
-          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DROPLET_SSH_KEY" > ~/.ssh/git_action_deploy_key
-          chmod 600 ~/.ssh/git_action_deploy_key
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/git_action_deploy_key
-          ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
+      - name: Deploy to Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            echo "--- Navigating to project directory ---"
+            cd $HOME/tantovale
 
-      - name: Pull, Build, and Restart on Droplet
-        run: |
-          ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
-            cd /${{ secrets.DROPLET_USER }}/tantovale
+            echo "--- Pulling latest changes from Git ---"
             git pull origin main
+
+            echo "--- Checking for Node.js ---"
+            if ! command -v node &> /dev/null
+            then
+                echo "Node.js is not installed. Please install Node.js on the droplet."
+                exit 1
+            fi
+
+            echo "--- Setting up pnpm via corepack ---"
             corepack enable
             corepack prepare pnpm@10.10.0 --activate
+
+            echo "--- Installing dependencies ---"
             pnpm install
-            pnpm --filter @workspace/server... run build
-            pm2 restart server
-          EOF
+
+            echo "--- Building server ---"
+            if pnpm --filter @workspace/server... run build; then
+              echo "Build successful. Restarting application..."
+              pm2 restart server
+            else
+              echo "Build failed. Server will not be restarted."
+              exit 1
+            fi
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
