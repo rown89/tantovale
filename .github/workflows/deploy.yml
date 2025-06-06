@@ -37,14 +37,13 @@ jobs:
     steps:
       - name: Setup SSH
         run: |
-          mkdir -p ~/.ssh
-          printf "%s\n" "${{ secrets.DROPLET_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          eval "$(ssh-agent -s)"
+          ssh-add <(echo "${{ secrets.DROPLET_SSH_KEY }}")
           ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
       - name: Pull, Build, and Restart on Droplet
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
+          ssh ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }} << 'EOF'
             cd /${{ secrets.DROPLET_USER }}/tantovale
             git pull origin main
             corepack enable
