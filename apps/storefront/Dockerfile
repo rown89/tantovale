@@ -27,6 +27,12 @@ COPY --from=builder /app/out/full/ .
 # Build the storefront application and ALL of its dependencies first
 RUN pnpm --filter @workspace/storefront... run build
 
+# Debugging: List the contents of the build output to verify what is being created.
+RUN echo "--- Listing build output in /app/apps/storefront/.next ---" && \
+    ls -la /app/apps/storefront/.next && \
+    echo "--- Listing standalone output in /app/apps/storefront/.next/standalone ---" && \
+    ls -la /app/apps/storefront/.next/standalone || echo "--- Standalone directory not found ---"
+
 # The 'runner' stage creates the final, lightweight production image
 FROM base AS runner
 WORKDIR /app
