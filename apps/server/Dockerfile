@@ -57,6 +57,5 @@ COPY --from=installer --chown=hono:nodejs /app/apps/server/dist ./apps/server/di
 COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json ./apps/server/package.json
 
 USER hono
-EXPOSE 3000
 
 CMD ["node", "apps/server/dist/src/index.js"]
