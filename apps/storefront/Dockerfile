@@ -41,7 +41,6 @@ COPY --from=installer /app/apps/storefront/.next/static ./.next/static
 COPY --from=installer /app/apps/storefront/public ./public
 # Set the user for the running container
 USER nextjs
-# Expose the port the Next.js app will run on
-EXPOSE 3000
+
 # The command to start the Next.js standalone server
 CMD ["node", "server.js"]

@@ -39,5 +39,6 @@ COPY --from=installer --chown=hono:nodejs /app/node_modules ./node_modules
 COPY --from=installer --chown=hono:nodejs /app/apps/server/package.json .
 # Set the user for the running container
 USER hono
+
 # The command to start the server application
 CMD ["node", "dist/src/index.js"]

@@ -1,0 +1,19 @@
+{
+	"$schema": "https://railway.app/railway.schema.json",
+	"deploy": {
+		"services": [
+			{
+				"name": "storefront",
+				"builder": "dockerfile",
+				"rootDirectory": ".",
+				"dockerfilePath": "apps/storefront/Dockerfile"
+			},
+			{
+				"name": "server",
+				"builder": "dockerfile",
+				"rootDirectory": ".",
+				"dockerfilePath": "apps/server/Dockerfile"
+			}
+		]
+	}
+}
