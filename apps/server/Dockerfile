@@ -1,10 +1,9 @@
 FROM node:22-alpine AS base
 
-# Use corepack to enable pnpm (more efficient for Railway)
-RUN corepack enable
-RUN corepack prepare pnpm@10.10.0 --activate
+# Install pnpm directly via npm (more reliable for Railway)
+RUN npm install -g pnpm@10.10.0
 
-# Setup pnpm environment manually
+# Setup pnpm environment for global packages
 ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN mkdir -p $PNPM_HOME
