@@ -16,7 +16,15 @@ WORKDIR /app
 
 # Install turbo globally
 RUN pnpm install -g turbo
+
+# Copy workspace configuration files first
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/server/package.json ./apps/server/package.json
+COPY packages/ ./packages/
+
+# Copy remaining files needed for the build
 COPY . .
+
 RUN turbo prune @workspace/server --docker
 
 # Add lockfile and package.json's of isolated subworkspace
