@@ -1,62 +1,46 @@
+# Use the node:22-alpine image as the base for all stages
 FROM node:22-alpine AS base
+# Globally install pnpm and turbo for use in later stages
+# Using --silent to reduce log output and potential memory issues on platforms like Railway
+RUN npm install -g pnpm@10.10.0 --silent
+RUN npm install -g turbo --silent
 
-# Install pnpm directly via npm (more reliable for Railway)
-RUN npm install -g pnpm@10.10.0
-
-# Setup pnpm environment for global packages
-ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN mkdir -p $PNPM_HOME
-
+# The 'builder' stage is responsible for creating a pruned, minimal version of the monorepo
 FROM base AS builder
-
-RUN apk update
-RUN apk add --no-cache libc6-compat bash curl
-# Set working directory
 WORKDIR /app
-
-# Install turbo globally
-RUN pnpm install -g turbo
-
-# Copy workspace configuration files first
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
-COPY apps/storefront/package.json ./apps/storefront/package.json
-COPY packages/ ./packages/
-
-# Copy remaining files needed for the build
+# Copy the entire monorepo context into the builder
 COPY . .
-
+# Use 'turbo prune' to create a minimal workspace containing only the storefront app and its dependencies
 RUN turbo prune @workspace/storefront --docker
 
-# Add lockfile and package.json's of isolated subworkspace
+# The 'installer' stage installs dependencies and builds the application
 FROM base AS installer
-RUN apk update
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
-
-# First install the dependencies (as they change less often)
+# Copy the pruned dependency definitions (package.json files) from the builder stage
 COPY --from=builder /app/out/json/ .
-# Install with Railway-optimized settings
-RUN pnpm install --no-frozen-lockfile --prefer-offline
-
-# Build the project
+# Copy the pruned lockfile
+COPY --from=builder /app/out/pnpm-lock.yaml ./
+# Install dependencies based on the pruned lockfile
+RUN pnpm install --frozen-lockfile
+# Copy the rest of the pruned source code required for the build
 COPY --from=builder /app/out/full/ .
+# Build the storefront application
+RUN pnpm --filter @workspace/storefront run build
 
-RUN pnpm turbo build --filter=@workspace/storefront
-
+# The 'runner' stage creates the final, lightweight production image
 FROM base AS runner
 WORKDIR /app
-
-# Don't run production as root
+# Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-USER nextjs
-
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
+# Copy the standalone build output from the installer stage
 COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/standalone ./
-COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/static ./apps/storefront/.next/static
-COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/public ./apps/storefront/public
-COPY --from=builder --chown=nextjs:nodejs /app/apps/storefront/next.config.js ./apps/storefront/next.config.js
-
-CMD node apps/storefront/server.js
+# Copy static and public assets
+COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/static ./.next/static
+COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/public ./public
+# Set the user for the running container
+USER nextjs
+# Expose the port the Next.js app will run on
+EXPOSE 3000
+# The command to start the Next.js standalone server
+CMD ["node", "server.js"]
