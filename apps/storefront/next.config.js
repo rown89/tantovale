@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Uncomment this for docker deployment
-  // output: "standalone",
+  // For docker deployment standalone mode
+  output: "standalone",
   transpilePackages: ["@workspace/ui", "@workspace/server"],
   images: {
     remotePatterns: [
