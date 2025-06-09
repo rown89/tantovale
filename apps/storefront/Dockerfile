@@ -33,11 +33,12 @@ WORKDIR /app
 # Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-# Copy the standalone build output from the installer stage
-COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/standalone ./
-# Copy static and public assets
-COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/.next/static ./.next/static
-COPY --from=installer --chown=nextjs:nodejs /app/apps/storefront/public ./public
+# From the installer, copy the standalone output which contains server.js and node_modules
+COPY --from=installer /app/apps/storefront/.next/standalone .
+# From the installer, copy the static assets required by the Next.js app
+COPY --from=installer /app/apps/storefront/.next/static ./.next/static
+# From the installer, copy the public assets
+COPY --from=installer /app/apps/storefront/public ./public
 # Set the user for the running container
 USER nextjs
 # Expose the port the Next.js app will run on
