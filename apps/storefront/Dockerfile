@@ -4,6 +4,11 @@ FROM node:22-alpine AS base
 RUN corepack enable
 RUN corepack prepare pnpm@10.10.0 --activate
 
+# Setup pnpm environment manually
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN mkdir -p $PNPM_HOME
+
 FROM base AS builder
 
 RUN apk update
