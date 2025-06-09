@@ -1,11 +1,8 @@
 FROM node:22-alpine AS base
 
-# Install pnpm
-RUN npm install -g pnpm
-# Setup pnpm environment manually
-ENV PNPM_HOME=/root/.local/share/pnpm
-ENV PATH=${PNPM_HOME}:${PATH}
-RUN mkdir -p ${PNPM_HOME}
+# Use corepack to enable pnpm (more efficient for Railway)
+RUN corepack enable
+RUN corepack prepare pnpm@10.10.0 --activate
 
 FROM base AS builder
 
@@ -35,8 +32,8 @@ WORKDIR /app
 
 # First install the dependencies (as they change less often)
 COPY --from=builder /app/out/json/ .
-# Use --no-frozen-lockfile to ensure pnpm can resolve workspace dependencies properly
-RUN pnpm install --no-frozen-lockfile
+# Install with Railway-optimized settings
+RUN pnpm install --no-frozen-lockfile --prefer-offline
 
 # Build the project
 COPY --from=builder /app/out/full/ .
