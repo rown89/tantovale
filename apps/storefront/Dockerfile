@@ -24,8 +24,8 @@ COPY --from=builder /app/out/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 # Copy the rest of the pruned source code required for the build
 COPY --from=builder /app/out/full/ .
-# Build the storefront application
-RUN pnpm --filter @workspace/storefront run build
+# Build the storefront application and ALL of its dependencies first
+RUN pnpm --filter @workspace/storefront... run build
 
 # The 'runner' stage creates the final, lightweight production image
 FROM base AS runner
