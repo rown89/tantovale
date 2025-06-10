@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loginUrl, signupUrl } from "./routes";
+import { client } from "@workspace/server/client-rpc";
 
 const restrictedPaths = ["/auth"];
 
@@ -18,7 +19,31 @@ export async function middleware(req: NextRequest) {
       if (pathname === loginUrl || pathname === signupUrl) {
         return NextResponse.redirect(new URL("/", req.url));
       }
+
+      if (pathname === "/auth/profile-setup/address") {
+        const hasAddressResponse =
+          await client.profile.auth.user_has_address.$get(
+            {},
+            {
+              headers: {
+                cookie: `access_token=${accessToken}; refresh_token=${refreshToken};`,
+              },
+            },
+          );
+
+        if (hasAddressResponse.ok) {
+          const { address_id } = await hasAddressResponse.json();
+
+          // if user already has an active address, redirect to home
+          if (address_id) {
+            console.log("HEREX", address_id);
+
+            return NextResponse.redirect(new URL("/", req.url));
+          }
+        }
+      }
     }
+
     // If user is not authenticated and tries to access a protected route
     else {
       if (restrictedPaths.find((item) => pathname.includes(item))) {

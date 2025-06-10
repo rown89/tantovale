@@ -1,58 +1,16 @@
 {
 	"$schema": "https://turbo.build/schema.json",
 	"ui": "stream",
-
 	"tasks": {
 		"build": {
-			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"inputs": ["$TURBO_DEFAULT$", ".env", ".env.local"],
 			"outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", ".vercel/output/**"],
 			"dependsOn": ["^build"]
 		},
 		"dev": {
 			"cache": false,
 			"persistent": true,
-			"inputs": ["$TURBO_DEFAULT$", ".env.local", ".env"],
-			"env": [
-				"NODE_ENV",
-				"LOG_LEVEL",
-
-				"SERVER_HOSTNAME",
-				"SERVER_PORT",
-
-				"STOREFRONT_HOSTNAME",
-				"STOREFRONT_PORT",
-
-				"POSTGRES_USER",
-				"POSTGRES_PASSWORD",
-				"DATABASE_HOST",
-				"DATABASE_PORT",
-				"POSTGRES_DB",
-
-				"PAYMENT_PROVIDER_SECRET_KEY",
-				"PAYMENT_PROVIDER_PUBLIC_KEY",
-
-				"SHIPPING_PROVIDER_SECRET_KEY",
-				"SHIPPING_PROVIDER_WEBHOOK_SECRET",
-
-				"ACCESS_TOKEN_SECRET",
-				"REFRESH_TOKEN_SECRET",
-				"EMAIL_VERIFY_TOKEN_SECRET",
-				"RESET_TOKEN_SECRET",
-				"COOKIE_SECRET",
-
-				"AWS_REGION",
-				"AWS_BUCKET_NAME",
-				"AWS_ACCESS_KEY",
-				"AWS_SECRET_ACCESS_KEY",
-
-				"SMTP_HOST",
-				"SMTP_PORT",
-				"SMTP_USER",
-				"SMTP_PASS",
-
-				"DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY",
-				"DAILY_ORDER_CHECK_SECRET_KEY"
-			]
+			"inputs": ["$TURBO_DEFAULT$", ".env.local"]
 		},
 		"lint": {
 			"dependsOn": ["^build"]

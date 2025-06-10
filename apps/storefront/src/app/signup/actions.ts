@@ -72,7 +72,7 @@ export async function signupAction(
   } catch (error) {
     return {
       success: false,
-      message: "An unexpected error occurred with signup form",
+      message: `An unexpected error occurred with signup form: \n ${error instanceof Error ? error.message : "Unknown error"}`,
     };
   }
 }

@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { Heart, LogOut, MessageSquare, Plus, User } from "lucide-react";
 
 import { Button } from "@workspace/ui/components/button";
-import { useAuth } from "#providers/auth-providers";
-
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -15,7 +14,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@workspace/ui/components/dropdown-menu";
-import { Heart, LogOut, MessageSquare, Plus, User } from "lucide-react";
+
+import { useAuth } from "#providers/auth-providers";
 import { profileOptions } from "#shared/profile-options";
 
 export default function NavBar() {

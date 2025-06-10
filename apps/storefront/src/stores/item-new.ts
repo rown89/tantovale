@@ -13,7 +13,7 @@ export type NewItemStore = {
     price: number;
     shipping_price: number;
     subcategory_id: number;
-    city: number;
+    address_id: number;
   };
   setCommons: (commons: {
     title?: string;
@@ -22,7 +22,7 @@ export type NewItemStore = {
     price?: number;
     shipping_price?: number;
     subcategory_id?: number;
-    city?: number;
+    address_id?: number;
   }) => void;
   properties: PropertyType[];
   setProperties: (properties: PropertyType[]) => void;
@@ -40,7 +40,7 @@ export const createNewItemSlice: StateCreator<NewItemStore> = (set) => ({
     price: 0,
     shipping_price: 0,
     subcategory_id: 0,
-    city: 0,
+    address_id: 0,
   },
   setCommons: (commons?: {
     title?: string;
@@ -49,7 +49,7 @@ export const createNewItemSlice: StateCreator<NewItemStore> = (set) => ({
     price?: number;
     shipping_price?: number;
     subcategory_id?: number;
-    city?: number;
+    address_id?: number;
   }) =>
     set({
       commons: {
@@ -60,7 +60,7 @@ export const createNewItemSlice: StateCreator<NewItemStore> = (set) => ({
         price: commons?.price ?? 0,
         shipping_price: commons?.shipping_price ?? 0,
         subcategory_id: commons?.subcategory_id ?? 0,
-        city: commons?.city ?? 0,
+        address_id: commons?.address_id ?? 0,
       },
     }),
   properties: [],

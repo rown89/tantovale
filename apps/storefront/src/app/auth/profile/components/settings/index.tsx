@@ -1,14 +1,10 @@
 "use client";
 
-import { z } from "zod";
+import { Moon, Sun } from "lucide-react";
+// import { z } from "zod";
 import { useTheme } from "next-themes";
-import { useForm } from "@tanstack/react-form";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@workspace/ui/components/tabs";
+
+import { Tabs, TabsContent } from "@workspace/ui/components/tabs";
 import {
   Card,
   CardContent,
@@ -19,48 +15,40 @@ import {
 } from "@workspace/ui/components/card";
 import { Button } from "@workspace/ui/components/button";
 
-import { Switch } from "@workspace/ui/components/switch";
 import { Separator } from "@workspace/ui/components/separator";
-
 import { Label } from "@workspace/ui/components/label";
-import { toast } from "sonner";
-import { Bell, Moon, Sun } from "lucide-react";
 
-const notificationsFormSchema = z.object({
-  marketingEmails: z.boolean().default(false),
-  socialNotifications: z.boolean().default(true),
-  newFeatures: z.boolean().default(true),
-  securityNotifications: z.boolean().default(true),
-});
+/* 
+  const notificationsFormSchema = z.object({
+    marketingEmails: z.boolean().default(false),
+    socialNotifications: z.boolean().default(true),
+    newFeatures: z.boolean().default(true),
+    securityNotifications: z.boolean().default(true),
+  });
+*/
 
-type NotificationsFormValues = z.infer<typeof notificationsFormSchema>;
+//type NotificationsFormValues = z.infer<typeof notificationsFormSchema>;
 
-const defaultValues: Partial<NotificationsFormValues> = {
-  marketingEmails: false,
-  socialNotifications: true,
-  newFeatures: true,
-  securityNotifications: true,
-};
+/* 
+  const defaultValues: Partial<NotificationsFormValues> = {
+    marketingEmails: false,
+    socialNotifications: true,
+    newFeatures: true,
+    securityNotifications: true,
+  };
+ */
 
 export default function UserSettingsPage() {
   const { theme, setTheme } = useTheme();
 
-  const form = useForm({
-    defaultValues,
-    validators: {
-      onChange: notificationsFormSchema,
-    },
-  });
-
-  /*
-  function onNotificationsSubmit(data: NotificationsFormValues) {
-    toast("Notification preferences updated", {
-      description:
-        "Your notification preferences have been updated successfully.",
-    });
-    console.log(data);
-  }
-    */
+  /* 
+    const form = useForm({
+      defaultValues,
+      validators: {
+        onChange: notificationsFormSchema,
+      },
+    }); 
+  */
 
   return (
     <div className="container mx-auto px-4">
@@ -71,101 +59,6 @@ export default function UserSettingsPage() {
         </p>
         <Separator />
         <Tabs defaultValue="appearance" className="space-y-6">
-          {/* 
-            <TabsList>
-              <TabsTrigger value="appearance">Appearance</TabsTrigger>
-            </TabsList> 
-          */}
-
-          {/*
-          <TabsContent value="notifications" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notifications</CardTitle>
-                <CardDescription>
-                  Configure how you receive notifications.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    form.handleSubmit();
-                  }}
-                  className="space-y-8"
-                >
-                  <div className="space-y-4">
-                    <form.Field name="socialNotifications">
-                      {(field) => {
-                        return (
-                          <div className="space-y-0.5">
-                            <Label className="text-base">
-                              Social notifications
-                            </Label>
-                            <p>
-                              Receive notifications when someone mentions you or
-                              replies to your messages.
-                            </p>
-
-                            <Switch
-                              checked={field.state.value}
-                              onCheckedChange={field.handleChange}
-                            />
-                          </div>
-                        );
-                      }}
-                    </form.Field>
-
-                    <form.Field name="newFeatures">
-                      {(field) => {
-                        return (
-                          <div className="space-y-0.5">
-                            <div className="space-y-0.5">
-                              <Label className="text-base">New features</Label>
-                              <p>
-                                Receive notifications about new features and
-                                updates.
-                              </p>
-                            </div>
-                            <Switch
-                              checked={field.state.value}
-                              onCheckedChange={field.handleChange}
-                            />
-                          </div>
-                        );
-                      }}
-                    </form.Field>
-
-                    <form.Field name="securityNotifications">
-                      {(field) => {
-                        return (
-                          <div className="space-y-0.5">
-                            <Label className="text-base">
-                              Security notifications
-                            </Label>
-                            <p>
-                              Receive notifications about your account security.
-                            </p>
-                            <Switch
-                              checked={field.state.value}
-                              onCheckedChange={field.handleChange}
-                            />{" "}
-                          </div>
-                        );
-                      }}
-                    </form.Field>
-                  </div>
-                  <Button type="submit">
-                    <Bell className="mr-2 h-4 w-4" />
-                    Update notifications
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          */}
-
           <TabsContent value="appearance" className="space-y-6">
             <Card>
               <CardHeader>

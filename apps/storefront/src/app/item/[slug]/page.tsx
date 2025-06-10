@@ -124,7 +124,7 @@ export default async function ItemDetailPage() {
 
   if (accessToken) {
     // get user data
-    let userResponse = await client.verify.$get(
+    const userResponse = await client.verify.$get(
       {
         credentials: "include",
       },

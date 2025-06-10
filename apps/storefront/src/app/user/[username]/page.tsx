@@ -63,7 +63,7 @@ async function UserItems({ username }: { username: string }) {
             No items published yet
           </h3>
           <p className="mt-2 text-muted-foreground">
-            This user hasn't published any items for sale.
+            This user hasn&apos;t published any items for sale.
           </p>
         </div>
       ) : (

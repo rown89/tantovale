@@ -106,8 +106,7 @@ export function useHandleItemForm({
         router.push(`/item/${value.commons.title}-${newItem.item_id}`);
       } catch (error) {
         toast(`Error :(`, {
-          description:
-            "We are encountering technical problems, please retry later.",
+          description: `We are encountering technical problems, please retry later. \n ${error instanceof Error ? error.message : "Unknown error"}`,
           duration: 4000,
         });
       } finally {

@@ -14,7 +14,7 @@ export default function ChatRoomPage() {
 
   if (isNaN(chatRoomId)) notFound();
 
-  const { data: currentUser, isError: isCurrentUserError } = useQuery({
+  const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: async () => {
       const response = await client.user.auth.$get();

@@ -95,7 +95,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <p className="my-2 italic">"{message.message}"</p>
+                        <p className="my-2 italic">"{message.message}</p>
                         <div className="flex">
                           {isChatOwner ? (
                             <span className="flex gap-1">

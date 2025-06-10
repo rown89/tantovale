@@ -141,8 +141,6 @@ export default function ItemWDetailWrapper({
                   if (!user) {
                     router.push("/login");
                   } else {
-                    const itemPrice = formatPrice(item.price);
-
                     setIsProposalModalOpen(true);
                   }
                 }}
