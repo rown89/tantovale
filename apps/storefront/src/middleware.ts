@@ -22,7 +22,7 @@ export async function middleware(req: NextRequest) {
 
       if (pathname === "/auth/profile-setup/address") {
         const hasAddressResponse =
-          await client.profile.auth.user_has_address.$get(
+          await client.profile.auth.profile_active_address_id.$get(
             {},
             {
               headers: {
@@ -32,20 +32,13 @@ export async function middleware(req: NextRequest) {
           );
 
         if (hasAddressResponse.ok) {
-          const { address_id } = await hasAddressResponse.json();
+          const address_id = await hasAddressResponse.json();
 
           // if user already has an active address, redirect to home
-          if (address_id) {
-            console.log("HEREX", address_id);
-
-            return NextResponse.redirect(new URL("/", req.url));
-          }
+          if (address_id) return NextResponse.redirect(new URL("/", req.url));
         }
       }
-    }
-
-    // If user is not authenticated and tries to access a protected route
-    else {
+    } else {
       if (restrictedPaths.find((item) => pathname.includes(item))) {
         return NextResponse.redirect(new URL("/login", req.url));
       }

@@ -49,33 +49,25 @@ export const profileRoute = createRouter()
 
 		return c.json(userProfileData, 200);
 	})
-	.get(`/${authPath}/user_has_address`, authMiddleware, async (c) => {
+	.get(`/${authPath}/profile_active_address_id`, authMiddleware, async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
 
 		try {
-			const result = await db.transaction(async (tx) => {
-				const [userData] = await tx
-					.select({
-						profile_id: profiles.id,
-						address_id: addresses.id,
-					})
-					.from(profiles)
-					.leftJoin(addresses, eq(addresses.profile_id, profiles.id))
-					.where(and(eq(profiles.user_id, user.id), eq(addresses.status, 'active')))
-					.limit(1);
+			const [userData] = await db
+				.select({
+					profile_id: profiles.id,
+					address_id: addresses.id,
+				})
+				.from(profiles)
+				.leftJoin(addresses, eq(addresses.profile_id, profiles.id))
+				.where(and(eq(profiles.user_id, user.id), eq(addresses.status, 'active')))
+				.limit(1);
 
-				if (!userData) throw new Error('Profile not found');
+			if (!userData) return c.json(null, 200);
 
-				console.log('userData', userData);
-
-				return {
-					address_id: userData.address_id,
-				};
-			});
-
-			return c.json(result, 200);
+			return c.json(userData?.address_id, 200);
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Profile not found') {
 				return c.json({ message: 'Profile not found' }, 404);

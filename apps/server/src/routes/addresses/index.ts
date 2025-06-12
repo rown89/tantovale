@@ -2,7 +2,7 @@ import { and, asc, eq, ne, or } from 'drizzle-orm';
 
 import { profiles } from '../../database/schemas/profiles';
 import { createClient } from '../../database';
-import { addresses, SelectAddress } from '../../database/schemas/addresses';
+import { addresses } from '../../database/schemas/addresses';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
@@ -10,6 +10,13 @@ import { cities } from 'src/database/schemas/cities';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { addAddressSchema } from 'src/extended_schemas';
+import { addressStatusValues } from 'src/database/schemas/enumerated_values';
+
+export const ADDRESS_STATUS = {
+	ACTIVE: 'active' as const,
+	INACTIVE: 'inactive' as const,
+	DELETED: 'deleted' as const,
+} satisfies Record<string, (typeof addressStatusValues)[number]>;
 
 export const addressesRoute = createRouter()
 	.get(`/${authPath}/addresses_profile`, authMiddleware, async (c) => {
@@ -57,7 +64,7 @@ export const addressesRoute = createRouter()
 				.where(
 					and(
 						eq(addresses.profile_id, userProfile.id),
-						or(eq(addresses.status, 'active'), eq(addresses.status, 'inactive')),
+						or(eq(addresses.status, ADDRESS_STATUS.ACTIVE), eq(addresses.status, ADDRESS_STATUS.INACTIVE)),
 					),
 				)
 				.orderBy(asc(addresses.id));
@@ -77,17 +84,12 @@ export const addressesRoute = createRouter()
 
 			const { db } = createClient();
 
-			const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user.id));
+			// Create aliases for better readability
+			const cityTable = alias(cities, 'city');
+			const provinceTable = alias(cities, 'province');
 
-			if (!profile?.id) {
-				return c.json({ message: 'Profile not found' }, 404);
-			}
-
-			// add city and province name to profile address
-			const city = alias(cities, 'city');
-			const province = alias(cities, 'province');
-
-			const [activeAddress] = await db
+			// Single optimized query combining profile lookup and address retrieval
+			const [defaultAddress] = await db
 				.select({
 					id: addresses.id,
 					label: addresses.label,
@@ -97,19 +99,26 @@ export const addressesRoute = createRouter()
 					civic_number: addresses.civic_number,
 					postal_code: addresses.postal_code,
 					country_code: addresses.country_code,
-					city_name: city.name,
-					province_name: province.name,
-					province_country_code: province.country_code,
-					city_country_code: city.country_code,
+					city_name: cityTable.name,
+					province_name: provinceTable.name,
+					province_country_code: provinceTable.country_code,
+					city_country_code: cityTable.country_code,
 				})
 				.from(addresses)
-				.innerJoin(city, eq(city.id, addresses.city_id))
-				.innerJoin(province, eq(province.id, addresses.province_id))
-				.where(and(eq(addresses.profile_id, profile.id), eq(addresses.status, 'active')));
+				.innerJoin(profiles, eq(profiles.id, addresses.profile_id))
+				.innerJoin(cityTable, eq(cityTable.id, addresses.city_id))
+				.innerJoin(provinceTable, eq(provinceTable.id, addresses.province_id))
+				.where(and(eq(profiles.user_id, user.id), eq(addresses.status, ADDRESS_STATUS.ACTIVE)))
+				.limit(1);
 
-			return c.json(activeAddress, 200);
+			if (!defaultAddress) {
+				return c.json({ message: 'No active address found for user' }, 404);
+			}
+
+			return c.json(defaultAddress, 200);
 		} catch (error) {
-			return c.json({ message: 'addressesRoute error' }, 500);
+			console.log('Error fetching default address:', error);
+			return c.json({ message: 'Failed to fetch default address' }, 500);
 		}
 	})
 	.post(
@@ -128,7 +137,7 @@ export const addressesRoute = createRouter()
 				const [firstAddress] = await db.select().from(addresses).where(eq(addresses.profile_id, user.id));
 
 				if (!firstAddress) {
-					values.status = 'active';
+					values.status = ADDRESS_STATUS.ACTIVE;
 				}
 
 				const userAddress = await db.insert(addresses).values({
@@ -174,19 +183,19 @@ export const addressesRoute = createRouter()
 					.from(addresses)
 					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
 
-				if (currentAddress?.status === 'active' && values.status === 'inactive') {
+				if (currentAddress?.status === ADDRESS_STATUS.ACTIVE && values.status === ADDRESS_STATUS.INACTIVE) {
 					return c.json({ message: 'You can not disable the active address' }, 400);
 				}
 
 				// make "inactive" all other addresses that not are in "deleted" status
 				await tx
 					.update(addresses)
-					.set({ status: 'inactive' })
+					.set({ status: ADDRESS_STATUS.INACTIVE })
 					.where(
 						and(
 							eq(addresses.profile_id, profile.profile_id),
 							ne(addresses.id, Number(values.address_id)),
-							ne(addresses.status, 'deleted'),
+							ne(addresses.status, ADDRESS_STATUS.DELETED),
 						),
 					);
 

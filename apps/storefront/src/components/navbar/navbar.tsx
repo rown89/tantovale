@@ -17,11 +17,17 @@ import {
 
 import { useAuth } from "#providers/auth-providers";
 import { profileOptions } from "#shared/profile-options";
+import AddressProtectedRoute from "#utils/address-protected";
+import { toast } from "sonner";
+import useTantovaleStore from "#stores";
+import { Spinner } from "@workspace/ui/components/spinner";
 
 export default function NavBar() {
   const { user, loadingUser, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { setIsAddressLoading, isAddressLoading, setAddressId } =
+    useTantovaleStore();
 
   const [open, setOpen] = useState(false);
 
@@ -38,16 +44,34 @@ export default function NavBar() {
           <Button
             className="ml-2 mr-3 text-foreground font-bold"
             variant="ghost"
+            disabled={isAddressLoading}
             onClick={async () => {
-              if (user) {
-                router.push("/auth/item/new");
-              } else {
+              if (!user) {
                 router.push("/login");
+              } else {
+                setIsAddressLoading(true);
+
+                const address_id = await AddressProtectedRoute();
+
+                if (address_id) {
+                  setAddressId(address_id);
+                  router.push("/auth/item/new");
+                } else {
+                  toast.error("You must have an active address to sell");
+                  router.push("/auth/profile-setup/address");
+                }
+                setIsAddressLoading(false);
               }
             }}
           >
-            <Plus />
-            Sell
+            {isAddressLoading ? (
+              <Spinner />
+            ) : (
+              <>
+                <Plus />
+                Sell
+              </>
+            )}
           </Button>
         )}
 

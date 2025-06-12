@@ -383,7 +383,9 @@ export default function AddressForm({
               >
                 {isSubmitting || isUpdatingAddress || isAddingAddress
                   ? "Saving..."
-                  : "Save"}
+                  : firstAddress
+                    ? "Continue"
+                    : "Save"}
               </Button>
             );
           }}
