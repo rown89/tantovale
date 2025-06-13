@@ -4,6 +4,7 @@ import {
   createItemSchema,
   multipleImagesSchema,
   propertySchema,
+  shippingSchema,
 } from "@workspace/server/extended_schemas";
 
 import { PropertyType } from "./types";
@@ -11,9 +12,11 @@ import { PropertyType } from "./types";
 export const reshapedCreateItemSchema = ({
   propertiesData,
   isManualShipping,
+  isPickup,
 }: {
   propertiesData?: PropertyType[];
   isManualShipping?: boolean;
+  isPickup?: boolean;
 }) => {
   return createItemSchema
     .and(
@@ -44,19 +47,66 @@ export const reshapedCreateItemSchema = ({
     )
     .and(
       z.object({
-        shipping_price: z.number().refine(
-          (val) => {
-            // if isSubcategoryPayable is false, then shipping_price must be 0 or undefined
-            if (isManualShipping) {
-              return val > 0;
-            } else {
-              return val === 0 || val === undefined;
+        shipping: shippingSchema.superRefine((val, ctx) => {
+          if (isManualShipping && !isPickup) {
+            if (!val.shipping_price || val.shipping_price <= 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Shipping price must be greater than 0",
+                path: ["shipping_price"],
+              });
+              return false;
             }
-          },
-          {
-            message: "Shipping price must be greater than 0",
-          },
-        ),
+          }
+          if (isPickup && !isManualShipping) {
+            console.log("val", val);
+            if (val.shipping_price && val.shipping_price !== 0) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Shipping price must be 0 when using pickup",
+              });
+            }
+          }
+          if (!isManualShipping && !isPickup) {
+            if (!val.item_weight) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["shipping", "item_weight"],
+              });
+            }
+            if (!val.item_length) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["shipping", "item_length"],
+              });
+            }
+            if (!val.item_width) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["shipping", "item_width"],
+              });
+            }
+            if (!val.item_height) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["shipping", "item_height"],
+              });
+            }
+            if (
+              !val.item_weight ||
+              !val.item_length ||
+              !val.item_width ||
+              !val.item_height
+            ) {
+              return false;
+            }
+          }
+          return true;
+        }),
       }),
     );
 };

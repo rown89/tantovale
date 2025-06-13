@@ -29,7 +29,6 @@ export function useHandleItemForm({
   const [selectedSubCategory, setSelectedSubCategory] = useState<
     Partial<Category> | undefined
   >(subcategory);
-  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isPickup, setIsPickup] = useState(false);
   const [isManualShipping, setIsManualShipping] = useState(false);
@@ -45,6 +44,7 @@ export function useHandleItemForm({
       onChange: reshapedCreateItemSchema({
         propertiesData: subCatProperties ?? [],
         isManualShipping,
+        isPickup,
       }),
     },
     onSubmit: async ({ value }: { value: reshapedSchemaType }) => {
@@ -163,14 +163,20 @@ export function useHandleItemForm({
   ) {
     if (easyPay) {
       form.setFieldValue("commons.easy_pay", false);
-      form.setFieldValue("shipping_price", 0);
+      form.setFieldValue("shipping.shipping_price", 0);
       setIsManualShipping(false);
     }
 
     setIsPickup(value);
 
+    // reset shipping dimensions
+    form.setFieldValue("shipping.item_weight", 0);
+    form.setFieldValue("shipping.item_length", 0);
+    form.setFieldValue("shipping.item_width", 0);
+    form.setFieldValue("shipping.item_height", 0);
+
     if (value) {
-      form.setFieldValue("shipping_price", 0);
+      form.setFieldValue("shipping.shipping_price", 0);
       setIsManualShipping(false);
 
       // Only update delivery methods if the property exists
@@ -206,7 +212,7 @@ export function useHandleItemForm({
     if (checked) {
       // When enabling Easy Pay, reset shipping price and disable manual shipping
 
-      form.setFieldValue("shipping_price", 0);
+      form.setFieldValue("shipping.shipping_price", 0);
       setIsManualShipping(false);
 
       // Disable pickup
@@ -240,7 +246,7 @@ export function useHandleItemForm({
     setIsManualShipping(value);
 
     if (!value) {
-      form.setFieldValue("shipping_price", 0);
+      form.setFieldValue("shipping.shipping_price", 0);
     }
 
     // Disable Easy Pay box UI & set easyPay to false
@@ -250,6 +256,12 @@ export function useHandleItemForm({
 
     // Disable pickup box UI
     if (isPickup) setIsPickup(false);
+
+    // reset shipping dimensions
+    form.setFieldValue("shipping.item_weight", 0);
+    form.setFieldValue("shipping.item_length", 0);
+    form.setFieldValue("shipping.item_width", 0);
+    form.setFieldValue("shipping.item_height", 0);
 
     // if "delivery_method" property exists and "manual shipping" is enabled
     if (deliveryMethodProperty?.id) {
@@ -277,13 +289,11 @@ export function useHandleItemForm({
     form,
     isSubmittingForm,
     selectedSubCategory,
-    isLocationDialogOpen,
     isPickup,
     isManualShipping,
     deliveryMethodProperty,
     setIsManualShipping,
     setIsPickup,
-    setIsLocationDialogOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,

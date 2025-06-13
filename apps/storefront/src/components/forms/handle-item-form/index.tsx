@@ -40,12 +40,13 @@ import {
   type Category,
   ExtendedAddress,
 } from "@workspace/server/extended_schemas";
+import { Separator } from "@workspace/ui/components/separator";
 
 import { useHandleItemForm } from "./use-handle-item-form";
 import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 import { isNextButtonEnabled, handleItemPreviewProperties } from "./utils";
-import { defaultValues, maxImages, step_one, step_two } from "./constants";
+import { maxImages, step_one, step_two } from "./constants";
 import { PropertyFormValue, reshapedSchemaType } from "./types";
 
 type HandleItemFormComponent = {
@@ -54,7 +55,7 @@ type HandleItemFormComponent = {
     "id" | "name" | "slug" | "easy_pay" | "menu_order"
   >;
   formModel: "create" | "edit";
-  profileAddress: ExtendedAddress;
+  profileAddress: Omit<ExtendedAddress, "status">;
   defaultValues: reshapedSchemaType;
 };
 
@@ -68,7 +69,6 @@ export default function HandleItemFormComponent({
   const [subcategoriesMenu, setSubcategoriesMenu] = useState<
     Partial<Category>[]
   >([]);
-  const [searchedCityName, setSearchedCityName] = useState("");
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [selectedCondition, setSelectedCondition] = useState<
     Omit<PropertyFormValue, "value"> | undefined
@@ -93,11 +93,9 @@ export default function HandleItemFormComponent({
     form,
     isSubmittingForm,
     selectedSubCategory,
-    isLocationDialogOpen,
     isPickup,
     isManualShipping,
     deliveryMethodProperty,
-    setIsLocationDialogOpen,
     handleSubCategorySelect,
     handlePropertiesReset,
     handlePickupChange,
@@ -126,7 +124,7 @@ export default function HandleItemFormComponent({
   // Initialize some form fields
   useEffect(() => {
     // inizialize shipping_price
-    form.setFieldValue("shipping_price", 0);
+    form.setFieldValue("shipping.shipping_price", 0);
 
     // inizialize address_id
     if (profileAddress.id) {
@@ -482,101 +480,277 @@ export default function HandleItemFormComponent({
 
                   {/* Show Easy Pay only if the subcategory is payable and deliveryMethodPropertyId exists */}
                   {subcategory?.easy_pay && deliveryMethodProperty?.id && (
-                    <form.Field name="commons.easy_pay">
-                      {(field) => {
-                        const { name, state } = field;
-                        const { value } = state;
+                    <div className="flex flex-col gap-2">
+                      <form.Field name="commons.easy_pay">
+                        {(field) => {
+                          const { name, state } = field;
+                          const { value } = state;
 
-                        return (
-                          <div className="space-y-2">
-                            <Alert
-                              className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
-                              onClick={() =>
-                                handleEasyPayChange(
-                                  !value,
-                                  field,
-                                  propertiesField,
-                                )
-                              }
-                            >
-                              <AlertTitle className="mb-2 flex gap-2 justify-between">
-                                <div onClick={(e) => e.stopPropagation()}>
-                                  <Dialog>
-                                    <DialogTrigger asChild>
-                                      <div className="flex gap-2 items-center">
-                                        <p
-                                          className={`font-bold text-lg ${easyPay ? "text-primary" : ""}`}
-                                        >
-                                          Easy Pay
-                                        </p>
-                                        <Info className="h-4 w-4 text-blue-500" />
-                                      </div>
-                                    </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[425px]">
-                                      <DialogHeader>
-                                        <DialogTitle>
-                                          What is Easy Pay?
-                                        </DialogTitle>
-                                        <DialogDescription className="my-2">
-                                          With Easy Pay, selling your items
-                                          online is simple and secure.
-                                          <br />
-                                          <br />
-                                          Once a buyer completes the purchase,
-                                          the payment is safely held by our
-                                          system until you ship the item.
-                                          <br />
-                                          After the buyer confirms delivery, we
-                                          promptly release the funds to your
-                                          account.
-                                          <br />
-                                          <br />
-                                          This process helps protect both you
-                                          and the buyer, ensuring a smooth and
-                                          trustworthy transaction.
-                                        </DialogDescription>
-                                      </DialogHeader>
-                                    </DialogContent>
-                                  </Dialog>
-                                </div>
-                                <div onClick={(e) => e.stopPropagation()}>
-                                  <Switch
-                                    id={name}
-                                    name={name}
-                                    onCheckedChange={(checked) => {
-                                      handleEasyPayChange(
-                                        checked,
-                                        field,
-                                        propertiesField,
-                                      );
-                                      // When enabling Easy Pay, disable manual shipping
-                                      if (checked) {
-                                        setIsManualShipping(false);
+                          return (
+                            <div className="space-y-2">
+                              <Alert
+                                className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
+                                onClick={() =>
+                                  handleEasyPayChange(
+                                    !value,
+                                    field,
+                                    propertiesField,
+                                  )
+                                }
+                              >
+                                <AlertTitle className="mb-2 flex gap-2 justify-between">
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <Dialog>
+                                      <DialogTrigger asChild>
+                                        <div className="flex gap-2 items-center">
+                                          <p
+                                            className={`font-bold text-lg ${easyPay ? "text-primary" : ""}`}
+                                          >
+                                            Easy Pay
+                                          </p>
+                                          <Info className="h-4 w-4 text-blue-500" />
+                                        </div>
+                                      </DialogTrigger>
+                                      <DialogContent className="sm:max-w-[425px]">
+                                        <DialogHeader>
+                                          <DialogTitle>
+                                            What is Easy Pay?
+                                          </DialogTitle>
+                                          <DialogDescription className="my-2">
+                                            With Easy Pay, selling your items
+                                            online is simple and secure.
+                                            <br />
+                                            <br />
+                                            Once a buyer completes the purchase,
+                                            the payment is safely held by our
+                                            system until you ship the item.
+                                            <br />
+                                            After the buyer confirms delivery,
+                                            we promptly release the funds to
+                                            your account.
+                                            <br />
+                                            <br />
+                                            This process helps protect both you
+                                            and the buyer, ensuring a smooth and
+                                            trustworthy transaction.
+                                          </DialogDescription>
+                                        </DialogHeader>
+                                      </DialogContent>
+                                    </Dialog>
+                                  </div>
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <Switch
+                                      id={name}
+                                      name={name}
+                                      onCheckedChange={(checked) => {
+                                        handleEasyPayChange(
+                                          checked,
+                                          field,
+                                          propertiesField,
+                                        );
+                                        // When enabling Easy Pay, disable manual shipping
+                                        if (checked) {
+                                          setIsManualShipping(false);
 
-                                        form.setFieldValue("shipping_price", 0);
+                                          form.setFieldValue(
+                                            "shipping.shipping_price",
+                                            0,
+                                          );
+                                        }
+                                      }}
+                                      checked={
+                                        value !== undefined ? value : false
                                       }
-                                    }}
-                                    checked={
-                                      value !== undefined ? value : false
-                                    }
-                                  />
-                                </div>
-                              </AlertTitle>
-                              <AlertDescription>
-                                Enabling this option allows users to instantly
-                                purchase your item, with secure payment
-                                processing and tracking from payment to
-                                shipment.
-                              </AlertDescription>
-                            </Alert>
-                          </div>
-                        );
-                      }}
-                    </form.Field>
+                                    />
+                                  </div>
+                                </AlertTitle>
+                                <AlertDescription>
+                                  Enabling this option allows buyers to
+                                  instantly purchase your item, with secure
+                                  payment processing and tracking from payment
+                                  to shipment.
+                                  {easyPay && (
+                                    <>
+                                      <Separator className="my-4" />
+                                      <div className="flex flex-col gap-3 mb-6">
+                                        <Label className="text-slate-600 mb-2 leading-5">
+                                          Add approximate items dimensions to
+                                          help the system to automatically
+                                          calculate the shipping price.
+                                        </Label>
+                                        <form.Field name="shipping.item_weight">
+                                          {(field) => {
+                                            const { name } = field;
+                                            const { value } = field.state;
+                                            const { handleChange, handleBlur } =
+                                              field;
+
+                                            return (
+                                              <>
+                                                <Label htmlFor={field.name}>
+                                                  Weight (KG)
+                                                </Label>
+                                                <Input
+                                                  id={name}
+                                                  name={name}
+                                                  type="number"
+                                                  min=".01"
+                                                  step=".01"
+                                                  placeholder="ex: 1000"
+                                                  value={
+                                                    value !== undefined
+                                                      ? value
+                                                      : ""
+                                                  }
+                                                  onChange={(e) => {
+                                                    handleChange(
+                                                      e.target.valueAsNumber,
+                                                    );
+                                                  }}
+                                                  onBlur={handleBlur}
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                />
+                                                <FieldInfo field={field} />
+                                              </>
+                                            );
+                                          }}
+                                        </form.Field>
+
+                                        <form.Field name="shipping.item_length">
+                                          {(field) => {
+                                            const { name } = field;
+                                            const { value } = field.state;
+                                            const { handleChange, handleBlur } =
+                                              field;
+
+                                            return (
+                                              <>
+                                                <Label htmlFor={field.name}>
+                                                  Length (cm)
+                                                </Label>
+                                                <Input
+                                                  id={name}
+                                                  name={name}
+                                                  type="number"
+                                                  min=".01"
+                                                  step=".01"
+                                                  placeholder="ex: 100"
+                                                  value={
+                                                    value !== undefined
+                                                      ? value
+                                                      : ""
+                                                  }
+                                                  onChange={(e) => {
+                                                    handleChange(
+                                                      e.target.valueAsNumber,
+                                                    );
+                                                  }}
+                                                  onBlur={handleBlur}
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                />
+                                                <FieldInfo field={field} />
+                                              </>
+                                            );
+                                          }}
+                                        </form.Field>
+
+                                        <form.Field name="shipping.item_width">
+                                          {(field) => {
+                                            const { name } = field;
+                                            const { value } = field.state;
+                                            const { handleChange, handleBlur } =
+                                              field;
+
+                                            return (
+                                              <>
+                                                <Label htmlFor={field.name}>
+                                                  Width (cm)
+                                                </Label>
+                                                <Input
+                                                  id={name}
+                                                  name={name}
+                                                  type="number"
+                                                  min=".01"
+                                                  step=".01"
+                                                  placeholder="ex: 100"
+                                                  value={
+                                                    value !== undefined
+                                                      ? value
+                                                      : ""
+                                                  }
+                                                  onChange={(e) => {
+                                                    handleChange(
+                                                      e.target.valueAsNumber,
+                                                    );
+                                                  }}
+                                                  onBlur={handleBlur}
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                />
+                                                <FieldInfo field={field} />
+                                              </>
+                                            );
+                                          }}
+                                        </form.Field>
+
+                                        <form.Field name="shipping.item_height">
+                                          {(field) => {
+                                            const { name } = field;
+                                            const { value } = field.state;
+                                            const { handleChange, handleBlur } =
+                                              field;
+
+                                            return (
+                                              <>
+                                                <Label htmlFor={field.name}>
+                                                  Height (cm)
+                                                </Label>
+                                                <Input
+                                                  id={name}
+                                                  name={name}
+                                                  type="number"
+                                                  min=".01"
+                                                  step=".01"
+                                                  placeholder="ex: 100"
+                                                  value={
+                                                    value !== undefined
+                                                      ? value
+                                                      : ""
+                                                  }
+                                                  onChange={(e) => {
+                                                    handleChange(
+                                                      e.target.valueAsNumber,
+                                                    );
+                                                  }}
+                                                  onBlur={handleBlur}
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                />
+                                                <FieldInfo field={field} />
+                                              </>
+                                            );
+                                          }}
+                                        </form.Field>
+                                      </div>
+                                    </>
+                                  )}
+                                </AlertDescription>
+                              </Alert>
+                            </div>
+                          );
+                        }}
+                      </form.Field>
+                    </div>
                   )}
 
                   {subcategory?.easy_pay && (
-                    <form.Field name="shipping_price">
+                    <form.Field name="shipping.shipping_price">
                       {(field) => {
                         const { name, handleChange, state } = field;
                         const { value } = state;
@@ -741,7 +915,13 @@ export default function HandleItemFormComponent({
                             disabled={isSubmitDisabled}
                             type="submit"
                           >
-                            {isSubmitting ? "Submitting..." : "Submit"}
+                            {isSubmitting ? (
+                              <>
+                                Submitting <Spinner className="h-4 w-4" />
+                              </>
+                            ) : (
+                              "Submit"
+                            )}
                           </Button>
                         </div>
                       )}
@@ -752,7 +932,13 @@ export default function HandleItemFormComponent({
                         type="submit"
                         disabled={isSubmitDisabled}
                       >
-                        {isSubmitting ? "Submitting..." : "Submit"}
+                        {isSubmitting ? (
+                          <>
+                            Submitting <Spinner className="h-4 w-4" />
+                          </>
+                        ) : (
+                          "Submit"
+                        )}
                       </Button>
                     )}
                   </div>

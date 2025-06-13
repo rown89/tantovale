@@ -13,10 +13,15 @@ export const defaultValues = {
     easy_pay: false,
     description: "",
     price: 0,
-    shipping_price: 0,
     subcategory_id: 0,
     city: 0,
   },
   properties: [],
-  shipping_price: 0,
+  shipping: {
+    item_weight: 0,
+    item_length: 0,
+    item_width: 0,
+    item_height: 0,
+    shipping_price: 0,
+  },
 };

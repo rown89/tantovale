@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { useForm } from "@tanstack/react-form";
+import { toast } from "sonner";
 
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -15,12 +16,12 @@ import {
 import { Input } from "@workspace/ui/components/input";
 import { Label } from "@workspace/ui/components/label";
 import { Textarea } from "@workspace/ui/components/textarea";
+import { Separator } from "@workspace/ui/components/separator";
+import { formatPrice, formatPriceToCents } from "@workspace/ui/lib/utils";
+import { create_order_proposal_schema } from "@workspace/server/extended_schemas";
 
 import { FieldInfo } from "#components/forms/utils/field-info";
 import useTantovaleStore from "#stores";
-import { formatPrice, formatPriceToCents } from "@workspace/ui/lib/utils";
-import { create_order_proposal_schema } from "node_modules/@workspace/server/src/extended_schemas/order_proposals";
-import { toast } from "sonner";
 
 export function ProposalDialog() {
   const {
@@ -93,11 +94,25 @@ export function ProposalDialog() {
         <DialogHeader>
           <DialogTitle>Make a Price Proposal</DialogTitle>
           <DialogDescription className="flex flex-col gap-2">
-            <span>Current item price: {formatPrice(item?.price)}€</span>
-            <i className="text-sm text-orange-400">
-              If the seller does not accept or reject the proposal, it will
+            <Label className="text-sm text-orange-600 mb-2">
+              If the seller does not accept or reject your proposal, it will
               automatically expire after 7 days.
-            </i>
+            </Label>
+            <div className="flex flex-col gap-4">
+              <Separator />
+              <Label className="font-semibold">
+                Current price: {formatPrice(item?.price)}€
+              </Label>
+              <Label className="font-semibold ">
+                Shipping cost: {formatPrice(0)}€
+              </Label>
+              <Label className="italic">
+                Shipping is calculated by Tantovale based on your location and
+                item location, it's fixed and it's not included in the proposal
+                price.
+              </Label>
+              <Separator />
+            </div>
           </DialogDescription>
         </DialogHeader>
         <form
@@ -107,12 +122,13 @@ export function ProposalDialog() {
 
             form.handleSubmit();
           }}
-          className="space-y-4"
         >
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 items-center gap-5">
-              <Label htmlFor="price">Your proposed price</Label>
-              <div className="col-span-3">
+          <div className="grid gap-4 mb-4">
+            <div className="grid grid-cols-1 items-center gap-4">
+              <div className="w-full justify-between items-center flex gap-2">
+                <Label className="h-fit" htmlFor="price">
+                  Your proposal
+                </Label>
                 <form.Field name="proposal_price">
                   {(field) => {
                     const { name, handleBlur, handleChange, state } = field;
@@ -123,6 +139,7 @@ export function ProposalDialog() {
                         <Input
                           id={name}
                           name={name}
+                          className="w-full min-w-[120px]"
                           type="number"
                           step="0.01"
                           min="0.01"
@@ -143,8 +160,9 @@ export function ProposalDialog() {
                   }}
                 </form.Field>
               </div>
-              <Label htmlFor="message">Message</Label>
-              <div className="col-span-3">
+
+              <div className="w-full flex flex-col gap-2">
+                <Label htmlFor="message">Message</Label>
                 <form.Field name="message">
                   {(field) => {
                     const { name, handleBlur, handleChange, state } = field;

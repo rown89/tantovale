@@ -12,7 +12,13 @@ export const multipleImagesSchema = z
 	.min(1, 'At least 1 image is required')
 	.max(5, { message: 'You can upload up to 6 images at once' });
 
-export const shippingPriceSchema = z.number().optional();
+export const shippingSchema = z.object({
+	item_weight: number().optional(),
+	item_length: number().optional(),
+	item_width: number().optional(),
+	item_height: number().optional(),
+	shipping_price: z.number().optional(),
+});
 
 export const propertySchema = z.array(
 	z.object({
@@ -54,7 +60,7 @@ export const createItemSchema = z.object({
 		updated_at: true,
 		deleted_at: true,
 	}),
-	shipping_price: shippingPriceSchema,
+	shipping: shippingSchema.optional(),
 	properties: propertySchema.optional(),
 });
 

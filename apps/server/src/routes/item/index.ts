@@ -1,4 +1,5 @@
 import { eq, and } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { env } from 'hono/adapter';
@@ -22,7 +23,6 @@ import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { createItemSchema } from '../../extended_schemas';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { alias } from 'drizzle-orm/pg-core';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -115,7 +115,7 @@ export const itemRoute = createRouter()
 				ACCESS_TOKEN_SECRET: string;
 			}>(c);
 
-			const { commons, properties, shipping_price } = c.req.valid('json');
+			const { commons, properties, shipping } = c.req.valid('json');
 
 			// Auth TOKEN
 			const accessToken = getCookie(c, 'access_token');
@@ -129,12 +129,12 @@ export const itemRoute = createRouter()
 			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
 
 			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping_price) {
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.shipping_price) {
 				return c.json({ message: 'Shipping price is required' }, 400);
 			}
 
 			// if property value delivery_method is "pickup" and shipping_price is provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping_price) {
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.shipping_price) {
 				return c.json({ message: 'Shipping price is not allowed' }, 400);
 			}
 
@@ -239,10 +239,10 @@ export const itemRoute = createRouter()
 				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
 
 				// if has delivery_method and is not "pickup" and shipping_price is provided, create a shipment
-				if (hasDeliveryMethod && !isPickup && shipping_price) {
+				if (hasDeliveryMethod && !isPickup && shipping?.shipping_price) {
 					await tx.insert(shippings).values({
 						item_id: newItem.id,
-						shipping_price,
+						shipping_price: shipping?.shipping_price,
 					});
 				}
 
@@ -429,80 +429,3 @@ export const itemRoute = createRouter()
 			}
 		},
 	);
-/*
-  // usefull for future admin panel
-  .delete(`/${authPath}/delete/:id`, authMiddleware, async (c) => {
-    const { ACCESS_TOKEN_SECRET } = env<{
-      ACCESS_TOKEN_SECRET: string;
-    }>(c);
-
-    const id = Number(c.req.param("id"));
-
-    if (!id) return c.json({ error: "item id is required" }, 400);
-    if (isNaN(id)) return c.json({ message: "Invalid item ID" }, 400);
-
-    const accessToken = getCookie(c, "access_token");
-    let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-    const user_id = Number(payload.id);
-
-    if (!user_id) return c.json({ message: "Invalid user id" }, 401);
-
-    const { db } = createClient();
-
-    try {
-      await db.transaction(async (tx) => {
-        // First check if the item exists and belongs to the user
-        const itemExists = await tx
-          .select({ id: items.id })
-          .from(items)
-          .where(and(eq(items.id, id), eq(items.user_id, user_id)))
-          .limit(1)
-          .then((results) => results[0]);
-
-        if (!itemExists) {
-          return c.json(
-            {
-              message:
-                "Item not found or you don't have permission to delete it",
-            },
-            404,
-          );
-        }
-
-        // delete the item
-        const [deletedItem] = await db
-          .delete(items)
-          .where(eq(items.id, id))
-          .returning();
-
-        if (!deletedItem?.id) {
-          return c.json(
-            {
-              message: `Item ${id} cant be deleted because doesn't exist.`,
-              id,
-            },
-            401,
-          );
-        }
-      });
-
-      return c.json(
-        {
-          message: "Item deleted successfully",
-          id,
-        },
-        200,
-      );
-    } catch (error) {
-      return c.json(
-        {
-          message:
-            error instanceof Error
-              ? error.message
-              : `Failed to delete item ${id}`,
-        },
-        500,
-      );
-    }
-  }); 
-*/
