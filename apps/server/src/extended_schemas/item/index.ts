@@ -1,6 +1,7 @@
-import { items } from '@workspace/server/database';
 import { createInsertSchema } from 'drizzle-zod';
 import { boolean, number, string, z } from 'zod';
+
+import { items } from '@workspace/server/database';
 
 const imageFileSchema = z.instanceof(File).refine((file) => file.type.startsWith('image/'), {
 	message: 'Only image files are allowed',
@@ -17,7 +18,7 @@ export const shippingSchema = z.object({
 	item_length: number().optional(),
 	item_width: number().optional(),
 	item_height: number().optional(),
-	shipping_price: z.number().optional(),
+	manual_shipping_price: z.number().optional(),
 });
 
 export const propertySchema = z.array(

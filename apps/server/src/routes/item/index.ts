@@ -128,13 +128,13 @@ export const itemRoute = createRouter()
 
 			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
 
-			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.shipping_price) {
+			// if property value delivery_method is "shipping" and manual_shipping_price is not provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.manual_shipping_price) {
 				return c.json({ message: 'Shipping price is required' }, 400);
 			}
 
-			// if property value delivery_method is "pickup" and shipping_price is provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.shipping_price) {
+			// if property value delivery_method is "pickup" and manual_shipping_price is provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.manual_shipping_price) {
 				return c.json({ message: 'Shipping price is not allowed' }, 400);
 			}
 
@@ -238,11 +238,15 @@ export const itemRoute = createRouter()
 				// Check if delivery_method is "pickup"
 				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
 
-				// if has delivery_method and is not "pickup" and shipping_price is provided, create a shipment
-				if (hasDeliveryMethod && !isPickup && shipping?.shipping_price) {
+				// Create a temporary shipment
+				if (hasDeliveryMethod && !isPickup && shipping) {
 					await tx.insert(shippings).values({
 						item_id: newItem.id,
-						shipping_price: shipping?.shipping_price,
+						manual_shipping_price: shipping.manual_shipping_price,
+						item_weight: shipping.item_weight,
+						item_length: shipping.item_length,
+						item_width: shipping.item_width,
+						item_height: shipping.item_height,
 					});
 				}
 

@@ -10,7 +10,7 @@ export const property_values = pgTable(
 		id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
 		property_id: integer('property_id')
 			.notNull()
-			.references(() => properties.id, { onDelete: 'cascade' }),
+			.references(() => properties.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		name: text('name').notNull(),
 		// Constraint Reminder: value & boolean_value can't both co-exist, only one is allowed.
 		value: text('value'),

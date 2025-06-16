@@ -22,6 +22,6 @@ export const defaultValues = {
     item_length: 0,
     item_width: 0,
     item_height: 0,
-    shipping_price: 0,
+    manual_shipping_price: 0,
   },
 };

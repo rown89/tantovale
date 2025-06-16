@@ -5,7 +5,7 @@ import { createRouter } from '../../lib/create-app';
 import { shippoClient } from '../../lib/shippo-client';
 
 export const shipmentProviderRoute = createRouter().post('/', async (c) => {
-	const rates = await shippoClient.rates.create({
+	/* const rates = await shippoClient.rates.create({
 		address_from: '1180 Bruxelles',
 		address_to: '1000 Bruxelles',
 		parcels: [
@@ -13,9 +13,9 @@ export const shipmentProviderRoute = createRouter().post('/', async (c) => {
 				length: 10,
 			},
 		],
-	});
+	}); */
 
 	const { db } = createClient();
 
-	return c.json({ rates });
+	return c.json({ rates: [] });
 });

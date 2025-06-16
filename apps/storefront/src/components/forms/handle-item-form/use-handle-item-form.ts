@@ -7,6 +7,8 @@ import imageCompression from "browser-image-compression";
 import { client } from "@workspace/server/client-rpc";
 import type { Category } from "@workspace/server/extended_schemas";
 
+import useTantovaleStore from "#/stores";
+
 import { handleQueryParamChange } from "../../../utils/handle-qp";
 import { PropertyType, reshapedSchemaType } from "./types";
 import { reshapedCreateItemSchema } from "./reshaped-create-item-schema";
@@ -25,13 +27,13 @@ export function useHandleItemForm({
 }: UseItemFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isManualShipping, isPickup, setIsManualShipping, setIsPickup } =
+    useTantovaleStore();
 
   const [selectedSubCategory, setSelectedSubCategory] = useState<
     Partial<Category> | undefined
   >(subcategory);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-  const [isPickup, setIsPickup] = useState(false);
-  const [isManualShipping, setIsManualShipping] = useState(false);
 
   const deliveryMethodProperty = useMemo(() => {
     return subCatProperties?.find((item) => item.slug === "delivery_method");
@@ -43,8 +45,6 @@ export function useHandleItemForm({
     validators: {
       onChange: reshapedCreateItemSchema({
         propertiesData: subCatProperties ?? [],
-        isManualShipping,
-        isPickup,
       }),
     },
     onSubmit: async ({ value }: { value: reshapedSchemaType }) => {
@@ -111,6 +111,12 @@ export function useHandleItemForm({
         });
       } finally {
         setIsSubmittingForm(false);
+
+        // reset the item new store
+        useTantovaleStore.setState({
+          isManualShipping: false,
+          isPickup: false,
+        });
       }
     },
   });
@@ -131,6 +137,14 @@ export function useHandleItemForm({
 
   function handlePropertiesReset() {
     form.setFieldValue("properties", []);
+  }
+
+  function handleShippingReset() {
+    form.setFieldValue("shipping.manual_shipping_price", 0);
+    form.setFieldValue("shipping.item_weight", 0);
+    form.setFieldValue("shipping.item_length", 0);
+    form.setFieldValue("shipping.item_width", 0);
+    form.setFieldValue("shipping.item_height", 0);
   }
 
   function handleSubCategorySelect(subcategory?: Partial<Category>) {
@@ -156,50 +170,6 @@ export function useHandleItemForm({
     );
   }
 
-  function handlePickupChange(
-    value: boolean,
-    field: AnyFieldApi,
-    easyPay?: boolean,
-  ) {
-    if (easyPay) {
-      form.setFieldValue("commons.easy_pay", false);
-      form.setFieldValue("shipping.shipping_price", 0);
-      setIsManualShipping(false);
-    }
-
-    setIsPickup(value);
-
-    // reset shipping dimensions
-    form.setFieldValue("shipping.item_weight", 0);
-    form.setFieldValue("shipping.item_length", 0);
-    form.setFieldValue("shipping.item_width", 0);
-    form.setFieldValue("shipping.item_height", 0);
-
-    if (value) {
-      form.setFieldValue("shipping.shipping_price", 0);
-      setIsManualShipping(false);
-
-      // Only update delivery methods if the property exists
-      if (deliveryMethodProperty?.id) {
-        const deliveryValue = deliveryMethodProperty.options.find(
-          (option) => option.value === "pickup",
-        )?.id;
-
-        if (!deliveryValue) return;
-
-        // Add "shipping" to the properties array, use the field of properties to update the array
-        updatePropertiesArray({
-          value: deliveryValue,
-          property: deliveryMethodProperty,
-          field,
-        });
-      }
-    } else {
-      // remove "pickup" from the properties array
-      removeDeliveryMethodProperty();
-    }
-  }
-
   function handleEasyPayChange(
     checked: boolean,
     field: AnyFieldApi,
@@ -212,7 +182,7 @@ export function useHandleItemForm({
     if (checked) {
       // When enabling Easy Pay, reset shipping price and disable manual shipping
 
-      form.setFieldValue("shipping.shipping_price", 0);
+      form.setFieldValue("shipping.manual_shipping_price", 0);
       setIsManualShipping(false);
 
       // Disable pickup
@@ -241,27 +211,18 @@ export function useHandleItemForm({
   function handleManualShippingChange(
     value: boolean,
     propertiesField: AnyFieldApi,
-    easyPay: boolean,
   ) {
-    setIsManualShipping(value);
-
-    if (!value) {
-      form.setFieldValue("shipping.shipping_price", 0);
-    }
-
-    // Disable Easy Pay box UI & set easyPay to false
-    if (easyPay && value) {
-      form.setFieldValue("commons.easy_pay", false);
-    }
+    // Disable Easy Pay box UI
+    form.setFieldValue("commons.easy_pay", false);
 
     // Disable pickup box UI
-    if (isPickup) setIsPickup(false);
+    setIsPickup(false);
 
-    // reset shipping dimensions
-    form.setFieldValue("shipping.item_weight", 0);
-    form.setFieldValue("shipping.item_length", 0);
-    form.setFieldValue("shipping.item_width", 0);
-    form.setFieldValue("shipping.item_height", 0);
+    // Enable manual shipping UI
+    setIsManualShipping(value);
+
+    // reset shipping dimensions and price
+    handleShippingReset();
 
     // if "delivery_method" property exists and "manual shipping" is enabled
     if (deliveryMethodProperty?.id) {
@@ -282,6 +243,38 @@ export function useHandleItemForm({
           field: propertiesField,
         });
       }
+    }
+  }
+
+  function handlePickupChange(value: boolean, field: AnyFieldApi) {
+    setIsPickup(value);
+    // Disable manual shipping UI
+    setIsManualShipping(false);
+    // Disable Easy Pay box UI
+    form.setFieldValue("commons.easy_pay", false);
+
+    // Reset shipping dimensions and price
+    handleShippingReset();
+
+    if (value) {
+      // Only update delivery methods if the property exists
+      if (deliveryMethodProperty?.id) {
+        const deliveryValue = deliveryMethodProperty.options.find(
+          (option) => option.value === "pickup",
+        )?.id;
+
+        if (!deliveryValue) return;
+
+        // Add "shipping" to the properties array, use the field of properties to update the array
+        updatePropertiesArray({
+          value: deliveryValue,
+          property: deliveryMethodProperty,
+          field,
+        });
+      }
+    } else {
+      // remove "pickup" from the properties array
+      removeDeliveryMethodProperty();
     }
   }
 

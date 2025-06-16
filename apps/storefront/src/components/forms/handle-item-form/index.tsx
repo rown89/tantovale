@@ -123,8 +123,8 @@ export default function HandleItemFormComponent({
 
   // Initialize some form fields
   useEffect(() => {
-    // inizialize shipping_price
-    form.setFieldValue("shipping.shipping_price", 0);
+    // inizialize manual_shipping_price
+    form.setFieldValue("shipping.manual_shipping_price", 0);
 
     // inizialize address_id
     if (profileAddress.id) {
@@ -204,8 +204,6 @@ export default function HandleItemFormComponent({
       <div className="flex gap-6 h-full">
         {/* Left Column - Form */}
         <div className="w-full xl:max-w-[500px] h-full break-words">
-          {/* test debug output */}
-          {JSON.stringify(form.state.errors, null, 4)}
           {subcategory?.easy_pay && (
             <div className="sticky top-0 mb-4">
               <Progress value={progress} />
@@ -229,8 +227,8 @@ export default function HandleItemFormComponent({
                   >
                     {({ setValue }) => {
                       return (
-                        <div className="space-y-2">
-                          <Label className="block">
+                        <div>
+                          <Label className="text-slate-500 dark:text-slate-400 mb-2 block">
                             Category <span className="text-red-500">*</span>
                           </Label>
                           <CategorySelector
@@ -281,7 +279,10 @@ export default function HandleItemFormComponent({
 
                       return (
                         <div className="space-y-2">
-                          <Label htmlFor={name} className="block">
+                          <Label
+                            htmlFor={name}
+                            className="block text-slate-500 dark:text-slate-400"
+                          >
                             Title <span className="text-red-500">*</span>
                           </Label>
                           <Input
@@ -301,7 +302,7 @@ export default function HandleItemFormComponent({
                                 ? "border-red-500"
                                 : ""
                             }
-                            placeholder="Enter a title"
+                            placeholder="Title of your item"
                           />
                           <FieldInfo field={field} />
                         </div>
@@ -316,8 +317,12 @@ export default function HandleItemFormComponent({
 
                       return (
                         <div className="space-y-2">
-                          <Label htmlFor={name} className="block">
-                            Price <span className="text-red-500">*</span>
+                          <Label
+                            htmlFor={name}
+                            className="block text-slate-500 dark:text-slate-400"
+                          >
+                            Price (€){" "}
+                            <span className="text-red-500">*</span>{" "}
                           </Label>
                           <Input
                             id={name}
@@ -354,24 +359,20 @@ export default function HandleItemFormComponent({
                       );
                     }}
                   </form.Field>
+
+                  {/* hidden field */}
                   <form.Field name="commons.address_id">
                     {(field) => {
-                      const { name, handleBlur, setValue, state } = field;
-                      const { meta, value } = state;
-                      const { isTouched, errors } = meta;
-
                       return (
-                        <div className="space-y-2">
-                          <Label htmlFor={field.name} className="block">
-                            Item location{" "}
-                            <span className="text-red-500">*</span>
-                          </Label>
+                        <div className="hidden">
+                          <Label htmlFor={field.name}>Item location</Label>
 
                           <FieldInfo field={field} />
                         </div>
                       );
                     }}
                   </form.Field>
+
                   <form.Field name="commons.description">
                     {(field) => {
                       const { name, handleBlur, handleChange, state } = field;
@@ -380,7 +381,10 @@ export default function HandleItemFormComponent({
 
                       return (
                         <div className="space-y-2">
-                          <Label htmlFor={name} className="block">
+                          <Label
+                            htmlFor={name}
+                            className="block text-slate-500 dark:text-slate-400"
+                          >
                             Description <span className="text-red-500">*</span>{" "}
                             <span className="text-sm">{`- ${value?.length || 0}/${maxDescriptionLength} chars`}</span>
                           </Label>
@@ -394,7 +398,7 @@ export default function HandleItemFormComponent({
                             value={value !== undefined ? value?.toString() : ""}
                             onBlur={handleBlur}
                             onChange={(e) => handleChange(e.target.value)}
-                            placeholder="Enter a description for your item"
+                            placeholder="Description of your item"
                             aria-invalid={
                               isTouched && errors?.length ? "true" : "false"
                             }
@@ -441,46 +445,10 @@ export default function HandleItemFormComponent({
 
               {/* STEP TWO */}
               {progress === step_two && (
-                <div className="border-1 border-dashed p-3 rounded-md flex flex-col gap-2">
-                  <form.Field name="properties">
-                    {(field) => {
-                      return (
-                        <Alert
-                          className={`py-4 cursor-pointer ${isPickup ? "border-1 border-primary" : ""}`}
-                          onClick={() => {
-                            const value = !isPickup;
-                            handlePickupChange(value, field, easyPay);
-                          }}
-                        >
-                          <AlertTitle className="mb-2 flex gap-2 justify-between">
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <p
-                                className={`font-bold text-lg ${isPickup ? "text-primary" : ""}`}
-                              >
-                                Pickup
-                              </p>
-                            </div>
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <Switch
-                                onCheckedChange={(checked) => {
-                                  handlePickupChange(checked, field, easyPay);
-                                }}
-                                checked={isPickup}
-                              />
-                            </div>
-                          </AlertTitle>
-                          <AlertDescription>
-                            Enable this option to let buyers pick up the item
-                            themselves from your location.
-                          </AlertDescription>
-                        </Alert>
-                      );
-                    }}
-                  </form.Field>
-
-                  {/* Show Easy Pay only if the subcategory is payable and deliveryMethodPropertyId exists */}
+                <>
                   {subcategory?.easy_pay && deliveryMethodProperty?.id && (
                     <div className="flex flex-col gap-2">
+                      {/* Easy Pay */}
                       <form.Field name="commons.easy_pay">
                         {(field) => {
                           const { name, state } = field;
@@ -553,7 +521,7 @@ export default function HandleItemFormComponent({
                                           setIsManualShipping(false);
 
                                           form.setFieldValue(
-                                            "shipping.shipping_price",
+                                            "shipping.manual_shipping_price",
                                             0,
                                           );
                                         }
@@ -573,7 +541,7 @@ export default function HandleItemFormComponent({
                                     <>
                                       <Separator className="my-4" />
                                       <div className="flex flex-col gap-3 mb-6">
-                                        <Label className="text-slate-600 mb-2 leading-5">
+                                        <Label className="text-slate-600 mb-2 leading-5 text-slate-500 dark:text-slate-400">
                                           Add approximate items dimensions to
                                           help the system to automatically
                                           calculate the shipping price.
@@ -587,8 +555,14 @@ export default function HandleItemFormComponent({
 
                                             return (
                                               <>
-                                                <Label htmlFor={field.name}>
-                                                  Weight (KG)
+                                                <Label
+                                                  htmlFor={field.name}
+                                                  className="text-slate-500 dark:text-slate-400"
+                                                >
+                                                  Weight (KG){" "}
+                                                  <span className="text-red-500">
+                                                    *
+                                                  </span>
                                                 </Label>
                                                 <Input
                                                   id={name}
@@ -627,8 +601,14 @@ export default function HandleItemFormComponent({
 
                                             return (
                                               <>
-                                                <Label htmlFor={field.name}>
-                                                  Length (cm)
+                                                <Label
+                                                  htmlFor={field.name}
+                                                  className="text-slate-500 dark:text-slate-400"
+                                                >
+                                                  Length (cm){" "}
+                                                  <span className="text-red-500">
+                                                    *
+                                                  </span>
                                                 </Label>
                                                 <Input
                                                   id={name}
@@ -667,8 +647,14 @@ export default function HandleItemFormComponent({
 
                                             return (
                                               <>
-                                                <Label htmlFor={field.name}>
-                                                  Width (cm)
+                                                <Label
+                                                  htmlFor={field.name}
+                                                  className="text-slate-500 dark:text-slate-400"
+                                                >
+                                                  Width (cm){" "}
+                                                  <span className="text-red-500">
+                                                    *
+                                                  </span>
                                                 </Label>
                                                 <Input
                                                   id={name}
@@ -707,8 +693,14 @@ export default function HandleItemFormComponent({
 
                                             return (
                                               <>
-                                                <Label htmlFor={field.name}>
-                                                  Height (cm)
+                                                <Label
+                                                  htmlFor={field.name}
+                                                  className="text-slate-500 dark:text-slate-400"
+                                                >
+                                                  Height (cm){" "}
+                                                  <span className="text-red-500">
+                                                    *
+                                                  </span>
                                                 </Label>
                                                 <Input
                                                   id={name}
@@ -746,106 +738,152 @@ export default function HandleItemFormComponent({
                           );
                         }}
                       </form.Field>
-                    </div>
-                  )}
 
-                  {subcategory?.easy_pay && (
-                    <form.Field name="shipping.shipping_price">
-                      {(field) => {
-                        const { name, handleChange, state } = field;
-                        const { value } = state;
+                      {/* Manual shipping it's not a delivery method but sets the shipping price only if the user enables it */}
+                      <form.Field name="shipping.manual_shipping_price">
+                        {(field) => {
+                          const { name, handleChange, state } = field;
+                          const { value } = state;
 
-                        return (
-                          <>
+                          return (
+                            <>
+                              <Alert
+                                className={`py-4 cursor-pointer ${isManualShipping ? "border-1 border-primary" : ""}`}
+                                onClick={() => {
+                                  const value = !isManualShipping;
+                                  handleManualShippingChange(
+                                    value,
+                                    propertiesField,
+                                  );
+                                }}
+                              >
+                                <AlertTitle className="mb-2 flex gap-2 justify-between">
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <p
+                                      className={`font-bold text-lg ${isManualShipping ? "text-primary" : ""}`}
+                                    >
+                                      Manual shipping
+                                    </p>
+                                  </div>
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <Switch
+                                      onCheckedChange={(checked) => {
+                                        handleManualShippingChange(
+                                          checked,
+                                          propertiesField,
+                                        );
+                                      }}
+                                      checked={isManualShipping}
+                                    />
+                                  </div>
+                                </AlertTitle>
+                                <AlertDescription>
+                                  Enable this option to arrange the shipment by
+                                  yourself.
+                                  <br />
+                                  If you enable this option, you will be able to
+                                  set the shipping price manually.
+                                  <br />
+                                  {isManualShipping && (
+                                    <div className="flex flex-col gap-2 mt-4">
+                                      <Label
+                                        htmlFor={field.name}
+                                        className="text-slate-500 dark:text-slate-400"
+                                      >
+                                        Shipping price{" "}
+                                        <span className="text-red-500">*</span>
+                                      </Label>
+                                      <Input
+                                        id={name}
+                                        name={name}
+                                        value={
+                                          value !== undefined
+                                            ? (
+                                                (value as number) / 100
+                                              ).toString()
+                                            : ""
+                                        }
+                                        onChange={(e) => {
+                                          handleChange(
+                                            e.target.value
+                                              ? formatPriceToCents(
+                                                  e.target.valueAsNumber,
+                                                )
+                                              : 0,
+                                          );
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        disabled={
+                                          easyPay ||
+                                          !isManualShipping ||
+                                          isSubmittingForm
+                                        }
+                                        type="number"
+                                        min=".01"
+                                        step=".01"
+                                        placeholder="ex: 15.50€"
+                                      />
+
+                                      <FieldInfo field={field} />
+                                    </div>
+                                  )}
+                                </AlertDescription>
+                              </Alert>
+                            </>
+                          );
+                        }}
+                      </form.Field>
+
+                      {/* Pickup */}
+                      <form.Field name="properties">
+                        {(field) => {
+                          return (
                             <Alert
-                              className={`py-4 cursor-pointer ${isManualShipping ? "border-1 border-primary" : ""}`}
+                              className={`py-4 cursor-pointer ${isPickup ? "border-1 border-primary" : ""}`}
                               onClick={() => {
-                                const value = !isManualShipping;
-                                handleManualShippingChange(
-                                  value,
-                                  propertiesField,
-                                  easyPay ?? false,
-                                );
+                                const value = !isPickup;
+                                handlePickupChange(value, field);
                               }}
                             >
                               <AlertTitle className="mb-2 flex gap-2 justify-between">
                                 <div onClick={(e) => e.stopPropagation()}>
                                   <p
-                                    className={`font-bold text-lg ${isManualShipping ? "text-primary" : ""}`}
+                                    className={`font-bold text-lg ${isPickup ? "text-primary" : ""}`}
                                   >
-                                    Manual shipping
+                                    Pickup
                                   </p>
                                 </div>
                                 <div onClick={(e) => e.stopPropagation()}>
                                   <Switch
                                     onCheckedChange={(checked) => {
-                                      handleManualShippingChange(
-                                        checked,
-                                        propertiesField,
-                                        easyPay ?? false,
-                                      );
+                                      handlePickupChange(checked, field);
                                     }}
-                                    checked={isManualShipping}
+                                    checked={isPickup}
                                   />
                                 </div>
                               </AlertTitle>
                               <AlertDescription>
-                                Enable this option to arrange the shipment by
-                                yourself.
-                                {isManualShipping && (
-                                  <div className="flex flex-col gap-2">
-                                    <Input
-                                      className="my-4"
-                                      id={name}
-                                      name={name}
-                                      value={
-                                        value !== undefined
-                                          ? ((value as number) / 100).toString()
-                                          : ""
-                                      }
-                                      onChange={(e) => {
-                                        handleChange(
-                                          e.target.value
-                                            ? formatPriceToCents(
-                                                e.target.valueAsNumber,
-                                              )
-                                            : 0,
-                                        );
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      disabled={
-                                        easyPay ||
-                                        !isManualShipping ||
-                                        isSubmittingForm
-                                      }
-                                      type="number"
-                                      min=".01"
-                                      step=".01"
-                                      placeholder="ex: 15.50€"
-                                    />
-
-                                    <FieldInfo field={field} />
-                                  </div>
-                                )}
+                                Enable this option to let buyers pick up the
+                                item themselves from your location.
                               </AlertDescription>
                             </Alert>
-                          </>
-                        );
-                      }}
-                    </form.Field>
-                  )}
+                          );
+                        }}
+                      </form.Field>
 
-                  {/* Show error if "delivery_method" property is not selected */}
-                  {form.state.errors.map((err, index) => {
-                    if (err?.["properties.delivery_method"]) {
-                      return (
-                        <div key={index} className="text-red-500">
-                          Select a delivery method
-                        </div>
-                      );
-                    }
-                  })}
-                </div>
+                      {/* Show error if "delivery_method" property is not selected */}
+                      {form.state.errors.map((err, index) => {
+                        if (err?.["properties.delivery_method"]) {
+                          return (
+                            <div key={index} className="text-red-500">
+                              Select a delivery method
+                            </div>
+                          );
+                        }
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -951,6 +989,9 @@ export default function HandleItemFormComponent({
         {/* Right Column - Item Preview */}
         {!isMobile && (
           <div className="w-full overflow-hidden h-full max-w-[760px] mx-auto">
+            {/* test debug output */}
+            {JSON.stringify(form.state.errors, null, 4)}
+
             <ItemDetailCard
               isPreview
               imagesRef={uploadInputRef}

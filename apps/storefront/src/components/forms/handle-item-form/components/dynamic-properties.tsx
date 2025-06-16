@@ -31,7 +31,10 @@ export function DynamicProperties({ property, field }: DynamicPropertiesProps) {
       {/* select */}
       {property.type === "select" && (
         <>
-          <Label htmlFor={field.name} className="block">
+          <Label
+            htmlFor={field.name}
+            className="block text-slate-500 dark:text-slate-400"
+          >
             {property.name}{" "}
             {property.on_item_create_required && (
               <span className="text-red-500">*</span>

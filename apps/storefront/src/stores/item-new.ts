@@ -1,68 +1,15 @@
 import { StateCreator } from "zustand";
-import type { PropertyType } from "#components/forms/handle-item-form/types";
 
 export type NewItemStore = {
-  step: number;
-  setStep: (step: number) => void;
-  images: File[];
-  setImages: (images: File[]) => void;
-  commons: {
-    title: string;
-    easy_pay: boolean;
-    description: string;
-    price: number;
-    shipping_price: number;
-    subcategory_id: number;
-    address_id: number;
-  };
-  setCommons: (commons: {
-    title?: string;
-    easy_pay?: boolean;
-    description?: string;
-    price?: number;
-    shipping_price?: number;
-    subcategory_id?: number;
-    address_id?: number;
-  }) => void;
-  properties: PropertyType[];
-  setProperties: (properties: PropertyType[]) => void;
+  isManualShipping: boolean;
+  isPickup: boolean;
+  setIsManualShipping: (isManualShipping: boolean) => void;
+  setIsPickup: (isPickup: boolean) => void;
 };
 
 export const createNewItemSlice: StateCreator<NewItemStore> = (set) => ({
-  step: 0,
-  setStep: (step: number) => set({ step }),
-  images: [],
-  setImages: (images: File[]) => set({ images }),
-  commons: {
-    title: "",
-    easy_pay: false,
-    description: "",
-    price: 0,
-    shipping_price: 0,
-    subcategory_id: 0,
-    address_id: 0,
-  },
-  setCommons: (commons?: {
-    title?: string;
-    easy_pay?: boolean;
-    description?: string;
-    price?: number;
-    shipping_price?: number;
-    subcategory_id?: number;
-    address_id?: number;
-  }) =>
-    set({
-      commons: {
-        ...commons,
-        title: commons?.title ?? "",
-        easy_pay: commons?.easy_pay ?? false,
-        description: commons?.description ?? "",
-        price: commons?.price ?? 0,
-        shipping_price: commons?.shipping_price ?? 0,
-        subcategory_id: commons?.subcategory_id ?? 0,
-        address_id: commons?.address_id ?? 0,
-      },
-    }),
-  properties: [],
-  setProperties: (properties: PropertyType[]) => set({ properties }),
+  setIsManualShipping: (isManualShipping: boolean) => set({ isManualShipping }),
+  setIsPickup: (isPickup: boolean) => set({ isPickup }),
+  isManualShipping: false,
+  isPickup: false,
 });
