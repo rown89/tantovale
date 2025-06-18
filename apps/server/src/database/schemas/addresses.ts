@@ -21,6 +21,7 @@ export const addresses = pgTable('addresses', {
 	postal_code: integer('postal_code').notNull(),
 	country_code: varchar('country_code', { length: 50 }).default('IT').notNull(),
 	status: addressStatusEnum('status').notNull().default('active'),
+	phone: text('phone').notNull(),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -1,4 +1,6 @@
 import { and, asc, eq, ne, or } from 'drizzle-orm';
+import { zValidator } from '@hono/zod-validator';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { profiles } from '../../database/schemas/profiles';
 import { createClient } from '../../database';
@@ -7,8 +9,6 @@ import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { cities } from 'src/database/schemas/cities';
-import { alias } from 'drizzle-orm/pg-core';
-import { zValidator } from '@hono/zod-validator';
 import { addAddressSchema } from 'src/extended_schemas';
 import { addressStatusValues } from 'src/database/schemas/enumerated_values';
 
@@ -56,6 +56,7 @@ export const addressesRoute = createRouter()
 					status: addresses.status,
 					province_country_code: province.country_code,
 					city_country_code: city.country_code,
+					phone: addresses.phone,
 				})
 				.from(addresses)
 				.innerJoin(city, eq(city.id, addresses.city_id))
@@ -103,6 +104,7 @@ export const addressesRoute = createRouter()
 					province_name: provinceTable.name,
 					province_country_code: provinceTable.country_code,
 					city_country_code: cityTable.country_code,
+					phone: addresses.phone,
 				})
 				.from(addresses)
 				.innerJoin(profiles, eq(profiles.id, addresses.profile_id))
@@ -131,25 +133,39 @@ export const addressesRoute = createRouter()
 
 				const { db } = createClient();
 
-				const { ...values } = c.req.valid('json');
+				const values = c.req.valid('json');
 
-				// if user is adding the address for the first time, force it to be active by default
-				const [firstAddress] = await db.select().from(addresses).where(eq(addresses.profile_id, user.id));
+				return await db.transaction(async (tx) => {
+					// Fetch the user's profile
+					const [profile] = await tx
+						.select({ id: profiles.id, name: profiles.name, surname: profiles.surname, email: profiles.user_id })
+						.from(profiles)
+						.where(eq(profiles.user_id, user.id));
 
-				if (!firstAddress) {
-					values.status = ADDRESS_STATUS.ACTIVE;
-				}
+					if (!profile?.id) {
+						return c.json({ message: 'User profile not found' }, 404);
+					}
 
-				const userAddress = await db.insert(addresses).values({
-					profile_id: user.id,
-					...values,
+					// Check if this is the first address for the profile
+					const [firstAddress] = await tx.select().from(addresses).where(eq(addresses.profile_id, profile.id));
+
+					if (!firstAddress) values.status = ADDRESS_STATUS.ACTIVE;
+
+					// Insert the new address and save the shipment provider address id
+					const [userAddress] = await tx
+						.insert(addresses)
+						.values({
+							profile_id: profile.id,
+							...values,
+						})
+						.returning();
+
+					if (!userAddress) {
+						throw new Error('Failed to add address to profile');
+					}
+
+					return c.json(userAddress, 200);
 				});
-
-				if (!userAddress) {
-					return c.json({ message: 'Failed to add address to profile' }, 500);
-				}
-
-				return c.json(userAddress, 200);
 			} catch (error) {
 				return c.json({ message: 'addressesRoute error' }, 500);
 			}
@@ -167,16 +183,16 @@ export const addressesRoute = createRouter()
 				return c.json({ message: 'Address ID is required' }, 400);
 			}
 
-			const [profile] = await db
-				.select({ profile_id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id));
-
-			if (!profile?.profile_id) {
-				return c.json({ message: 'Profile not found' }, 404);
-			}
-
 			return await db.transaction(async (tx) => {
+				const [profile] = await tx
+					.select({ profile_id: profiles.id, name: profiles.name, surname: profiles.surname })
+					.from(profiles)
+					.where(eq(profiles.user_id, user.id));
+
+				if (!profile?.profile_id) {
+					return c.json({ message: 'Profile not found' }, 404);
+				}
+
 				// check if the current address is the active one and received status is "inactive"
 				const [currentAddress] = await tx
 					.select()
@@ -199,12 +215,13 @@ export const addressesRoute = createRouter()
 						),
 					);
 
-				const userAddress = await tx
+				const [userAddress] = await tx
 					.update(addresses)
 					.set({
 						...values,
 					})
-					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
+					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)))
+					.returning();
 
 				if (!userAddress) {
 					throw new Error('Failed to update address to profile');
@@ -213,11 +230,12 @@ export const addressesRoute = createRouter()
 				return c.json(userAddress, 200);
 			});
 		} catch (error) {
+			console.log('Error updating address to profile:', error);
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}
 	})
 	.put(
-		`/${authPath}/delete_address_to_profile`,
+		`/${authPath}/hide_address_from_profile`,
 		authMiddleware,
 		zValidator('json', addAddressSchema.pick({ address_id: true })),
 		async (c) => {

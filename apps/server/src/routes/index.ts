@@ -14,6 +14,7 @@ export * from './password';
 export * from './profile';
 export * from './properties';
 export * from './refresh';
+export * from './shipment_provider';
 export * from './signup';
 export * from './subcategories';
 export * from './subcategory-properties';

@@ -69,6 +69,7 @@ export default function AddressForm({
       form.setFieldValue("civic_number", values.civic_number);
       form.setFieldValue("postal_code", values.postal_code);
       form.setFieldValue("country_code", values.country_code ?? "IT");
+      form.setFieldValue("phone", values.phone ?? "");
       form.setFieldValue("status", values.status ?? "inactive");
 
       setSelectedCity(values.city_id);
@@ -319,6 +320,31 @@ export default function AddressForm({
                   onBlur={handleBlur}
                 />
                 <FieldInfo field={field} />
+              </div>
+            );
+          }}
+        </form.Field>
+
+        <form.Field name="phone">
+          {(field) => {
+            const { name, handleBlur, handleChange, state } = field;
+            const { value } = state;
+
+            return (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="block">
+                  Phone related to this address{" "}
+                  <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id={name}
+                  name={name}
+                  value={value}
+                  type="tel"
+                  onChange={(e) => handleChange(e.target.value)}
+                  onBlur={handleBlur}
+                  placeholder="+39 333 333 3333"
+                />
               </div>
             );
           }}

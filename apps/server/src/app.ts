@@ -21,6 +21,7 @@ import {
 	profileRoute,
 	propertiesRoute,
 	refreshRoute,
+	shipmentProviderRoute,
 	signupRoute,
 	subcategoriesRoute,
 	subcategoryPropertiesRoute,
@@ -57,6 +58,7 @@ const apiRoutes = app
 	.route(`/profile`, profileRoute)
 	.route(`/properties`, propertiesRoute)
 	.route(`/refresh`, refreshRoute)
+	.route(`/shipment_provider`, shipmentProviderRoute)
 	.route(`/signup`, signupRoute)
 	.route(`/subcategories`, subcategoriesRoute)
 	.route(`/subcategory_properties`, subcategoryPropertiesRoute)

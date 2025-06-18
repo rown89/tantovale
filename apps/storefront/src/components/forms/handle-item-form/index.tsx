@@ -55,7 +55,7 @@ type HandleItemFormComponent = {
     "id" | "name" | "slug" | "easy_pay" | "menu_order"
   >;
   formModel: "create" | "edit";
-  profileAddress: Omit<ExtendedAddress, "status">;
+  profileAddress: Omit<ExtendedAddress, "status" | "phone">;
   defaultValues: reshapedSchemaType;
 };
 

@@ -63,6 +63,7 @@ export default function useAddressForm(
       civic_number: "",
       postal_code: 0,
       country_code: "IT",
+      phone: "",
       status: "inactive",
       mode: "edit" as "add" | "edit",
     },
@@ -156,7 +157,7 @@ export default function useAddressForm(
     mutationFn: async ({ address_id }: { address_id: number }) => {
       try {
         const response =
-          await client.addresses.auth.delete_address_to_profile.$put({
+          await client.addresses.auth.hide_address_from_profile.$put({
             json: { address_id },
           });
 

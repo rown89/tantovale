@@ -77,15 +77,16 @@ async function seedUsers(db: DrizzleClient['db']) {
 		console.log('🔍 Seeded Profiles:', users_response.length);
 
 		await tx.insert(addresses).values(
-			users_response.map((user) => ({
+			users_response.map((user, index) => ({
 				profile_id: user.id,
 				city_id: 61165,
 				province_id: 10,
-				street_address: 'Via Roma',
+				street_address: `Via Roma ${index}`,
 				postal_code: 10010,
 				country_code: 'IT',
+				phone: `+39 333 333 3333-${index}`,
 				status: 'active' as const,
-				civic_number: '1',
+				civic_number: `1-${index}`,
 			})),
 		);
 
