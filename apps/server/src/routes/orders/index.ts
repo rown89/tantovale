@@ -1,15 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 
-import { createClient } from 'src/database';
-import { createRouter } from 'src/lib/create-app';
-import { authMiddleware } from 'src/middlewares/authMiddleware';
-import { orders } from 'src/database/schemas/orders';
-import { orders_items } from 'src/database/schemas/orders_items';
-import { property_values } from 'src/database/schemas/properties_values';
-import { items_properties_values } from 'src/database/schemas/items_properties_values';
-import { items } from 'src/database/schemas/items';
-import { users } from 'src/database/schemas/users';
-import { authPath } from 'src/utils/constants';
+import { createClient } from '#database/index';
+import { createRouter } from '#lib/create-app';
+import { authMiddleware } from '#middlewares/authMiddleware/index';
+import { items, users, property_values, orders_items, orders, items_properties_values, profiles } from '#db-schema';
+import { authPath } from '#utils/constants';
 
 // TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
@@ -29,16 +24,22 @@ export const ordersRoute = createRouter()
 				.from(orders)
 				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
 				.innerJoin(items, eq(orders_items.item_id, items.id))
-				.innerJoin(users, eq(orders.seller_id, users.id))
+				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
+				.innerJoin(users, eq(profiles.user_id, users.id))
 				.where(eq(orders.buyer_id, user.id));
 		} else {
-			userOrders = await db
+			const response = await db
 				.select()
 				.from(orders)
 				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
 				.innerJoin(items, eq(orders_items.item_id, items.id))
-				.innerJoin(users, eq(orders.seller_id, users.id))
+				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
+				.innerJoin(users, eq(profiles.user_id, users.id))
 				.where(and(eq(orders.buyer_id, user.id), eq(orders_items.order_status, status)));
+
+			if (!response.length) return c.json([], 200);
+
+			userOrders = response;
 		}
 
 		if (!userOrders.length) return c.json([], 200);

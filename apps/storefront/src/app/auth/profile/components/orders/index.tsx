@@ -76,7 +76,6 @@ export default function UserSellingItemsComponent() {
       }
 
       const userOrderList = await userOrderListResponse.json();
-
       return userOrderList;
     },
   });

@@ -35,7 +35,7 @@ _storefront_, _server_, _shared_, _database_, _ui_, _root_
    - [Server](https://github.com/rown89/tantovale/blob/main/apps/server/env.example)
 
 3. **DB Migration:**\
-   After setting up a postgres database you can launch:
+   Seed basic data including [locations](https://github.com/dr5hn/countries-states-cities-database) launching:
 
    ```bash
    pnpm run seed-all

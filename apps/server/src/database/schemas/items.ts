@@ -2,19 +2,18 @@ import { relations } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
-import { users } from './users';
 import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
-import { cities } from './cities';
 import { addresses } from './addresses';
+import { profiles } from './profiles';
 
 export const items = pgTable(
 	'items',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
-		user_id: integer('user_id')
+		profile_id: integer('profile_id')
 			.notNull()
-			.references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+			.references(() => profiles.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		subcategory_id: integer('subcategory_id')
 			.notNull()
 			.references(() => subcategories.id, {
@@ -35,7 +34,7 @@ export const items = pgTable(
 		deleted_at: timestamp('deleted_at', { mode: 'date' }),
 	},
 	(table) => [
-		index('user_id_idx').on(table.user_id),
+		index('profile_id_idx').on(table.profile_id),
 		index('address_id_idx').on(table.address_id),
 		index('title_idx').on(table.title),
 		index('subcategory_id_idx').on(table.subcategory_id),
@@ -46,9 +45,9 @@ export const items = pgTable(
 );
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
-	author: one(users, {
-		fields: [items.user_id],
-		references: [users.id],
+	author: one(profiles, {
+		fields: [items.profile_id],
+		references: [profiles.id],
 	}),
 	subcategory: one(subcategories, {
 		fields: [items.subcategory_id],

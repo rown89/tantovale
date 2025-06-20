@@ -29,6 +29,32 @@
 		"pnpm": ">=10.10.0"
 	},
 	"packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39",
+	"imports": {
+		"#database/*": [
+			"./src/database/*.ts",
+			"./src/database/*.tsx"
+		],
+		"#create-client": [
+			"./src/database/index.ts",
+			"./src/database/index.tsx"
+		],
+		"#db-schema": [
+			"./src/database/schemas/schema.ts",
+			"./src/database/schemas/schema.tsx"
+		],
+		"#utils/*": [
+			"./src/utils/*.ts",
+			"./src/utils/*.tsx"
+		],
+		"#lib/*": [
+			"./src/lib/*.ts",
+			"./src/lib/*.tsx"
+		],
+		"#middlewares/*": [
+			"./src/middlewares/*.ts",
+			"./src/middlewares/*.tsx"
+		]
+	},
 	"exports": {
 		"./apiRoutes": {
 			"development": "./src/app.ts",
@@ -57,7 +83,7 @@
 		"@hono/node-server": "^1.14.3",
 		"@hono/swagger-ui": "^0.5.1",
 		"@hono/zod-openapi": "0.19.8",
-		"@hono/zod-validator": "^0.7.0",
+		"@hono/zod-validator": "0.7.0",
 		"@scalar/hono-api-reference": "^0.9.1",
 		"@workspace/eslint-config": "workspace:*",
 		"@workspace/typescript-config": "workspace:*",
@@ -76,7 +102,6 @@
 		"pino-pretty": "^13.0.0",
 		"postgres": "^3.4.5",
 		"sharp": "^0.34.1",
-		"shippo": "^2.15.0",
 		"stoker": "^1.4.2",
 		"tsc-alias": "^1.8.11",
 		"zod": "^3.24.4",

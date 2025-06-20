@@ -24,68 +24,79 @@ export const reshapedCreateItemSchema = ({
         const currentStore = useTantovaleStore.getState();
         const { isManualShipping, isPickup } = currentStore;
 
+        // if properties data doesnt not contain delivery_method property or it's not easy_pay, skip this check
         if (
-          isManualShipping &&
-          !isPickup &&
-          (!val.manual_shipping_price || val.manual_shipping_price <= 0)
+          !propertiesData?.find(
+            (property) =>
+              property.slug === "delivery_method" ||
+              property.slug === "easy_pay",
+          )
         ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Shipping price must be greater than 0",
-            path: ["manual_shipping_price"],
-          });
-          return false;
-        }
-
-        if (
-          isPickup &&
-          !isManualShipping &&
-          (val.manual_shipping_price || val.manual_shipping_price !== 0)
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Shipping price must be 0 when using pickup",
-          });
-        }
-        if (!isManualShipping && !isPickup) {
-          if (!val.item_weight) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This field is required",
-              path: ["item_weight"],
-            });
-          }
-          if (!val.item_length) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This field is required",
-              path: ["item_length"],
-            });
-          }
-          if (!val.item_width) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This field is required",
-              path: ["item_width"],
-            });
-          }
-          if (!val.item_height) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "This field is required",
-              path: ["item_height"],
-            });
-          }
+          return true;
+        } else {
           if (
-            !val.item_weight ||
-            !val.item_length ||
-            !val.item_width ||
-            !val.item_height
+            isManualShipping &&
+            !isPickup &&
+            (!val.manual_shipping_price || val.manual_shipping_price <= 0)
           ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Shipping price must be greater than 0",
+              path: ["manual_shipping_price"],
+            });
             return false;
           }
+
+          if (
+            isPickup &&
+            !isManualShipping &&
+            (val.manual_shipping_price || val.manual_shipping_price !== 0)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Shipping price must be 0 when using pickup",
+            });
+          }
+
+          if (!isManualShipping && !isPickup) {
+            if (!val.item_weight) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["item_weight"],
+              });
+            }
+            if (!val.item_length) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["item_length"],
+              });
+            }
+            if (!val.item_width) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["item_width"],
+              });
+            }
+            if (!val.item_height) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "This field is required",
+                path: ["item_height"],
+              });
+            }
+            if (
+              !val.item_weight ||
+              !val.item_length ||
+              !val.item_width ||
+              !val.item_height
+            ) {
+              return false;
+            }
+          }
         }
-        return true;
       }),
     })
     .superRefine((val, ctx) => {

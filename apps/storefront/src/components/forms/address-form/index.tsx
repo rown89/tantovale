@@ -1,16 +1,17 @@
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 import { Label } from "@workspace/ui/components/label";
 import { Button } from "@workspace/ui/components/button";
 import { useLocationData } from "@workspace/shared/hooks/use-locations-data";
 import { Input } from "@workspace/ui/components/input";
+import { ExtendedAddress } from "@workspace/server/extended_schemas";
+import { Checkbox } from "@workspace/ui/components/checkbox";
 
 import { CitySelector } from "#components/city-selector";
 import useAddressForm from "./use-address-form";
 import { FieldInfo } from "../utils/field-info";
-import { ExtendedAddress } from "@workspace/server/extended_schemas";
-import { Checkbox } from "@workspace/ui/components/checkbox";
-import { toast } from "sonner";
+import { Separator } from "@workspace/ui/components/separator";
 
 export default function AddressForm({
   firstAddress = false,
@@ -261,6 +262,9 @@ export default function AddressForm({
               <div className="space-y-2">
                 <Label htmlFor={field.name} className="block">
                   Street address <span className="text-red-500">*</span>
+                  <p className="text-muted-foreground text-sm">
+                    Please exclude the civic number from this field.
+                  </p>
                 </Label>
                 <Input
                   id={name}
@@ -349,7 +353,6 @@ export default function AddressForm({
             );
           }}
         </form.Field>
-
         {!firstAddress && (
           <form.Field name="status">
             {(field) => {
@@ -357,7 +360,7 @@ export default function AddressForm({
               const { value } = state;
 
               return (
-                <div className="flex gap-3">
+                <div className="flex gap-3 mt-4 mb-7">
                   <Checkbox
                     id={name}
                     name={name}
@@ -373,12 +376,8 @@ export default function AddressForm({
                   <div className="grid gap-2">
                     <Label htmlFor={field.name}>Default address</Label>
                     <p className="text-muted-foreground text-sm">
-                      This address will be used as the default address for your
-                      account.
-                    </p>
-                    <p className="text-muted-foreground font-bold text-sm p-2 border border-dashed border-muted-foreground border-opacity-50 rounded-md">
-                      Care, if you have on going proposals, they will be sent to
-                      the default address at the proposal time.
+                      This address will be used as the default address when you
+                      sell a new item or make a proposal.
                     </p>
                   </div>
                 </div>

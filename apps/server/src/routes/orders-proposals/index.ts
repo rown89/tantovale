@@ -1,27 +1,17 @@
-import { startOfDay } from 'date-fns';
-import { env } from 'hono/adapter';
-import { eq, and, lt } from 'drizzle-orm';
-import { ContentfulStatusCode } from 'hono/utils/http-status';
-import { authMiddleware } from 'src/middlewares/authMiddleware';
+import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
-import { createClient } from 'src/database';
-import { createRouter } from 'src/lib/create-app';
-import { orders_proposals } from 'src/database/schemas/orders_proposals';
-import { authPath, cronPath } from 'src/utils/constants';
+import { createClient } from '#database/index';
+import { createRouter } from '#lib/create-app';
+import { orders_proposals, users, items, chat_rooms, chat_messages, orders, orders_items, profiles } from '#db-schema';
+import { authPath } from '#utils/constants';
+import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
-import { items } from 'src/database/schemas/items';
 import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
-import { users } from 'src/database/schemas/users';
-import { chat_rooms } from 'src/database/schemas/chat_rooms';
-import { chat_messages } from 'src/database/schemas/chat_messages';
 import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
 import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
 import { create_order_proposal_schema, update_order_proposal_schema } from 'src/extended_schemas/order_proposals';
-import { orders } from 'src/database/schemas/orders';
-import { orders_items } from 'src/database/schemas/orders_items';
-import { parseEnv } from 'src/env';
 
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
@@ -32,12 +22,21 @@ export const ordersProposalsRoute = createRouter()
 
 		try {
 			return await db.transaction(async (tx) => {
+				// get the profile id of the logged user
+				const [profile] = await tx
+					.select({ id: profiles.id })
+					.from(profiles)
+					.where(eq(profiles.user_id, user.id))
+					.limit(1);
+
+				if (!profile) return c.json({ error: 'Profile not found' }, 404);
+
 				// check if the item exists and is available and published
 				const [item] = await tx
 					.select({
 						id: items.id,
 						title: items.title,
-						user_id: items.user_id,
+						profile_id: items.profile_id,
 					})
 					.from(items)
 					.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
@@ -52,7 +51,7 @@ export const ordersProposalsRoute = createRouter()
 					.where(
 						and(
 							eq(orders_proposals.item_id, item_id),
-							eq(orders_proposals.user_id, user.id),
+							eq(orders_proposals.profile_id, profile.id),
 							eq(orders_proposals.status, 'pending'),
 						),
 					)
@@ -65,7 +64,7 @@ export const ordersProposalsRoute = createRouter()
 					.insert(orders_proposals)
 					.values({
 						item_id,
-						user_id: user.id,
+						profile_id: profile.id,
 						proposal_price,
 					})
 					.returning();
@@ -75,8 +74,9 @@ export const ordersProposalsRoute = createRouter()
 				// get the item owner email
 				const [itemOwner] = await tx
 					.select({ email: users.email })
-					.from(users)
-					.where(eq(users.id, item.user_id))
+					.from(profiles)
+					.innerJoin(users, eq(profiles.user_id, users.id))
+					.where(eq(profiles.id, item.profile_id))
 					.limit(1);
 
 				if (!itemOwner) return c.json({ error: 'Item owner not found' }, 404);
@@ -85,7 +85,7 @@ export const ordersProposalsRoute = createRouter()
 				const [chatRoom] = await tx
 					.select()
 					.from(chat_rooms)
-					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.id)))
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, profile.id)))
 					.limit(1);
 
 				let chatRoomId = null;
@@ -96,7 +96,7 @@ export const ordersProposalsRoute = createRouter()
 						.insert(chat_messages)
 						.values({
 							chat_room_id: chatRoom.id,
-							sender_id: user.id,
+							sender_id: profile.id,
 							order_proposal_id: proposal.id,
 							message: message || `Proposal from ${user.username} for the object ${item.title}`,
 							message_type: 'proposal',
@@ -112,7 +112,7 @@ export const ordersProposalsRoute = createRouter()
 						.insert(chat_rooms)
 						.values({
 							item_id,
-							buyer_id: user.id,
+							buyer_id: profile.id,
 						})
 						.returning();
 
@@ -123,7 +123,7 @@ export const ordersProposalsRoute = createRouter()
 						.insert(chat_messages)
 						.values({
 							chat_room_id: newChatRoom.id,
-							sender_id: user.id,
+							sender_id: profile.id,
 							order_proposal_id: proposal.id,
 							message: message || `Proposal from ${user.username} for the object ${item.title}`,
 							message_type: 'proposal',
@@ -192,10 +192,11 @@ export const ordersProposalsRoute = createRouter()
 					created_at: orders_proposals.created_at,
 				})
 				.from(orders_proposals)
+				.innerJoin(profiles, eq(orders_proposals.profile_id, profiles.id))
 				.where(
 					and(
 						eq(orders_proposals.item_id, item_id),
-						eq(orders_proposals.user_id, user.id),
+						eq(orders_proposals.profile_id, profiles.id),
 						eq(orders_proposals.status, status as OrderProposalStatus),
 					),
 				)
@@ -208,18 +209,25 @@ export const ordersProposalsRoute = createRouter()
 	)
 	.put(`${authPath}`, authMiddleware, zValidator('json', update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
+
 		const { id, status, item_id } = await c.req.valid('json');
 
 		const { db } = createClient();
 
 		// check if the item exists and is owned by the user (merchant)
 		const [item] = await db
-			.select()
+			.select({
+				title: items.title,
+				user_id: users.id,
+			})
 			.from(items)
-			.where(and(eq(items.id, item_id), eq(items.user_id, user.id)))
+			.innerJoin(profiles, eq(items.profile_id, profiles.id))
+			.innerJoin(users, eq(profiles.user_id, users.id))
+			.where(and(eq(items.id, item_id), eq(profiles.user_id, user.id)))
 			.limit(1);
 
 		if (!item) return c.json({ error: 'Item not found' }, 404);
+
 		if (item.user_id !== user.id) return c.json({ error: 'Item not found' }, 404);
 
 		// check if the proposal is not expired
@@ -238,7 +246,7 @@ export const ordersProposalsRoute = createRouter()
 			.returning();
 
 		if (!updatedProposal) return c.json({ error: 'Proposal not found' }, 404);
-		if (!updatedProposal.user_id) return c.json({ error: 'Proposal user not found' }, 404);
+		if (!updatedProposal.profile_id) return c.json({ error: 'Proposal profile not found' }, 404);
 
 		// check if the proposal is not owned by the item owner
 		if (user.id !== item.user_id) return c.json({ error: 'Proposal is not owned by the item owner' }, 404);
@@ -247,7 +255,7 @@ export const ordersProposalsRoute = createRouter()
 		const [chatRoom] = await db
 			.select({ id: chat_rooms.id })
 			.from(chat_rooms)
-			.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, updatedProposal.user_id)))
+			.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, updatedProposal.profile_id)))
 			.limit(1);
 
 		if (!chatRoom) return c.json({ error: 'Chat room not found, cannot send the proposal update	 message' }, 404);
@@ -258,7 +266,7 @@ export const ordersProposalsRoute = createRouter()
 				username: users.username,
 			})
 			.from(users)
-			.where(eq(users.id, updatedProposal.user_id))
+			.where(eq(users.id, updatedProposal.profile_id))
 			.limit(1);
 
 		if (!userProposal) return c.json({ error: 'User not found' }, 404);
@@ -270,7 +278,7 @@ export const ordersProposalsRoute = createRouter()
 					const [newOrder] = await tx
 						.insert(orders)
 						.values({
-							buyer_id: updatedProposal.user_id,
+							buyer_id: updatedProposal.profile_id,
 							seller_id: item.user_id,
 						})
 						.returning({

@@ -15,6 +15,11 @@ export const DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS = () => Math.floor(Date.now() /
 
 export const DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS = () => Math.floor(Date.now() / 1000) + 60 * 60; // 60 minutes in seconds
 
+export const SHIPPING_UNITS = {
+	MASS: 'kg',
+	DISTANCE: 'cm',
+} as const;
+
 export const STRIPE_ACTIVE_ACCOUNT_FIXED_COST = 2;
 export const STRIPE_PAYMENT_PERCENTAGE_PROCESSING_COST = 0.0025;
 export const STRIPE_PAYMENT_FIXED_PROCESSING_COST = 0.1;

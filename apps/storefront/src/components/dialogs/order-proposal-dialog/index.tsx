@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@workspace/ui/components/button";
 import {
@@ -19,9 +20,11 @@ import { Textarea } from "@workspace/ui/components/textarea";
 import { Separator } from "@workspace/ui/components/separator";
 import { formatPrice, formatPriceToCents } from "@workspace/ui/lib/utils";
 import { create_order_proposal_schema } from "@workspace/server/extended_schemas";
+import { Spinner } from "@workspace/ui/components/spinner";
 
 import { FieldInfo } from "#components/forms/utils/field-info";
 import useTantovaleStore from "#stores";
+import { getShippingCost } from "#queries/getShippingCost";
 
 export function ProposalDialog() {
   const {
@@ -80,6 +83,16 @@ export function ProposalDialog() {
     },
   });
 
+  const {
+    data: shipping_cost,
+    isLoading: isLoadingShippingCost,
+    error: errorShippingCost,
+  } = useQuery({
+    queryKey: ["shipping_cost", item?.id],
+    queryFn: async () => await getShippingCost(Number(item?.id)),
+    enabled: !!item,
+  });
+
   if (!item) return null;
 
   return (
@@ -93,27 +106,7 @@ export function ProposalDialog() {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Make a Price Proposal</DialogTitle>
-          <DialogDescription className="flex flex-col gap-2">
-            <Label className="text-sm text-orange-600 mb-2">
-              If the seller does not accept or reject your proposal, it will
-              automatically expire after 7 days.
-            </Label>
-            <div className="flex flex-col gap-4">
-              <Separator />
-              <Label className="font-semibold">
-                Current price: {formatPrice(item?.price)}€
-              </Label>
-              <Label className="font-semibold ">
-                Shipping cost: {formatPrice(0)}€
-              </Label>
-              <Label className="italic">
-                Shipping is calculated by Tantovale based on your location and
-                item location, it's fixed and it's not included in the proposal
-                price.
-              </Label>
-              <Separator />
-            </div>
-          </DialogDescription>
+          <Separator className="mt-4" />
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -123,72 +116,105 @@ export function ProposalDialog() {
             form.handleSubmit();
           }}
         >
-          <div className="grid gap-4 mb-4">
-            <div className="grid grid-cols-1 items-center gap-4">
-              <div className="w-full justify-between items-center flex gap-2">
-                <Label className="h-fit" htmlFor="price">
-                  Your proposal
-                </Label>
-                <form.Field name="proposal_price">
-                  {(field) => {
-                    const { name, handleBlur, handleChange, state } = field;
-                    const { value } = state;
+          <div className="grid grid-cols-1 items-center gap-6 mt-2 mb-6">
+            <div className="w-full justify-between items-center flex gap-2">
+              <Label className="h-fit" htmlFor="price">
+                Your proposal
+              </Label>
+              <form.Field name="proposal_price">
+                {(field) => {
+                  const { name, handleBlur, handleChange, state } = field;
+                  const { value } = state;
 
-                    return (
-                      <div>
-                        <Input
-                          id={name}
-                          name={name}
-                          className="w-full min-w-[120px]"
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          max={formatPrice(item.price)}
-                          placeholder={`Max: ${formatPrice(item.price)}`}
-                          value={field.state.value}
-                          onChange={(e) => {
-                            const value = e.target.value;
+                  return (
+                    <div>
+                      <Input
+                        id={name}
+                        name={name}
+                        className="w-full min-w-[130px]"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={formatPrice(item.price)}
+                        placeholder={`Max: ${formatPrice(item.price)}`}
+                        value={field.state.value}
+                        onChange={(e) => {
+                          const value = e.target.value;
 
-                            field.handleChange(
-                              value === "" ? 0 : Number(value),
-                            );
-                          }}
-                        />
-                        <FieldInfo field={field} />
-                      </div>
-                    );
-                  }}
-                </form.Field>
-              </div>
-
-              <div className="w-full flex flex-col gap-2">
-                <Label htmlFor="message">Message</Label>
-                <form.Field name="message">
-                  {(field) => {
-                    const { name, handleBlur, handleChange, state } = field;
-                    const { value } = state;
-
-                    return (
-                      <>
-                        <Textarea
-                          name={name}
-                          rows={4}
-                          placeholder={`Write a message to the user`}
-                          value={value !== undefined ? value?.toString() : ""}
-                          onChange={(e) => handleChange(e.target.value)}
-                          onBlur={handleBlur}
-                        />
-                        <FieldInfo field={field} />
-                      </>
-                    );
-                  }}
-                </form.Field>
-              </div>
+                          field.handleChange(value === "" ? 0 : Number(value));
+                        }}
+                      />
+                      <FieldInfo field={field} />
+                    </div>
+                  );
+                }}
+              </form.Field>
             </div>
+
+            <form.Field name="message">
+              {(field) => {
+                const { name, handleBlur, handleChange, state } = field;
+                const { value } = state;
+
+                return (
+                  <div className="flex flex-col gap-4">
+                    <Label htmlFor="message">Message</Label>
+
+                    <Textarea
+                      name={name}
+                      rows={4}
+                      placeholder={`Write a message to the user`}
+                      value={value !== undefined ? value?.toString() : ""}
+                      onChange={(e) => handleChange(e.target.value)}
+                      onBlur={handleBlur}
+                    />
+                    <FieldInfo field={field} />
+                  </div>
+                );
+              }}
+            </form.Field>
           </div>
-          <DialogFooter>
-            <Button type="submit" disabled={item.price <= 0}>
-              {form.state.isSubmitting ? "Submitting..." : "Submit Proposal"}
+
+          <div className="flex flex-col gap-3 mb-2">
+            <div className="flex justify-between gap-2">
+              <p className="text-sm">Shipping cost:</p>{" "}
+              {isLoadingShippingCost ? (
+                <Spinner size="small" />
+              ) : shipping_cost?.[0]?.amount ? (
+                <p className="text-sm">{shipping_cost?.[0]?.amount}€</p>
+              ) : (
+                <p className="text-sm text-red-500">-- €</p>
+              )}
+            </div>
+
+            {!isLoadingShippingCost &&
+            (!!errorShippingCost || !shipping_cost?.[0]?.amount) ? (
+              <p className="text-sm text-red-500">
+                Error loading shipping cost, please check your address details
+                or contact the seller asking to check his address.
+              </p>
+            ) : null}
+
+            <Label className="text-sm text-muted-foreground/70">
+              Shipping is calculated based on your and item location. It's fixed
+              and excluded from this proposal price.
+            </Label>
+          </div>
+
+          <div className="my-7" />
+
+          <DialogFooter className="flex items-center justify-between gap-20">
+            <Label className="text-sm text-orange-400">
+              Unanswered proposals will automatically expire in 7 days.
+            </Label>
+
+            <Button
+              type="submit"
+              disabled={
+                item.price <= 0 || isLoadingShippingCost || !!errorShippingCost
+              }
+            >
+              {form.state.isSubmitting ? "Submitting..." : "Send"}
             </Button>
           </DialogFooter>
         </form>

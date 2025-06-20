@@ -90,6 +90,7 @@ export const profileRoute = createRouter()
 					phone_verified: users.phone_verified,
 					email_verified: users.email_verified,
 					created_at: users.created_at,
+					profile_id: profiles.id,
 				})
 				.from(users)
 				.innerJoin(profiles, eq(users.id, profiles.user_id))
@@ -121,7 +122,7 @@ export const profileRoute = createRouter()
 					count: count(),
 				})
 				.from(items)
-				.where(and(eq(items.user_id, userData.id), eq(items.published, true)));
+				.where(and(eq(items.profile_id, userData.profile_id), eq(items.published, true)));
 
 			if (!cityData) return c.json({ message: 'Profile not found' }, 404);
 

@@ -16,7 +16,8 @@ import {
 	subcategories,
 	items_images,
 	user_items_favorites,
-} from '../../database/schemas/schema';
+	profiles,
+} from '#db-schema';
 
 import { items_properties_values } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
@@ -47,6 +48,11 @@ export const itemsRoute = createRouter()
 
 		const { db } = createClient();
 
+		// get profile id from user id
+		const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user_id)).limit(1);
+
+		if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 		try {
 			const profileItems = await db
 				.select({
@@ -66,7 +72,7 @@ export const itemsRoute = createRouter()
 						isNull(items.deleted_at),
 						eq(items.published, params.published),
 						eq(items.status, 'available'),
-						eq(items.user_id, user_id),
+						eq(items.profile_id, profile.id),
 						eq(items_images.size, 'thumbnail'),
 						eq(items_images.order_position, 0),
 					),
@@ -148,6 +154,14 @@ export const itemsRoute = createRouter()
 			const city = alias(cities, 'city');
 			const province = alias(cities, 'province');
 
+			const [profile] = await db
+				.select({ id: profiles.id })
+				.from(profiles)
+				.where(eq(profiles.user_id, userId))
+				.limit(1);
+
+			if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 			const userItems = await db
 				.select({
 					id: items.id,
@@ -169,6 +183,7 @@ export const itemsRoute = createRouter()
 				.innerJoin(addresses, eq(addresses.id, items.address_id))
 				.innerJoin(city, eq(city.id, addresses.city_id))
 				.innerJoin(province, eq(province.id, addresses.province_id))
+
 				.leftJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
 				.leftJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
 				.leftJoin(properties, eq(properties.id, property_values.property_id))
@@ -176,7 +191,7 @@ export const itemsRoute = createRouter()
 					items_images,
 					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
-				.where(and(eq(items.user_id, userId), eq(items.published, true), eq(items.status, 'available')))
+				.where(and(eq(items.profile_id, profile.id), eq(items.published, true), eq(items.status, 'available')))
 				.orderBy(items.created_at);
 
 			// Group properties by item and organize by filter_slug

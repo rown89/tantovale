@@ -71,7 +71,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
         item_id: data.proposal.item_id,
         status: data.proposal.status,
         proposal_price: data.proposal.proposal_price,
-        user_id: data.proposal.user_id,
+        profile_id: data.proposal.profile_id,
         created_at: data.proposal.created_at,
         updated_at: data.proposal.updated_at,
         chat_room_id: data.chatRoomId,

@@ -139,6 +139,7 @@ export default function HandleItemFormComponent({
 
   // Handle part of Item preview
   useEffect(() => {
+    console.log(subCatProperties);
     if (!properties?.length) return;
 
     const { selectedCondition, selectedDeliveryMethods } =

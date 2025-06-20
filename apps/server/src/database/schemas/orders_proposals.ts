@@ -2,9 +2,9 @@ import { pgTable, integer, timestamp, foreignKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
-import { users } from './users';
 import { items } from './items';
 import { ordersProposalStatusEnum } from './enumerated_types';
+import { profiles } from './profiles';
 
 export const orders_proposals = pgTable(
 	'orders_proposals',
@@ -14,7 +14,7 @@ export const orders_proposals = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		user_id: integer('user_id').references(() => users.id, {
+		profile_id: integer('profile_id').references(() => profiles.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
@@ -30,9 +30,9 @@ export const orders_proposals = pgTable(
 			name: 'orders_proposals_item_id_fkey',
 		}),
 		foreignKey({
-			columns: [table.user_id],
-			foreignColumns: [users.id],
-			name: 'orders_proposals_user_id_fkey',
+			columns: [table.profile_id],
+			foreignColumns: [profiles.id],
+			name: 'orders_proposals_profile_id_fkey',
 		}),
 	],
 );
@@ -42,9 +42,9 @@ export const orders_proposalsRelations = relations(orders_proposals, ({ one }) =
 		fields: [orders_proposals.item_id],
 		references: [items.id],
 	}),
-	user: one(users, {
-		fields: [orders_proposals.user_id],
-		references: [users.id],
+	profile: one(profiles, {
+		fields: [orders_proposals.profile_id],
+		references: [profiles.id],
 	}),
 }));
 

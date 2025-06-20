@@ -54,7 +54,7 @@ export const createItemSchema = z.object({
 			.min(priceMin, `Price must be greater than ${priceMin}`)
 			.max(priceMax, `Price must be less or equal to ${priceMax / 100} €`),
 	}).omit({
-		user_id: true,
+		profile_id: true,
 		published: true,
 		status: true,
 		created_at: true,

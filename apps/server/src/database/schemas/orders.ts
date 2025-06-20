@@ -2,17 +2,17 @@ import { pgTable, integer, timestamp, foreignKey } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
-import { users } from './users';
+import { profiles } from './profiles';
 
 export const orders = pgTable(
 	'orders',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
-		buyer_id: integer('buyer_id').references(() => users.id, {
+		buyer_id: integer('buyer_id').references(() => profiles.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		seller_id: integer('seller_id').references(() => users.id, {
+		seller_id: integer('seller_id').references(() => profiles.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
@@ -22,25 +22,25 @@ export const orders = pgTable(
 	(table) => [
 		foreignKey({
 			columns: [table.buyer_id],
-			foreignColumns: [users.id],
+			foreignColumns: [profiles.id],
 			name: 'orders_buyer_id_fkey',
 		}),
 		foreignKey({
 			columns: [table.seller_id],
-			foreignColumns: [users.id],
+			foreignColumns: [profiles.id],
 			name: 'orders_seller_id_fkey',
 		}),
 	],
 );
 
 export const ordersRelations = relations(orders, ({ one }) => ({
-	buyer: one(users, {
+	buyer: one(profiles, {
 		fields: [orders.buyer_id],
-		references: [users.id],
+		references: [profiles.id],
 	}),
-	seller: one(users, {
+	seller: one(profiles, {
 		fields: [orders.seller_id],
-		references: [users.id],
+		references: [profiles.id],
 	}),
 }));
 

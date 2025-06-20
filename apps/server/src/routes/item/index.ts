@@ -17,6 +17,7 @@ import {
 	addresses,
 	items_images,
 	property_values,
+	profiles,
 } from '../../database/schemas/schema';
 import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
@@ -41,7 +42,7 @@ export const itemRoute = createRouter()
 				.select({
 					item: {
 						id: items.id,
-						user_id: users.id,
+						profile_id: profiles.id,
 						username: users.username,
 						title: items.title,
 						price: items.price,
@@ -66,7 +67,8 @@ export const itemRoute = createRouter()
 				.innerJoin(province, eq(province.id, addresses.province_id))
 				.innerJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
 				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
-				.innerJoin(users, eq(users.id, items.user_id))
+				.innerJoin(profiles, eq(profiles.id, items.profile_id))
+				.innerJoin(users, eq(users.id, profiles.user_id))
 				.where(and(eq(items.id, id), eq(items.published, true)));
 
 			const itemImages = await db
@@ -79,7 +81,7 @@ export const itemRoute = createRouter()
 			const mergedItem = {
 				id: item.item.id,
 				user: {
-					id: item.item.user_id,
+					id: item.item.profile_id,
 					username: item.item.username,
 				},
 				title: item.item.title,
@@ -160,12 +162,21 @@ export const itemRoute = createRouter()
 			// TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INVALID CONTENT
 
 			return await db.transaction(async (tx) => {
+				// get the profile id of the logged user
+				const [profile] = await tx
+					.select({ id: profiles.id })
+					.from(profiles)
+					.where(eq(profiles.user_id, user_id))
+					.limit(1);
+
+				if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 				// Create the new item
 				const [newItem] = await tx
 					.insert(items)
 					.values({
 						...commons,
-						user_id,
+						profile_id: profile.id,
 						status: 'available',
 						published: true,
 					})
@@ -302,7 +313,8 @@ export const itemRoute = createRouter()
 					const itemExists = await tx
 						.select({ id: items.id })
 						.from(items)
-						.where(and(eq(items.id, id), eq(items.user_id, user_id)))
+						.innerJoin(profiles, eq(profiles.id, items.profile_id))
+						.where(and(eq(items.id, id), eq(profiles.user_id, user_id)))
 						.limit(1)
 						.then((results) => results[0]);
 
@@ -383,7 +395,8 @@ export const itemRoute = createRouter()
 					const itemExists = await tx
 						.select({ id: items.id })
 						.from(items)
-						.where(and(eq(items.id, id), eq(items.user_id, user_id)))
+						.innerJoin(profiles, eq(profiles.id, items.profile_id))
+						.where(and(eq(items.id, id), eq(profiles.user_id, user_id)))
 						.limit(1)
 						.then((results) => results[0]);
 
