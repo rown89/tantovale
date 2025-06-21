@@ -27,8 +27,14 @@ export function useHandleItemForm({
 }: UseItemFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isManualShipping, isPickup, setIsManualShipping, setIsPickup } =
-    useTantovaleStore();
+  const {
+    isManualShipping,
+    isPickup,
+    easyPay,
+    setIsManualShipping,
+    setIsPickup,
+    setEasyPay,
+  } = useTantovaleStore();
 
   const [selectedSubCategory, setSelectedSubCategory] = useState<
     Partial<Category> | undefined
@@ -286,6 +292,7 @@ export function useHandleItemForm({
     isManualShipping,
     deliveryMethodProperty,
     setIsManualShipping,
+    setEasyPay,
     setIsPickup,
     handleSubCategorySelect,
     handlePropertiesReset,

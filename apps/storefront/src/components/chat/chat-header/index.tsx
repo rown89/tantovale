@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar";
 import { Button } from "@workspace/ui/components/button";
 import { formatPrice } from "@workspace/ui/lib/utils";
 import { ChatProps } from "..";
+import { linkBuilder } from "@workspace/shared/utils/linkBuilder";
 
 interface ChatHeaderProps {
   id: string;
@@ -15,6 +16,11 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
   // Determine if current user is buyer or seller
   const isBuyer = room?.buyer?.id === currentUserId;
   const otherUser = isBuyer ? room.author : room.buyer;
+
+  const itemSlug = linkBuilder({
+    title: room.item.title,
+    id: room.item.id,
+  });
 
   return (
     <div
@@ -49,7 +55,7 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
           {room.item.status === "available" && room.item.published ? (
             <>
               <Link
-                href={`/item/${room.item.id}`}
+                href={`/item/${itemSlug}`}
                 className="font-medium hover:text-accent hover:underline break-all underline"
               >
                 {room.item.title}

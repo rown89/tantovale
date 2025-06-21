@@ -1,15 +1,21 @@
-import { ItemWrapperProps } from "#app/item/[slug]/item-detail-wrapper/types";
+import { ItemWrapperProps } from "#app/item/[slug]/types";
 import { StateCreator } from "zustand";
 
-export type ItemDetailStore = {
+interface ItemDetailState {
   item?: ItemWrapperProps["item"];
   itemOwnerData?: ItemWrapperProps["itemOwnerData"];
   orderProposal?: ItemWrapperProps["orderProposal"];
+}
+
+interface ItemDetailActions {
   setItem: (item: ItemWrapperProps["item"]) => void;
   setItemOwnerData: (itemOwnerData: ItemWrapperProps["itemOwnerData"]) => void;
   setOrderProposal: (orderProposal: ItemWrapperProps["orderProposal"]) => void;
   resetAllItemDetail: () => void;
-};
+}
+
+// Combine state and actions
+export type ItemDetailStore = ItemDetailState & ItemDetailActions;
 
 export const createItemDetailSlice: StateCreator<ItemDetailStore> = (set) => ({
   item: undefined,
@@ -22,8 +28,8 @@ export const createItemDetailSlice: StateCreator<ItemDetailStore> = (set) => ({
     set({ orderProposal }),
   resetAllItemDetail: () =>
     set({
-      item: null as unknown as ItemWrapperProps["item"],
-      itemOwnerData: null as unknown as ItemWrapperProps["itemOwnerData"],
+      item: undefined,
+      itemOwnerData: undefined,
       orderProposal: undefined,
     }),
 });

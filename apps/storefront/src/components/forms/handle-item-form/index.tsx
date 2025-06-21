@@ -5,7 +5,7 @@ import { useField } from "@tanstack/react-form";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Info, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
@@ -26,38 +26,21 @@ import {
   AlertTitle,
   AlertDescription,
 } from "@workspace/ui/components/alert";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog";
 import { Progress } from "@workspace/ui/components/progress";
 import {
   maxDescriptionLength,
   type Category,
-  ExtendedAddress,
 } from "@workspace/server/extended_schemas";
 import { Separator } from "@workspace/ui/components/separator";
 
 import { useHandleItemForm } from "./use-handle-item-form";
-import { FieldInfo } from "../utils/field-info";
 import { nestedSubCatHierarchy } from "../../../utils/nested-subcat-hierarchy";
 import { isNextButtonEnabled, handleItemPreviewProperties } from "./utils";
+import { FieldInfo } from "../utils/field-info";
 import { maxImages, step_one, step_two } from "./constants";
-import { PropertyFormValue, reshapedSchemaType } from "./types";
+import EasyPayInfoDialog from "#components/dialogs/easy-pay-info-dialog";
 
-type HandleItemFormComponent = {
-  subcategory?: Pick<
-    Category,
-    "id" | "name" | "slug" | "easy_pay" | "menu_order"
-  >;
-  formModel: "create" | "edit";
-  profileAddress: Omit<ExtendedAddress, "status" | "phone">;
-  defaultValues: reshapedSchemaType;
-};
+import type { PropertyFormValue, HandleItemFormComponent } from "./types";
 
 export default function HandleItemFormComponent({
   subcategory,
@@ -101,6 +84,7 @@ export default function HandleItemFormComponent({
     handlePickupChange,
     handleEasyPayChange,
     setIsManualShipping,
+    setEasyPay,
     handleManualShippingChange,
   } = useHandleItemForm({
     subcategory,
@@ -139,8 +123,10 @@ export default function HandleItemFormComponent({
 
   // Handle part of Item preview
   useEffect(() => {
-    console.log(subCatProperties);
     if (!properties?.length) return;
+
+    // Using the form, user has choosen easy pay for shipping
+    if (easyPay) setEasyPay(easyPay);
 
     const { selectedCondition, selectedDeliveryMethods } =
       handleItemPreviewProperties({
@@ -384,10 +370,13 @@ export default function HandleItemFormComponent({
                         <div className="space-y-2">
                           <Label
                             htmlFor={name}
-                            className="block text-slate-500 dark:text-slate-400"
+                            className="flex justify-between text-slate-500 dark:text-slate-400"
                           >
-                            Description <span className="text-red-500">*</span>{" "}
-                            <span className="text-sm">{`- ${value?.length || 0}/${maxDescriptionLength} chars`}</span>
+                            <p>
+                              Description{" "}
+                              <span className="text-red-500">*</span>{" "}
+                            </p>
+                            <span className="text-sm">{`${value?.length || 0}/${maxDescriptionLength} chars`}</span>
                           </Label>
                           <Textarea
                             id={name}
@@ -447,298 +436,272 @@ export default function HandleItemFormComponent({
               {/* STEP TWO */}
               {progress === step_two && (
                 <>
-                  {subcategory?.easy_pay && deliveryMethodProperty?.id && (
+                  {(subcategory?.easy_pay || deliveryMethodProperty) && (
                     <div className="flex flex-col gap-2">
                       {/* Easy Pay */}
-                      <form.Field name="commons.easy_pay">
-                        {(field) => {
-                          const { name, state } = field;
-                          const { value } = state;
+                      {subcategory?.easy_pay && (
+                        <form.Field name="commons.easy_pay">
+                          {(field) => {
+                            const { name, state } = field;
+                            const { value } = state;
 
-                          return (
-                            <div className="space-y-2">
-                              <Alert
-                                className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
-                                onClick={() =>
-                                  handleEasyPayChange(
-                                    !value,
-                                    field,
-                                    propertiesField,
-                                  )
-                                }
-                              >
-                                <AlertTitle className="mb-2 flex gap-2 justify-between">
-                                  <div onClick={(e) => e.stopPropagation()}>
-                                    <Dialog>
-                                      <DialogTrigger asChild>
-                                        <div className="flex gap-2 items-center">
-                                          <p
-                                            className={`font-bold text-lg ${easyPay ? "text-primary" : ""}`}
-                                          >
-                                            Easy Pay
-                                          </p>
-                                          <Info className="h-4 w-4 text-blue-500" />
-                                        </div>
-                                      </DialogTrigger>
-                                      <DialogContent className="sm:max-w-[425px]">
-                                        <DialogHeader>
-                                          <DialogTitle>
-                                            What is Easy Pay?
-                                          </DialogTitle>
-                                          <DialogDescription className="my-2">
-                                            With Easy Pay, selling your items
-                                            online is simple and secure.
-                                            <br />
-                                            <br />
-                                            Once a buyer completes the purchase,
-                                            the payment is safely held by our
-                                            system until you ship the item.
-                                            <br />
-                                            After the buyer confirms delivery,
-                                            we promptly release the funds to
-                                            your account.
-                                            <br />
-                                            <br />
-                                            This process helps protect both you
-                                            and the buyer, ensuring a smooth and
-                                            trustworthy transaction.
-                                          </DialogDescription>
-                                        </DialogHeader>
-                                      </DialogContent>
-                                    </Dialog>
-                                  </div>
-                                  <div onClick={(e) => e.stopPropagation()}>
-                                    <Switch
-                                      id={name}
-                                      name={name}
-                                      onCheckedChange={(checked) => {
-                                        handleEasyPayChange(
-                                          checked,
-                                          field,
-                                          propertiesField,
-                                        );
-                                        // When enabling Easy Pay, disable manual shipping
-                                        if (checked) {
-                                          setIsManualShipping(false);
-
-                                          form.setFieldValue(
-                                            "shipping.manual_shipping_price",
-                                            0,
+                            return (
+                              <div className="space-y-2">
+                                <Alert
+                                  className={`py-4 cursor-pointer ${easyPay ? "border-1 border-primary" : ""}`}
+                                  onClick={() =>
+                                    handleEasyPayChange(
+                                      !value,
+                                      field,
+                                      propertiesField,
+                                    )
+                                  }
+                                >
+                                  <AlertTitle className="mb-2 flex gap-2 justify-between">
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <EasyPayInfoDialog />
+                                    </div>
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <Switch
+                                        id={name}
+                                        name={name}
+                                        onCheckedChange={(checked) => {
+                                          handleEasyPayChange(
+                                            checked,
+                                            field,
+                                            propertiesField,
                                           );
+                                          // When enabling Easy Pay, disable manual shipping
+                                          if (checked) {
+                                            setIsManualShipping(false);
+
+                                            form.setFieldValue(
+                                              "shipping.manual_shipping_price",
+                                              0,
+                                            );
+                                          }
+                                        }}
+                                        checked={
+                                          value !== undefined ? value : false
                                         }
-                                      }}
-                                      checked={
-                                        value !== undefined ? value : false
-                                      }
-                                    />
-                                  </div>
-                                </AlertTitle>
-                                <AlertDescription>
-                                  Enabling this option allows buyers to
-                                  instantly purchase your item, with secure
-                                  payment processing and tracking from payment
-                                  to shipment.
-                                  {easyPay && (
-                                    <>
-                                      <Separator className="my-4" />
-                                      <div className="flex flex-col gap-3 mb-6">
-                                        <Label className="text-slate-600 mb-2 leading-5 text-slate-500 dark:text-slate-400">
-                                          Add approximate items dimensions to
-                                          help the system to automatically
-                                          calculate the shipping price.
-                                        </Label>
-                                        <form.Field name="shipping.item_weight">
-                                          {(field) => {
-                                            const { name } = field;
-                                            const { value } = field.state;
-                                            const { handleChange, handleBlur } =
-                                              field;
+                                      />
+                                    </div>
+                                  </AlertTitle>
+                                  <AlertDescription>
+                                    Enabling this option allows buyers to
+                                    instantly purchase your item, with secure
+                                    payment processing and tracking from payment
+                                    to shipment.
+                                    {easyPay && (
+                                      <>
+                                        <Separator className="my-4" />
+                                        <div className="flex flex-col gap-3 mb-6">
+                                          <Label className="mb-2 leading-5 text-slate-500 dark:text-slate-400">
+                                            Add approximate items dimensions to
+                                            help the system to automatically
+                                            calculate the shipping price.
+                                          </Label>
+                                          <form.Field name="shipping.item_weight">
+                                            {(field) => {
+                                              const { name } = field;
+                                              const { value } = field.state;
+                                              const {
+                                                handleChange,
+                                                handleBlur,
+                                              } = field;
 
-                                            return (
-                                              <>
-                                                <Label
-                                                  htmlFor={field.name}
-                                                  className="text-slate-500 dark:text-slate-400"
-                                                >
-                                                  Weight (KG){" "}
-                                                  <span className="text-red-500">
-                                                    *
-                                                  </span>
-                                                </Label>
-                                                <Input
-                                                  id={name}
-                                                  name={name}
-                                                  type="number"
-                                                  min=".01"
-                                                  step=".01"
-                                                  placeholder="ex: 1000"
-                                                  value={
-                                                    value !== undefined
-                                                      ? value
-                                                      : ""
-                                                  }
-                                                  onChange={(e) => {
-                                                    handleChange(
-                                                      e.target.valueAsNumber,
-                                                    );
-                                                  }}
-                                                  onBlur={handleBlur}
-                                                  onClick={(e) =>
-                                                    e.stopPropagation()
-                                                  }
-                                                />
-                                                <FieldInfo field={field} />
-                                              </>
-                                            );
-                                          }}
-                                        </form.Field>
+                                              return (
+                                                <>
+                                                  <Label
+                                                    htmlFor={field.name}
+                                                    className="text-slate-500 dark:text-slate-400"
+                                                  >
+                                                    Weight (KG){" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    id={name}
+                                                    name={name}
+                                                    type="number"
+                                                    min=".01"
+                                                    step=".01"
+                                                    placeholder="ex: 1000"
+                                                    value={
+                                                      value !== undefined
+                                                        ? value
+                                                        : ""
+                                                    }
+                                                    onChange={(e) => {
+                                                      handleChange(
+                                                        e.target.valueAsNumber,
+                                                      );
+                                                    }}
+                                                    onBlur={handleBlur}
+                                                    onClick={(e) =>
+                                                      e.stopPropagation()
+                                                    }
+                                                  />
+                                                  <FieldInfo field={field} />
+                                                </>
+                                              );
+                                            }}
+                                          </form.Field>
 
-                                        <form.Field name="shipping.item_length">
-                                          {(field) => {
-                                            const { name } = field;
-                                            const { value } = field.state;
-                                            const { handleChange, handleBlur } =
-                                              field;
+                                          <form.Field name="shipping.item_length">
+                                            {(field) => {
+                                              const { name } = field;
+                                              const { value } = field.state;
+                                              const {
+                                                handleChange,
+                                                handleBlur,
+                                              } = field;
 
-                                            return (
-                                              <>
-                                                <Label
-                                                  htmlFor={field.name}
-                                                  className="text-slate-500 dark:text-slate-400"
-                                                >
-                                                  Length (cm){" "}
-                                                  <span className="text-red-500">
-                                                    *
-                                                  </span>
-                                                </Label>
-                                                <Input
-                                                  id={name}
-                                                  name={name}
-                                                  type="number"
-                                                  min=".01"
-                                                  step=".01"
-                                                  placeholder="ex: 100"
-                                                  value={
-                                                    value !== undefined
-                                                      ? value
-                                                      : ""
-                                                  }
-                                                  onChange={(e) => {
-                                                    handleChange(
-                                                      e.target.valueAsNumber,
-                                                    );
-                                                  }}
-                                                  onBlur={handleBlur}
-                                                  onClick={(e) =>
-                                                    e.stopPropagation()
-                                                  }
-                                                />
-                                                <FieldInfo field={field} />
-                                              </>
-                                            );
-                                          }}
-                                        </form.Field>
+                                              return (
+                                                <>
+                                                  <Label
+                                                    htmlFor={field.name}
+                                                    className="text-slate-500 dark:text-slate-400"
+                                                  >
+                                                    Length (cm){" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    id={name}
+                                                    name={name}
+                                                    type="number"
+                                                    min=".01"
+                                                    step=".01"
+                                                    placeholder="ex: 100"
+                                                    value={
+                                                      value !== undefined
+                                                        ? value
+                                                        : ""
+                                                    }
+                                                    onChange={(e) => {
+                                                      handleChange(
+                                                        e.target.valueAsNumber,
+                                                      );
+                                                    }}
+                                                    onBlur={handleBlur}
+                                                    onClick={(e) =>
+                                                      e.stopPropagation()
+                                                    }
+                                                  />
+                                                  <FieldInfo field={field} />
+                                                </>
+                                              );
+                                            }}
+                                          </form.Field>
 
-                                        <form.Field name="shipping.item_width">
-                                          {(field) => {
-                                            const { name } = field;
-                                            const { value } = field.state;
-                                            const { handleChange, handleBlur } =
-                                              field;
+                                          <form.Field name="shipping.item_width">
+                                            {(field) => {
+                                              const { name } = field;
+                                              const { value } = field.state;
+                                              const {
+                                                handleChange,
+                                                handleBlur,
+                                              } = field;
 
-                                            return (
-                                              <>
-                                                <Label
-                                                  htmlFor={field.name}
-                                                  className="text-slate-500 dark:text-slate-400"
-                                                >
-                                                  Width (cm){" "}
-                                                  <span className="text-red-500">
-                                                    *
-                                                  </span>
-                                                </Label>
-                                                <Input
-                                                  id={name}
-                                                  name={name}
-                                                  type="number"
-                                                  min=".01"
-                                                  step=".01"
-                                                  placeholder="ex: 100"
-                                                  value={
-                                                    value !== undefined
-                                                      ? value
-                                                      : ""
-                                                  }
-                                                  onChange={(e) => {
-                                                    handleChange(
-                                                      e.target.valueAsNumber,
-                                                    );
-                                                  }}
-                                                  onBlur={handleBlur}
-                                                  onClick={(e) =>
-                                                    e.stopPropagation()
-                                                  }
-                                                />
-                                                <FieldInfo field={field} />
-                                              </>
-                                            );
-                                          }}
-                                        </form.Field>
+                                              return (
+                                                <>
+                                                  <Label
+                                                    htmlFor={field.name}
+                                                    className="text-slate-500 dark:text-slate-400"
+                                                  >
+                                                    Width (cm){" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    id={name}
+                                                    name={name}
+                                                    type="number"
+                                                    min=".01"
+                                                    step=".01"
+                                                    placeholder="ex: 100"
+                                                    value={
+                                                      value !== undefined
+                                                        ? value
+                                                        : ""
+                                                    }
+                                                    onChange={(e) => {
+                                                      handleChange(
+                                                        e.target.valueAsNumber,
+                                                      );
+                                                    }}
+                                                    onBlur={handleBlur}
+                                                    onClick={(e) =>
+                                                      e.stopPropagation()
+                                                    }
+                                                  />
+                                                  <FieldInfo field={field} />
+                                                </>
+                                              );
+                                            }}
+                                          </form.Field>
 
-                                        <form.Field name="shipping.item_height">
-                                          {(field) => {
-                                            const { name } = field;
-                                            const { value } = field.state;
-                                            const { handleChange, handleBlur } =
-                                              field;
+                                          <form.Field name="shipping.item_height">
+                                            {(field) => {
+                                              const { name } = field;
+                                              const { value } = field.state;
+                                              const {
+                                                handleChange,
+                                                handleBlur,
+                                              } = field;
 
-                                            return (
-                                              <>
-                                                <Label
-                                                  htmlFor={field.name}
-                                                  className="text-slate-500 dark:text-slate-400"
-                                                >
-                                                  Height (cm){" "}
-                                                  <span className="text-red-500">
-                                                    *
-                                                  </span>
-                                                </Label>
-                                                <Input
-                                                  id={name}
-                                                  name={name}
-                                                  type="number"
-                                                  min=".01"
-                                                  step=".01"
-                                                  placeholder="ex: 100"
-                                                  value={
-                                                    value !== undefined
-                                                      ? value
-                                                      : ""
-                                                  }
-                                                  onChange={(e) => {
-                                                    handleChange(
-                                                      e.target.valueAsNumber,
-                                                    );
-                                                  }}
-                                                  onBlur={handleBlur}
-                                                  onClick={(e) =>
-                                                    e.stopPropagation()
-                                                  }
-                                                />
-                                                <FieldInfo field={field} />
-                                              </>
-                                            );
-                                          }}
-                                        </form.Field>
-                                      </div>
-                                    </>
-                                  )}
-                                </AlertDescription>
-                              </Alert>
-                            </div>
-                          );
-                        }}
-                      </form.Field>
+                                              return (
+                                                <>
+                                                  <Label
+                                                    htmlFor={field.name}
+                                                    className="text-slate-500 dark:text-slate-400"
+                                                  >
+                                                    Height (cm){" "}
+                                                    <span className="text-red-500">
+                                                      *
+                                                    </span>
+                                                  </Label>
+                                                  <Input
+                                                    id={name}
+                                                    name={name}
+                                                    type="number"
+                                                    min=".01"
+                                                    step=".01"
+                                                    placeholder="ex: 100"
+                                                    value={
+                                                      value !== undefined
+                                                        ? value
+                                                        : ""
+                                                    }
+                                                    onChange={(e) => {
+                                                      handleChange(
+                                                        e.target.valueAsNumber,
+                                                      );
+                                                    }}
+                                                    onBlur={handleBlur}
+                                                    onClick={(e) =>
+                                                      e.stopPropagation()
+                                                    }
+                                                  />
+                                                  <FieldInfo field={field} />
+                                                </>
+                                              );
+                                            }}
+                                          </form.Field>
+                                        </div>
+                                      </>
+                                    )}
+                                  </AlertDescription>
+                                </Alert>
+                              </div>
+                            );
+                          }}
+                        </form.Field>
+                      )}
 
                       {/* Manual shipping it's not a delivery method but sets the shipping price only if the user enables it */}
                       <form.Field name="shipping.manual_shipping_price">
@@ -909,8 +872,28 @@ export default function HandleItemFormComponent({
 
                 return (
                   <div className="flex gap-2 sticky bottom-2 p-0 md:pr-3">
+                    {/* If doesn't have easy pay and delivery method, Show submit button and ignore step two */}
                     {subcategory &&
-                      subcategory?.easy_pay &&
+                      !subcategory?.easy_pay &&
+                      !deliveryMethodProperty && (
+                        <Button
+                          className="flex-1"
+                          type="submit"
+                          disabled={isSubmitDisabled}
+                        >
+                          {isSubmitting ? (
+                            <>
+                              Submitting <Spinner className="h-4 w-4" />
+                            </>
+                          ) : (
+                            "Submit"
+                          )}
+                        </Button>
+                      )}
+
+                    {/* Go to step two ( Shipping ) */}
+                    {subcategory &&
+                      (subcategory?.easy_pay || deliveryMethodProperty) &&
                       progress === step_one && (
                         <Button
                           className="flex-1"
@@ -938,8 +921,9 @@ export default function HandleItemFormComponent({
                         </Button>
                       )}
 
+                    {/* STEP TWO submit button */}
                     {subcategory &&
-                      subcategory?.easy_pay &&
+                      (subcategory?.easy_pay || deliveryMethodProperty) &&
                       progress === step_two && (
                         <div className="flex w-full gap-2">
                           <Button
@@ -964,22 +948,6 @@ export default function HandleItemFormComponent({
                           </Button>
                         </div>
                       )}
-
-                    {subcategory && !subcategory?.easy_pay && (
-                      <Button
-                        className="flex-1"
-                        type="submit"
-                        disabled={isSubmitDisabled}
-                      >
-                        {isSubmitting ? (
-                          <>
-                            Submitting <Spinner className="h-4 w-4" />
-                          </>
-                        ) : (
-                          "Submit"
-                        )}
-                      </Button>
-                    )}
                   </div>
                 );
               }}

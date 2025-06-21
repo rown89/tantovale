@@ -10,7 +10,7 @@ export function FieldInfo({
   return (
     <>
       {field.state.meta.errors.length ? (
-        <em className="text-red-500">
+        <em className="text-red-500 text-sm">
           {propertyName
             ? field.state.meta.errors.map((item) =>
                 item.message.includes(propertyName) ? item.message : null,

@@ -30,7 +30,11 @@ export function ShippingDialog({
             Complete shipping for the order.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4"></div>
+        <div className="grid gap-4 py-4">
+          <p>
+            {order.item.title} - {order.item.id}
+          </p>
+        </div>
         <DialogFooter>
           <Button type="submit">Save changes</Button>
         </DialogFooter>

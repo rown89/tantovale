@@ -124,18 +124,14 @@ export default function useAddressForm(
     isSuccess: isUpdatingAddressSuccess,
   } = useMutation({
     mutationFn: async (value: Omit<z.infer<typeof editSchema>, "mode">) => {
-      try {
-        const response =
-          await client.addresses.auth.update_address_to_profile.$put({
-            json: value,
-          });
+      const response =
+        await client.addresses.auth.update_address_to_profile.$put({
+          json: value,
+        });
 
-        if (!response.ok) throw new Error("Failed to update address");
+      if (!response.ok) throw new Error("Failed to update address");
 
-        return response.json();
-      } catch (error) {
-        throw error;
-      }
+      return response.json();
     },
     onError: (error, variables) => {
       console.error("UpdateAddress mutation error:", error);
@@ -155,18 +151,14 @@ export default function useAddressForm(
     isSuccess: isDeletingAddressSuccess,
   } = useMutation({
     mutationFn: async ({ address_id }: { address_id: number }) => {
-      try {
-        const response =
-          await client.addresses.auth.hide_address_from_profile.$put({
-            json: { address_id },
-          });
+      const response =
+        await client.addresses.auth.hide_address_from_profile.$put({
+          json: { address_id },
+        });
 
-        if (!response.ok) throw new Error("Failed to delete address");
+      if (!response.ok) throw new Error("Failed to delete address");
 
-        return response.json();
-      } catch (error) {
-        throw error;
-      }
+      return response.json();
     },
     onSettled: (data, error, variables) => {
       invalidateAddresses();

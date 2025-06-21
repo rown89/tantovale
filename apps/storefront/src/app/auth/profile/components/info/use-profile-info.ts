@@ -42,8 +42,7 @@ export function useProfileInfoForm(profiles?: Partial<schemaType>) {
         });
       } catch (error) {
         toast(`Error :(`, {
-          description:
-            "We are encountering technical problems, please retry later.",
+          description: `We are encountering technical problems, please retry later. \n ${error}`,
           duration: 4000,
         });
       } finally {

@@ -31,7 +31,7 @@ import {
 } from "@workspace/ui/components/alert";
 import { formatPrice } from "@workspace/ui/lib/utils";
 
-import { ItemWrapperProps } from "../types";
+import { ItemWrapperProps } from "../../types";
 import { PaymentButton } from "./payment-button";
 import { ProposalButton } from "./proposal-button";
 import { useItemFavorite } from "../hooks/use-item-favorite";

@@ -11,7 +11,6 @@ import { Checkbox } from "@workspace/ui/components/checkbox";
 import { CitySelector } from "#components/city-selector";
 import useAddressForm from "./use-address-form";
 import { FieldInfo } from "../utils/field-info";
-import { Separator } from "@workspace/ui/components/separator";
 
 export default function AddressForm({
   firstAddress = false,

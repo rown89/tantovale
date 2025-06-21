@@ -22,18 +22,17 @@ export const reshapedCreateItemSchema = ({
       shipping: shippingSchema.superRefine((val, ctx) => {
         // Get latest values from store
         const currentStore = useTantovaleStore.getState();
-        const { isManualShipping, isPickup } = currentStore;
+        const { isManualShipping, isPickup, easyPay } = currentStore;
+
+        const doesntHaveDeliveryMethod = !propertiesData?.find(
+          (property) => property.slug === "delivery_method",
+        );
 
         // if properties data doesnt not contain delivery_method property or it's not easy_pay, skip this check
-        if (
-          !propertiesData?.find(
-            (property) =>
-              property.slug === "delivery_method" ||
-              property.slug === "easy_pay",
-          )
-        ) {
+        if (doesntHaveDeliveryMethod) {
           return true;
         } else {
+          // Manual Shipping
           if (
             isManualShipping &&
             !isPickup &&
@@ -47,6 +46,7 @@ export const reshapedCreateItemSchema = ({
             return false;
           }
 
+          // Pickup
           if (
             isPickup &&
             !isManualShipping &&
@@ -58,7 +58,8 @@ export const reshapedCreateItemSchema = ({
             });
           }
 
-          if (!isManualShipping && !isPickup) {
+          // Shipping easyPay
+          if (easyPay && !isManualShipping && !isPickup) {
             if (!val.item_weight) {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,

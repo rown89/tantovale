@@ -1,22 +1,21 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@workspace/ui/components/badge";
 import { ItemDetailCard } from "@workspace/ui/components/item-detail-card/index";
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile";
-import { formatPrice } from "@workspace/ui/lib/utils";
 
 import { UserInfoBox } from "./components/user-info-box";
 import { PaymentButton } from "./components/payment-button";
 import { PaymentDialog } from "../../../../components/dialogs/pay-dialog";
 import { ProposalDialog } from "../../../../components/dialogs/order-proposal-dialog";
-import { ItemWrapperProps } from "./types";
 import { ProposalButton } from "./components/proposal-button";
+import { ItemWrapperProps } from "../types";
 import { useAuth } from "#providers/auth-providers";
 import useTantovaleStore from "#stores";
 
@@ -28,8 +27,6 @@ export default function ItemWDetailWrapper({
   isFavorite,
   isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
-  const { images } = item;
-
   const {
     proposal_created_at,
     setItem,
@@ -85,6 +82,26 @@ export default function ItemWDetailWrapper({
     };
   }, []);
 
+  // Create a list of memoized image nodes
+  const imagesNodeList = useMemo(() => {
+    return item.images?.map((url, i) => {
+      if (!url) return null;
+
+      return (
+        <Image
+          key={i}
+          onClick={() => {
+            setFullscreenImage(url);
+          }}
+          className="object-cover hover:cursor-pointer"
+          fill
+          src={url}
+          alt=""
+        />
+      );
+    });
+  }, [item.images]);
+
   return (
     <div className="container mx-auto px-4 xl:px-0 flex flex-col my-4">
       <div className="flex gap-8 xl:gap-12 w-full h-full flex-col xl:flex-row">
@@ -93,19 +110,7 @@ export default function ItemWDetailWrapper({
           imagesRef={fileInputRef}
           item={{
             ...item,
-            images: images?.map((url, i) => (
-              <Image
-                key={i}
-                onClick={() => {
-                  setFullscreenImage(url);
-                }}
-                className="object-cover hover:cursor-pointer"
-                fill
-                src={url}
-                alt=""
-              />
-            )),
-
+            images: imagesNodeList,
             subcategory: item.subcategory && (
               <Link
                 href={`/items/condition/${item.subcategory.slug ?? "#"}`}
@@ -161,14 +166,17 @@ export default function ItemWDetailWrapper({
         )}
       </div>
 
-      <PaymentDialog
-        isOpen={false}
-        setIsOpen={() => {}}
-        order={null}
-        onPaymentComplete={() => {}}
-      />
-
-      <ProposalDialog />
+      {item?.easy_pay && (
+        <>
+          <PaymentDialog
+            isOpen={false}
+            setIsOpen={() => {}}
+            order={null}
+            onPaymentComplete={() => {}}
+          />
+          <ProposalDialog />
+        </>
+      )}
 
       {/* image Fullscreen Preview (doesn't work on initial placeholder images) */}
       {

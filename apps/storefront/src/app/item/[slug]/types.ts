@@ -1,5 +1,12 @@
+import { AuthTokens } from "#shared/auth-tokens";
 import { OrderProposalStatus } from "@workspace/server/enumerated_values";
 
+export interface ItemDetailPageParams {
+  id: string;
+  authTokens: AuthTokens;
+}
+
+// Core data interfaces
 interface Item {
   id: number;
   user: {
@@ -50,11 +57,26 @@ interface OrderProposal {
   status: OrderProposalStatus;
 }
 
-export interface ItemWrapperProps {
+// Main data interface for the page
+export interface ItemDetailData {
   item: Item;
   itemOwnerData: ItemOwnerData;
   chatId?: number;
   orderProposal?: OrderProposal;
   isFavorite: boolean;
   isCurrentUserTheItemOwner: boolean;
+}
+
+// Re-export existing types for backward compatibility
+export interface ItemWrapperProps extends ItemDetailData {}
+
+// Error handling types
+export interface FetchError {
+  message: string;
+  status?: number;
+  code?: string;
+}
+
+export interface AuthHeaders {
+  cookie: string;
 }

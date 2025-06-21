@@ -9,7 +9,6 @@ import { Button } from "@workspace/ui/components/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -137,12 +136,13 @@ export function ProposalDialog() {
                         min="0.01"
                         max={formatPrice(item.price)}
                         placeholder={`Max: ${formatPrice(item.price)}`}
-                        value={field.state.value}
+                        value={value}
                         onChange={(e) => {
                           const value = e.target.value;
 
-                          field.handleChange(value === "" ? 0 : Number(value));
+                          handleChange(value === "" ? 0 : Number(value));
                         }}
+                        onBlur={handleBlur}
                       />
                       <FieldInfo field={field} />
                     </div>
