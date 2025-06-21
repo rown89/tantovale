@@ -15,7 +15,7 @@ import {
 	addresses,
 	subcategories,
 	items_images,
-	user_items_favorites,
+	profiles_items_favorites,
 	profiles,
 } from '#db-schema';
 
@@ -98,10 +98,18 @@ export const itemsRoute = createRouter()
 		const { db } = createClient();
 
 		try {
+			const [profile] = await db
+				.select({ id: profiles.id })
+				.from(profiles)
+				.where(eq(profiles.user_id, user.id))
+				.limit(1);
+
+			if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 			const userFavorites = await db
 				.select()
-				.from(user_items_favorites)
-				.where(eq(user_items_favorites.user_id, user.id));
+				.from(profiles_items_favorites)
+				.where(eq(profiles_items_favorites.profile_id, profile.id));
 
 			const userFavoritesItems = await db
 				.select({

@@ -2,11 +2,11 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 
-import { createClient } from 'src/database';
-import { user_items_favorites } from 'src/database/schemas/user_items_favorites';
+import { createClient } from '#database/index';
+import { profiles_items_favorites, profiles } from '#db-schema';
 import { createRouter } from 'src/lib/create-app';
-import { authMiddleware } from 'src/middlewares/authMiddleware';
-import { authPath } from 'src/utils/constants';
+import { authMiddleware } from '#middlewares/authMiddleware/index';
+import { authPath } from '#utils/constants';
 
 export const favoritesRoute = createRouter()
 	// Check if item is an user favorite
@@ -19,13 +19,17 @@ export const favoritesRoute = createRouter()
 
 		const { db } = createClient();
 
+		const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user.id)).limit(1);
+
+		if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 		try {
 			const [itemIsFavorite] = await db
 				.select({
-					item_id: user_items_favorites.id,
+					item_id: profiles_items_favorites.id,
 				})
-				.from(user_items_favorites)
-				.where(and(eq(user_items_favorites.item_id, item_id), eq(user_items_favorites.user_id, user.id)));
+				.from(profiles_items_favorites)
+				.where(and(eq(profiles_items_favorites.item_id, item_id), eq(profiles_items_favorites.profile_id, profile.id)));
 
 			return c.json(itemIsFavorite?.item_id ? true : false, 200);
 		} catch (error) {
@@ -50,16 +54,24 @@ export const favoritesRoute = createRouter()
 
 			const { db } = createClient();
 
+			const [profile] = await db
+				.select({ id: profiles.id })
+				.from(profiles)
+				.where(eq(profiles.user_id, user.id))
+				.limit(1);
+
+			if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
 			try {
 				if (action === 'add') {
-					await db.insert(user_items_favorites).values({
-						user_id: user.id,
+					await db.insert(profiles_items_favorites).values({
+						profile_id: profile.id,
 						item_id,
 					});
 
 					return c.json(true);
 				} else {
-					await db.delete(user_items_favorites).where(eq(user_items_favorites.item_id, item_id));
+					await db.delete(profiles_items_favorites).where(eq(profiles_items_favorites.item_id, item_id));
 
 					return c.json(false);
 				}
@@ -71,7 +83,5 @@ export const favoritesRoute = createRouter()
 					500,
 				);
 			}
-
-			return c.json({});
 		},
 	);

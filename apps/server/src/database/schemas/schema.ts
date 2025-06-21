@@ -23,5 +23,5 @@ export * from './states';
 export * from './subcategories';
 export * from './subcategory_properties';
 export * from './subRegions';
-export * from './user_items_favorites';
+export * from './profiles_items_favorites';
 export * from './users';
