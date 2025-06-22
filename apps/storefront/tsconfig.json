@@ -1,35 +1,36 @@
 {
-  "extends": "@workspace/typescript-config/nextjs.json",
-  "compilerOptions": {
-    "strict": true,
-    "declaration": true,
-    "declarationMap": true,
-    "incremental": true,
-    "composite": true,
-    "baseUrl": ".",
-    "paths": {
-      "#*": ["./src/*"]
-    },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
-  },
-  "paths": {
-    "@workspace/server/*": ["../server/src/*"],
-    "@workspace/ui/*": ["../../packages/ui/src/*"]
-  },
-  "references": [{ "path": "../server/" }, { "path": "../../packages/ui/" }],
-  "include": [
-    ".",
-    "**/*.ts",
-    "**/*.tsx",
-    "next-env.d.ts",
-    "next.config.js",
-    ".next/types/**/*.ts",
-    "../../packages/ui/",
-    "../server/*.ts"
-  ],
-  "exclude": ["node_modules"]
+	"extends": "@workspace/typescript-config/nextjs.json",
+	"compilerOptions": {
+		"strict": true,
+		"declaration": true,
+		"declarationMap": true,
+		"incremental": true,
+		"composite": true,
+		"baseUrl": ".",
+		"paths": {
+			"#*": ["./src/*"]
+		},
+		"plugins": [
+			{
+				"name": "next"
+			}
+		]
+	},
+	"paths": {
+		"@workspace/server/*": ["../server/src/*"],
+		"@workspace/ui/*": ["../../packages/ui/src/*"]
+	},
+	"references": [{ "path": "../server/" }, { "path": "../../packages/ui/" }],
+	"include": [
+		".",
+		"**/*.ts",
+		"**/*.tsx",
+		"next-env.d.ts",
+		"next.config.js",
+		".next/types/**/*.ts",
+		"../../packages/ui/",
+		"../server/*.ts",
+		"../../prettier.config.js"
+	],
+	"exclude": ["node_modules"]
 }

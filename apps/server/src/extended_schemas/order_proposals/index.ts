@@ -1,13 +1,14 @@
-import { z } from 'zod';
+import { ordersProposalsSelectSchema } from '#database/schemas/orders_proposals';
+import { z } from 'zod/v4';
 
 export const create_order_proposal_schema = z.object({
-	item_id: z.number(),
-	proposal_price: z.number(),
+	item_id: z.number().min(1),
+	proposal_price: z.number().min(0.01),
 	message: z.string(),
 });
 
-export const update_order_proposal_schema = z.object({
-	id: z.number(),
-	status: z.enum(['accepted', 'rejected']),
-	item_id: z.number(),
+export const update_order_proposal_schema = ordersProposalsSelectSchema.pick({
+	id: true,
+	status: true,
+	item_id: true,
 });

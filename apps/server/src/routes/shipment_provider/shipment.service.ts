@@ -5,7 +5,7 @@ import { createClient } from '#create-client';
 import { SHIPPING_UNITS } from '#utils/constants';
 import { profiles, addresses, items, cities, users, shippings } from '#db-schema';
 
-import type { ShipmentCreateRequest } from 'shippo/models/components';
+import type { ShipmentCreateRequest } from 'shippo/models/components/index';
 import type { ShipmentCalculationData } from './types';
 
 const ERROR_MESSAGES = {

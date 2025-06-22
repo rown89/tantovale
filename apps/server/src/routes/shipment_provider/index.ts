@@ -1,8 +1,13 @@
-import z from 'zod';
+import z from 'zod/v4';
 import { describeRoute } from 'hono-openapi';
 import { zValidator } from '@hono/zod-validator';
 
-import { AddressCreateRequest, DistanceUnitEnum, ParcelCreateRequest, WeightUnitEnum } from 'shippo/models/components';
+import {
+	AddressCreateRequest,
+	DistanceUnitEnum,
+	ParcelCreateRequest,
+	WeightUnitEnum,
+} from 'shippo/models/components/index';
 import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
 import { ratesGet } from 'shippo/funcs/ratesGet.js';
 import { carrierAccountsList } from 'shippo/funcs/carrierAccountsList.js';

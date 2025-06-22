@@ -1,5 +1,5 @@
 import { createInsertSchema } from 'drizzle-zod';
-import { boolean, number, string, z } from 'zod';
+import { boolean, array, number, string, z } from 'zod/v4';
 
 import { items } from '@workspace/server/database';
 
@@ -25,7 +25,7 @@ export const propertySchema = z.array(
 	z.object({
 		id: number(),
 		slug: string(),
-		value: z.union([z.string(), z.number(), z.array(z.string()), z.array(z.number()), z.boolean()]),
+		value: z.union([string(), number(), array(string()), array(number()), boolean()]),
 	}),
 );
 
@@ -49,10 +49,11 @@ export const createItemSchema = z.object({
 			schema
 				.min(minDescriptionLength, `Description must be at least ${minDescriptionLength} characters`)
 				.max(maxDescriptionLength, `Description must be less than ${maxDescriptionLength} characters`),
-		easy_pay: boolean().optional(),
-		price: number()
-			.min(priceMin, `Price must be greater than ${priceMin}`)
-			.max(priceMax, `Price must be less or equal to ${priceMax / 100} €`),
+		easy_pay: (schema) => schema.optional(),
+		price: (schema) =>
+			schema
+				.min(priceMin, `Price must be greater than ${priceMin}`)
+				.max(priceMax, `Price must be less or equal to ${priceMax / 100} €`),
 	}).omit({
 		profile_id: true,
 		published: true,

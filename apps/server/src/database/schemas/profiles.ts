@@ -37,7 +37,5 @@ export type SelectProfile = typeof profiles.$inferSelect;
 export type InsertProfile = typeof profiles.$inferInsert;
 
 export const selectProfilesSchema = createSelectSchema(profiles);
-
 export const insertProfilesSchema = createInsertSchema(profiles);
-
 export const patchProfilesSchema = insertProfilesSchema.partial();

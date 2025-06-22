@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';

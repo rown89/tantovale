@@ -1,5 +1,5 @@
-import ProfileFavorites from ".";
+import ProfileFavorites from '.';
 
 export default async function UserFavoritesPage() {
-  return <ProfileFavorites />;
+	return <ProfileFavorites />;
 }

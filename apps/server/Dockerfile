@@ -3,7 +3,7 @@ FROM node:22-alpine AS base
 
 # Globally install pnpm and turbo for use in later stages
 # Using --silent to reduce log output and potential memory issues on platforms like Railway
-RUN npm install -g pnpm@10.10.0 --silent
+RUN npm install -g pnpm@10.12.1 --silent
 RUN npm install -g turbo --silent
 
 # The 'builder' stage is responsible for creating a pruned, minimal version of the monorepo

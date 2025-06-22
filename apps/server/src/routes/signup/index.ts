@@ -1,7 +1,6 @@
 import { env } from 'hono/adapter';
 import { sign } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
-import { validator as zValidator } from 'hono-openapi/zod';
 
 import { checkUser } from '../../lib/utils';
 import { hashPassword } from '../../lib/password';
@@ -19,6 +18,7 @@ import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { parseEnv } from '../../env';
 import { UserProfileSchema } from '../../extended_schemas/users';
+import { zValidator } from '@hono/zod-validator';
 
 export const signupRoute = createRouter().post(
 	'/',

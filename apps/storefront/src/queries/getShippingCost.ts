@@ -1,30 +1,26 @@
-import { client } from "@workspace/server/client-rpc";
-import { CarrierAccountWithExtraInfo } from "shippo/models/components";
+import { client } from '@workspace/server/client-rpc';
+import { CarrierAccountWithExtraInfo } from 'shippo/models/components/index';
 
-export const getShippingCarriers = async (): Promise<
-  CarrierAccountWithExtraInfo[]
-> => {
-  const carriersResponse =
-    await client.shipment_provider.auth.active_carriers.$get();
+export const getShippingCarriers = async (): Promise<CarrierAccountWithExtraInfo[]> => {
+	const carriersResponse = await client.shipment_provider.auth.active_carriers.$get();
 
-  if (!carriersResponse.ok) return [];
+	if (!carriersResponse.ok) return [];
 
-  const { activeCarriers } = await carriersResponse.json();
+	const { activeCarriers } = await carriersResponse.json();
 
-  return activeCarriers;
+	return activeCarriers;
 };
 
 export const getShippingCost = async (item_id: number) => {
-  const ratesResponse =
-    await client.shipment_provider.auth.calculate_shipment_cost.$post({
-      json: {
-        item_id,
-      },
-    });
+	const ratesResponse = await client.shipment_provider.auth.calculate_shipment_cost.$post({
+		json: {
+			item_id,
+		},
+	});
 
-  if (!ratesResponse.ok) return [];
+	if (!ratesResponse.ok) return [];
 
-  const { rates } = await ratesResponse.json();
+	const { rates } = await ratesResponse.json();
 
-  return rates;
+	return rates;
 };

@@ -1,5 +1,5 @@
-import UserOrdersComponent from "../components/orders";
+import UserOrdersComponent from '../components/orders';
 
 export default async function UserSellingItemsPage() {
-  return <UserOrdersComponent />;
+	return <UserOrdersComponent />;
 }

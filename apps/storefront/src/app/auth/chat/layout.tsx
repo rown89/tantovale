@@ -1,91 +1,81 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { client } from "@workspace/server/client-rpc";
-import { Spinner } from "@workspace/ui/components/spinner";
-import { SidebarProvider } from "@workspace/ui/components/sidebar";
-import { ChatSidebar } from "#components/chat/chat-sidebar/index";
+import { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { client } from '@workspace/server/client-rpc';
+import { Spinner } from '@workspace/ui/components/spinner';
+import { SidebarProvider } from '@workspace/ui/components/sidebar';
+import { ChatSidebar } from '#components/chat/chat-sidebar/index';
 
-export default function ChatLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const router = useRouter();
-  const pathname = usePathname();
+export default function ChatLayout({ children }: { children: React.ReactNode }) {
+	const router = useRouter();
+	const pathname = usePathname();
 
-  // Fetch current user data
-  const { data: currentUser, isError: isUserError } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: async () => {
-      const response = await client.user.auth.$get();
-      if (!response.ok) {
-        throw new Error("Failed to fetch user");
-      }
-      const user = await response.json();
-      return user;
-    },
-  });
+	// Fetch current user data
+	const { data: currentUser, isError: isUserError } = useQuery({
+		queryKey: ['currentUser'],
+		queryFn: async () => {
+			const response = await client.user.auth.$get();
+			if (!response.ok) {
+				throw new Error('Failed to fetch user');
+			}
+			const user = await response.json();
+			return user;
+		},
+	});
 
-  // Fetch chat rooms
-  const { data: chatRooms, isError: isRoomsError } = useQuery({
-    queryKey: ["chatRooms"],
-    queryFn: async () => {
-      const response = await client.chat.auth.rooms.$get();
+	// Fetch chat rooms
+	const { data: chatRooms, isError: isRoomsError } = useQuery({
+		queryKey: ['chatRooms'],
+		queryFn: async () => {
+			const response = await client.chat.auth.rooms.$get();
 
-      if (!response.ok) {
-        console.log("Failed to fetch chat rooms");
-        return [];
-      }
+			if (!response.ok) {
+				console.log('Failed to fetch chat rooms');
+				return [];
+			}
 
-      return await response.json();
-    },
-    // Only fetch chat rooms if we have a current user
-    enabled: !!currentUser,
-  });
+			return await response.json();
+		},
+		// Only fetch chat rooms if we have a current user
+		enabled: !!currentUser,
+	});
 
-  // Handle authentication and data loading errors
-  useEffect(() => {
-    if (isUserError) {
-      router.push("/login");
-    }
+	// Handle authentication and data loading errors
+	useEffect(() => {
+		if (isUserError) {
+			router.push('/login');
+		}
 
-    if (isRoomsError) {
-      router.push("/404");
-    }
-  }, [isUserError, isRoomsError, router]);
+		if (isRoomsError) {
+			router.push('/404');
+		}
+	}, [isUserError, isRoomsError, router]);
 
-  // Show loading state while data is being fetched
-  if (!currentUser || !chatRooms) {
-    return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
-        <Spinner />
-      </div>
-    );
-  }
+	// Show loading state while data is being fetched
+	if (!currentUser || !chatRooms) {
+		return (
+			<div className='flex h-[calc(100vh-4rem)] items-center justify-center'>
+				<Spinner />
+			</div>
+		);
+	}
 
-  return (
-    <SidebarProvider className="container mx-auto overflow-auto max-h-[calc(100vh-74px)] min-h-[calc(100vh-74px)]">
-      <div className="flex w-full">
-        <div
-          className={
-            pathname !== "/auth/chat"
-              ? "hidden xl:block xl:w-[450px]"
-              : "w-full xl:w-[450px] block"
-          }
-        >
-          <ChatSidebar
-            id="chat-sidebar"
-            collapsable={pathname !== "/auth/chat" ? "offcanvas" : "none"}
-            chatRooms={chatRooms}
-            currentUserId={currentUser.id}
-          />
-        </div>
+	return (
+		<SidebarProvider className='container mx-auto max-h-[calc(100vh-74px)] min-h-[calc(100vh-74px)] overflow-auto'>
+			<div className='flex w-full'>
+				<div className={pathname !== '/auth/chat' ? 'hidden xl:block xl:w-[450px]' : 'block w-full xl:w-[450px]'}>
+					<ChatSidebar
+						id='chat-sidebar'
+						collapsable={pathname !== '/auth/chat' ? 'offcanvas' : 'none'}
+						chatRooms={chatRooms}
+						currentUserId={currentUser.id}
+					/>
+				</div>
 
-        <main className="flex-1 overflow-hidden">{children}</main>
-      </div>
-    </SidebarProvider>
-  );
+				<main className='flex-1 overflow-hidden'>{children}</main>
+			</div>
+		</SidebarProvider>
+	);
 }

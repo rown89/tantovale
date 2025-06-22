@@ -1,21 +1,20 @@
-import { Suspense } from "react";
+import { Suspense } from 'react';
 
-import { Spinner } from "@workspace/ui/components/spinner";
+import { Spinner } from '@workspace/ui/components/spinner';
 
-import ProfileSetupAddress from "./";
+import ProfileSetupAddress from './';
 
 export default async function ProfileSetupAddressPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="container mx-auto py-6 px-6 lg:px-2 xl:px-0 h-[calc(100vh-56px)]">
-          <div className="flex items-center justify-center h-full">
-            <Spinner />
-          </div>
-        </div>
-      }
-    >
-      <ProfileSetupAddress />
-    </Suspense>
-  );
+	return (
+		<Suspense
+			fallback={
+				<div className='container mx-auto h-[calc(100vh-56px)] px-6 py-6 lg:px-2 xl:px-0'>
+					<div className='flex h-full items-center justify-center'>
+						<Spinner />
+					</div>
+				</div>
+			}>
+			<ProfileSetupAddress />
+		</Suspense>
+	);
 }

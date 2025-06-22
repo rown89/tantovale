@@ -1,7 +1,7 @@
 import { eq, and, or, isNull, not, desc, max } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { differenceInMinutes } from 'date-fns';
 
 import { createClient } from '../../database';

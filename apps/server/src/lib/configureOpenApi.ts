@@ -1,7 +1,6 @@
 import { Scalar } from '@scalar/hono-api-reference';
 import { openAPISpecs } from 'hono-openapi';
-import { resolver } from 'hono-openapi/zod';
-import { z } from 'zod';
+
 import type { AppAPI } from './types';
 
 export function configureOpenAPI(app: AppAPI) {
@@ -31,16 +30,6 @@ export function configureOpenAPI(app: AppAPI) {
 					responses: {
 						400: {
 							description: 'Zod Error',
-							content: {
-								'application/json': {
-									schema: resolver(
-										z.object({
-											status: z.literal(400),
-											message: z.string(),
-										}),
-									),
-								},
-							},
 						},
 					},
 				},

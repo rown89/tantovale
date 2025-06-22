@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { eq, and } from 'drizzle-orm';
 
 import { createClient } from '#database/index';

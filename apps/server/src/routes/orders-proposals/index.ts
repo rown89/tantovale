@@ -1,10 +1,10 @@
 import { eq, and } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '#database/index';
-import { createRouter } from '#lib/create-app';
 import { orders_proposals, users, items, chat_rooms, chat_messages, orders, orders_items, profiles } from '#db-schema';
+import { createRouter } from '#lib/create-app';
 import { authPath } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
@@ -15,8 +15,11 @@ import { create_order_proposal_schema, update_order_proposal_schema } from 'src/
 
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
-		const { item_id, proposal_price, message } = c.req.valid('json');
 		const user = c.var.user;
+
+		const { item_id, proposal_price, message } = await c.req.valid('json');
+
+		if (!item_id || !proposal_price || !message) return c.json({ error: 'Missing required fields' }, 400);
 
 		const { db } = createClient();
 
@@ -180,6 +183,7 @@ export const ordersProposalsRoute = createRouter()
 		authMiddleware,
 		async (c) => {
 			const user = c.var.user;
+
 			const item_id = Number(c.req.param('item_id'));
 			const { status } = c.req.valid('query');
 
@@ -211,6 +215,8 @@ export const ordersProposalsRoute = createRouter()
 		const user = c.var.user;
 
 		const { id, status, item_id } = await c.req.valid('json');
+
+		if (!id || !status || !item_id) return c.json({ error: 'Missing required fields' }, 400);
 
 		const { db } = createClient();
 

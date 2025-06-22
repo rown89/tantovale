@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 import {
 	items,

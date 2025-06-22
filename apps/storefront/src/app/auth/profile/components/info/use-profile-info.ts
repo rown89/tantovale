@@ -1,58 +1,63 @@
-import { useState } from "react";
-import { useForm } from "@tanstack/react-form";
-import { z } from "zod";
-import { toast } from "sonner";
-import { UserProfileSchema } from "@workspace/server/extended_schemas";
-import { client } from "@workspace/server/client-rpc";
+import { useState } from 'react';
+import { useForm } from '@tanstack/react-form';
+import { z } from 'zod/v4';
+import { toast } from 'sonner';
+
+import { UserProfileSchema } from '@workspace/server/extended_schemas';
+import { client } from '@workspace/server/client-rpc';
 
 const schema = UserProfileSchema.pick({
-  name: true,
-  surname: true,
-  gender: true,
+	name: true,
+	surname: true,
+	gender: true,
 });
 
 type schemaType = z.infer<typeof schema>;
 
-export function useProfileInfoForm(profiles?: Partial<schemaType>) {
-  const [isSubmittingProfileForm, setIsSubmittingProfileForm] = useState(false);
+export function useProfileInfoForm(profiles: schemaType) {
+	const { name, surname, gender } = profiles;
 
-  // Initialize form
-  const profileForm = useForm({
-    defaultValues: {
-      name: profiles?.name ?? "",
-      surname: profiles?.surname ?? "",
-      gender: profiles?.gender ?? "male",
-    },
-    validators: {
-      onSubmit: schema,
-    },
-    onSubmit: async ({ value }: { value: schemaType }) => {
-      setIsSubmittingProfileForm(true);
+	const defaultValues = {
+		name,
+		surname,
+		gender,
+	};
 
-      try {
-        const response = await client.profile.auth.$put({ json: value });
+	const [isSubmittingProfileForm, setIsSubmittingProfileForm] = useState(false);
 
-        if (!response.ok) {
-          throw new Error("update profile error");
-        }
+	// Initialize form
+	const profileForm = useForm({
+		defaultValues,
+		validators: {
+			onSubmit: schema,
+		},
+		onSubmit: async ({ value }: { value: schemaType }) => {
+			setIsSubmittingProfileForm(true);
 
-        return toast(`Success!`, {
-          description: "Profile edited correctly!",
-          duration: 4000,
-        });
-      } catch (error) {
-        toast(`Error :(`, {
-          description: `We are encountering technical problems, please retry later. \n ${error}`,
-          duration: 4000,
-        });
-      } finally {
-        setIsSubmittingProfileForm(false);
-      }
-    },
-  });
+			try {
+				const response = await client.profile.auth.$put({ json: value });
 
-  return {
-    profileForm,
-    isSubmittingProfileForm,
-  };
+				if (!response.ok) {
+					throw new Error('update profile error');
+				}
+
+				return toast(`Success!`, {
+					description: 'Profile edited correctly!',
+					duration: 4000,
+				});
+			} catch (error) {
+				toast(`Error :(`, {
+					description: `We are encountering technical problems, please retry later. \n ${error}`,
+					duration: 4000,
+				});
+			} finally {
+				setIsSubmittingProfileForm(false);
+			}
+		},
+	});
+
+	return {
+		profileForm,
+		isSubmittingProfileForm,
+	};
 }

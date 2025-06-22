@@ -1,6 +1,6 @@
 import { addresses } from '@workspace/server/database';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 export const addAddressSchema = createInsertSchema(addresses, {
 	label: (schema) => schema.min(1, 'Label is required').max(50, 'Label must be less than 50 characters'),
@@ -17,7 +17,10 @@ export const addAddressSchema = createInsertSchema(addresses, {
 	postal_code: (schema) =>
 		schema.min(1, 'Postal code is required').refine((val) => val !== 0, { message: 'Postal code is required' }),
 	country_code: (schema) => schema.min(1, 'Country code is required'),
-	status: z.enum(['active', 'inactive']),
+	status: (schema) =>
+		schema.refine((val) => val === 'active' || val === 'inactive', {
+			message: 'Status must be either active or inactive',
+		}),
 })
 	.omit({
 		profile_id: true,

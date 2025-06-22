@@ -19,7 +19,7 @@
 		"@workspace/eslint-config": "workspace:*",
 		"@workspace/typescript-config": "workspace:*",
 		"@workspace/server": "workspace:*",
-		"zod": "*",
+		"zod": "^3.25.67",
 		"@tanstack/react-query": "*"
 	},
 	"devDependencies": {
