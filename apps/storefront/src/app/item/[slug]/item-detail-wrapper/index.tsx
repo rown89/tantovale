@@ -29,17 +29,6 @@ export default function ItemWDetailWrapper({
 }: ItemWrapperProps) {
 	const { proposal_created_at, setItem, setItemOwnerData, setOrderProposal, resetAllItemDetail } = useTantovaleStore();
 
-	useEffect(() => {
-		setItem(item);
-		setItemOwnerData(itemOwnerData);
-
-		if (orderProposal) setOrderProposal(orderProposal);
-
-		return () => {
-			resetAllItemDetail();
-		};
-	}, [item, itemOwnerData, chatId, orderProposal]);
-
 	const { user } = useAuth();
 	const isMobile = useIsMobile();
 	const router = useRouter();
@@ -75,6 +64,17 @@ export default function ItemWDetailWrapper({
 			}
 		};
 	}, []);
+
+	useEffect(() => {
+		setItem(item);
+		setItemOwnerData(itemOwnerData);
+
+		if (orderProposal) setOrderProposal(orderProposal);
+
+		return () => {
+			resetAllItemDetail();
+		};
+	}, [item, itemOwnerData, chatId, orderProposal]);
 
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {

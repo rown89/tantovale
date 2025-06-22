@@ -22,19 +22,17 @@ import { getShippingCost } from '#queries/getShippingCost';
 export function ProposalDialog() {
 	const { setChatId, item, isProposalModalOpen, setIsProposalModalOpen, handleProposal } = useTantovaleStore();
 
-	if (!item) return null;
-
 	const formSchema = create_order_proposal_schema.extend({
 		proposal_price: z
 			.number()
 			.min(0.01)
-			.max(formatPrice(item.price - 1)),
+			.max(formatPrice(item?.price ?? 0 - 1)),
 	});
 
 	const form = useForm({
 		defaultValues: {
 			item_id: item?.id ?? 0,
-			proposal_price: formatPrice(item.price - 1),
+			proposal_price: formatPrice(item?.price ?? 0 - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
 		},
 		validators: {
