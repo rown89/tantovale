@@ -74,7 +74,7 @@ export default function ItemWDetailWrapper({
 		return () => {
 			resetAllItemDetail();
 		};
-	}, [item, itemOwnerData, chatId, orderProposal]);
+	}, [item, itemOwnerData, orderProposal]);
 
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {
