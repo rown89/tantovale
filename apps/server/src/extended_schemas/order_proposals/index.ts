@@ -7,7 +7,7 @@ export const create_order_proposal_schema = z.object({
 	message: z.string(),
 });
 
-export const update_order_proposal_schema = ordersProposalsSelectSchema.pick({
+export const seller_update_order_proposal_schema = ordersProposalsSelectSchema.pick({
 	id: true,
 	status: true,
 	item_id: true,

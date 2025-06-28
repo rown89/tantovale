@@ -3,6 +3,7 @@ import { pgTable, integer, timestamp, text, foreignKey } from 'drizzle-orm/pg-co
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { items } from './items';
+import { orders } from './orders';
 
 export const shippings = pgTable(
 	'shippings',
@@ -12,7 +13,11 @@ export const shippings = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		manual_shipping_price: integer('manual_shipping_price'),
+		order_id: integer('order_id').references(() => orders.id, {
+			onDelete: 'cascade',
+			onUpdate: 'cascade',
+		}),
+		shipping_price: integer('shipping_price'),
 		item_weight: integer('item_weight'),
 		item_length: integer('item_length'),
 		item_width: integer('item_width'),

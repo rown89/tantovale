@@ -75,6 +75,10 @@
 		"./enumerated_values": {
 			"development": "./src/database/schemas/enumerated_values.ts",
 			"default": "./dist/src/database/schemas/enumerated_values.js"
+		},
+		"./price-formatter": {
+			"development": "./src/utils/price-formatter.ts",
+			"default": "./dist/src/utils/price-formatter.js"
 		}
 	},
 	"dependencies": {

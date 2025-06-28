@@ -1,12 +1,12 @@
-import { parseEnv } from '../env';
+import { environment } from '#utils/constants';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export const s3Client = new S3Client({
-	region: parseEnv(process.env).AWS_REGION,
+	region: environment.AWS_REGION,
 	credentials: {
-		accessKeyId: parseEnv(process.env).AWS_ACCESS_KEY!,
-		secretAccessKey: parseEnv(process.env).AWS_SECRET_ACCESS_KEY!,
+		accessKeyId: environment.AWS_ACCESS_KEY!,
+		secretAccessKey: environment.AWS_SECRET_ACCESS_KEY!,
 	},
 });
 

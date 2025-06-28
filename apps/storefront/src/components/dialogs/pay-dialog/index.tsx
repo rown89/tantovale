@@ -21,6 +21,8 @@ export function PaymentDialog({
 	order: any;
 	onPaymentComplete: () => void;
 }) {
+	if (!order) return null;
+
 	return (
 		<Dialog open={isOpen} onOpenChange={setIsOpen}>
 			<DialogContent className='sm:max-w-[425px]'>

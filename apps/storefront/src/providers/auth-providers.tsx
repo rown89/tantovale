@@ -7,10 +7,12 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 
 export interface User {
 	id: number;
+	profile_id: number;
 	username: string;
 	email: string;
 	email_verified: boolean;
 	phone_verified: boolean;
+	exp: number;
 }
 
 interface AuthContextType {
@@ -50,6 +52,7 @@ export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; childr
 			// If verification is ok set the user
 			if (res.ok) {
 				const data = await res.json();
+
 				setUser(data.user);
 			} else {
 				// If verification still fails, log out.

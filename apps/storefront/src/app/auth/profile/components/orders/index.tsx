@@ -9,17 +9,18 @@ import { toast } from 'sonner';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@workspace/ui/components/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@workspace/ui/components/select';
-
 import { TableHeader, Table, TableRow, TableHead, TableBody, TableCell } from '@workspace/ui/components/table';
 import { Button } from '@workspace/ui/components/button';
-import { PaymentDialog } from '#components/dialogs/pay-dialog';
 import { client } from '@workspace/server/client-rpc';
-import { formatPrice } from '@workspace/ui/lib/utils';
+import { formatPrice } from '@workspace/server/price-formatter';
 import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
-import { getStatusBadge } from './order-status-badges';
-import { ShippingDialog } from '#components/dialogs/shipping-dialog';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { Label } from '@workspace/ui/components/label';
+
+import { getStatusBadge } from './order-status-badges';
+import { ShippingDialog } from '#components/dialogs/shipping-dialog';
+import { PaymentDialog } from '#components/dialogs/pay-dialog';
+import { useAuth } from '#providers/auth-providers';
 
 type OrderStatus =
 	| 'payment_pending'
@@ -40,6 +41,8 @@ export default function UserSellingItemsComponent() {
 	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
 
+	const { user } = useAuth();
+
 	const { data: orders = [], isLoading: isOrdersLoading } = useQuery({
 		queryKey: ['orders', statusFilter],
 		queryFn: async () => {
@@ -55,7 +58,8 @@ export default function UserSellingItemsComponent() {
 			}
 
 			const userOrderList = await userOrderListResponse.json();
-			return userOrderList;
+
+			return userOrderList ?? [];
 		},
 	});
 
@@ -71,7 +75,7 @@ export default function UserSellingItemsComponent() {
 		setIsShippingDialogOpen(true);
 	};
 
-	// Update the completePayment function to use order_status
+	// Update the completePayment function to use order status
 	const completePayment = () => {
 		if (selectedOrder) {
 			// Update the order status in the orders array
@@ -139,7 +143,7 @@ export default function UserSellingItemsComponent() {
 											<TableRow>
 												<TableHead>ID</TableHead>
 												<TableHead>Item</TableHead>
-												<TableHead>Date</TableHead>
+												<TableHead>Order Date</TableHead>
 												<TableHead>Seller</TableHead>
 												<TableHead className='hidden md:table-cell'>Original Price</TableHead>
 												<TableHead>Proposal Price</TableHead>
@@ -148,8 +152,8 @@ export default function UserSellingItemsComponent() {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{orders.length > 0 ? (
-												orders.map((order) => (
+											{orders && orders.length ? (
+												orders?.map((order) => (
 													<TableRow key={order.id}>
 														<TableCell className='font-medium'>{order.id}</TableCell>
 														<TableCell className='max-w-[280px] truncate font-bold'>
@@ -172,17 +176,17 @@ export default function UserSellingItemsComponent() {
 														<TableCell className='hidden md:table-cell'>
 															€ {formatPrice(order.original_price)}
 														</TableCell>
-														<TableCell>€ {formatPrice(order.finished_price)}</TableCell>
-														<TableCell>{getStatusBadge(order.order_status)}</TableCell>
+														<TableCell>{order.total_price ? `€ ${formatPrice(order.total_price)}` : '-'}</TableCell>
+														<TableCell>{getStatusBadge(order.status)}</TableCell>
 														<TableCell className='text-right'>
 															<div className='flex justify-end gap-2'>
-																{order.order_status === 'payment_pending' && (
+																{order.status === 'payment_pending' && (
 																	<Button size='sm' className='font-bold' onClick={() => handlePayment(order)}>
 																		<CreditCard className='h-4 w-4' />
 																		Pay
 																	</Button>
 																)}
-																{order.order_status === 'shipping_confirmed' && (
+																{order.status === 'shipping_confirmed' && (
 																	<Button
 																		variant='secondary'
 																		size='sm'
@@ -211,19 +215,23 @@ export default function UserSellingItemsComponent() {
 					</CardContent>
 				</Card>
 
-				<PaymentDialog
-					isOpen={isPaymentDialogOpen}
-					setIsOpen={setIsPaymentDialogOpen}
-					order={selectedOrder}
-					onPaymentComplete={completePayment}
-				/>
+				{orders && orders.length && (
+					<>
+						<PaymentDialog
+							isOpen={isPaymentDialogOpen}
+							setIsOpen={setIsPaymentDialogOpen}
+							order={selectedOrder}
+							onPaymentComplete={completePayment}
+						/>
 
-				<ShippingDialog
-					isOpen={isShippingDialogOpen}
-					setIsOpen={setIsShippingDialogOpen}
-					order={selectedOrder}
-					onShippingComplete={completeShipping}
-				/>
+						<ShippingDialog
+							isOpen={isShippingDialogOpen}
+							setIsOpen={setIsShippingDialogOpen}
+							order={selectedOrder}
+							onShippingComplete={completeShipping}
+						/>
+					</>
+				)}
 			</div>
 		</div>
 	);

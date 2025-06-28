@@ -7,6 +7,7 @@ export interface AppBindings {
 	Variables: {
 		user: {
 			id: number;
+			profile_id: number;
 			email: string;
 			username: string;
 			email_verified: boolean;

@@ -7,6 +7,7 @@ import { hashPassword } from '../../lib/password';
 import {
 	DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES,
 	DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS,
+	environment,
 	getNodeEnvMode,
 } from '../../utils/constants';
 import { createClient } from '../../database';
@@ -16,7 +17,6 @@ import { deleteCookie, setCookie } from 'hono/cookie';
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 
 import { createRouter } from '../../lib/create-app';
-import { parseEnv } from '../../env';
 import { UserProfileSchema } from '../../extended_schemas/users';
 import { zValidator } from '@hono/zod-validator';
 
@@ -40,7 +40,7 @@ export const signupRoute = createRouter().post(
 		const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
 
 		try {
-			const values = await c.req.valid('json');
+			const values = c.req.valid('json');
 			const { password, username, email, ...rest } = values;
 
 			const userAlreadyExist = await checkUser(c, username, 'username');
@@ -95,7 +95,7 @@ export const signupRoute = createRouter().post(
 				}),
 			});
 
-			const verificationLink = `${parseEnv(process.env).STOREFRONT_HOSTNAME}/api/verify/email?token=${email_activation_token}`;
+			const verificationLink = `${environment.STOREFRONT_HOSTNAME}/api/verify/email?token=${email_activation_token}`;
 
 			if (isProductionMode || isStagingMode) {
 				await sendVerifyEmail(email, verificationLink);

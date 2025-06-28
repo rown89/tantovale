@@ -1,5 +1,5 @@
-import { pgTable, integer, timestamp, foreignKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { pgTable, integer, timestamp, foreignKey } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { items } from './items';
@@ -18,7 +18,11 @@ export const orders_proposals = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
+		original_price: integer('original_price').notNull(),
 		proposal_price: integer('proposal_price').notNull(),
+		payment_provider_charge: integer('payment_provider_charge').notNull(),
+		platform_charge: integer('platform_charge').notNull(),
+		shipping_price: integer('shipping_price').notNull(),
 		status: ordersProposalStatusEnum('status').notNull().default('pending'),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

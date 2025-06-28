@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { formatDistanceToNow, addDays } from 'date-fns';
-import { cn, formatPrice } from '@workspace/ui/lib/utils';
+
+import { cn } from '@workspace/ui/lib/utils';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@workspace/ui/components/card';
 import { Button } from '@workspace/ui/components/button';
 import { Spinner } from '@workspace/ui/components/spinner';
+import { formatPrice } from '@workspace/server/price-formatter';
 
 import { ChatMessageProps } from './types';
 import { useChatMessageHook } from './use-chat-message';

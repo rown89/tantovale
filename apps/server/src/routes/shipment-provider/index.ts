@@ -16,7 +16,7 @@ import { createRouter } from '#lib/create-app';
 import { shippoClient } from '#lib/shippo-client';
 import { createClient } from '#create-client';
 import { activeCarriersDescription, createLabelDescription } from './describe';
-import { authPath } from '#utils/constants';
+import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { ShipmentService } from './shipment.service';
 
@@ -28,9 +28,8 @@ const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
 	SELLER_ADDRESS_NOT_FOUND: 'Seller address not found',
 	BUYER_PROFILE_NOT_FOUND: 'Buyer profile not found',
-	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
-	SHIPPING_CALCULATION_FAILED: 'Failed to calculate shipping cost',
 	UNAUTHORIZED_ACCESS: 'You do not have permission to access this item',
+	...SHIPPING_ERROR_MESSAGES,
 } as const;
 
 export const shipmentProviderRoute = createRouter()
@@ -69,23 +68,19 @@ export const shipmentProviderRoute = createRouter()
 					return c.json({ message: 'User not authenticated' }, 401);
 				}
 
+				// get profile_id from user
+				const profile_id = user.profile_id;
+
 				const shipmentService = new ShipmentService();
 
-				// Get all required data using the service
-				const { itemData, buyerProfile } = await shipmentService.getShipmentCalculationData(item_id, user.id);
+				// Calculate shipping cost and get rates using the centralized function
+				const { cost: shippingCost, rates } = await shipmentService.calculateShippingCostWithRates(
+					item_id,
+					profile_id,
+					user.email,
+				);
 
-				// Create shipment options
-				const shipmentOptions = shipmentService.createShipmentOptions(itemData, buyerProfile, user.email);
-
-				// Call Shippo API
-				const rates = await shipmentsCreate(shippoClient, shipmentOptions);
-
-				if (!rates.ok) {
-					console.error('Shippo API error:', rates.error);
-					return c.json({ message: ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED }, 500);
-				}
-
-				return c.json({ rates: rates.value?.rates ?? [] }, 200);
+				return c.json({ rates }, 200);
 			} catch (error) {
 				console.error('Error calculating shipment cost:', error);
 

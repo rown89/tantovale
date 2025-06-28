@@ -10,6 +10,7 @@ import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS } from
 import { DrizzleClient } from '../../database/index';
 import { refreshTokens } from '../../database/schemas/refreshTokens';
 import { users } from '../../database/schemas/users';
+import { profiles } from '../../database/schemas/profiles';
 
 // Helper function to clean up and invalidate tokens
 export async function invalidateTokens(c: Context<AppBindings>, db: DrizzleClient['db']) {
@@ -58,9 +59,19 @@ export async function createNewAccessToken(
 	ACCESS_TOKEN_SECRET: string,
 	isProductionMode: boolean,
 ) {
-	const existingUser = await db.query.users.findFirst({
-		where: eq(users.username, username),
-	});
+	const [existingUser] = await db
+		.select({
+			id: users.id,
+			email: users.email,
+			username: users.username,
+			email_verified: users.email_verified,
+			phone_verified: users.phone_verified,
+			profile_id: profiles.id,
+		})
+		.from(users)
+		.innerJoin(profiles, eq(users.id, profiles.user_id))
+		.where(eq(users.username, username))
+		.limit(1);
 
 	if (!existingUser) {
 		throw new Error('User not found');
@@ -68,6 +79,7 @@ export async function createNewAccessToken(
 
 	const access_token_payload = tokenPayload({
 		id: existingUser.id,
+		profile_id: existingUser.profile_id,
 		email: existingUser.email,
 		username: existingUser.username,
 		email_verified: existingUser.email_verified,
@@ -88,6 +100,7 @@ export async function createNewAccessToken(
 	return {
 		user: {
 			id: existingUser.id,
+			profile_id: existingUser.profile_id,
 			email: existingUser.email,
 			username: existingUser.username,
 			email_verified: existingUser.email_verified,

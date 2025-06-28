@@ -6,10 +6,9 @@ import sharp from 'sharp';
 
 import { createRouter } from '../../lib/create-app';
 import { s3Client } from '../../lib/s3client';
-import { parseEnv } from '../../env';
 import { createClient } from '../../database';
 import { items_images, type InsertItemImage } from '../../database/schemas/schema';
-import { authPath } from '../../utils/constants';
+import { authPath, environment } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, authMiddleware, async (c) => {
@@ -48,7 +47,7 @@ export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, auth
 	try {
 		// Define S3 paths
 		const s3BasePath = `images/items/${item_id}`;
-		const s3BucketName = parseEnv(process.env).AWS_BUCKET_NAME;
+		const s3BucketName = environment.AWS_BUCKET_NAME;
 
 		// Upload images in parallel
 		const uploadPromises = refinedImages

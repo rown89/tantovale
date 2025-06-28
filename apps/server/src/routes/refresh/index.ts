@@ -48,6 +48,7 @@ export const refreshRoute = createRouter().post(
 			// Verify the refresh token
 			const payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
 			const id = Number(payload.id);
+			const profile_id = Number(payload.profile_id);
 			const username = payload.username as string;
 			const email = payload.email as string;
 			const email_verified = payload.email_verified as boolean;
@@ -55,6 +56,7 @@ export const refreshRoute = createRouter().post(
 
 			const user = {
 				id,
+				profile_id,
 				username,
 				email,
 				email_verified,

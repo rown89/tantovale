@@ -129,7 +129,7 @@ export function useHandleItemForm({ subcategory, subCatProperties, defaultValues
 	}
 
 	function handleShippingReset() {
-		form.setFieldValue('shipping.manual_shipping_price', 0);
+		form.setFieldValue('shipping.shipping_price', 0);
 		form.setFieldValue('shipping.item_weight', 0);
 		form.setFieldValue('shipping.item_length', 0);
 		form.setFieldValue('shipping.item_width', 0);
@@ -157,7 +157,7 @@ export function useHandleItemForm({ subcategory, subCatProperties, defaultValues
 		if (checked) {
 			// When enabling Easy Pay, reset shipping price and disable manual shipping
 
-			form.setFieldValue('shipping.manual_shipping_price', 0);
+			form.setFieldValue('shipping.shipping_price', 0);
 			setIsManualShipping(false);
 
 			// Disable pickup

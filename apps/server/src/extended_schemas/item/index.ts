@@ -18,7 +18,7 @@ export const shippingSchema = z.object({
 	item_length: number().optional(),
 	item_width: number().optional(),
 	item_height: number().optional(),
-	manual_shipping_price: z.number().optional(),
+	shipping_price: z.number().optional(),
 });
 
 export const propertySchema = z.array(

@@ -1,5 +1,6 @@
 import { AuthTokens } from '#shared/auth-tokens';
 import { OrderProposalStatus } from '@workspace/server/enumerated_values';
+import { itemDetailResponseType } from '@workspace/server/extended_schemas';
 
 export interface ItemDetailPageParams {
 	id: string;
@@ -7,32 +8,7 @@ export interface ItemDetailPageParams {
 }
 
 // Core data interfaces
-interface Item {
-	id: number;
-	user: {
-		id: number;
-		username: string;
-	};
-	title: string;
-	description: string;
-	price: number;
-	location: {
-		city: {
-			id: number;
-			name: string;
-		};
-		province: {
-			id: number;
-			name: string;
-		};
-	};
-	easy_pay: boolean;
-	images: string[];
-	subcategory: {
-		name: string;
-		slug: string;
-	};
-}
+interface Item extends itemDetailResponseType {}
 
 interface ItemOwnerData {
 	id: number;

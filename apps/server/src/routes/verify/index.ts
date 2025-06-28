@@ -14,7 +14,7 @@ import {
 	getNodeEnvMode,
 } from '../../utils/constants';
 import { createClient } from '../../database';
-import { refreshTokens, users } from '../../database/schemas/schema';
+import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
@@ -100,10 +100,12 @@ export const verifyRoute = createRouter()
 							message: 'Token verified successfully',
 							user: {
 								id: payload.id as number,
+								profile_id: payload.profile_id as number,
 								username: payload.username as string,
 								email: payload.email as string,
 								email_verified: payload.email_verified as boolean,
 								phone_verified: payload.phone_verified as boolean,
+								exp: payload.exp as number,
 							},
 						},
 						200,
@@ -145,16 +147,27 @@ export const verifyRoute = createRouter()
 			const { id, type } = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
 
 			const { db } = createClient();
+
 			// Get existing user by id
-			const user = await db.query.users.findFirst({
-				where: (tbl) => eq(tbl.id, Number(id)),
-			});
+			const [user] = await db
+				.select({
+					id: users.id,
+					profile_id: profiles.id,
+					username: users.username,
+					email: users.email,
+					email_verified: users.email_verified,
+					phone_verified: users.phone_verified,
+				})
+				.from(users)
+				.innerJoin(profiles, eq(users.id, profiles.user_id))
+				.where(eq(users.id, Number(id)))
+				.limit(1);
 
 			if (!user) {
 				return c.json({ error: 'User not found' }, 404);
 			}
 
-			const { id: userId, username, email_verified, phone_verified, email } = user;
+			const { id: userId, profile_id, username, email_verified, phone_verified, email } = user;
 
 			if (user.email_verified) {
 				return c.json({ message: 'User already verified' });
@@ -173,6 +186,7 @@ export const verifyRoute = createRouter()
 
 			const access_token_payload = tokenPayload({
 				id: userId,
+				profile_id: user.profile_id,
 				username,
 				email,
 				email_verified,
@@ -182,6 +196,7 @@ export const verifyRoute = createRouter()
 
 			const refresh_token_payload = tokenPayload({
 				id: userId,
+				profile_id: user.profile_id,
 				username,
 				email,
 				email_verified,

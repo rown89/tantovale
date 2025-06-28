@@ -9,6 +9,7 @@ import { createClient } from '../../database';
 import { createNewAccessToken, invalidateTokens, validateRefreshToken } from './utils';
 import { getNodeEnvMode } from '../../utils/constants';
 import type { AppBindings } from '../../lib/types';
+import { profiles } from '#database/schemas/profiles';
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 	const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
@@ -67,9 +68,20 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 		} else {
 			// Validate user for non-expired access token
 			const user_id = Number(payload?.id);
-			const existingUser = await db.query.users.findFirst({
-				where: eq(users.id, user_id),
-			});
+
+			const [existingUser] = await db
+				.select({
+					id: users.id,
+					email: users.email,
+					username: users.username,
+					email_verified: users.email_verified,
+					phone_verified: users.phone_verified,
+					profile_id: profiles.id,
+				})
+				.from(users)
+				.innerJoin(profiles, eq(users.id, profiles.user_id))
+				.where(eq(users.id, user_id))
+				.limit(1);
 
 			if (!existingUser) {
 				await invalidateTokens(c, db);
@@ -79,6 +91,7 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 			// Set user in context
 			c.set('user', {
 				id: existingUser.id,
+				profile_id: existingUser.profile_id,
 				email: existingUser.email,
 				username: existingUser.username,
 				email_verified: existingUser.email_verified,
@@ -89,7 +102,9 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 		await next();
 	} catch (error) {
 		console.error('Auth Middleware Error:\n', error, '\n');
+
 		await invalidateTokens(c, db);
+
 		return c.json({ message: 'Authentication failed' }, 401);
 	}
 }

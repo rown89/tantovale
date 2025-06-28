@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { items, users, property_values, orders_items, orders, items_properties_values, profiles } from '#db-schema';
+import { items, users, property_values, orders, items_properties_values, profiles } from '#db-schema';
 import { authPath } from '#utils/constants';
 
 // TODO: NEED TO BE FINISHED
@@ -22,8 +22,7 @@ export const ordersRoute = createRouter()
 			userOrders = await db
 				.select()
 				.from(orders)
-				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
-				.innerJoin(items, eq(orders_items.item_id, items.id))
+				.innerJoin(items, eq(orders.item_id, items.id))
 				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
 				.innerJoin(users, eq(profiles.user_id, users.id))
 				.where(eq(orders.buyer_id, user.id));
@@ -31,11 +30,10 @@ export const ordersRoute = createRouter()
 			const response = await db
 				.select()
 				.from(orders)
-				.innerJoin(orders_items, eq(orders.id, orders_items.order_id))
-				.innerJoin(items, eq(orders_items.item_id, items.id))
+				.innerJoin(items, eq(orders.item_id, items.id))
 				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
 				.innerJoin(users, eq(profiles.user_id, users.id))
-				.where(and(eq(orders.buyer_id, user.id), eq(orders_items.order_status, status)));
+				.where(and(eq(orders.buyer_id, user.id), eq(orders.status, status)));
 
 			if (!response.length) return c.json([], 200);
 
@@ -46,13 +44,17 @@ export const ordersRoute = createRouter()
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
-			const { order_status, finished_price, created_at } = order.orders_items;
+			const { status, total_price, shipping_price, payment_provider_charge, platform_charge, created_at } =
+				order.orders;
 
 			return {
 				id,
-				order_status,
+				status,
 				original_price: order.items.price,
-				finished_price,
+				total_price,
+				shipping_price,
+				payment_provider_charge,
+				platform_charge,
 				created_at,
 				item: {
 					id: order.items.id,
@@ -86,13 +88,16 @@ export const ordersRoute = createRouter()
 
 		const { id, delivery_method } = c.req.param();
 
-		const [orderItem] = await db
-			.select()
-			.from(orders_items)
-			.where(eq(orders_items.id, Number(id)));
+		const [order] = await db
+			.select({
+				id: orders.id,
+				item_id: orders.item_id,
+			})
+			.from(orders)
+			.where(eq(orders.id, Number(id)));
 
-		if (!orderItem) return c.json({ error: 'Order item not found' }, 404);
-		if (!orderItem.item_id) return c.json({ error: 'Order item has no item' }, 404);
+		if (!order) return c.json({ error: 'Order item not found' }, 404);
+		if (!order.item_id) return c.json({ error: 'Order item has no item' }, 404);
 
 		if (delivery_method === 'shipping') {
 			// get the "shipping" property value id
@@ -114,7 +119,7 @@ export const ordersRoute = createRouter()
 				.from(items_properties_values)
 				.where(
 					and(
-						eq(items_properties_values.item_id, orderItem.item_id),
+						eq(items_properties_values.item_id, orders.item_id),
 						eq(items_properties_values.property_value_id, itemPropertyValue.id),
 					),
 				)

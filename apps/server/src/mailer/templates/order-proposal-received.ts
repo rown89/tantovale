@@ -16,6 +16,8 @@ export async function sendNewProposalMessage({
 }) {
 	const transporter = createMailer(process);
 
+	const days = parseEnv(process.env).PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS / 24;
+
 	await transporter.sendMail({
 		from: `"Tantovale" <${parseEnv(process.env).SMTP_USER}>`,
 		to,
@@ -25,6 +27,7 @@ export async function sendNewProposalMessage({
         <p>Proposal from ${buyer_username} for the object ${itemName}:</p>
         <p>${message}</p>
         <br>
+				<p>You have ${days} days to accept or reject the proposal in the chat:</p>
         <a href="${parseEnv(process.env).STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
       </div>
     `,

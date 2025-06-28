@@ -5,19 +5,21 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 import { Badge } from '@workspace/ui/components/badge';
 import { ItemDetailCard } from '@workspace/ui/components/item-detail-card/index';
 import { useIsMobile } from '@workspace/ui/hooks/use-mobile';
 
 import { UserInfoBox } from './components/user-info-box';
-import { PaymentButton } from './components/payment-button';
-import { PaymentDialog } from '../../../../components/dialogs/pay-dialog';
-import { ProposalDialog } from '../../../../components/dialogs/order-proposal-dialog';
 import { ProposalButton } from './components/proposal-button';
+import { PaymentButton } from './components/payment-button';
 import { ItemWrapperProps } from '../types';
+import { PaymentDialog } from '#components/dialogs/pay-dialog';
+import { ProposalDialog } from '#components/dialogs/order-proposal-dialog';
 import { useAuth } from '#providers/auth-providers';
 import useTantovaleStore from '#stores';
+import AddressProtectedRoute from '#utils/address-protected';
 
 export default function ItemWDetailWrapper({
 	item,
@@ -27,8 +29,16 @@ export default function ItemWDetailWrapper({
 	isFavorite,
 	isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
-	const { proposal_created_at, setItem, setItemOwnerData, setOrderProposal, resetAllItemDetail } = useTantovaleStore();
-
+	const {
+		proposal_created_at,
+		setItem,
+		setItemOwnerData,
+		setOrderProposal,
+		resetAllItemDetail,
+		setIsAddressLoading,
+		isAddressLoading,
+		setAddressId,
+	} = useTantovaleStore();
 	const { user } = useAuth();
 	const isMobile = useIsMobile();
 	const router = useRouter();
@@ -130,27 +140,58 @@ export default function ItemWDetailWrapper({
 
 				{isMobile && !isInfoBoxInView && item?.easy_pay && (
 					<div className='fixed bottom-0 left-0 flex w-full items-center justify-center gap-2 px-8 pb-4'>
-						{!orderProposal?.id && !proposal_created_at && (
+						{item.order.id && <p>Venduto</p>}
+
+						{!item.order.id && !orderProposal?.id && !proposal_created_at && (
 							<ProposalButton
-								handleProposal={() => {
+								isLoading={isAddressLoading}
+								handleProposal={async () => {
 									if (!user) {
 										router.push('/login');
 									} else {
-										setIsProposalModalOpen(true);
+										setIsAddressLoading(true);
+
+										const address_id = await AddressProtectedRoute();
+
+										if (address_id) {
+											setAddressId(address_id);
+											setIsProposalModalOpen(true);
+										} else {
+											toast.error('You must have an active address to sell');
+											router.push('/auth/profile-setup/address');
+										}
+
+										setIsAddressLoading(false);
 									}
 								}}
 							/>
 						)}
 
-						<PaymentButton
-							handlePayment={() => {
-								if (!user) {
-									router.push('/login');
-								} else {
-									// handlePayment.mutate(item.price);
-								}
-							}}
-						/>
+						{!item.order.id && (
+							<PaymentButton
+								isLoading={isAddressLoading}
+								handlePayment={async () => {
+									if (!user) {
+										router.push('/login');
+									} else {
+										setIsAddressLoading(true);
+
+										const address_id = await AddressProtectedRoute();
+
+										if (address_id) {
+											setAddressId(address_id);
+
+											// handlePayment.mutate(item.price);
+										} else {
+											toast.error('You must have an active address to sell');
+											router.push('/auth/profile-setup/address');
+										}
+
+										setIsAddressLoading(false);
+									}
+								}}
+							/>
+						)}
 						<div className='bg-accent fixed bottom-0 left-0 right-0 h-[40px] w-full opacity-50 blur-xl' />
 					</div>
 				)}

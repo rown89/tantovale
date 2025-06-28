@@ -334,7 +334,7 @@ export const chatRoute = createRouter()
 		const user = c.var.user;
 		const roomId = Number(c.req.param('roomId'));
 
-		const { message } = await c.req.valid('json');
+		const { message } = c.req.valid('json');
 
 		const { db } = createClient();
 

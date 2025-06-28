@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@workspace/ui/components/avatar';
 import { Button } from '@workspace/ui/components/button';
-import { formatPrice } from '@workspace/ui/lib/utils';
+import { formatPrice } from '@workspace/server/price-formatter';
 import { ChatProps } from '..';
 import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 

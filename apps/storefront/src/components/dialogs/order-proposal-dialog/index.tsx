@@ -6,20 +6,30 @@ import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@workspace/ui/components/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@workspace/ui/components/dialog';
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@workspace/ui/components/dialog';
 import { Input } from '@workspace/ui/components/input';
 import { Label } from '@workspace/ui/components/label';
 import { Textarea } from '@workspace/ui/components/textarea';
 import { Separator } from '@workspace/ui/components/separator';
-import { formatPrice, formatPriceToCents } from '@workspace/ui/lib/utils';
+import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { create_order_proposal_schema } from '@workspace/server/extended_schemas';
 import { Spinner } from '@workspace/ui/components/spinner';
 
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
-import { getShippingCost } from '#queries/getShippingCost';
+import { getShippingCost } from '#queries/get-shipping-cost';
+import { getPlatformsCosts } from '#queries/get-platforms-costs';
+import { useAuth } from '#providers/auth-providers';
 
 export function ProposalDialog() {
+	const { user } = useAuth();
 	const { setChatId, item, isProposalModalOpen, setIsProposalModalOpen, handleProposal } = useTantovaleStore();
 
 	const formSchema = create_order_proposal_schema.extend({
@@ -70,7 +80,32 @@ export function ProposalDialog() {
 		error: errorShippingCost,
 	} = useQuery({
 		queryKey: ['shipping_cost', item?.id],
-		queryFn: async () => await getShippingCost(Number(item?.id)),
+		queryFn: async () => {
+			if (user && user?.profile_id !== item?.user.id) {
+				const shipping_cost = await getShippingCost(Number(item?.id));
+				return shipping_cost;
+			}
+
+			return null;
+		},
+		enabled: !!item,
+	});
+
+	const {
+		data: platformsCosts,
+		isLoading: isLoadingPlatformsCosts,
+		error: errorPlatformsCosts,
+	} = useQuery({
+		queryKey: ['platforms_costs', item?.id],
+		queryFn: async () => {
+			if (user && user?.profile_id !== item?.user.id && item?.id && item?.price) {
+				const platformsCosts = await getPlatformsCosts(item.id.toString(), item.price.toString());
+
+				return platformsCosts;
+			}
+
+			return null;
+		},
 		enabled: !!item,
 	});
 
@@ -86,6 +121,7 @@ export function ProposalDialog() {
 			<DialogContent className='sm:max-w-[425px]'>
 				<DialogHeader>
 					<DialogTitle>Make a Price Proposal</DialogTitle>
+					<DialogDescription />
 					<Separator className='mt-4' />
 				</DialogHeader>
 				<form

@@ -18,12 +18,15 @@ import {
 	items_images,
 	property_values,
 	profiles,
+	orders,
 } from '../../database/schemas/schema';
 import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { createItemSchema } from '../../extended_schemas';
 import { authMiddleware } from '../../middlewares/authMiddleware';
+import { itemDetailResponseType } from 'src/extended_schemas/item/item-detail';
+import { PaymentProviderService } from '../payments/payment-provider.service';
 
 export const itemRoute = createRouter()
 	.get('/:id', async (c) => {
@@ -58,6 +61,7 @@ export const itemRoute = createRouter()
 						property_value: property_values.value,
 						property_boolean_value: property_values.boolean_value,
 						property_numeric_value: property_values.numeric_value,
+						order_id: orders.id,
 					},
 				})
 				.from(items)
@@ -69,6 +73,7 @@ export const itemRoute = createRouter()
 				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.innerJoin(profiles, eq(profiles.id, items.profile_id))
 				.innerJoin(users, eq(users.id, profiles.user_id))
+				.leftJoin(orders, eq(orders.item_id, items.id))
 				.where(and(eq(items.id, id), eq(items.published, true)));
 
 			const itemImages = await db
@@ -78,7 +83,7 @@ export const itemRoute = createRouter()
 
 			if (!item) throw new Error('No item found');
 
-			const mergedItem = {
+			const mergedItem: itemDetailResponseType = {
 				id: item.item.id,
 				user: {
 					id: item.item.profile_id,
@@ -87,6 +92,9 @@ export const itemRoute = createRouter()
 				title: item.item.title,
 				price: item.item.price,
 				description: item.item.description,
+				order: {
+					id: item.item.order_id,
+				},
 				location: {
 					city: {
 						id: item.item.city_id,
@@ -113,36 +121,25 @@ export const itemRoute = createRouter()
 	})
 	.post(`/${authPath}/new`, authMiddleware, zValidator('json', createItemSchema), async (c) => {
 		try {
-			const { ACCESS_TOKEN_SECRET } = env<{
-				ACCESS_TOKEN_SECRET: string;
-			}>(c);
+			const user = c.var.user;
 
 			const { commons, properties, shipping } = c.req.valid('json');
 
-			// Auth TOKEN
-			const accessToken = getCookie(c, 'access_token');
-
-			let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-
-			const user_id = Number(payload.id);
-
-			if (!user_id) return c.json({ message: 'Invalid user identifier' }, 400);
-
 			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
 
-			// if property value delivery_method is "shipping" and manual_shipping_price is not provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.manual_shipping_price) {
+			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.shipping_price) {
 				return c.json({ message: 'Shipping price is required' }, 400);
 			}
 
-			// if property value delivery_method is "pickup" and manual_shipping_price is provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.manual_shipping_price) {
+			// if property value delivery_method is "pickup" and shipping_price is provided, return error
+			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.shipping_price) {
 				return c.json({ message: 'Shipping price is not allowed' }, 400);
 			}
 
 			const { db } = createClient();
 
-			// Validate subcategory exists
+			// Check if the subcategory exists
 			const availableSubcategory = await db
 				.select()
 				.from(subcategories)
@@ -159,24 +156,60 @@ export const itemRoute = createRouter()
 				);
 			}
 
-			// TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INVALID CONTENT
+			/* TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INAPPROPRIATE CONTENT */
 
 			return await db.transaction(async (tx) => {
 				// get the profile id of the logged user
 				const [profile] = await tx
-					.select({ id: profiles.id })
+					.select({
+						name: profiles.name,
+						surname: profiles.surname,
+						payment_provider_id: profiles.payment_provider_id,
+					})
 					.from(profiles)
-					.where(eq(profiles.user_id, user_id))
+					.where(eq(profiles.id, user.profile_id))
 					.limit(1);
 
 				if (!profile) return c.json({ message: 'Profile not found' }, 404);
+
+				// If item has easyPay, we need to check if the user has a payment_provider_id
+				if (commons.easy_pay && !profile.payment_provider_id) {
+					// get the active address from the user
+					const [address] = await tx
+						.select({ country_code: addresses.country_code })
+						.from(addresses)
+						.where(eq(addresses.status, 'active'))
+						.limit(1);
+
+					if (!address) return c.json({ message: 'Address not found' }, 404);
+
+					// create a new payment provider guest user
+					const paymentProviderId = await new PaymentProviderService().createGuestUser({
+						id: user.profile_id,
+						email: user.email,
+						first_name: profile.name,
+						last_name: profile.surname,
+						country_code: address.country_code,
+						tos_acceptance: {
+							unix_timestamp: new Date().getTime() / 1000,
+							ip_address: c.req.header('x-forwarded-for')?.split(',')[0] ?? 'IP non disponibile',
+						},
+					});
+
+					if (!paymentProviderId) return c.json({ message: 'Failed to create payment provider guest user' }, 500);
+
+					await tx
+						.update(profiles)
+						.set({ payment_provider_id: paymentProviderId.id })
+						.where(eq(profiles.id, user.profile_id));
+				}
 
 				// Create the new item
 				const [newItem] = await tx
 					.insert(items)
 					.values({
 						...commons,
-						profile_id: profile.id,
+						profile_id: user.profile_id,
 						status: 'available',
 						published: true,
 					})
@@ -253,7 +286,7 @@ export const itemRoute = createRouter()
 				if (hasDeliveryMethod && !isPickup && shipping) {
 					await tx.insert(shippings).values({
 						item_id: newItem.id,
-						manual_shipping_price: shipping.manual_shipping_price,
+						shipping_price: shipping.shipping_price,
 						item_weight: shipping.item_weight,
 						item_length: shipping.item_length,
 						item_width: shipping.item_width,

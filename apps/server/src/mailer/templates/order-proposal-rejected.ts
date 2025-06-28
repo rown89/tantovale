@@ -20,9 +20,11 @@ export async function sendProposalRejectedMessage({
 		subject: `Tantovale - Proposal rejected`,
 		html: `
       <div>
-        <p>${merchant_username} has rejected your proposal for the object ${itemName}</p>
+        <p>${merchant_username} has rejected your proposal for the item ${itemName}</p>
         <br>
         <a href="${parseEnv(process.env).STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
+        <br>
+        <p>Thank you for using Tantovale!</p>
       </div>
     `,
 	});

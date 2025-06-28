@@ -2,10 +2,12 @@ import { eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { createClient } from '#create-client';
-import { SHIPPING_UNITS } from '#utils/constants';
+import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { profiles, addresses, items, cities, users, shippings } from '#db-schema';
+import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate';
+import { shippoClient } from '#lib/shippo-client';
 
-import type { ShipmentCreateRequest } from 'shippo/models/components/index';
+import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index';
 import type { ShipmentCalculationData } from './types';
 
 const ERROR_MESSAGES = {
@@ -20,11 +22,11 @@ export class ShipmentService {
 	/**
 	 * Get item data with seller information and shipping dimensions
 	 */
-	async getItemData(itemId: number): Promise<ShipmentCalculationData['itemData']> {
+	async getItemData(tx: any, itemId: number): Promise<ShipmentCalculationData['itemData']> {
 		const cityTable = alias(cities, 'city');
 		const provinceTable = alias(cities, 'province');
 
-		const [itemData] = await this.db
+		const [itemData] = await tx
 			.select({
 				// Item info
 				item_id: items.id,
@@ -80,11 +82,11 @@ export class ShipmentService {
 	/**
 	 * Get buyer profile and address information
 	 */
-	async getBuyerProfile(userId: number): Promise<ShipmentCalculationData['buyerProfile']> {
+	async getBuyerProfile(tx: any, profileId: number): Promise<ShipmentCalculationData['buyerProfile']> {
 		const cityTable = alias(cities, 'city');
 		const provinceTable = alias(cities, 'province');
 
-		const [buyerProfile] = await this.db
+		const [buyerProfile] = await tx
 			.select({
 				id: profiles.id,
 				name: profiles.name,
@@ -101,7 +103,7 @@ export class ShipmentService {
 			.innerJoin(addresses, eq(addresses.profile_id, profiles.id))
 			.innerJoin(cityTable, eq(cityTable.id, addresses.city_id))
 			.innerJoin(provinceTable, eq(provinceTable.id, addresses.province_id))
-			.where(and(eq(profiles.user_id, userId), eq(addresses.status, 'active')));
+			.where(and(eq(profiles.id, profileId), eq(addresses.status, 'active')));
 
 		if (!buyerProfile) {
 			throw new Error(ERROR_MESSAGES.BUYER_PROFILE_NOT_FOUND);
@@ -164,12 +166,98 @@ export class ShipmentService {
 	/**
 	 * Get all shipment calculation data in a transaction
 	 */
-	async getShipmentCalculationData(itemId: number, userId: number): Promise<ShipmentCalculationData> {
+	async getShipmentCalculationData(itemId: number, profileId: number): Promise<ShipmentCalculationData> {
 		return await this.db.transaction(async (tx) => {
-			const itemData = await this.getItemData(itemId);
-			const buyerProfile = await this.getBuyerProfile(userId);
+			const itemData = await this.getItemData(tx, itemId);
+			const buyerProfile = await this.getBuyerProfile(tx, profileId);
 
 			return { itemData, buyerProfile };
 		});
+	}
+
+	/**
+	 * Calculate shipping cost for an item and buyer
+	 * This method wraps all shipping calculation logic in a single point
+	 *
+	 * @param itemId - The ID of the item to calculate shipping for
+	 * @param buyerProfileId - The ID of the buyer's profile
+	 * @param buyerEmail - The buyer's email address
+	 * @returns Promise<number> - The calculated shipping cost
+	 *
+	 * @example
+	 * ```typescript
+	 * const shipmentService = new ShipmentService();
+	 * const shippingCost = await shipmentService.calculateShippingCost(itemId, profileId, buyerEmail);
+	 * ```
+	 */
+	async calculateShippingCost(itemId: number, buyerProfileId: number, buyerEmail: string) {
+		// Get shipment calculation data
+		const { itemData, buyerProfile } = await this.getShipmentCalculationData(itemId, buyerProfileId);
+
+		// Create shipment options
+		const shipmentOptions = this.createShipmentOptions(itemData, buyerProfile, buyerEmail);
+
+		// Call Shippo API
+		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
+
+		if (!shipmentLabelCreateResponse.ok) {
+			console.error('Shippo API error:', shipmentLabelCreateResponse.error);
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+
+		const rateAmount = shipmentLabelCreateResponse.value?.rates?.[0]?.amount;
+
+		if (!rateAmount) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+
+		return rateAmount ? parseFloat(rateAmount) : undefined;
+	}
+
+	/**
+	 * Calculate shipping cost and return both cost and rates for an item and buyer
+	 * This method wraps all shipping calculation logic in a single point and returns both values
+	 *
+	 * @param itemId - The ID of the item to calculate shipping for
+	 * @param buyerProfileId - The ID of the buyer's profile
+	 * @param buyerEmail - The buyer's email address
+	 * @returns Promise<{ cost: number; rates: any[] }> - Object containing the calculated shipping cost and available rates
+	 *
+	 * @example
+	 * ```typescript
+	 * const shipmentService = new ShipmentService();
+	 * const { cost, rates } = await shipmentService.calculateShippingCostWithRates(itemId, profileId, buyerEmail);
+	 * ```
+	 */
+	async calculateShippingCostWithRates(
+		itemId: number,
+		buyerProfileId: number,
+		buyerEmail: string,
+	): Promise<{ cost: number; rates: Rate[] }> {
+		// Get shipment calculation data
+		const { itemData, buyerProfile } = await this.getShipmentCalculationData(itemId, buyerProfileId);
+
+		// Create shipment options
+		const shipmentOptions = this.createShipmentOptions(itemData, buyerProfile, buyerEmail);
+
+		// Call Shippo API
+		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
+
+		if (!shipmentLabelCreateResponse.ok) {
+			console.error('Shippo API error:', shipmentLabelCreateResponse.error);
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+
+		const rates = shipmentLabelCreateResponse.value?.rates ?? [];
+		const rateAmount = rates[0]?.amount;
+
+		if (!rateAmount) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+
+		return {
+			cost: parseFloat(rateAmount),
+			rates,
+		};
 	}
 }

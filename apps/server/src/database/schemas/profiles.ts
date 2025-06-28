@@ -22,6 +22,7 @@ export const profiles = pgTable(
 		gender: sexEnum('gender').notNull(),
 		privacy_policy: boolean('privacy_policy').default(false).notNull(),
 		marketing_policy: boolean('marketing_policy').default(false).notNull(),
+		payment_provider_id: varchar('payment_provider_id', { length: 100 }),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

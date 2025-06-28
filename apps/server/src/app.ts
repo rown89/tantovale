@@ -18,6 +18,8 @@ import {
 	passwordForgotRoute,
 	passwordResetRoute,
 	passwordResetVerifyToken,
+	paymentProviderRoute,
+	platformsCostsRoute,
 	profileRoute,
 	propertiesRoute,
 	refreshRoute,
@@ -62,6 +64,8 @@ const apiRoutes = app
 	.route(`/signup`, signupRoute)
 	.route(`/subcategories`, subcategoriesRoute)
 	.route(`/subcategory_properties`, subcategoryPropertiesRoute)
+	.route(`/payment_provider`, paymentProviderRoute)
+	.route(`/platforms_costs`, platformsCostsRoute)
 	.route(`/uploads`, uploadsRoute)
 	.route(`/user`, userRoute)
 	.route(`/verify`, verifyRoute)

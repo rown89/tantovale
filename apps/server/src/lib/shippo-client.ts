@@ -1,8 +1,8 @@
 import { ShippoCore } from 'shippo/core.js';
 
-import { parseEnv } from '../env';
+import { environment } from '#utils/constants';
 
 export const shippoClient = new ShippoCore({
-	apiKeyHeader: parseEnv(process.env).SHIPPING_PROVIDER_SECRET_KEY,
+	apiKeyHeader: environment.SHIPPING_PROVIDER_SECRET_KEY,
 	shippoApiVersion: '2018-02-08',
 });

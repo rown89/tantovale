@@ -19,7 +19,7 @@ import { CategorySelector } from '#components/category-selector';
 import { DynamicProperties } from './components/dynamic-properties';
 import { ItemDetailCard } from '@workspace/ui/components/item-detail-card/index';
 import { Badge } from '@workspace/ui/components/badge';
-import { formatPriceToCents } from '@workspace/ui/lib/utils';
+import { formatPriceToCents } from '@workspace/server/price-formatter';
 import { Switch } from '@workspace/ui/components/switch';
 import { Alert, AlertTitle, AlertDescription } from '@workspace/ui/components/alert';
 import { Progress } from '@workspace/ui/components/progress';
@@ -94,8 +94,8 @@ export default function HandleItemFormComponent({
 
 	// Initialize some form fields
 	useEffect(() => {
-		// inizialize manual_shipping_price
-		form.setFieldValue('shipping.manual_shipping_price', 0);
+		// inizialize shipping_price
+		form.setFieldValue('shipping.shipping_price', 0);
 
 		// inizialize address_id
 		if (profileAddress.id) {
@@ -390,7 +390,7 @@ export default function HandleItemFormComponent({
 																					if (checked) {
 																						setIsManualShipping(false);
 
-																						form.setFieldValue('shipping.manual_shipping_price', 0);
+																						form.setFieldValue('shipping.shipping_price', 0);
 																					}
 																				}}
 																				checked={value !== undefined ? value : false}
@@ -551,7 +551,7 @@ export default function HandleItemFormComponent({
 											)}
 
 											{/* Manual shipping it's not a delivery method but sets the shipping price only if the user enables it */}
-											<form.Field name='shipping.manual_shipping_price'>
+											<form.Field name='shipping.shipping_price'>
 												{(field) => {
 													const { name, handleChange, state } = field;
 													const { value } = state;

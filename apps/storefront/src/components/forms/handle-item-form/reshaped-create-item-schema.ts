@@ -25,26 +25,18 @@ export const reshapedCreateItemSchema = ({ propertiesData }: { propertiesData?: 
 					return;
 				} else {
 					// Manual Shipping
-					if (
-						isManualShipping &&
-						!isPickup &&
-						(!val.value.manual_shipping_price || val.value.manual_shipping_price <= 0)
-					) {
+					if (isManualShipping && !isPickup && (!val.value.shipping_price || val.value.shipping_price <= 0)) {
 						val.issues.push({
 							code: 'custom',
 							input: val.value,
 							message: 'Shipping price must be greater than 0',
-							path: ['manual_shipping_price'],
+							path: ['shipping_price'],
 						});
 						return;
 					}
 
 					// Pickup
-					if (
-						isPickup &&
-						!isManualShipping &&
-						(val.value.manual_shipping_price || val.value.manual_shipping_price !== 0)
-					) {
+					if (isPickup && !isManualShipping && (val.value.shipping_price || val.value.shipping_price !== 0)) {
 						val.issues.push({
 							code: 'custom',
 							input: val.value,

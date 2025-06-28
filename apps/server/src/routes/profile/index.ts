@@ -160,7 +160,7 @@ export const profileRoute = createRouter()
 		),
 		async (c) => {
 			const user = c.var.user;
-			const values = await c.req.valid('json');
+			const values = c.req.valid('json');
 
 			try {
 				const { db } = createClient();

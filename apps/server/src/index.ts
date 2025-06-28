@@ -1,10 +1,10 @@
 import { serve } from '@hono/node-server';
 
 import { app } from './app';
-import { parseEnv } from './env';
+import { environment } from './utils/constants';
 
-const server_url = parseEnv(process.env).SERVER_HOSTNAME;
-const port = parseEnv(process.env).SERVER_PORT;
+const server_url = environment.SERVER_HOSTNAME;
+const port = environment.SERVER_PORT;
 
 console.log(`Server is running on port ${server_url}:${port}`);
 

@@ -7,7 +7,7 @@ import { zValidator } from '@hono/zod-validator';
 import { tokenPayload } from '../../lib/tokenPayload';
 import { verifyPassword } from '../../lib/password';
 import { createClient } from '../../database';
-import { users, refreshTokens } from '../../database/schemas/schema';
+import { users, refreshTokens, profiles } from '../../database/schemas/schema';
 import {
 	DEFAULT_ACCESS_TOKEN_EXPIRES,
 	DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
@@ -41,10 +41,22 @@ export const loginRoute = createRouter().post(
 			const { email, password } = c.req.valid('json');
 
 			const { db } = createClient();
-			// lookup email in database
-			const userFromDb = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
-			const user = userFromDb?.[0];
+			// lookup email in database
+			const [user] = await db
+				.select({
+					id: users.id,
+					profile_id: profiles.id,
+					username: users.username,
+					email: users.email,
+					email_verified: users.email_verified,
+					phone_verified: users.phone_verified,
+					password: users.password,
+				})
+				.from(users)
+				.innerJoin(profiles, eq(users.id, profiles.user_id))
+				.where(eq(users.email, email))
+				.limit(1);
 
 			// handle email not found
 			if (!user) {
@@ -59,7 +71,7 @@ export const loginRoute = createRouter().post(
 				return c.json({ message: 'invalid email or password' }, 500);
 			}
 
-			const { id, username, email_verified, phone_verified } = user;
+			const { id, profile_id, username, email_verified, phone_verified } = user;
 
 			if (!email_verified) {
 				return c.json({ message: 'Please verify your email before logging in' }, 500);
@@ -67,6 +79,7 @@ export const loginRoute = createRouter().post(
 
 			const access_token_payload = tokenPayload({
 				id,
+				profile_id,
 				username,
 				email,
 				email_verified,
@@ -76,6 +89,7 @@ export const loginRoute = createRouter().post(
 
 			const refresh_token_payload = tokenPayload({
 				id,
+				profile_id,
 				username,
 				email,
 				email_verified,
@@ -121,10 +135,12 @@ export const loginRoute = createRouter().post(
 					message: 'login successful',
 					user: {
 						id,
+						profile_id,
 						username,
 						email: email,
 						email_verified,
 						phone_verified,
+						exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
 					},
 				},
 				200,

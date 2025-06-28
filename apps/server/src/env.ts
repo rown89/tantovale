@@ -50,10 +50,14 @@ const EnvSchema = z.object({
 	DATABASE_PORT: z.coerce.number().default(5432),
 	PAYMENT_PROVIDER_SECRET_KEY: z.string(),
 	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
+	PAYMENT_PROVIDER_API_URL: z.string(),
+	PAYMENT_PROVIDER_API_VERSION: z.string(),
 	SHIPPING_PROVIDER_SECRET_KEY: z.string(),
 	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),
 	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
 	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),
+	PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS: z.coerce.number().default(96),
+	ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS: z.coerce.number().default(48),
 });
 
 export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {

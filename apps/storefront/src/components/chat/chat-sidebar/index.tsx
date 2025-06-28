@@ -19,7 +19,7 @@ import {
 } from '@workspace/ui/components/sidebar';
 import { Avatar, AvatarFallback } from '@workspace/ui/components/avatar';
 import { Badge } from '@workspace/ui/components/badge';
-import { formatPrice } from '@workspace/ui/lib/utils';
+import { formatPrice } from '@workspace/server/price-formatter';
 
 type ChatRoom = {
 	id: number;

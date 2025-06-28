@@ -1,7 +1,7 @@
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from './schemas/schema';
-import { parseEnv } from '../env';
+import { environment } from '#utils/constants';
 
 export type DrizzleClient = {
 	db: NodePgDatabase<typeof schema>;
@@ -9,11 +9,11 @@ export type DrizzleClient = {
 };
 
 export const dbConnection = {
-	host: parseEnv(process.env).DATABASE_HOST,
-	port: parseEnv(process.env).DATABASE_PORT,
-	user: parseEnv(process.env).POSTGRES_USER,
-	password: parseEnv(process.env).POSTGRES_PASSWORD,
-	database: parseEnv(process.env).POSTGRES_DB,
+	host: environment.DATABASE_HOST,
+	port: environment.DATABASE_PORT,
+	user: environment.POSTGRES_USER,
+	password: environment.POSTGRES_PASSWORD,
+	database: environment.POSTGRES_DB,
 };
 
 const pool = new pg.Pool(dbConnection);
