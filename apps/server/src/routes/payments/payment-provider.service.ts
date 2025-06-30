@@ -6,6 +6,7 @@ import {
 	CalculateTransactionFeeResponse,
 	CreateTransactionResponse,
 	CreateGuestUserProps,
+	GetTransactionStatusResponse,
 } from './types';
 
 export class PaymentProviderService {
@@ -115,5 +116,47 @@ export class PaymentProviderService {
 		const data = (await response.json()) as CreateTransactionResponse | undefined;
 
 		return data;
+	}
+
+	/**
+	 * Get transaction status
+	 */
+	async getTransactionStatus(transactionId: number): Promise<GetTransactionStatusResponse | undefined> {
+		const response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
+			method: 'GET',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${this.api_key}`,
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to get transaction status');
+		}
+
+		const data = (await response.json()) as GetTransactionStatusResponse | undefined;
+
+		return data;
+	}
+
+	/**
+	 * Verify webhook signature (implement based on Trustap documentation)
+	 */
+	verifyWebhookSignature(payload: any, signature: string | undefined): boolean {
+		// TODO: Implement webhook signature verification based on Trustap documentation
+		// This is a placeholder - you should implement proper signature verification
+		if (!signature) {
+			console.warn('No webhook signature provided');
+			return false;
+		}
+
+		// Example implementation (adjust based on Trustap's signature method):
+		// const expectedSignature = crypto
+		//   .createHmac('sha256', this.webhook_secret)
+		//   .update(JSON.stringify(payload))
+		//   .digest('hex');
+		// return signature === expectedSignature;
+
+		return true; // Placeholder - implement proper verification
 	}
 }

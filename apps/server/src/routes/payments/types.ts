@@ -58,3 +58,32 @@ export interface CreateTransactionResponse {
 	seller_id: string;
 	status: string;
 }
+
+export interface GetTransactionStatusResponse {
+	buyer_id: string;
+	charge: number;
+	charge_seller: number;
+	client_id: string;
+	created: string;
+	currency: string;
+	delivered: string;
+	description: string;
+	fund_released: string;
+	id: number;
+	is_payment_in_progress: boolean;
+	joined: string;
+	paid: string;
+	posta_hr_tracking: {
+		barcode: string;
+		barcode_generated: string;
+	};
+	pirce: number;
+	quantity: number;
+	seller_id: string;
+	status: string;
+	tracked: string;
+	tracking: {
+		carrier: string;
+		tracking_code: string;
+	};
+}

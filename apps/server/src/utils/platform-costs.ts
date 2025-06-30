@@ -1,7 +1,6 @@
-import { calculatePlatformFee } from './constants';
 import { PaymentProviderService } from '../routes/payments/payment-provider.service';
 import { ShipmentService } from '../routes/shipment-provider/shipment.service';
-import { formatPrice, formatPriceToCents } from '#utils/price-formatter';
+import { formatPriceToCents } from '#utils/price-formatter';
 
 export interface PlatformCostsParams {
 	item_id?: number;
@@ -21,6 +20,14 @@ export interface PlatformCostsResult {
 	payment_provider_charge?: number;
 	payment_provider_charge_calculator_version?: number;
 	platform_charge?: number;
+}
+
+export function calculatePlatformFee(price: number): number {
+	if (price <= 10) return price * 0.005;
+	if (price <= 50) return price * 0.01;
+	if (price <= 100) return price * 0.012;
+	if (price <= 200) return price * 0.015;
+	return price * 0.02;
 }
 
 /**

@@ -13,11 +13,11 @@ export const entityTrustapTransactions = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		sellerId: integer('seller_id').references(() => profiles.id, {
+		sellerId: text('seller_id').references(() => profiles.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		buyerId: integer('buyer_id').references(() => profiles.id, {
+		buyerId: text('buyer_id').references(() => profiles.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),

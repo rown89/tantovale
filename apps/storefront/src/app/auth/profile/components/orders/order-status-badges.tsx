@@ -1,56 +1,57 @@
+import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 import { Badge } from '@workspace/ui/components/badge';
 
 export const getStatusBadge = (status: string) => {
 	switch (status) {
-		case 'payment_pending':
+		case ORDER_PHASES.PAYMENT_PENDING:
 			return (
 				<Badge variant='outline' className='border-yellow-200 bg-yellow-50 font-bold text-yellow-700'>
 					Pending Payment
 				</Badge>
 			);
-		case 'payment_confirmed':
+		case ORDER_PHASES.PAYMENT_CONFIRMED:
 			return (
 				<Badge variant='outline' className='border-blue-200 bg-blue-50 font-bold text-blue-700'>
 					Payment Confirmed
 				</Badge>
 			);
-		case 'payment_failed':
+		case ORDER_PHASES.PAYMENT_FAILED:
 			return (
 				<Badge variant='outline' className='border-red-200 bg-red-50 font-bold text-red-700'>
 					Payment Failed
 				</Badge>
 			);
-		case 'payment_refunded':
+		case ORDER_PHASES.PAYMENT_REFUNDED:
 			return (
 				<Badge variant='outline' className='border-red-200 bg-red-50 font-bold text-red-700'>
 					Payment Refunded
 				</Badge>
 			);
-		case 'shipping_pending':
+		case ORDER_PHASES.SHIPPING_PENDING:
 			return (
 				<Badge variant='outline' className='border-yellow-200 bg-yellow-50 font-bold text-yellow-700'>
 					Shipping Pending
 				</Badge>
 			);
-		case 'shipping_confirmed':
+		case ORDER_PHASES.SHIPPING_CONFIRMED:
 			return (
 				<Badge variant='outline' className='border-blue-200 bg-blue-50 font-bold text-blue-700'>
 					Shipping Confirmed
 				</Badge>
 			);
-		case 'completed':
+		case ORDER_PHASES.COMPLETED:
 			return (
 				<Badge variant='outline' className='border-green-200 bg-green-50 font-bold text-green-700'>
 					Completed
 				</Badge>
 			);
-		case 'cancelled':
+		case ORDER_PHASES.CANCELLED:
 			return (
 				<Badge variant='outline' className='border-red-200 bg-red-50 font-bold text-red-500'>
 					Cancelled
 				</Badge>
 			);
-		case 'expired':
+		case ORDER_PHASES.EXPIRED:
 			return (
 				<Badge variant='outline' className='border-red-200 bg-red-50 font-bold text-red-500'>
 					Expired

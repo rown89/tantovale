@@ -5,6 +5,7 @@ import { relations } from 'drizzle-orm';
 import { profiles } from './profiles';
 import { addresses } from './addresses';
 import { items } from './items';
+import { ORDER_PHASES } from './enumerated_values';
 
 export const orders = pgTable(
 	'orders',
@@ -35,7 +36,7 @@ export const orders = pgTable(
 			onUpdate: 'cascade',
 		}),
 		payment_transaction_id: integer('payment_transaction_id'),
-		status: text('status').notNull().default('payment_pending'),
+		status: text('status').notNull().default(ORDER_PHASES.PAYMENT_PENDING),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},

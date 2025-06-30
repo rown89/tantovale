@@ -1,7 +1,31 @@
+export const ORDER_PHASES = {
+	PAYMENT_PENDING: 'payment_pending',
+	PAYMENT_CONFIRMED: 'payment_confirmed',
+	PAYMENT_FAILED: 'payment_failed',
+	PAYMENT_REFUNDED: 'payment_refunded',
+	SHIPPING_PENDING: 'shipping_pending',
+	SHIPPING_CONFIRMED: 'shipping_confirmed',
+	COMPLETED: 'completed',
+	CANCELLED: 'cancelled',
+	EXPIRED: 'expired',
+} as const;
+
+export const ORDER_PROPOSAL_PHASES = {
+	pending: 'pending',
+	accepted: 'accepted',
+	rejected: 'rejected',
+	expired: 'expired',
+} as const;
+
 export const chatMessageTypeValues = ['text', 'proposal'] as const;
 export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 
-export const orderProposalStatusValues = ['pending', 'accepted', 'rejected', 'expired'] as const;
+export const orderProposalStatusValues = [
+	ORDER_PROPOSAL_PHASES.pending,
+	ORDER_PROPOSAL_PHASES.accepted,
+	ORDER_PROPOSAL_PHASES.rejected,
+	ORDER_PROPOSAL_PHASES.expired,
+] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
 export const currencyValues = [

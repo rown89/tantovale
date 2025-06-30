@@ -1,23 +1,20 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, not } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { createRouter } from '../../lib/create-app';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { createClient } from '../../database/index';
-import { profiles, orders, addresses, items } from '#db-schema';
+import { profiles, orders, items, entityTrustapTransactions } from '#db-schema';
 import { PaymentProviderService } from './payment-provider.service';
-import { ShipmentService } from '../shipment-provider/shipment.service';
+import { calculatePlatformCosts } from '#utils/platform-costs';
+import { ORDER_PHASES } from '#utils/order-phases';
+import { environment } from '#utils/constants';
 
 export const paymentsRoute = createRouter().post(
-	'/pay_order',
+	'/buy_now',
 	authMiddleware,
-	zValidator(
-		'json',
-		z.object({
-			item_id: z.number(),
-		}),
-	),
+	zValidator('json', z.object({ item_id: z.number() })),
 	async (c) => {
 		const user = c.var.user;
 
@@ -27,99 +24,136 @@ export const paymentsRoute = createRouter().post(
 
 		try {
 			return await db.transaction(async (tx) => {
-				// Step 1: Get the item
+				// 1. Validate item availability
 				const [item] = await tx
 					.select({
+						id: items.id,
+						title: items.title,
 						profile_id: items.profile_id,
 						price: items.price,
+						status: items.status,
+						published: items.published,
+						payment_provider_id: profiles.payment_provider_id,
 					})
 					.from(items)
-					.where(eq(items.id, item_id));
+					.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
+					.limit(1);
 
 				if (!item) {
-					throw new Error('Item not found');
+					return c.json({ error: 'Item not available' }, 400);
 				}
 
-				// Step 2: Get more informations about the profile
-				const [profile] = await tx
-					.select({
-						name: profiles.name,
-						surname: profiles.surname,
-						payment_provider_id: profiles.payment_provider_id,
-					})
+				// 2. Check if an order already exists and is in a different status than payment_pending
+				const [existingOrder] = await tx
+					.select({ id: orders.id })
+					.from(orders)
+					.where(and(eq(orders.item_id, item_id), not(eq(orders.status, ORDER_PHASES.PAYMENT_PENDING))))
+					.limit(1);
+
+				if (existingOrder) {
+					return c.json({ error: 'Item already sold' }, 400);
+				}
+
+				// 3. Get buyer payment provider id
+				const [buyerInfo] = await tx
+					.select({ payment_provider_id: profiles.payment_provider_id })
 					.from(profiles)
-					.where(eq(profiles.id, user.profile_id));
+					.where(eq(profiles.id, user.profile_id))
+					.limit(1);
 
-				if (!profile) {
-					throw new Error('User has no name or surname or payment_provider_id');
+				if (!buyerInfo || !buyerInfo.payment_provider_id) {
+					return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
 				}
 
-				// Step 3: Create a new payment provider guest user for the user (buyer) if he has no payment_provider_id
-				const buyerPaymentProviderId = profile.payment_provider_id!;
-
-				// Step 4: Get the seller payment provider ID
-				const [sellerProfile] = await tx
-					.select({
-						payment_provider_id: profiles.payment_provider_id,
-					})
-					.from(profiles)
-					.where(eq(profiles.id, item.profile_id));
-
-				if (!sellerProfile) {
-					throw new Error('Seller profile not found');
-				}
-
-				const sellerPaymentProviderId = sellerProfile.payment_provider_id!;
-
-				// Step 5: Calculate shipping cost
-				const shipmentService = new ShipmentService();
-				const shippingCost = await shipmentService.calculateShippingCost(item_id, user.profile_id, user.email);
-
-				if (!shippingCost) {
-					throw new Error('Failed to calculate shipping cost');
-				}
-
-				// Step 6: Calculate the total price
-				const totalPrice = item.price / 100 + shippingCost;
-
-				// Step 7: Calculate the transaction fee
-				const paymentProviderService = new PaymentProviderService();
-				const transactionFee = await paymentProviderService.calculateTransactionFee({
-					price: totalPrice,
-					currency: 'eur',
+				// 4. Calculate platform costs
+				const { shipping_price, payment_provider_charge, platform_charge } = await calculatePlatformCosts({
+					item_id,
+					price: item.price,
+					buyer_profile_id: user.profile_id,
+					buyer_email: user.email,
 				});
 
-				if (!transactionFee) {
-					throw new Error('Failed to calculate transaction fee');
+				if (!shipping_price || !payment_provider_charge || !platform_charge) {
+					return c.json({ error: 'Failed to calculate platforms costs' }, 500);
 				}
 
-				// Step 8: Create the payment transaction
+				const paymentProviderService = new PaymentProviderService();
+
+				// 5. Create Trustap transaction
+				const totalPrice = item.price + shipping_price + platform_charge;
 				const transaction = await paymentProviderService.createTransaction({
-					buyer_id: buyerPaymentProviderId,
-					seller_id: sellerPaymentProviderId,
+					buyer_id: buyerInfo.payment_provider_id,
+					seller_id: item.payment_provider_id,
 					creator_role: 'buyer',
 					currency: 'eur',
-					description: `Transaction for item ${item_id}`,
+					description: `Payment for ${item.title}`,
 					price: totalPrice,
-					charge: transactionFee.charge,
-					charge_calculator_version: transactionFee.charge_calculator_version,
+					charge: payment_provider_charge,
+					charge_calculator_version: 1,
 				});
 
 				if (!transaction) {
-					throw new Error('Failed to create payment transaction');
+					return c.json({ error: 'Failed to create Trustap transaction' }, 500);
 				}
 
-				return c.json({}, 200);
+				// 6. Store transaction details
+				const [trustapTransaction] = await tx
+					.insert(entityTrustapTransactions)
+					.values({
+						entityId: item_id,
+						sellerId: transaction.seller_id,
+						buyerId: transaction.buyer_id,
+						transactionId: transaction.id,
+						transactionType: 'online_payment',
+						status: transaction.status,
+						price: totalPrice,
+						charge: payment_provider_charge,
+						chargeSeller: transaction.charge_seller || 0,
+						currency: 'eur',
+						entityTitle: item.title,
+						claimedBySeller: false,
+						claimedByBuyer: false,
+						complaintPeriodDeadline: null, // Will be set by webhook
+					})
+					.returning();
+
+				if (!trustapTransaction) {
+					return c.json({ error: 'Failed to store Trustap transaction' }, 500);
+				}
+
+				// 7. Create new order
+				const [newOrder] = await tx
+					.insert(orders)
+					.values({
+						item_id,
+						buyer_id: user.profile_id,
+						seller_id: item.profile_id,
+						total_price: item.price,
+						shipping_price,
+						payment_provider_charge,
+						platform_charge,
+						payment_transaction_id: transaction.id,
+					})
+					.returning();
+
+				if (!newOrder) {
+					return c.json({ error: 'Failed to create order' }, 500);
+				}
+
+				// 8. Return payment URL
+				return c.json(
+					{
+						success: true,
+						order: { id: newOrder.id, status: newOrder.status },
+						payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/?redirect_url=${environment.POST_PAYMENT_REDIRECT_URL}`,
+						message: 'Complete payment to confirm order',
+					},
+					200,
+				);
 			});
 		} catch (error) {
-			console.error('Payment completion error:', error);
-
-			// Return appropriate error response based on the error type
-			if (error instanceof Error) {
-				return c.json({ error: error.message }, 400);
-			}
-
-			return c.json({ error: 'Failed to complete payment' }, 500);
+			console.error('Buy now error:', error);
+			return c.json({ error: 'Failed to process purchase' }, 500);
 		}
 	},
 );

@@ -3,7 +3,17 @@ import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '#database/index';
-import { orders_proposals, users, items, chat_rooms, chat_messages, orders, profiles, addresses } from '#db-schema';
+import {
+	orders_proposals,
+	users,
+	items,
+	chat_rooms,
+	chat_messages,
+	orders,
+	profiles,
+	addresses,
+	entityTrustapTransactions,
+} from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authPath } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
@@ -265,6 +275,7 @@ export const ordersProposalsRoute = createRouter()
 			return c.json(proposal, 200);
 		},
 	)
+	// Seller update proposal status, only accepted or rejected
 	.put(`${authPath}`, authMiddleware, zValidator('json', seller_update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 
@@ -289,14 +300,14 @@ export const ordersProposalsRoute = createRouter()
 
 		try {
 			return await db.transaction(async (tx) => {
-				// Step 1: Validate item ownership and get item details
-				// This query checks if the item exists and is owned by the current user
+				// 1. Check if the item exists and is owned by the current user
 				const [item] = await tx
 					.select({
 						id: items.id,
 						title: items.title,
 						profile_id: items.profile_id,
 						user_id: users.id,
+						payment_provider_id: profiles.payment_provider_id,
 					})
 					.from(items)
 					.innerJoin(profiles, eq(items.profile_id, profiles.id))
@@ -305,11 +316,14 @@ export const ordersProposalsRoute = createRouter()
 					.limit(1);
 
 				if (!item) {
-					return c.json({ error: 'Item not found or you do not have permission to manage this item' }, 404);
+					return c.json({ error: 'Seller has no item or you do not have permission to manage this item' }, 404);
 				}
 
-				// Step 2: Validate proposal exists and is in a modifiable state
-				// Check if proposal exists and is not already in a final state
+				if (!item.payment_provider_id) {
+					return c.json({ error: 'Seller has no payment provider id' }, 404);
+				}
+
+				// 2. Check if proposal exists and is in "pending" state
 				const [existingProposal] = await tx
 					.select({
 						id: orders_proposals.id,
@@ -320,61 +334,61 @@ export const ordersProposalsRoute = createRouter()
 						platform_charge: orders_proposals.platform_charge,
 					})
 					.from(orders_proposals)
-					.where(eq(orders_proposals.id, id))
+					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, 'pending')))
 					.limit(1);
 
 				if (!existingProposal) {
 					return c.json({ error: 'Proposal not found' }, 404);
 				}
 
-				// Check if proposal is already in a final state
-				if (['expired', 'accepted', 'rejected'].includes(existingProposal.status)) {
-					return c.json({ error: 'Proposal already accepted, rejected or expired' }, 400);
-				}
+				const buyerProfileId = Number(existingProposal.profile_id);
 
-				// Step 3: Get buyer information for notifications
-				if (!existingProposal.profile_id) {
-					return c.json({ error: 'Proposal profile not found' }, 404);
-				}
-
+				// 3. Get buyer information
 				const [buyerInfo] = await tx
 					.select({
 						email: users.email,
 						username: users.username,
+						payment_provider_id: profiles.payment_provider_id,
 					})
 					.from(users)
 					.innerJoin(profiles, eq(users.id, profiles.user_id))
-					.where(eq(profiles.id, existingProposal.profile_id))
+					.where(eq(profiles.id, buyerProfileId))
 					.limit(1);
 
-				if (!buyerInfo) {
-					return c.json({ error: 'Buyer information not found' }, 404);
+				if (!buyerInfo || !buyerInfo.payment_provider_id) {
+					return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
 				}
 
-				// Step 4: Get or create chat room for communication
+				// 4: Get the chat room
 				const [chatRoom] = await tx
 					.select({ id: chat_rooms.id })
 					.from(chat_rooms)
-					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, existingProposal.profile_id)))
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, buyerProfileId)))
 					.limit(1);
 
 				if (!chatRoom) {
-					return c.json({ error: 'Chat room not found, cannot send the proposal update message' }, 404);
+					return c.json({ error: 'Chat room not found' }, 404);
 				}
 
-				// Step 5: Update proposal status
-				const [updatedProposal] = await tx
-					.update(orders_proposals)
-					.set({ status })
-					.where(eq(orders_proposals.id, id))
-					.returning();
+				let order_response: {
+					id?: number;
+				} | null = null;
 
-				if (!updatedProposal) {
-					return c.json({ error: 'Failed to update proposal' }, 500);
-				}
+				let transaction_response: {
+					id?: number;
+					status?: string;
+				} | null = null;
 
-				// Step 6: Handle different status updates
-				if (status === 'accepted') {
+				// 5: Handle different status updates
+				if (status === 'rejected') {
+					// Send rejection notification
+					await sendProposalRejectedMessage({
+						to: buyerInfo.email,
+						roomId: chatRoom.id,
+						merchant_username: user.username,
+						itemName: item.title,
+					});
+				} else {
 					// Ensure that doesn't already exist an order for this item
 					const [existingOrder] = await tx
 						.select({ id: orders.id })
@@ -398,7 +412,7 @@ export const ordersProposalsRoute = createRouter()
 						{
 							item_id,
 							price: transactionPrice,
-							buyer_profile_id: existingProposal.profile_id,
+							buyer_profile_id: buyerProfileId,
 							buyer_email: buyerInfo.email,
 						},
 						{
@@ -414,11 +428,11 @@ export const ordersProposalsRoute = createRouter()
 
 					// Create a new payment transaction
 					const transaction = await paymentProviderService.createTransaction({
-						buyer_id: user.profile_id.toString(),
-						seller_id: item.profile_id.toString(),
+						buyer_id: buyerInfo.payment_provider_id,
+						seller_id: item.payment_provider_id,
 						creator_role: 'seller',
 						currency: 'eur',
-						description: `Payment for order ${id}`,
+						description: `Payment for ${item.title}`,
 						price: transactionPrice,
 						charge: payment_provider_charge,
 						charge_calculator_version: payment_provider_charge_calculator_version,
@@ -428,17 +442,42 @@ export const ordersProposalsRoute = createRouter()
 						return c.json({ error: 'Failed to create transaction' }, 500);
 					}
 
+					// Store Trustap transaction details for tracking
+					const [trustapTransaction] = await tx
+						.insert(entityTrustapTransactions)
+						.values({
+							entityId: item_id,
+							sellerId: transaction.seller_id,
+							buyerId: transaction.buyer_id,
+							transactionId: transaction.id,
+							transactionType: 'online_payment',
+							status: transaction.status,
+							price: transactionPrice,
+							charge: payment_provider_charge,
+							chargeSeller: transaction.charge_seller || 0,
+							currency: 'eur',
+							entityTitle: item.title,
+							claimedBySeller: false,
+							claimedByBuyer: false,
+							complaintPeriodDeadline: null, // Will be set by webhook
+						})
+						.returning();
+
+					if (!trustapTransaction) {
+						throw new Error('Failed to store Trustap transaction details');
+					}
+
 					// Create new order when proposal is accepted
 					const [newOrder] = await tx
 						.insert(orders)
 						.values({
-							buyer_id: existingProposal.profile_id,
+							item_id,
+							buyer_id: buyerProfileId,
 							seller_id: user.profile_id,
 							total_price: existingProposal.proposal_price,
 							shipping_price: existingProposal.shipping_price,
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
-							status: transaction.status,
 							payment_transaction_id: transaction.id,
 						})
 						.returning({ id: orders.id });
@@ -447,39 +486,32 @@ export const ordersProposalsRoute = createRouter()
 						throw new Error('Failed to create order');
 					}
 
+					transaction_response = {
+						id: transaction.id,
+						status: transaction.status,
+					};
+
+					order_response = {
+						id: newOrder.id,
+					};
+
 					// Send acceptance notification
 					await sendProposalAcceptedMessage({
 						to: buyerInfo.email,
 						merchant_username: user.username,
 						itemName: item.title,
 					});
-
-					return c.json(
-						{
-							message: 'Proposal accepted and order created successfully',
-							order: { id: newOrder.id },
-							proposal: updatedProposal,
-						},
-						200,
-					);
 				}
 
-				if (status === 'rejected') {
-					// Send rejection notification
-					await sendProposalRejectedMessage({
-						to: buyerInfo.email,
-						roomId: chatRoom.id,
-						merchant_username: user.username,
-						itemName: item.title,
-					});
+				// 6: finally update proposal status
+				const [updatedProposal] = await tx
+					.update(orders_proposals)
+					.set({ status })
+					.where(eq(orders_proposals.id, id))
+					.returning();
 
-					return c.json(
-						{
-							message: 'Proposal rejected successfully',
-							proposal: updatedProposal,
-						},
-						200,
-					);
+				if (!updatedProposal) {
+					return c.json({ error: 'Failed to update proposal' }, 500);
 				}
 
 				// Return updated proposal for other status changes
@@ -487,6 +519,10 @@ export const ordersProposalsRoute = createRouter()
 					{
 						message: 'Proposal updated successfully',
 						proposal: updatedProposal,
+						...(status === 'accepted' && {
+							order: order_response,
+							transaction: transaction_response,
+						}),
 					},
 					200,
 				);
