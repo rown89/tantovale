@@ -17,6 +17,7 @@ export const shippings = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
+		shipping_label_id: text('shipping_label_id'),
 		shipping_price: integer('shipping_price'),
 		item_weight: integer('item_weight'),
 		item_length: integer('item_length'),

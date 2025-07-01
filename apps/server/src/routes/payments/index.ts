@@ -66,12 +66,19 @@ export const paymentsRoute = createRouter().post(
 				}
 
 				// 4. Calculate platform costs
-				const { shipping_price, payment_provider_charge, platform_charge } = await calculatePlatformCosts({
-					item_id,
-					price: item.price,
-					buyer_profile_id: user.profile_id,
-					buyer_email: user.email,
-				});
+				const { shipping_price, payment_provider_charge, platform_charge } = await calculatePlatformCosts(
+					{
+						item_id,
+						price: item.price,
+						buyer_profile_id: user.profile_id,
+						buyer_email: user.email,
+					},
+					{
+						shipping: true,
+						payment_provider_charge: true,
+						platform_charge: true,
+					},
+				);
 
 				if (!shipping_price || !payment_provider_charge || !platform_charge) {
 					return c.json({ error: 'Failed to calculate platforms costs' }, 500);

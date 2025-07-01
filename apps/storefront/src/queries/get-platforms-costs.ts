@@ -1,16 +1,22 @@
 import { client } from '@workspace/server/client-rpc';
 
-export const getPlatformsCosts = async (item_id: string, price: string) => {
-	const response = await client.platforms_costs.auth.calculate.$get({
-		query: {
-			item_id,
-			price,
-		},
-	});
+export const getPlatformsCosts = async (price: number, shipping_price: number) => {
+	try {
+		const response = await client.platforms_costs.auth.calculate.$post({
+			json: {
+				price,
+				shipping_price,
+			},
+		});
 
-	if (!response.ok) return [];
+		if (!response.ok) {
+			throw new Error('Failed to get platforms costs');
+		}
 
-	const result = await response.json();
+		const result = await response.json();
 
-	return result;
+		return result;
+	} catch (error) {
+		return null;
+	}
 };

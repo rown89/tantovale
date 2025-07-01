@@ -2,7 +2,7 @@
 
 import { Heart, Frown, FileSpreadsheet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { forwardRef } from 'react';
+import { forwardRef, useEffect } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -24,6 +24,9 @@ import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
 import AddressProtectedRoute from '#utils/address-protected';
 import { PaymentButton } from './payment-button';
+import { getPlatformsCosts } from '#queries/get-platforms-costs';
+import { useQuery } from '@tanstack/react-query';
+import { getShippingCost } from '#queries/get-shipping-cost';
 
 interface UserInfoBoxProps extends ItemWrapperProps {
 	itemOwnerData: Pick<

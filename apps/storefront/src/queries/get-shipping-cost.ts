@@ -18,9 +18,20 @@ export const getShippingCost = async (item_id: number) => {
 		},
 	});
 
-	if (!ratesResponse.ok) return [];
+	if (!ratesResponse.ok) {
+		return undefined;
+	}
 
 	const { rates } = await ratesResponse.json();
 
-	return rates;
+	const firstRate = rates?.[0];
+
+	if (!firstRate) {
+		return undefined;
+	}
+
+	return {
+		...firstRate,
+		amount: firstRate.amount ? parseFloat(firstRate.amount) : undefined,
+	};
 };

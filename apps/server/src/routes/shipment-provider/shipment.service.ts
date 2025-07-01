@@ -1,10 +1,13 @@
 import { eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
+import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate';
+import { shipmentsGet } from 'shippo/funcs/shipmentsGet';
+
 import { createClient } from '#create-client';
 import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { profiles, addresses, items, cities, users, shippings } from '#db-schema';
-import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate';
+
 import { shippoClient } from '#lib/shippo-client';
 
 import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index';
@@ -211,7 +214,9 @@ export class ShipmentService {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 
-		return rateAmount ? parseFloat(rateAmount) : undefined;
+		const result = rateAmount ? parseFloat(rateAmount) : 0;
+
+		return result;
 	}
 
 	/**
@@ -259,5 +264,17 @@ export class ShipmentService {
 			cost: parseFloat(rateAmount),
 			rates,
 		};
+	}
+
+	async getShippingLabel(shipmentLabelId: string) {
+		const shipmentLabel = await shipmentsGet(shippoClient, shipmentLabelId);
+
+		const shipmentLabelData = shipmentLabel.value;
+
+		if (!shipmentLabelData) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND);
+		}
+
+		return shipmentLabelData;
 	}
 }

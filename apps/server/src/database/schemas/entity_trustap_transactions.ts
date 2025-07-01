@@ -2,7 +2,6 @@ import { pgTable, integer, timestamp, text, boolean, varchar, foreignKey } from 
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
-import { profiles } from './profiles';
 import { items } from './items';
 
 export const entityTrustapTransactions = pgTable(
@@ -13,14 +12,8 @@ export const entityTrustapTransactions = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		sellerId: text('seller_id').references(() => profiles.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
-		buyerId: text('buyer_id').references(() => profiles.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
+		sellerId: text('seller_id'),
+		buyerId: text('buyer_id'),
 		transactionId: integer('transaction_id').notNull(),
 		transactionType: varchar('transaction_type', { length: 255 }).notNull().default('online_payment'),
 		status: varchar('status', { length: 255 }).notNull(),
@@ -41,16 +34,6 @@ export const entityTrustapTransactions = pgTable(
 			foreignColumns: [items.id],
 			name: 'entity_trustap_transactions_entity_id_fkey',
 		}),
-		foreignKey({
-			columns: [table.sellerId],
-			foreignColumns: [profiles.id],
-			name: 'entity_trustap_transactions_seller_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.buyerId],
-			foreignColumns: [profiles.id],
-			name: 'entity_trustap_transactions_buyer_id_fkey',
-		}),
 	],
 );
 
@@ -58,14 +41,6 @@ export const entityTrustapTransactionsRelations = relations(entityTrustapTransac
 	item: one(items, {
 		fields: [entityTrustapTransactions.entityId],
 		references: [items.id],
-	}),
-	seller: one(profiles, {
-		fields: [entityTrustapTransactions.sellerId],
-		references: [profiles.id],
-	}),
-	buyer: one(profiles, {
-		fields: [entityTrustapTransactions.buyerId],
-		references: [profiles.id],
 	}),
 }));
 

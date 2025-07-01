@@ -23,6 +23,7 @@ export const SHIPPING_UNITS = {
 export const SHIPPING_ERROR_MESSAGES = {
 	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
 	SHIPPING_CALCULATION_FAILED: 'Failed to calculate shipping cost',
+	SHIPPING_LABEL_NOT_FOUND: 'Shipping label not found',
 } as const;
 
 export function getNodeEnvMode(env: string) {

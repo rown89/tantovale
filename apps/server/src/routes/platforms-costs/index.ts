@@ -3,35 +3,58 @@ import { z } from 'zod/v4';
 
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { authPath } from '#utils/constants';
+import { authPath, environment } from '#utils/constants';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 
-export const platformsCostsRoute = createRouter().get(
+export const platformsCostsRoute = createRouter().post(
 	`${authPath}/calculate`,
 	authMiddleware,
 	zValidator(
-		'query',
+		'json',
 		z.object({
-			item_id: z.string(),
-			price: z.string(),
+			price: z.number().min(0.01),
+			shipping_price: z.number().min(0.01),
 		}),
 	),
 	async (c) => {
 		const user = c.var.user;
 
-		const { item_id, price } = c.req.valid('query');
+		const { price, shipping_price } = c.req.valid('json');
 
 		try {
-			const platformCosts = await calculatePlatformCosts({
-				item_id: Number(item_id),
-				price: Number(price),
-				buyer_profile_id: user.profile_id,
-				buyer_email: user.email,
-			});
+			const { platform_charge } = await calculatePlatformCosts(
+				{
+					price,
+				},
+				{
+					platform_charge: true,
+				},
+			);
 
-			return c.json(platformCosts);
+			if (!platform_charge) {
+				return c.json({ error: 'Failed to get platform_charge cost' }, 500);
+			}
+
+			const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
+				{
+					price: price + shipping_price + platform_charge,
+				},
+				{
+					payment_provider_charge: true,
+				},
+			);
+
+			const platformSettings = {
+				platform_charge,
+				payment_provider_charge,
+			};
+
+			return c.json(
+				{ ...platformSettings, proposalExpireTime: environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS },
+				200,
+			);
 		} catch (error) {
-			return c.json({ error: 'Failed to get platforms costs' }, 500);
+			return c.json({ error: `Failed to get platforms costs: ${error}` }, 500);
 		}
 	},
 );

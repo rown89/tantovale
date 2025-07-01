@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { client } from '@workspace/server/client-rpc';
 import { SelectOrderProposal } from '@workspace/server/database';
+import { getPlatformsCosts } from '#queries/get-platforms-costs';
 
 type OrderProposalProps = Omit<
 	SelectOrderProposal,
@@ -15,6 +16,7 @@ type OrderProposalProps = Omit<
 interface handleProposalProps {
 	item_id: number;
 	proposal_price: number;
+	shipping_label_id: string;
 	message: string;
 }
 
@@ -28,6 +30,7 @@ export type OrderProposalStore = {
 	handleProposal: ({
 		item_id,
 		proposal_price,
+		shipping_label_id,
 		message,
 	}: handleProposalProps) => Promise<OrderProposalProps | undefined>;
 	resetProposal: () => void;
@@ -40,12 +43,13 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 	isProposalModalOpen: false,
 	setProposalPrice: (proposal_price: number) => set({ proposal_price }),
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
-	handleProposal: async ({ item_id, proposal_price, message }: handleProposalProps) => {
+	handleProposal: async ({ item_id, proposal_price, shipping_label_id, message }: handleProposalProps) => {
 		try {
 			const response = await client.orders_proposals.auth.create.$post({
 				json: {
 					item_id,
 					proposal_price,
+					shipping_label_id,
 					message,
 				},
 			});
@@ -70,6 +74,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 				created_at: data.proposal.created_at,
 				updated_at: data.proposal.updated_at,
 				chat_room_id: data.chatRoomId,
+				shipping_label_id: data.proposal.shipping_label_id,
 			};
 
 			return orderProposalProps;

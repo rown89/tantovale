@@ -27,30 +27,38 @@ import {
 } from 'src/extended_schemas/order_proposals';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { PaymentProviderService } from '../payments/payment-provider.service';
+import { ShipmentService } from '../shipment-provider/shipment.service';
+import { formatPriceToCents } from '#utils/price-formatter';
 
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 
-		const { item_id, proposal_price, message } = c.req.valid('json');
+		const { item_id, proposal_price, shipping_label_id, message } = c.req.valid('json');
 
 		const { db } = createClient();
 
 		try {
 			return await db.transaction(async (tx) => {
-				// Calculate all platforms costs
-				const { shipping_price, payment_provider_charge, platform_charge } = await calculatePlatformCosts({
-					item_id,
-					price: proposal_price,
-					buyer_profile_id: user.profile_id,
-					buyer_email: user.email,
-				});
+				// Retrieve shipment label from shippo
+				const shipmentService = new ShipmentService();
+				const shippingLabel = await shipmentService.getShippingLabel(shipping_label_id);
+				const shipping_price = shippingLabel.rates?.[0]?.amount
+					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
+					: 0;
 
-				if (!shipping_price || !payment_provider_charge || !platform_charge) {
-					return c.json({ error: 'Failed to calculate platforms costs' }, 500);
-				}
+				// Calculate platform charge first
+				const { platform_charge } = await calculatePlatformCosts({ price: proposal_price }, { platform_charge: true });
 
-				// check if the item exists and is available and published
+				// Calculate payment provider charge with the total amount (including platform charge)
+				const totalAmount = proposal_price + platform_charge!;
+
+				const { payment_provider_charge } = await calculatePlatformCosts(
+					{ price: totalAmount, postage_fee: shipping_price },
+					{ payment_provider_charge: true },
+				);
+
+				// Check if the item exists and is available and published
 				const [item] = await tx
 					.select({
 						id: items.id,
@@ -64,7 +72,7 @@ export const ordersProposalsRoute = createRouter()
 
 				if (!item) return c.json({ error: 'Item not found' }, 404);
 
-				// check if the user already has a proposal in pending status for this item
+				// Check if the user already has a proposal in pending status for this item
 				const [proposalAlreadyExists] = await tx
 					.select()
 					.from(orders_proposals)
@@ -132,8 +140,9 @@ export const ordersProposalsRoute = createRouter()
 						shipping_price,
 						payment_provider_charge,
 						platform_charge,
+						shipping_label_id,
 						original_price: item.price,
-					})
+					} as any)
 					.returning();
 
 				if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
@@ -217,64 +226,7 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Failed to create proposal' }, 500);
 		}
 	})
-	.get(`${authPath}/:id`, authMiddleware, async (c) => {
-		const id = Number(c.req.param('id'));
 
-		const { db } = createClient();
-
-		const proposal = await db
-			.select({
-				status: orders_proposals.status,
-				proposal_price: orders_proposals.proposal_price,
-				created_at: orders_proposals.created_at,
-			})
-			.from(orders_proposals)
-			.where(eq(orders_proposals.id, id))
-			.limit(1);
-
-		if (!proposal[0]) return c.json({ error: 'Proposal not found' }, 404);
-
-		return c.json(proposal[0], 200);
-	})
-	.get(
-		`${authPath}/by_item/:item_id`,
-		zValidator(
-			'query',
-			z.object({
-				status: z.enum(orderProposalStatusValues).optional(),
-			}),
-		),
-		authMiddleware,
-		async (c) => {
-			const user = c.var.user;
-
-			const item_id = Number(c.req.param('item_id'));
-			const { status } = c.req.valid('query');
-
-			const { db } = createClient();
-
-			const [proposal] = await db
-				.select({
-					id: orders_proposals.id,
-					status: orders_proposals.status,
-					created_at: orders_proposals.created_at,
-				})
-				.from(orders_proposals)
-				.innerJoin(profiles, eq(orders_proposals.profile_id, profiles.id))
-				.where(
-					and(
-						eq(orders_proposals.item_id, item_id),
-						eq(orders_proposals.profile_id, profiles.id),
-						eq(orders_proposals.status, status as OrderProposalStatus),
-					),
-				)
-				.limit(1);
-
-			if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
-
-			return c.json(proposal, 200);
-		},
-	)
 	// Seller update proposal status, only accepted or rejected
 	.put(`${authPath}`, authMiddleware, zValidator('json', seller_update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
@@ -416,9 +368,7 @@ export const ordersProposalsRoute = createRouter()
 							buyer_email: buyerInfo.email,
 						},
 						{
-							calculatePaymentProviderCharge: true,
-							calculatePlatformCharge: false,
-							calculateShipping: false,
+							payment_provider_charge: true,
 						},
 					);
 
@@ -503,6 +453,8 @@ export const ordersProposalsRoute = createRouter()
 					});
 				}
 
+				// TODO: Create a new shipping table record with the order_id and the shipping_label_id (shippo rate id) from the proposal
+
 				// 6: finally update proposal status
 				const [updatedProposal] = await tx
 					.update(orders_proposals)
@@ -531,4 +483,63 @@ export const ordersProposalsRoute = createRouter()
 			console.error('Error updating proposal:', error);
 			return c.json({ error: 'Failed to update proposal' }, 500);
 		}
-	});
+	}) // Get a proposal by id (for the chat)
+	.get(`${authPath}/:id`, authMiddleware, async (c) => {
+		const id = Number(c.req.param('id'));
+
+		const { db } = createClient();
+
+		const proposal = await db
+			.select({
+				status: orders_proposals.status,
+				proposal_price: orders_proposals.proposal_price,
+				created_at: orders_proposals.created_at,
+			})
+			.from(orders_proposals)
+			.where(eq(orders_proposals.id, id))
+			.limit(1);
+
+		if (!proposal[0]) return c.json({ error: 'Proposal not found' }, 404);
+
+		return c.json(proposal[0], 200);
+	})
+	// Check if an item has a proposal
+	.get(
+		`${authPath}/by_item/:item_id`,
+		zValidator(
+			'query',
+			z.object({
+				status: z.enum(orderProposalStatusValues).optional(),
+			}),
+		),
+		authMiddleware,
+		async (c) => {
+			const user = c.var.user;
+
+			const item_id = Number(c.req.param('item_id'));
+			const { status } = c.req.valid('query');
+
+			const { db } = createClient();
+
+			const [proposal] = await db
+				.select({
+					id: orders_proposals.id,
+					status: orders_proposals.status,
+					created_at: orders_proposals.created_at,
+				})
+				.from(orders_proposals)
+				.innerJoin(profiles, eq(orders_proposals.profile_id, profiles.id))
+				.where(
+					and(
+						eq(orders_proposals.item_id, item_id),
+						eq(orders_proposals.profile_id, profiles.id),
+						eq(orders_proposals.status, status as OrderProposalStatus),
+					),
+				)
+				.limit(1);
+
+			if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
+
+			return c.json(proposal, 200);
+		},
+	);

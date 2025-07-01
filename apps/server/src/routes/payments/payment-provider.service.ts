@@ -54,11 +54,13 @@ export class PaymentProviderService {
 	 * Calculate the transaction fee
 	 */
 	async calculateTransactionFee({
-		price,
-		currency,
+		price = 0,
+		currency = 'eur',
+		postage_fee = 0,
+		use_hr_post = false,
 	}: CalculateTransactionFeeProps): Promise<CalculateTransactionFeeResponse | undefined> {
 		const response = await fetch(
-			`${this.api_url}/${this.api_version}/calculate_transaction_fee?price=${price}&currency=${currency}`,
+			`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
 			{
 				method: 'GET',
 				headers: {
@@ -67,10 +69,6 @@ export class PaymentProviderService {
 				},
 			},
 		);
-
-		if (!response.ok) {
-			throw new Error('Failed to calculate transaction fee');
-		}
 
 		const data = (await response.json()) as CalculateTransactionFeeResponse | undefined;
 

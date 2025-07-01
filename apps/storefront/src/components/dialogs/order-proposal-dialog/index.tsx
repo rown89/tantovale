@@ -1,7 +1,7 @@
 'use client';
 
 import { z } from 'zod/v4';
-import { useForm } from '@tanstack/react-form';
+import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 
@@ -24,9 +24,10 @@ import { Spinner } from '@workspace/ui/components/spinner';
 
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
-import { getShippingCost } from '#queries/get-shipping-cost';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
+import { getShippingCost } from '#queries/get-shipping-cost';
+import { useEffect } from 'react';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
@@ -44,6 +45,7 @@ export function ProposalDialog() {
 			item_id: item?.id ?? 0,
 			proposal_price: formatPrice(item?.price ?? 0 - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
+			shipping_label_id: '',
 		},
 		validators: {
 			onSubmit: formSchema,
@@ -59,6 +61,7 @@ export function ProposalDialog() {
 				const result = await handleProposal({
 					item_id,
 					proposal_price,
+					shipping_label_id: value.shipping_label_id,
 					message,
 				});
 
@@ -74,21 +77,32 @@ export function ProposalDialog() {
 		},
 	});
 
+	const priceField = useField({ form, name: 'proposal_price' });
+	const formPrice = priceField.state.value;
+
 	const {
-		data: shipping_cost,
+		data: shippingCost,
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', item?.id],
+		queryKey: ['shipping_cost'],
 		queryFn: async () => {
-			if (user && user?.profile_id !== item?.user.id) {
-				const shipping_cost = await getShippingCost(Number(item?.id));
-				return shipping_cost;
+			const hasArguments = !!user && user?.profile_id !== item?.user.id && !!item?.id && !!item?.price;
+
+			if (hasArguments) {
+				const shippingCost = await getShippingCost(item.id);
+
+				if (shippingCost?.shipment_label_id) {
+					form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
+				}
+
+				return shippingCost;
 			}
 
 			return null;
 		},
-		enabled: !!item,
+		enabled: isProposalModalOpen,
+		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
 	const {
@@ -96,17 +110,22 @@ export function ProposalDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', item?.id],
+		queryKey: ['platforms_costs', formPrice, shippingCost],
 		queryFn: async () => {
-			if (user && user?.profile_id !== item?.user.id && item?.id && item?.price) {
-				const platformsCosts = await getPlatformsCosts(item.id.toString(), item.price.toString());
+			const hasArguments = !!user && user?.profile_id !== item?.user.id && !!item?.id && !!item?.price;
+
+			if (hasArguments && shippingCost) {
+				const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
+				const totalPrice = formatPriceToCents(formPrice);
+
+				const platformsCosts = await getPlatformsCosts(totalPrice, shippingCostValue);
 
 				return platformsCosts;
 			}
 
 			return null;
 		},
-		enabled: !!item,
+		enabled: isProposalModalOpen,
 	});
 
 	if (!item) return null;
@@ -122,7 +141,6 @@ export function ProposalDialog() {
 				<DialogHeader>
 					<DialogTitle>Make a Price Proposal</DialogTitle>
 					<DialogDescription />
-					<Separator className='mt-4' />
 				</DialogHeader>
 				<form
 					onSubmit={(e) => {
@@ -131,40 +149,135 @@ export function ProposalDialog() {
 
 						form.handleSubmit();
 					}}>
-					<div className='mb-6 mt-2 grid grid-cols-1 items-center gap-6'>
-						<div className='flex w-full items-center justify-between gap-2'>
-							<Label className='h-fit' htmlFor='price'>
-								Your proposal
+					<div className='mb-6 mt-2 grid grid-cols-1 items-center gap-8'>
+						<div className='flex flex-col gap-2'>
+							<div className='flex w-full items-center justify-between gap-2'>
+								<Label className='h-fit' htmlFor='price'>
+									Propose a price:
+								</Label>
+								<form.Field name='proposal_price'>
+									{(field) => {
+										const { name, handleBlur, handleChange, state } = field;
+										const { value } = state;
+
+										return (
+											<div>
+												<Input
+													id={name}
+													name={name}
+													className='w-full min-w-[130px]'
+													type='number'
+													step='0.01'
+													min='0.01'
+													max={formatPrice(item.price)}
+													placeholder={`Max: ${formatPrice(item.price)}`}
+													value={value}
+													onChange={(e) => {
+														const value = e.target.value;
+
+														handleChange(value === '' ? 0 : Number(value));
+													}}
+													onBlur={handleBlur}
+												/>
+												<FieldInfo field={field} />
+											</div>
+										);
+									}}
+								</form.Field>
+							</div>
+							<Label className='text-muted-foreground/70 text-sm'>
+								Propose a price to start a negotiation.
+								<br />
+								Avoid crazy low prices, it will be rejected by the seller.
 							</Label>
-							<form.Field name='proposal_price'>
-								{(field) => {
-									const { name, handleBlur, handleChange, state } = field;
-									const { value } = state;
+						</div>
 
-									return (
-										<div>
-											<Input
-												id={name}
-												name={name}
-												className='w-full min-w-[130px]'
-												type='number'
-												step='0.01'
-												min='0.01'
-												max={formatPrice(item.price)}
-												placeholder={`Max: ${formatPrice(item.price)}`}
-												value={value}
-												onChange={(e) => {
-													const value = e.target.value;
+						<form.Field name='shipping_label_id'>
+							{(field) => {
+								const { name, handleBlur, handleChange, state } = field;
+								const { value } = state;
 
-													handleChange(value === '' ? 0 : Number(value));
-												}}
-												onBlur={handleBlur}
-											/>
-											<FieldInfo field={field} />
-										</div>
-									);
-								}}
-							</form.Field>
+								return (
+									<div>
+										<Input
+											className='hidden'
+											id={name}
+											name={name}
+											type='text'
+											value={value}
+											onChange={(e) => handleChange(e.target.value)}
+											onBlur={handleBlur}
+										/>
+									</div>
+								);
+							}}
+						</form.Field>
+
+						{/* Shipping cost */}
+						<div className='mb-2 flex flex-col gap-1'>
+							<div className='flex justify-between gap-2'>
+								<Label>Shipping cost:</Label>{' '}
+								{isLoadingShippingCost ? (
+									<Spinner size='small' />
+								) : shippingCost?.amount ? (
+									<p className='text-sm'>{shippingCost.amount}€</p>
+								) : (
+									<p className='text-sm text-red-500'>-- €</p>
+								)}
+							</div>
+
+							{isLoadingPlatformsCosts ? (
+								'---'
+							) : errorShippingCost ? (
+								<Label className='text-sm text-red-500'>
+									Error loading shipping cost, please check your address details or contact the seller asking to check
+									his address.
+								</Label>
+							) : (
+								shippingCost && (
+									<Label className='text-muted-foreground/70 text-sm'>
+										Shipping is calculated based on your and item location. It's fixed and excluded from this proposal
+										price.
+									</Label>
+								)
+							)}
+						</div>
+
+						{/* Platform Charge (Easy pay service) */}
+						<div className='mb-2 flex flex-col gap-1'>
+							<div className='flex justify-between gap-2'>
+								<Label>Easy pay service:</Label>
+								{isLoadingPlatformsCosts ? (
+									<Spinner size='small' />
+								) : platformsCosts?.platform_charge ? (
+									<div className='flex flex-col gap-1'>
+										<p className='text-sm'>{platformsCosts.platform_charge}€</p>
+									</div>
+								) : (
+									<p className='text-sm text-red-500'>-- €</p>
+								)}
+							</div>
+							<Label className='text-muted-foreground/70 text-sm'>Platform fee for using the Easy pay service.</Label>
+						</div>
+
+						{/* Total price */}
+						<div className='mb-2 flex flex-col items-end gap-1'>
+							<Label className='font-extrabold uppercase'>Total price</Label>
+							<span className='w-fit text-sm'>
+								{isLoadingPlatformsCosts ? (
+									<Spinner size='small' />
+								) : (
+									<p>
+										{formatPrice(
+											formatPriceToCents(formPrice || formatPrice(item.price)) +
+												(platformsCosts?.platform_charge ?? 0) +
+												formatPriceToCents(shippingCost?.amount ?? 0) +
+												(platformsCosts?.payment_provider_charge ?? 0),
+										)}{' '}
+										€
+									</p>
+								)}
+							</span>
 						</div>
 
 						<form.Field name='message'>
@@ -191,38 +304,38 @@ export function ProposalDialog() {
 						</form.Field>
 					</div>
 
-					<div className='mb-2 flex flex-col gap-3'>
-						<div className='flex justify-between gap-2'>
-							<p className='text-sm'>Shipping cost:</p>{' '}
-							{isLoadingShippingCost ? (
-								<Spinner size='small' />
-							) : shipping_cost?.[0]?.amount ? (
-								<p className='text-sm'>{shipping_cost?.[0]?.amount}€</p>
-							) : (
-								<p className='text-sm text-red-500'>-- €</p>
-							)}
-						</div>
-
-						{!isLoadingShippingCost && (!!errorShippingCost || !shipping_cost?.[0]?.amount) ? (
-							<p className='text-sm text-red-500'>
-								Error loading shipping cost, please check your address details or contact the seller asking to check his
-								address.
-							</p>
-						) : null}
-
-						<Label className='text-muted-foreground/70 text-sm'>
-							Shipping is calculated based on your and item location. It's fixed and excluded from this proposal price.
-						</Label>
-					</div>
-
 					<div className='my-7' />
 
 					<DialogFooter className='flex items-center justify-between gap-20'>
-						<Label className='text-sm text-orange-400'>Unanswered proposals will automatically expire in 7 days.</Label>
+						<Label className='text-sm text-orange-400'>
+							Unanswered proposals will automatically expire in{' '}
+							{platformsCosts ? platformsCosts?.proposalExpireTime / 24 : '--'} days.
+						</Label>
 
-						<Button type='submit' disabled={item.price <= 0 || isLoadingShippingCost || !!errorShippingCost}>
-							{form.state.isSubmitting ? 'Submitting...' : 'Send'}
-						</Button>
+						<form.Subscribe
+							selector={(formState) => ({
+								canSubmit: formState.canSubmit,
+								isSubmitting: formState.isSubmitting,
+								isDirty: formState.isDirty,
+							})}>
+							{(state) => {
+								const { canSubmit, isSubmitting, isDirty } = state;
+								return (
+									<Button
+										type='submit'
+										disabled={
+											isSubmitting ||
+											!canSubmit ||
+											isLoadingPlatformsCosts ||
+											isLoadingShippingCost ||
+											!shippingCost ||
+											!platformsCosts?.platform_charge
+										}>
+										{form.state.isSubmitting ? 'Submitting...' : 'Send'}
+									</Button>
+								);
+							}}
+						</form.Subscribe>
 					</DialogFooter>
 				</form>
 			</DialogContent>

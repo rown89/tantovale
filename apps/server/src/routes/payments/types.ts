@@ -19,6 +19,8 @@ export interface CreateUserGuestResponse {
 export interface CalculateTransactionFeeProps {
 	price: number;
 	currency: string;
+	postage_fee?: number;
+	use_hr_post?: boolean;
 }
 
 export interface CalculateTransactionFeeResponse {

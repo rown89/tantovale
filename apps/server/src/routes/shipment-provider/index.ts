@@ -80,7 +80,17 @@ export const shipmentProviderRoute = createRouter()
 					user.email,
 				);
 
-				return c.json({ rates }, 200);
+				// exclude object_owner object from rates
+				const filteredRates = rates.map((rate) => {
+					const { amount, objectId, shipment } = rate;
+
+					return {
+						amount,
+						shipment_label_id: shipment,
+					};
+				});
+
+				return c.json({ rates: filteredRates }, 200);
 			} catch (error) {
 				console.error('Error calculating shipment cost:', error);
 
