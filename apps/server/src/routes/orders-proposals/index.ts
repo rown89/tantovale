@@ -42,28 +42,6 @@ export const ordersProposalsRoute = createRouter()
 
 		try {
 			return await db.transaction(async (tx) => {
-				// Retrieve shipment label from shippo
-				const shipmentService = new ShipmentService();
-				const shippingLabel = await shipmentService.getShippingLabel(shipping_label_id);
-				const shipping_price = shippingLabel.rates?.[0]?.amount
-					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
-					: 0;
-
-				// Calculate platform charge first
-				const { platform_charge } = await calculatePlatformCosts({ price: proposal_price }, { platform_charge: true });
-
-				// Calculate payment provider charge with the total amount (including platform charge)
-				const totalAmount = proposal_price + platform_charge!;
-
-				const { payment_provider_charge } = await calculatePlatformCosts(
-					{ price: totalAmount, postage_fee: shipping_price },
-					{ payment_provider_charge: true },
-				);
-
-				if (!shipping_price || !payment_provider_charge) {
-					throw new Error('Failed to calculate shipping price or payment provider charge');
-				}
-
 				// Check if the item exists and is available and published
 				const [item] = await tx
 					.select({
@@ -92,6 +70,28 @@ export const ordersProposalsRoute = createRouter()
 					.limit(1);
 
 				if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
+
+				// Retrieve shipment label from shippo
+				const shipmentService = new ShipmentService();
+				const shippingLabel = await shipmentService.getShippingLabel(shipping_label_id);
+				const shipping_price = shippingLabel.rates?.[0]?.amount
+					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
+					: 0;
+
+				// Calculate platform charge first
+				const { platform_charge } = await calculatePlatformCosts({ price: proposal_price }, { platform_charge: true });
+
+				// Calculate payment provider charge with the total amount (including platform charge)
+				const totalAmount = proposal_price + platform_charge!;
+
+				const { payment_provider_charge } = await calculatePlatformCosts(
+					{ price: totalAmount, postage_fee: shipping_price },
+					{ payment_provider_charge: true },
+				);
+
+				if (!shipping_price || !payment_provider_charge) {
+					throw new Error('Failed to calculate shipping price or payment provider charge');
+				}
 
 				// Get more informations about the buyer profile
 				const [profile] = await tx
