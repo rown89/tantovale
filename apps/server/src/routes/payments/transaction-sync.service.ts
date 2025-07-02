@@ -4,6 +4,7 @@ import { subHours } from 'date-fns';
 import { createClient } from '#database/index';
 import { entityTrustapTransactions, orders } from '#db-schema';
 import { PaymentProviderService } from './payment-provider.service';
+import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
 
 export class TransactionSyncService {
 	private paymentProviderService: PaymentProviderService;
@@ -57,7 +58,7 @@ export class TransactionSyncService {
 							const [updatedTransaction] = await tx
 								.update(entityTrustapTransactions)
 								.set({
-									status: trustapStatus.status,
+									status: trustapStatus.status as EntityTrustapTransactionStatus,
 									updated_at: new Date(),
 								})
 								.where(eq(entityTrustapTransactions.transactionId, transaction.transactionId))

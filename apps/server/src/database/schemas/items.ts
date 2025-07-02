@@ -6,6 +6,7 @@ import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';
 import { addresses } from './addresses';
 import { profiles } from './profiles';
+import { itemStatus } from './enumerated_values';
 
 export const items = pgTable(
 	'items',
@@ -25,7 +26,7 @@ export const items = pgTable(
 			.references(() => addresses.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
 		title: text('title').notNull(),
 		description: text('description').notNull(),
-		status: itemStatusEnum('status').notNull().default('available'),
+		status: itemStatusEnum('status').notNull().default(itemStatus.AVAILABLE),
 		published: boolean('published').default(false).notNull(),
 		price: integer('price').notNull().default(0),
 		easy_pay: boolean('easy_pay').notNull().default(false),

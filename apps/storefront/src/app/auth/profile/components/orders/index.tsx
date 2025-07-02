@@ -146,7 +146,6 @@ export default function UserSellingItemsComponent() {
 												<TableHead>Order Date</TableHead>
 												<TableHead>Seller</TableHead>
 												<TableHead className='hidden md:table-cell'>Original Price</TableHead>
-												<TableHead>Proposal Price</TableHead>
 												<TableHead>Status</TableHead>
 												<TableHead className='text-right'></TableHead>
 											</TableRow>
@@ -176,7 +175,6 @@ export default function UserSellingItemsComponent() {
 														<TableCell className='hidden md:table-cell'>
 															€ {formatPrice(order.original_price)}
 														</TableCell>
-														<TableCell>{order.total_price ? `€ ${formatPrice(order.total_price)}` : '-'}</TableCell>
 														<TableCell>{getStatusBadge(order.status)}</TableCell>
 														<TableCell className='text-right'>
 															<div className='flex justify-end gap-2'>

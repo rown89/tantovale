@@ -246,12 +246,7 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Missing required fields' }, 400);
 		}
 
-		const { expired, pending, accepted, rejected } = ORDER_PROPOSAL_PHASES;
-
-		// Validate that status is not expired or pending
-		if (status === expired || status === pending) {
-			return c.json({ error: 'You cannot update a proposal to expired or pending status' }, 400);
-		}
+		const { pending, accepted, rejected } = ORDER_PROPOSAL_PHASES;
 
 		// Validate that status is a valid enum value
 		if (![accepted, rejected].includes(status)) {

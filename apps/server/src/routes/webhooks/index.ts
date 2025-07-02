@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders } from '#db-schema';
+import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
 
 // Trustap webhook payload schema
 const trustapWebhookSchema = z.object({
@@ -48,7 +49,7 @@ export const webhooksRoute = createRouter().post(
 				const [updatedTransaction] = await tx
 					.update(entityTrustapTransactions)
 					.set({
-						status: payload.status,
+						status: payload.status as EntityTrustapTransactionStatus,
 						updated_at: new Date(),
 						...(payload.complaint_period_deadline && {
 							complaintPeriodDeadline: new Date(payload.complaint_period_deadline),

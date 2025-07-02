@@ -1,3 +1,6 @@
+export const chatMessageTypeValues = ['text', 'proposal'] as const;
+export type ChatMessageType = (typeof chatMessageTypeValues)[number];
+
 export const ORDER_PHASES = {
 	PAYMENT_PENDING: 'payment_pending',
 	PAYMENT_CONFIRMED: 'payment_confirmed',
@@ -16,9 +19,6 @@ export const ORDER_PROPOSAL_PHASES = {
 	rejected: 'rejected',
 	expired: 'expired',
 } as const;
-
-export const chatMessageTypeValues = ['text', 'proposal'] as const;
-export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 
 export const orderProposalStatusValues = [
 	ORDER_PROPOSAL_PHASES.pending,
@@ -57,7 +57,19 @@ export type Profile = (typeof profileValues)[number];
 export const itemImagesSizeValues = ['original', 'small', 'medium', 'thumbnail'] as const;
 export type ItemImagesSize = (typeof itemImagesSizeValues)[number];
 
-export const itemStatusValues = ['available', 'sold', 'pending', 'archived'] as const;
+export const itemStatus = {
+	AVAILABLE: 'available',
+	SOLD: 'sold',
+	PENDING: 'pending',
+	ARCHIVED: 'archived',
+} as const;
+
+export const itemStatusValues = [
+	itemStatus.AVAILABLE,
+	itemStatus.SOLD,
+	itemStatus.PENDING,
+	itemStatus.ARCHIVED,
+] as const;
 export type ItemStatus = (typeof itemStatusValues)[number];
 
 export const itemConditionValues = ['new', 'used-like-new', 'used-good', 'used-fair'] as const;
@@ -66,7 +78,12 @@ export type ItemCondition = (typeof itemConditionValues)[number];
 export const sexValues = ['male', 'female'] as const;
 export type Sex = (typeof sexValues)[number];
 
-export const addressStatusValues = ['active', 'inactive', 'deleted'] as const;
+export const addressStatus = {
+	ACTIVE: 'active',
+	INACTIVE: 'inactive',
+	DELETED: 'deleted',
+} as const;
+export const addressStatusValues = [addressStatus.ACTIVE, addressStatus.INACTIVE, addressStatus.DELETED] as const;
 export type AddressStatus = (typeof addressStatusValues)[number];
 
 export const entityTrustapTransactionTypeValues = {
