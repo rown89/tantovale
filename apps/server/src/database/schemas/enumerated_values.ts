@@ -68,3 +68,34 @@ export type Sex = (typeof sexValues)[number];
 
 export const addressStatusValues = ['active', 'inactive', 'deleted'] as const;
 export type AddressStatus = (typeof addressStatusValues)[number];
+
+export const entityTrustapTransactionTypeValues = {
+	CREATED: 'created',
+	JOINED: 'joined',
+	PAID: 'paid',
+	REJECTED: 'rejected',
+	CANCELLED: 'cancelled',
+	TRACKED: 'tracked',
+	CANCELLED_WITH_PAYMENT: 'cancelled_with_payment',
+	DELIVERED: 'delivered',
+	PAYMENT_REFUNDED: 'payment_refunded',
+	COMPLAINED: 'complained',
+	COMPLAINT_PERIOD_ENDED: 'complaint_period_ended',
+	FUNDS_RELEASED: 'funds_released',
+} as const;
+
+export const entityTrustapTransactionStatusValues = [
+	entityTrustapTransactionTypeValues.CREATED,
+	entityTrustapTransactionTypeValues.JOINED,
+	entityTrustapTransactionTypeValues.PAID,
+	entityTrustapTransactionTypeValues.REJECTED,
+	entityTrustapTransactionTypeValues.CANCELLED,
+	entityTrustapTransactionTypeValues.TRACKED,
+	entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT,
+	entityTrustapTransactionTypeValues.DELIVERED,
+	entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+	entityTrustapTransactionTypeValues.COMPLAINED,
+	entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED,
+	entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+] as const;
+export type EntityTrustapTransactionStatus = (typeof entityTrustapTransactionStatusValues)[number];

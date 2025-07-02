@@ -85,11 +85,13 @@ export function ProposalDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost'],
+		queryKey: ['shipping_cost', item?.id],
 		queryFn: async () => {
-			const hasArguments = !!user && user?.profile_id !== item?.user.id && !!item?.id && !!item?.price;
+			const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
 
-			if (hasArguments) {
+			const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
+
+			if (hasMandatoryArguments) {
 				const shippingCost = await getShippingCost(item.id);
 
 				if (shippingCost?.shipment_label_id) {
@@ -110,11 +112,12 @@ export function ProposalDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', formPrice, shippingCost],
+		queryKey: ['platforms_costs', formPrice, shippingCost, item?.id],
 		queryFn: async () => {
-			const hasArguments = !!user && user?.profile_id !== item?.user.id && !!item?.id && !!item?.price;
+			const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
+			const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
 
-			if (hasArguments && shippingCost) {
+			if (hasMandatoryArguments && shippingCost) {
 				const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
 				const totalPrice = formatPriceToCents(formPrice);
 
@@ -126,6 +129,7 @@ export function ProposalDialog() {
 			return null;
 		},
 		enabled: isProposalModalOpen,
+		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
 	if (!item) return null;

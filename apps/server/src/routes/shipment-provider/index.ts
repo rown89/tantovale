@@ -82,7 +82,7 @@ export const shipmentProviderRoute = createRouter()
 
 				// exclude object_owner object from rates
 				const filteredRates = rates.map((rate) => {
-					const { amount, objectId, shipment } = rate;
+					const { amount, shipment } = rate;
 
 					return {
 						amount,

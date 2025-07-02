@@ -38,6 +38,10 @@
 			"./src/database/index.ts",
 			"./src/database/index.tsx"
 		],
+		"#extended_schemas": [
+			"./src/extended_schemas/index.ts",
+			"./src/extended_schemas/index.tsx"
+		],
 		"#db-schema": [
 			"./src/database/schemas/schema.ts",
 			"./src/database/schemas/schema.tsx"
@@ -53,6 +57,10 @@
 		"#middlewares/*": [
 			"./src/middlewares/*.ts",
 			"./src/middlewares/*.tsx"
+		],
+		"#mailer/*": [
+			"./src/mailer/*.ts",
+			"./src/mailer/*.tsx"
 		]
 	},
 	"exports": {

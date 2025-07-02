@@ -13,22 +13,24 @@ import {
 	profiles,
 	addresses,
 	entityTrustapTransactions,
+	shippings,
 } from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authPath } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { OrderProposalStatus, orderProposalStatusValues } from 'src/database/schemas/enumerated_values';
-import { sendNewProposalMessage } from 'src/mailer/templates/order-proposal-received';
-import { sendProposalAcceptedMessage } from 'src/mailer/templates/order-proposal-accepted';
-import { sendProposalRejectedMessage } from 'src/mailer/templates/order-proposal-rejected';
 import {
-	create_order_proposal_schema,
-	seller_update_order_proposal_schema,
-} from 'src/extended_schemas/order_proposals';
+	EntityTrustapTransactionStatus,
+	OrderProposalStatus,
+	orderProposalStatusValues,
+} from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
+import { formatPriceToCents } from '#utils/price-formatter';
+import { sendNewProposalMessage } from '#mailer/templates/order-proposal-received';
+import { sendProposalAcceptedMessage } from '#mailer/templates/order-proposal-accepted';
+import { sendProposalRejectedMessage } from '#mailer/templates/order-proposal-rejected';
+import { create_order_proposal_schema, seller_update_order_proposal_schema } from '#extended_schemas';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 import { ShipmentService } from '../shipment-provider/shipment.service';
-import { formatPriceToCents } from '#utils/price-formatter';
 
 export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
@@ -57,6 +59,10 @@ export const ordersProposalsRoute = createRouter()
 					{ price: totalAmount, postage_fee: shipping_price },
 					{ payment_provider_charge: true },
 				);
+
+				if (!shipping_price || !payment_provider_charge) {
+					throw new Error('Failed to calculate shipping price or payment provider charge');
+				}
 
 				// Check if the item exists and is available and published
 				const [item] = await tx
@@ -87,7 +93,7 @@ export const ordersProposalsRoute = createRouter()
 
 				if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
 
-				// Get more informations about the profile
+				// Get more informations about the buyer profile
 				const [profile] = await tx
 					.select({
 						name: profiles.name,
@@ -103,9 +109,9 @@ export const ordersProposalsRoute = createRouter()
 					throw new Error('User has no name or surname or payment_provider_id');
 				}
 
-				// Create a new payment provider guest user (buyer) if he has no payment_provider_id
 				let buyerPaymentProviderId = profile.payment_provider_id;
 
+				// Create a new payment provider guest user (buyer) if he has no payment_provider_id
 				if (!buyerPaymentProviderId) {
 					const paymentService = new PaymentProviderService();
 					const guestUser = await paymentService.createGuestUser({
@@ -130,7 +136,7 @@ export const ordersProposalsRoute = createRouter()
 					buyerPaymentProviderId = guestUser.id;
 				}
 
-				// create a new proposal
+				// Create a new proposal
 				const [proposal] = await tx
 					.insert(orders_proposals)
 					.values({
@@ -147,7 +153,7 @@ export const ordersProposalsRoute = createRouter()
 
 				if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
 
-				// get the item owner email
+				// Get the Seller (item owner) email
 				const [itemOwner] = await tx
 					.select({ email: users.email })
 					.from(profiles)
@@ -157,7 +163,7 @@ export const ordersProposalsRoute = createRouter()
 
 				if (!itemOwner) return c.json({ error: 'Item owner not found' }, 404);
 
-				// check if user already has an ongoing chat with the item owner
+				// Check if user already has an ongoing chat with the seller for this item
 				const [chatRoom] = await tx
 					.select()
 					.from(chat_rooms)
@@ -167,7 +173,7 @@ export const ordersProposalsRoute = createRouter()
 				let chatRoomId = null;
 
 				if (chatRoom) {
-					// send a new chat message of type proposal
+					// Send a new chat message of type proposal
 					const [newChatMessage] = await tx
 						.insert(chat_messages)
 						.values({
@@ -183,7 +189,7 @@ export const ordersProposalsRoute = createRouter()
 
 					chatRoomId = chatRoom.id;
 				} else {
-					// create a new chat room
+					// Create a new chat room
 					const [newChatRoom] = await tx
 						.insert(chat_rooms)
 						.values({
@@ -194,7 +200,7 @@ export const ordersProposalsRoute = createRouter()
 
 					if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
 
-					// create a new chat message of type proposal
+					// Create a new chat message of type proposal
 					const [newChatMessage] = await tx
 						.insert(chat_messages)
 						.values({
@@ -284,6 +290,7 @@ export const ordersProposalsRoute = createRouter()
 						proposal_price: orders_proposals.proposal_price,
 						shipping_price: orders_proposals.shipping_price,
 						platform_charge: orders_proposals.platform_charge,
+						shipping_label_id: orders_proposals.shipping_label_id,
 					})
 					.from(orders_proposals)
 					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, 'pending')))
@@ -401,7 +408,7 @@ export const ordersProposalsRoute = createRouter()
 							buyerId: transaction.buyer_id,
 							transactionId: transaction.id,
 							transactionType: 'online_payment',
-							status: transaction.status,
+							status: transaction.status as EntityTrustapTransactionStatus,
 							price: transactionPrice,
 							charge: payment_provider_charge,
 							chargeSeller: transaction.charge_seller || 0,
@@ -417,7 +424,7 @@ export const ordersProposalsRoute = createRouter()
 						throw new Error('Failed to store Trustap transaction details');
 					}
 
-					// Create new order when proposal is accepted
+					// Create a temporary new order when proposal is accepted
 					const [newOrder] = await tx
 						.insert(orders)
 						.values({
@@ -436,6 +443,12 @@ export const ordersProposalsRoute = createRouter()
 						throw new Error('Failed to create order');
 					}
 
+					// Save the order_id and the shipping_label_id (shippo rate id) in shipping table
+					await tx.insert(shippings).values({
+						order_id: newOrder.id,
+						shipping_label_id: existingProposal.shipping_label_id,
+					});
+
 					transaction_response = {
 						id: transaction.id,
 						status: transaction.status,
@@ -452,8 +465,6 @@ export const ordersProposalsRoute = createRouter()
 						itemName: item.title,
 					});
 				}
-
-				// TODO: Create a new shipping table record with the order_id and the shipping_label_id (shippo rate id) from the proposal
 
 				// 6: finally update proposal status
 				const [updatedProposal] = await tx
