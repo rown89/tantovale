@@ -6,26 +6,26 @@ import { env } from 'hono/adapter';
 import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 
-import { createClient } from '../../database';
+import { createClient } from '#database/index';
 import {
 	subcategories,
 	subcategory_properties,
 	items,
 	cities,
 	users,
-	shippings,
 	addresses,
 	items_images,
 	property_values,
 	profiles,
 	orders,
-} from '../../database/schemas/schema';
-import { items_properties_values, InsertItemPropertyValue } from '../../database/schemas/items_properties_values';
-import { createRouter } from '../../lib/create-app';
-import { authPath } from '../../utils/constants';
-import { createItemSchema } from '../../extended_schemas';
-import { authMiddleware } from '../../middlewares/authMiddleware';
-import { itemDetailResponseType } from 'src/extended_schemas/item/item-detail';
+} from '#db-schema';
+import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
+import { itemStatus } from '#database/schemas/enumerated_values';
+import { createRouter } from '#lib/create-app';
+import { authPath } from '#utils/constants';
+import { createItemSchema } from '#extended_schemas';
+import { authMiddleware } from '#middlewares/authMiddleware/index';
+import { itemDetailResponseType } from '#extended_schemas';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 
 export const itemRoute = createRouter()
@@ -184,15 +184,17 @@ export const itemRoute = createRouter()
 					if (!address) return c.json({ message: 'Address not found' }, 404);
 
 					// create a new payment provider guest user
-					const paymentProviderId = await new PaymentProviderService().createGuestUser({
+					const paymentProviderService = new PaymentProviderService();
+
+					const paymentProviderId = await paymentProviderService.createGuestUser({
 						id: user.profile_id,
 						email: user.email,
 						first_name: profile.name,
 						last_name: profile.surname,
 						country_code: address.country_code,
 						tos_acceptance: {
-							unix_timestamp: new Date().getTime() / 1000,
-							ip_address: c.req.header('x-forwarded-for')?.split(',')[0] ?? 'IP non disponibile',
+							unix_timestamp: Math.floor(new Date().getTime() / 1000),
+							ip: c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1',
 						},
 					});
 
@@ -204,13 +206,25 @@ export const itemRoute = createRouter()
 						.where(eq(profiles.id, user.profile_id));
 				}
 
+				// Check if delivery_method is "pickup"
+				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
+
 				// Create the new item
 				const [newItem] = await tx
 					.insert(items)
 					.values({
 						...commons,
 						profile_id: user.profile_id,
-						status: 'available',
+						status: itemStatus.AVAILABLE,
+						...(hasDeliveryMethod && !isPickup && shipping
+							? {
+									custom_shipping_price: shipping?.shipping_price,
+									item_weight: shipping?.item_weight,
+									item_length: shipping?.item_length,
+									item_width: shipping?.item_width,
+									item_height: shipping?.item_height,
+								}
+							: {}),
 						published: true,
 					})
 					.returning();
@@ -277,21 +291,6 @@ export const itemRoute = createRouter()
 					if (mandatoryProperties.length > 0) {
 						throw new Error(`This subcategory requires ${mandatoryProperties.length} mandatory properties`);
 					}
-				}
-
-				// Check if delivery_method is "pickup"
-				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
-
-				// Create a temporary shipment
-				if (hasDeliveryMethod && !isPickup && shipping) {
-					await tx.insert(shippings).values({
-						item_id: newItem.id,
-						shipping_price: shipping.shipping_price,
-						item_weight: shipping.item_weight,
-						item_length: shipping.item_length,
-						item_width: shipping.item_width,
-						item_height: shipping.item_height,
-					});
 				}
 
 				// Return the created item

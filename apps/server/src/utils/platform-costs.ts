@@ -6,6 +6,7 @@ export interface PlatformCostsParams {
 	item_id?: number;
 	price?: number; // always expressed in cents
 	postage_fee?: number; // always expressed in cents
+	payment_provider_charge?: number; // always expressed in cents
 	buyer_profile_id?: number;
 	buyer_email?: string;
 }
@@ -13,14 +14,16 @@ export interface PlatformCostsParams {
 export interface PlatformCostsConfig {
 	shipping?: boolean;
 	payment_provider_charge?: boolean;
-	platform_charge?: boolean;
+	platform_charge_percentage?: boolean;
+	platform_charge_amount?: boolean;
 }
 
 export interface PlatformCostsResult {
 	shipping_price?: number | undefined;
 	payment_provider_charge?: number;
 	payment_provider_charge_calculator_version?: number;
-	platform_charge?: number;
+	platform_charge_percentage?: number;
+	platform_charge_amount?: number;
 }
 
 // Optional: Singleton service instances for better performance
@@ -106,8 +109,12 @@ export async function calculatePlatformCosts(
 	await Promise.all(asyncOperations);
 
 	// Calculate platform charge (synchronous operation)
-	if (config.platform_charge && price) {
-		result.platform_charge = calculatePlatformFee(price);
+	if (config.platform_charge_percentage && price) {
+		result.platform_charge_percentage = calculatePlatformFee(price);
+	}
+
+	if (config.platform_charge_amount && price) {
+		result.platform_charge_amount = Math.round(price * calculatePlatformFee(price));
 	}
 
 	return result;

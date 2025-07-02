@@ -26,6 +26,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 import { authPath } from '../../utils/constants';
 
 import type { ItemWithProperties } from './types';
+import { itemStatus } from '#database/schemas/enumerated_values';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -71,7 +72,7 @@ export const itemsRoute = createRouter()
 					and(
 						isNull(items.deleted_at),
 						eq(items.published, params.published),
-						eq(items.status, 'available'),
+						eq(items.status, itemStatus.AVAILABLE),
 						eq(items.profile_id, profile.id),
 						eq(items_images.size, 'thumbnail'),
 						eq(items_images.order_position, 0),
@@ -130,7 +131,7 @@ export const itemsRoute = createRouter()
 						),
 						eq(items_images.size, 'thumbnail'),
 						eq(items_images.order_position, 0),
-						eq(items.status, 'available'),
+						eq(items.status, itemStatus.AVAILABLE),
 						eq(items.published, true),
 					),
 				);
@@ -199,7 +200,7 @@ export const itemsRoute = createRouter()
 					items_images,
 					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
-				.where(and(eq(items.profile_id, profile.id), eq(items.published, true), eq(items.status, 'available')))
+				.where(and(eq(items.profile_id, profile.id), eq(items.published, true), eq(items.status, itemStatus.AVAILABLE)))
 				.orderBy(items.created_at);
 
 			// Group properties by item and organize by filter_slug

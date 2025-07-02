@@ -6,7 +6,7 @@ export interface CreateGuestUserProps {
 	country_code: string;
 	tos_acceptance: {
 		unix_timestamp: number;
-		ip_address: string;
+		ip: string;
 	};
 }
 

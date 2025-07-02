@@ -12,7 +12,7 @@ import {
 export class PaymentProviderService {
 	private api_url = environment.PAYMENT_PROVIDER_API_URL;
 	private api_version = environment.PAYMENT_PROVIDER_API_VERSION;
-	private api_key = environment.PAYMENT_PROVIDER_SECRET_KEY;
+	private api_key = environment.PAYMENT_PROVIDER_API_KEY;
 
 	/**
 	 * Create a guest user for the payment provider
@@ -29,7 +29,7 @@ export class PaymentProviderService {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${this.api_key}`,
+				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 			},
 			body: JSON.stringify({
 				id,
@@ -65,10 +65,14 @@ export class PaymentProviderService {
 				method: 'GET',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: `Bearer ${this.api_key}`,
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 				},
 			},
 		);
+
+		if (!response.ok) {
+			throw new Error('Failed to calculate transaction fee');
+		}
 
 		const data = (await response.json()) as CalculateTransactionFeeResponse | undefined;
 
@@ -94,7 +98,7 @@ export class PaymentProviderService {
 			headers: {
 				'Trustap-User': seller_id,
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${this.api_key}`,
+				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 			},
 			body: JSON.stringify({
 				seller_id,
@@ -126,7 +130,7 @@ export class PaymentProviderService {
 			method: 'GET',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${this.api_key}`,
+				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 			},
 		});
 

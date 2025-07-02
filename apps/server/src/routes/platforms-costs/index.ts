@@ -19,22 +19,18 @@ export const platformsCostsRoute = createRouter().post(
 		const { price, shipping_price } = c.req.valid('json');
 
 		try {
-			const { platform_charge } = await calculatePlatformCosts(
-				{
-					price,
-				},
-				{
-					platform_charge: true,
-				},
+			// Calculate platform charge amount
+			const { platform_charge_amount } = await calculatePlatformCosts(
+				{ price: price },
+				{ platform_charge_amount: true },
 			);
 
-			if (!platform_charge) {
-				return c.json({ error: 'Failed to get platform_charge cost' }, 500);
-			}
+			// Calculate payment provider charge with the total amount (including platform charge)
+			const transactionPreviewPrice = price + platform_charge_amount!;
 
-			const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
+			const { payment_provider_charge } = await calculatePlatformCosts(
 				{
-					price: price + platform_charge,
+					price: transactionPreviewPrice,
 					postage_fee: shipping_price,
 				},
 				{
@@ -43,7 +39,7 @@ export const platformsCostsRoute = createRouter().post(
 			);
 
 			const platformSettings = {
-				platform_charge,
+				platform_charge: platform_charge_amount,
 				payment_provider_charge,
 			};
 

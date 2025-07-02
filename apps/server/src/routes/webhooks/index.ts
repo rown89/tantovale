@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
 
 import { createRouter } from 'src/lib/create-app';

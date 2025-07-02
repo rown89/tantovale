@@ -12,6 +12,7 @@ import { shippoClient } from '#lib/shippo-client';
 
 import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index';
 import type { ShipmentCalculationData } from './types';
+import { itemStatus } from '#database/schemas/enumerated_values';
 
 const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
@@ -54,10 +55,10 @@ export class ShipmentService {
 				seller_phone: addresses.phone,
 
 				// Shipping dimensions
-				item_weight: shippings.item_weight,
-				item_length: shippings.item_length,
-				item_width: shippings.item_width,
-				item_height: shippings.item_height,
+				item_weight: items.item_weight,
+				item_length: items.item_length,
+				item_width: items.item_width,
+				item_height: items.item_height,
 			})
 			.from(items)
 			.innerJoin(profiles, eq(items.profile_id, profiles.id))
@@ -68,7 +69,7 @@ export class ShipmentService {
 			.innerJoin(provinceTable, eq(provinceTable.id, addresses.province_id))
 			.leftJoin(shippings, eq(shippings.item_id, items.id))
 			// Get the item that is available and published
-			.where(and(eq(items.id, itemId), eq(items.status, 'available'), eq(items.published, true)));
+			.where(and(eq(items.id, itemId), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)));
 
 		if (!itemData) {
 			throw new Error(ERROR_MESSAGES.ITEM_NOT_FOUND);

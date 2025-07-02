@@ -3,7 +3,7 @@
 import { z } from 'zod/v4';
 import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -17,7 +17,6 @@ import {
 import { Input } from '@workspace/ui/components/input';
 import { Label } from '@workspace/ui/components/label';
 import { Textarea } from '@workspace/ui/components/textarea';
-import { Separator } from '@workspace/ui/components/separator';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { create_order_proposal_schema } from '@workspace/server/extended_schemas';
 import { Spinner } from '@workspace/ui/components/spinner';
@@ -27,10 +26,11 @@ import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
 import { getShippingCost } from '#queries/get-shipping-cost';
-import { useEffect } from 'react';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
+	const queryClient = useQueryClient();
+
 	const { setChatId, item, isProposalModalOpen, setIsProposalModalOpen, handleProposal } = useTantovaleStore();
 
 	const formSchema = create_order_proposal_schema.extend({
@@ -68,6 +68,8 @@ export function ProposalDialog() {
 				if (result) {
 					setIsProposalModalOpen(false);
 					setChatId(result.chat_room_id);
+
+					queryClient.invalidateQueries({ queryKey: ['get_chat_id_by_item'] });
 
 					toast.success('Proposal sent successfully');
 				}
@@ -255,13 +257,15 @@ export function ProposalDialog() {
 									<Spinner size='small' />
 								) : platformsCosts?.platform_charge ? (
 									<div className='flex flex-col gap-1'>
-										<p className='text-sm'>{platformsCosts.platform_charge}€</p>
+										<p className='text-sm'>{formatPrice(platformsCosts.platform_charge).toFixed(2)}€</p>
 									</div>
 								) : (
 									<p className='text-sm text-red-500'>-- €</p>
 								)}
 							</div>
-							<Label className='text-muted-foreground/70 text-sm'>Platform fee for using the Easy pay service.</Label>
+							<Label className='text-muted-foreground/70 text-sm'>
+								Platform fee for organizing the shipment and improving the security of the payment.
+							</Label>
 						</div>
 
 						{/* Total price */}

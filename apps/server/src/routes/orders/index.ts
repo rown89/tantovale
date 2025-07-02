@@ -44,7 +44,8 @@ export const ordersRoute = createRouter()
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
-			const { status, shipping_price, payment_provider_charge, platform_charge, created_at } = order.orders;
+			const { status, shipping_price, payment_provider_charge, platform_charge, shipping_label_id, created_at } =
+				order.orders;
 
 			return {
 				id,
@@ -53,6 +54,7 @@ export const ordersRoute = createRouter()
 				shipping_price,
 				payment_provider_charge,
 				platform_charge,
+				shipping_label_id,
 				created_at,
 				item: {
 					id: order.items.id,

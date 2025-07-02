@@ -12,6 +12,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
 import { ChatMessageSchema } from 'src/extended_schemas';
 import { createRoom, sendChatRoomMessage } from './utils';
+import { itemStatus } from '#database/schemas/enumerated_values';
 
 export const chatRoute = createRouter()
 	// get all user chat rooms
@@ -81,7 +82,7 @@ export const chatRoute = createRouter()
 						eq(chat_messages.chat_room_id, chat_rooms.id),
 						eq(chat_messages.id, lastMessagesSubquery.max_id),
 						eq(items.published, true),
-						eq(items.status, 'available'),
+						eq(items.status, itemStatus.AVAILABLE),
 					),
 				)
 				.leftJoin(profiles, eq(chat_messages.sender_id, profiles.id))

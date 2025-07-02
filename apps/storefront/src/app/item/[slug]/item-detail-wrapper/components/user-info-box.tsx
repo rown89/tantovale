@@ -24,9 +24,6 @@ import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
 import AddressProtectedRoute from '#utils/address-protected';
 import { PaymentButton } from './payment-button';
-import { getPlatformsCosts } from '#queries/get-platforms-costs';
-import { useQuery } from '@tanstack/react-query';
-import { getShippingCost } from '#queries/get-shipping-cost';
 
 interface UserInfoBoxProps extends ItemWrapperProps {
 	itemOwnerData: Pick<
@@ -59,7 +56,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 
 	const proposal_date = format(
 		new Date(orderProposal?.created_at || proposal_created_at || new Date()),
-		'dd/MM/yyyy - HH:mm',
+		'dd/MM/yyyy - hh:mm a',
 	);
 
 	return (

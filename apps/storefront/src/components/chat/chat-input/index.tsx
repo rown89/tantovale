@@ -1,12 +1,14 @@
 'use client';
 
+import { z } from 'zod/v4';
+import { useForm } from '@tanstack/react-form';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+
 import { Button } from '@workspace/ui/components/button';
 import { Textarea } from '@workspace/ui/components/textarea';
 import { client } from '@workspace/server/client-rpc';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { useForm } from '@tanstack/react-form';
 import { ChatMessageSchema } from '@workspace/server/extended_schemas';
-import { z } from 'zod/v4';
+
 import { FieldInfo } from '../../forms/utils/field-info';
 
 interface ChatInputProps {

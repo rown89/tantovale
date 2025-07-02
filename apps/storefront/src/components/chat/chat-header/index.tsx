@@ -5,6 +5,7 @@ import { Button } from '@workspace/ui/components/button';
 import { formatPrice } from '@workspace/server/price-formatter';
 import { ChatProps } from '..';
 import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
+import { itemStatus } from '@workspace/server/enumerated_values';
 
 interface ChatHeaderProps {
 	id: string;
@@ -44,7 +45,7 @@ export function ChatHeader({ id, room, currentUserId }: ChatHeaderProps) {
 			</div>
 			<div className='flex items-center gap-3'>
 				<div className='flex flex-col text-right xl:min-w-[200px]'>
-					{room.item.status === 'available' && room.item.published ? (
+					{room.item.status === itemStatus.AVAILABLE && room.item.published ? (
 						<>
 							<Link
 								href={`/item/${itemSlug}`}

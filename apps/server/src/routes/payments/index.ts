@@ -2,17 +2,17 @@ import { zValidator } from '@hono/zod-validator';
 import { and, eq, not } from 'drizzle-orm';
 import { z } from 'zod/v4';
 
-import { createRouter } from '../../lib/create-app';
-import { authMiddleware } from '../../middlewares/authMiddleware';
-import { createClient } from '../../database/index';
+import { createRouter } from '#lib/create-app';
+import { authMiddleware } from '#middlewares/authMiddleware/index';
+import { createClient } from '#database/index';
 import { profiles, orders, items, entityTrustapTransactions, addresses, shippings } from '#db-schema';
-import { PaymentProviderService } from './payment-provider.service';
+import { addressStatus, EntityTrustapTransactionStatus, itemStatus } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { environment } from '#utils/constants';
-import { addressStatus, EntityTrustapTransactionStatus, itemStatus } from '#database/schemas/enumerated_values';
-import { ShipmentService } from '../shipment-provider/shipment.service';
 import { formatPriceToCents } from '#utils/price-formatter';
+import { ShipmentService } from '../shipment-provider/shipment.service';
+import { PaymentProviderService } from './payment-provider.service';
 
 const paymentBuyNowSchema = z.object({
 	item_id: z.number(),
@@ -51,7 +51,7 @@ export const paymentsRoute = createRouter().post(
 					return c.json({ error: 'Item not available' }, 400);
 				}
 
-				// Check if an order already exists and is in a different status than payment_pending
+				// Check if an order already exists and is in a different status than PAYMENT_PENDING
 				const [existingOrder] = await tx
 					.select({ id: orders.id })
 					.from(orders)
@@ -59,7 +59,7 @@ export const paymentsRoute = createRouter().post(
 					.limit(1);
 
 				if (existingOrder) {
-					return c.json({ error: 'Item already sold' }, 400);
+					return c.json({ error: 'An order already exists for this item' }, 400);
 				}
 
 				// Get buyer payment provider id
@@ -80,31 +80,24 @@ export const paymentsRoute = createRouter().post(
 				const labelPreview = rates[0];
 
 				const shipping_label_id = labelPreview?.shipment;
+				const shipping_price = labelPreview?.amount ? formatPriceToCents(parseFloat(labelPreview.amount)) : 0;
 
-				if (!labelPreview || !shipping_label_id) {
+				if (!labelPreview || !shipping_label_id || !shipping_price) {
 					return c.json({ error: 'Failed to generate a label preview' }, 500);
 				}
 
-				const shipping_price = labelPreview?.amount ? formatPriceToCents(parseFloat(labelPreview.amount)) : 0;
-
-				// Calculate platform costs
-				const { platform_charge } = await calculatePlatformCosts(
-					{
-						price: item.price,
-					},
-					{
-						platform_charge: true,
-					},
+				// Calculate platform charge amount
+				const { platform_charge_amount } = await calculatePlatformCosts(
+					{ price: item.price },
+					{ platform_charge_amount: true },
 				);
 
-				if (!platform_charge) {
-					return c.json({ error: 'Failed to calculate platform charge' }, 500);
-				}
+				const transactionPreviewPrice = item.price + platform_charge_amount!;
 
 				// Calculate payment provider charge
 				const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
 					{
-						price: item.price,
+						price: transactionPreviewPrice,
 						postage_fee: shipping_price,
 					},
 					{
@@ -118,16 +111,13 @@ export const paymentsRoute = createRouter().post(
 
 				const paymentProviderService = new PaymentProviderService();
 
-				// Create Trustap transaction
-				const transactionPrice = item.price + payment_provider_charge;
-
 				const transaction = await paymentProviderService.createTransactionWithBothUsers({
 					buyer_id: buyerInfo.payment_provider_id,
 					seller_id: item.payment_provider_id,
 					creator_role: 'buyer',
 					currency: 'eur',
 					description: `Payment for ${item.title}`,
-					price: transactionPrice,
+					price: item.price,
 					postage_fee: shipping_price,
 					charge: payment_provider_charge,
 					charge_calculator_version: payment_provider_charge_calculator_version,
@@ -147,8 +137,8 @@ export const paymentsRoute = createRouter().post(
 						transactionId: transaction.id,
 						transactionType: 'online_payment',
 						status: transaction.status as EntityTrustapTransactionStatus,
-						price: transactionPrice,
-						charge: payment_provider_charge,
+						price: transaction.price,
+						charge: transaction.charge,
 						chargeSeller: transaction.charge_seller || 0,
 						currency: 'eur',
 						entityTitle: item.title,
@@ -173,8 +163,9 @@ export const paymentsRoute = createRouter().post(
 						seller_address: item.seller_address_id,
 						shipping_price,
 						payment_provider_charge,
-						platform_charge,
+						platform_charge: platform_charge_amount!,
 						payment_transaction_id: transaction.id,
+						shipping_label_id,
 					})
 					.returning();
 
@@ -182,19 +173,13 @@ export const paymentsRoute = createRouter().post(
 					return c.json({ error: 'Failed to create order' }, 500);
 				}
 
-				// Create shipping record with label ID
-				await tx.insert(shippings).values({
-					order_id: newOrder.id,
-					shipping_label_id,
-				});
-
-				// Return payment URL
 				return c.json(
 					{
 						success: true,
 						order: { id: newOrder.id, status: newOrder.status },
+						// Return payment URL
 						payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/?redirect_url=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders`,
-						message: 'Complete payment to confirm order',
+						message: 'Order created, complete the payment for the next step',
 					},
 					200,
 				);

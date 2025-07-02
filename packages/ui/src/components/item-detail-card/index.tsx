@@ -81,7 +81,7 @@ export const ItemDetailCard = React.memo(
 										</Badge>
 									) : null}
 
-									<Badge className='px-3 py-1 text-lg font-semibold'>€{formattedPrice}</Badge>
+									<Badge className='px-3 py-1 text-lg font-semibold'>€ {formattedPrice}</Badge>
 								</div>
 							</div>
 

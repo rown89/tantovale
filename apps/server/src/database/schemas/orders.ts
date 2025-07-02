@@ -17,6 +17,7 @@ export const orders = pgTable(
 		}),
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
+		shipping_label_id: text('shipping_label_id').notNull(),
 		shipping_price: integer('shipping_price').notNull(),
 		buyer_id: integer('buyer_id').references(() => profiles.id, {
 			onDelete: 'cascade',

@@ -13,19 +13,18 @@ import {
 	profiles,
 	addresses,
 	entityTrustapTransactions,
-	shippings,
 } from '#db-schema';
 import { createRouter } from '#lib/create-app';
-import { authPath } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import {
 	EntityTrustapTransactionStatus,
-	ORDER_PHASES,
+	itemStatus,
 	ORDER_PROPOSAL_PHASES,
 	OrderProposalStatus,
 	orderProposalStatusValues,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
+import { authPath } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendNewProposalMessage } from '#mailer/templates/order-proposal-received';
 import { sendProposalAcceptedMessage } from '#mailer/templates/order-proposal-accepted';
@@ -53,7 +52,7 @@ export const ordersProposalsRoute = createRouter()
 						price: items.price,
 					})
 					.from(items)
-					.where(and(eq(items.id, item_id), eq(items.status, 'available'), eq(items.published, true)))
+					.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
 					.limit(1);
 
 				if (!item) return c.json({ error: 'Item not found' }, 404);
@@ -80,11 +79,18 @@ export const ordersProposalsRoute = createRouter()
 					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
 					: 0;
 
-				// Calculate platform charge first
-				const { platform_charge } = await calculatePlatformCosts({ price: proposal_price }, { platform_charge: true });
+				// Calculate platform charge amount
+				const { platform_charge_amount } = await calculatePlatformCosts(
+					{ price: proposal_price },
+					{ platform_charge_amount: true },
+				);
+
+				if (!platform_charge_amount) {
+					throw new Error('Failed to calculate platform charge amount');
+				}
 
 				// Calculate payment provider charge with the total amount (including platform charge)
-				const transactionPreviewPrice = proposal_price + platform_charge!;
+				const transactionPreviewPrice = proposal_price + platform_charge_amount;
 
 				const { payment_provider_charge } = await calculatePlatformCosts(
 					{ price: transactionPreviewPrice, postage_fee: shipping_price },
@@ -123,8 +129,8 @@ export const ordersProposalsRoute = createRouter()
 						last_name: profile.surname,
 						country_code: profile.country_code,
 						tos_acceptance: {
-							unix_timestamp: new Date().getTime() / 1000,
-							ip_address: c.req.header('x-forwarded-for')?.split(',')[0] ?? 'IP non disponibile',
+							unix_timestamp: Math.floor(new Date().getTime() / 1000),
+							ip: c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1',
 						},
 					});
 
@@ -147,7 +153,7 @@ export const ordersProposalsRoute = createRouter()
 						proposal_price,
 						shipping_price,
 						payment_provider_charge,
-						platform_charge,
+						platform_charge: platform_charge_amount,
 						shipping_label_id,
 						original_price: item.price,
 					} as any)
@@ -234,7 +240,6 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Failed to create proposal' }, 500);
 		}
 	})
-
 	// Seller update proposal status, only accepted or rejected
 	.put(`${authPath}`, authMiddleware, zValidator('json', seller_update_order_proposal_schema), async (c) => {
 		const user = c.var.user;
@@ -427,18 +432,13 @@ export const ordersProposalsRoute = createRouter()
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
 							payment_transaction_id: transaction.id,
+							shipping_label_id: existingProposal.shipping_label_id,
 						})
 						.returning({ id: orders.id });
 
 					if (!newOrder) {
 						throw new Error('Failed to create order');
 					}
-
-					// Save the order_id and the shipping_label_id (shippo rate id) in shipping table
-					await tx.insert(shippings).values({
-						order_id: newOrder.id,
-						shipping_label_id: existingProposal.shipping_label_id,
-					});
 
 					transaction_response = {
 						id: transaction.id,
