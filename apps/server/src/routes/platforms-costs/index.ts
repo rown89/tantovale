@@ -6,19 +6,16 @@ import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath, environment } from '#utils/constants';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 
+const calculatePlatformCostsSchema = z.object({
+	price: z.number().min(0.01),
+	shipping_price: z.number().min(0.01),
+});
+
 export const platformsCostsRoute = createRouter().post(
 	`${authPath}/calculate`,
 	authMiddleware,
-	zValidator(
-		'json',
-		z.object({
-			price: z.number().min(0.01),
-			shipping_price: z.number().min(0.01),
-		}),
-	),
+	zValidator('json', calculatePlatformCostsSchema),
 	async (c) => {
-		const user = c.var.user;
-
 		const { price, shipping_price } = c.req.valid('json');
 
 		try {
@@ -37,7 +34,8 @@ export const platformsCostsRoute = createRouter().post(
 
 			const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
 				{
-					price: price + shipping_price + platform_charge,
+					price: price + platform_charge,
+					postage_fee: shipping_price,
 				},
 				{
 					payment_provider_charge: true,

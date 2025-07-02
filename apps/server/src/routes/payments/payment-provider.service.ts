@@ -1,12 +1,12 @@
 import { environment } from '#utils/constants';
 import {
 	CalculateTransactionFeeProps,
-	CreateTransactionProps,
 	CreateUserGuestResponse,
 	CalculateTransactionFeeResponse,
 	CreateTransactionResponse,
 	CreateGuestUserProps,
 	GetTransactionStatusResponse,
+	CreateTransactionWithBothUsersProps,
 } from './types';
 
 export class PaymentProviderService {
@@ -78,16 +78,17 @@ export class PaymentProviderService {
 	/**
 	 * Create a transaction
 	 */
-	async createTransaction({
+	async createTransactionWithBothUsers({
 		buyer_id,
 		seller_id,
 		creator_role,
 		currency,
 		description,
 		price,
+		postage_fee,
 		charge,
 		charge_calculator_version,
-	}: CreateTransactionProps): Promise<CreateTransactionResponse | undefined> {
+	}: CreateTransactionWithBothUsersProps): Promise<CreateTransactionResponse | undefined> {
 		const response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
 			method: 'POST',
 			headers: {
@@ -102,6 +103,7 @@ export class PaymentProviderService {
 				currency,
 				description,
 				price,
+				postage_fee,
 				charge,
 				charge_calculator_version,
 			}),

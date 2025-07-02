@@ -15,7 +15,6 @@ export const orders = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		total_price: integer('total_price').notNull(),
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
 		shipping_price: integer('shipping_price').notNull(),

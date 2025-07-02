@@ -20,6 +20,8 @@ import { authPath } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import {
 	EntityTrustapTransactionStatus,
+	ORDER_PHASES,
+	ORDER_PROPOSAL_PHASES,
 	OrderProposalStatus,
 	orderProposalStatusValues,
 } from '#database/schemas/enumerated_values';
@@ -82,10 +84,10 @@ export const ordersProposalsRoute = createRouter()
 				const { platform_charge } = await calculatePlatformCosts({ price: proposal_price }, { platform_charge: true });
 
 				// Calculate payment provider charge with the total amount (including platform charge)
-				const totalAmount = proposal_price + platform_charge!;
+				const transactionPreviewPrice = proposal_price + platform_charge!;
 
 				const { payment_provider_charge } = await calculatePlatformCosts(
-					{ price: totalAmount, postage_fee: shipping_price },
+					{ price: transactionPreviewPrice, postage_fee: shipping_price },
 					{ payment_provider_charge: true },
 				);
 
@@ -244,13 +246,15 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Missing required fields' }, 400);
 		}
 
+		const { expired, pending, accepted, rejected } = ORDER_PROPOSAL_PHASES;
+
 		// Validate that status is not expired or pending
-		if (status === 'expired' || status === 'pending') {
+		if (status === expired || status === pending) {
 			return c.json({ error: 'You cannot update a proposal to expired or pending status' }, 400);
 		}
 
 		// Validate that status is a valid enum value
-		if (!['accepted', 'rejected'].includes(status)) {
+		if (![accepted, rejected].includes(status)) {
 			return c.json({ error: 'Invalid status value. Only "accepted" or "rejected" are allowed' }, 400);
 		}
 
@@ -288,12 +292,11 @@ export const ordersProposalsRoute = createRouter()
 						status: orders_proposals.status,
 						profile_id: orders_proposals.profile_id,
 						proposal_price: orders_proposals.proposal_price,
-						shipping_price: orders_proposals.shipping_price,
 						platform_charge: orders_proposals.platform_charge,
 						shipping_label_id: orders_proposals.shipping_label_id,
 					})
 					.from(orders_proposals)
-					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, 'pending')))
+					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, pending)))
 					.limit(1);
 
 				if (!existingProposal) {
@@ -339,7 +342,7 @@ export const ordersProposalsRoute = createRouter()
 				} | null = null;
 
 				// 5: Handle different status updates
-				if (status === 'rejected') {
+				if (status === rejected) {
 					// Send rejection notification
 					await sendProposalRejectedMessage({
 						to: buyerInfo.email,
@@ -348,31 +351,21 @@ export const ordersProposalsRoute = createRouter()
 						itemName: item.title,
 					});
 				} else {
-					// Ensure that doesn't already exist an order for this item
-					const [existingOrder] = await tx
-						.select({ id: orders.id })
-						.from(orders)
-						.where(eq(orders.item_id, item_id))
-						.limit(1);
-
-					if (existingOrder) {
-						return c.json({ error: 'An order already exists for this item' }, 400);
-					}
-
-					// Instantiate the payment provider service
-					const paymentProviderService = new PaymentProviderService();
+					// Get the shipping label id from the proposal
+					const shipmentService = new ShipmentService();
+					const shippingLabel = await shipmentService.getShippingLabel(existingProposal.shipping_label_id);
+					const shipping_price = shippingLabel.rates?.[0]?.amount
+						? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
+						: 0;
 
 					// Total price to pay for the transaction
-					const transactionPrice =
-						existingProposal.proposal_price + existingProposal.shipping_price + existingProposal.platform_charge;
+					const transactionPrice = existingProposal.proposal_price + existingProposal.platform_charge;
 
 					// Calculate the payment provider charge based on the transactionPrice
 					const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
 						{
-							item_id,
 							price: transactionPrice,
-							buyer_profile_id: buyerProfileId,
-							buyer_email: buyerInfo.email,
+							postage_fee: shipping_price,
 						},
 						{
 							payment_provider_charge: true,
@@ -383,14 +376,18 @@ export const ordersProposalsRoute = createRouter()
 						return c.json({ error: 'Failed to calculate transaction fee' }, 500);
 					}
 
+					// Instantiate the payment provider service
+					const paymentProviderService = new PaymentProviderService();
+
 					// Create a new payment transaction
-					const transaction = await paymentProviderService.createTransaction({
+					const transaction = await paymentProviderService.createTransactionWithBothUsers({
 						buyer_id: buyerInfo.payment_provider_id,
 						seller_id: item.payment_provider_id,
 						creator_role: 'seller',
 						currency: 'eur',
 						description: `Payment for ${item.title}`,
 						price: transactionPrice,
+						postage_fee: shipping_price,
 						charge: payment_provider_charge,
 						charge_calculator_version: payment_provider_charge_calculator_version,
 					});
@@ -431,8 +428,7 @@ export const ordersProposalsRoute = createRouter()
 							item_id,
 							buyer_id: buyerProfileId,
 							seller_id: user.profile_id,
-							total_price: existingProposal.proposal_price,
-							shipping_price: existingProposal.shipping_price,
+							shipping_price,
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
 							payment_transaction_id: transaction.id,
@@ -482,7 +478,7 @@ export const ordersProposalsRoute = createRouter()
 					{
 						message: 'Proposal updated successfully',
 						proposal: updatedProposal,
-						...(status === 'accepted' && {
+						...(status === accepted && {
 							order: order_response,
 							transaction: transaction_response,
 						}),

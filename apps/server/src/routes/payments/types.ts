@@ -31,13 +31,14 @@ export interface CalculateTransactionFeeResponse {
 	price: number;
 }
 
-export interface CreateTransactionProps {
+export interface CreateTransactionWithBothUsersProps {
 	buyer_id: string;
 	seller_id: string;
 	creator_role: 'buyer' | 'seller';
 	currency: 'eur';
 	description: string;
 	price: number;
+	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
 }

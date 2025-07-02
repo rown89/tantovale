@@ -10,6 +10,7 @@ import { PaymentProviderService } from './payment-provider.service';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { environment } from '#utils/constants';
+import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
 
 export const paymentsRoute = createRouter().post(
 	'/buy_now',
@@ -112,7 +113,7 @@ export const paymentsRoute = createRouter().post(
 						buyerId: transaction.buyer_id,
 						transactionId: transaction.id,
 						transactionType: 'online_payment',
-						status: transaction.status,
+						status: transaction.status as EntityTrustapTransactionStatus,
 						price: totalPrice,
 						charge: payment_provider_charge,
 						chargeSeller: transaction.charge_seller || 0,
@@ -135,7 +136,6 @@ export const paymentsRoute = createRouter().post(
 						item_id,
 						buyer_id: user.profile_id,
 						seller_id: item.profile_id,
-						total_price: item.price,
 						shipping_price,
 						payment_provider_charge,
 						platform_charge,
