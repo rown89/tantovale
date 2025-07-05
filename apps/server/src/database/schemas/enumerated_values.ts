@@ -1,4 +1,4 @@
-export const chatMessageTypeValues = ['text', 'proposal'] as const;
+export const chatMessageTypeValues = ['text', 'proposal', 'system'] as const;
 export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 
 export const ORDER_PHASES = {

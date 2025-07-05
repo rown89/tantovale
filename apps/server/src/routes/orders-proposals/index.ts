@@ -24,7 +24,7 @@ import {
 	orderProposalStatusValues,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
-import { authPath } from '#utils/constants';
+import { authPath, environment } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendNewProposalMessage } from '#mailer/templates/order-proposal-received';
 import { sendProposalAcceptedMessage } from '#mailer/templates/order-proposal-accepted';
@@ -247,9 +247,7 @@ export const ordersProposalsRoute = createRouter()
 		const { id, status, item_id } = c.req.valid('json');
 
 		// Input validation
-		if (!id || !status || !item_id) {
-			return c.json({ error: 'Missing required fields' }, 400);
-		}
+		if (!id || !status || !item_id) return c.json({ error: 'Missing required fields' }, 400);
 
 		const { pending, accepted, rejected } = ORDER_PROPOSAL_PHASES;
 
@@ -281,9 +279,7 @@ export const ordersProposalsRoute = createRouter()
 					return c.json({ error: 'Seller has no item or you do not have permission to manage this item' }, 404);
 				}
 
-				if (!item.payment_provider_id) {
-					return c.json({ error: 'Seller has no payment provider id' }, 404);
-				}
+				if (!item.payment_provider_id) return c.json({ error: 'Seller has no payment provider id' }, 404);
 
 				// 2. Check if proposal exists and is in "pending" state
 				const [existingProposal] = await tx
@@ -299,9 +295,7 @@ export const ordersProposalsRoute = createRouter()
 					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, pending)))
 					.limit(1);
 
-				if (!existingProposal) {
-					return c.json({ error: 'Proposal not found' }, 404);
-				}
+				if (!existingProposal) return c.json({ error: 'Proposal not found' }, 404);
 
 				const buyerProfileId = Number(existingProposal.profile_id);
 
@@ -328,9 +322,7 @@ export const ordersProposalsRoute = createRouter()
 					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, buyerProfileId)))
 					.limit(1);
 
-				if (!chatRoom) {
-					return c.json({ error: 'Chat room not found' }, 404);
-				}
+				if (!chatRoom) return c.json({ error: 'Chat room not found' }, 404);
 
 				let order_response: {
 					id?: number;
@@ -343,6 +335,19 @@ export const ordersProposalsRoute = createRouter()
 
 				// 5: Handle different status updates
 				if (status === rejected) {
+					// Create a new chat message of type system
+					const [newChatMessage] = await tx
+						.insert(chat_messages)
+						.values({
+							chat_room_id: chatRoom.id,
+							sender_id: user.profile_id,
+							message: `Proposal #${existingProposal.id} - "${item.title}" has been rejected by the seller.`,
+							message_type: 'system',
+						})
+						.returning();
+
+					if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
 					// Send rejection notification
 					await sendProposalRejectedMessage({
 						to: buyerInfo.email,
@@ -392,9 +397,7 @@ export const ordersProposalsRoute = createRouter()
 						charge_calculator_version: payment_provider_charge_calculator_version,
 					});
 
-					if (!transaction) {
-						return c.json({ error: 'Failed to create transaction' }, 500);
-					}
+					if (!transaction) return c.json({ error: 'Failed to create transaction' }, 500);
 
 					// Store Trustap transaction details for tracking
 					const [trustapTransaction] = await tx
@@ -417,9 +420,7 @@ export const ordersProposalsRoute = createRouter()
 						})
 						.returning();
 
-					if (!trustapTransaction) {
-						throw new Error('Failed to store Trustap transaction details');
-					}
+					if (!trustapTransaction) throw new Error('Failed to store Trustap transaction details');
 
 					// Create a temporary new order when proposal is accepted
 					const [newOrder] = await tx
@@ -436,9 +437,7 @@ export const ordersProposalsRoute = createRouter()
 						})
 						.returning({ id: orders.id });
 
-					if (!newOrder) {
-						throw new Error('Failed to create order');
-					}
+					if (!newOrder) throw new Error('Failed to create order');
 
 					transaction_response = {
 						id: transaction.id,
@@ -448,6 +447,19 @@ export const ordersProposalsRoute = createRouter()
 					order_response = {
 						id: newOrder.id,
 					};
+
+					// Create a new chat message of type system
+					const [newChatMessage] = await tx
+						.insert(chat_messages)
+						.values({
+							chat_room_id: chatRoom.id,
+							sender_id: user.profile_id,
+							message: `Proposal #${existingProposal.id} - "${item.title}" has been accepted by the seller.`,
+							message_type: 'system',
+						})
+						.returning();
+
+					if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
 
 					// Send acceptance notification
 					await sendProposalAcceptedMessage({
@@ -464,9 +476,7 @@ export const ordersProposalsRoute = createRouter()
 					.where(eq(orders_proposals.id, id))
 					.returning();
 
-				if (!updatedProposal) {
-					return c.json({ error: 'Failed to update proposal' }, 500);
-				}
+				if (!updatedProposal) return c.json({ error: 'Failed to update proposal' }, 500);
 
 				// Return updated proposal for other status changes
 				return c.json(
@@ -493,6 +503,7 @@ export const ordersProposalsRoute = createRouter()
 
 		const proposal = await db
 			.select({
+				id: orders_proposals.id,
 				status: orders_proposals.status,
 				proposal_price: orders_proposals.proposal_price,
 				created_at: orders_proposals.created_at,
