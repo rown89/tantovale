@@ -33,7 +33,7 @@ interface UserInfoBoxProps extends ItemWrapperProps {
 }
 
 export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function UserInfoBox(
-	{ item, itemOwnerData, orderProposal, isFavorite, chatId, isCurrentUserTheItemOwner },
+	{ item, itemOwnerData, orderProposal, isFavorite, chatId: chatIdServer, isCurrentUserTheItemOwner },
 	ref,
 ) {
 	const item_id = item.id;
@@ -41,12 +41,17 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 
 	const { user } = useAuth();
 	const router = useRouter();
-	const { proposal_created_at, setIsProposalModalOpen, setIsAddressLoading, isAddressLoading, setAddressId } =
-		useTantovaleStore();
+	const {
+		chatId: chatIdClient,
+		proposal_created_at,
+		setIsProposalModalOpen,
+		setIsAddressLoading,
+		isAddressLoading,
+		setAddressId,
+	} = useTantovaleStore();
 
-	const { chatIdClient, messageBoxForm } = useItemChat({
+	const { messageBoxForm } = useItemChat({
 		item_id,
-		chatId,
 	});
 
 	const { isFavoriteClient, handleFavorite } = useItemFavorite({
@@ -58,6 +63,8 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 		new Date(orderProposal?.created_at || proposal_created_at || new Date()),
 		'dd/MM/yyyy - hh:mm a',
 	);
+
+	const chatId = chatIdClient || chatIdServer;
 
 	return (
 		<div ref={ref} className='flex h-auto w-full flex-col gap-4 xl:max-w-[450px]'>
@@ -146,7 +153,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 											}}
 											disabled={handleFavorite.isPending}>
 											{!isFavoriteClient ? <Heart className='text-inherit' /> : <Heart />}
-											{!isFavoriteClient ? 'Favorite' : 'UnFavorite'}
+											{!isFavoriteClient ? 'Add to Favorites' : 'Remove Favorite'}
 										</Button>
 									</div>
 								</div>
@@ -162,7 +169,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 
 				<CardContent>
 					<div className='flex flex-col gap-2'>
-						{!item.order.id && <Separator className='mb-4' />}
+						{!item.order.id && <Separator />}
 
 						<Label className='mt-4'>Venditore:</Label>
 						<div className='text-accent flex w-full items-start justify-between'>
@@ -185,7 +192,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 					<CardFooter>
 						<div className='flex w-full flex-col items-start gap-2'>
 							<Label className='mb-1'>Richiedi informazioni</Label>
-							{!chatIdClient ? (
+							{!chatId ? (
 								<form
 									className='w-full'
 									onSubmit={(e) => {
@@ -245,7 +252,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 								<Button
 									variant='default'
 									className='w-full font-bold'
-									onClick={() => router.push(`/auth/chat/${chatIdClient}`)}>
+									onClick={() => router.push(`/auth/chat/${chatId}`)}>
 									Go to Chat
 								</Button>
 							)}

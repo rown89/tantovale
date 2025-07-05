@@ -29,6 +29,9 @@ export default function ItemWDetailWrapper({
 	isFavorite,
 	isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
+	const { user } = useAuth();
+	const isMobile = useIsMobile();
+	const router = useRouter();
 	const {
 		proposal_created_at,
 		setItem,
@@ -39,9 +42,6 @@ export default function ItemWDetailWrapper({
 		isAddressLoading,
 		setAddressId,
 	} = useTantovaleStore();
-	const { user } = useAuth();
-	const isMobile = useIsMobile();
-	const router = useRouter();
 
 	// Use null as initial state to match SSR
 	const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);

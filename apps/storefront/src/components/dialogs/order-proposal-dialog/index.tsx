@@ -3,7 +3,7 @@
 import { z } from 'zod/v4';
 import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -29,7 +29,6 @@ import { getShippingCost } from '#queries/get-shipping-cost';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
-	const queryClient = useQueryClient();
 
 	const { setChatId, item, isProposalModalOpen, setIsProposalModalOpen, handleProposal } = useTantovaleStore();
 
@@ -68,8 +67,6 @@ export function ProposalDialog() {
 				if (result) {
 					setIsProposalModalOpen(false);
 					setChatId(result.chat_room_id);
-
-					queryClient.invalidateQueries({ queryKey: ['get_chat_id_by_item'] });
 
 					toast.success('Proposal sent successfully');
 				}
