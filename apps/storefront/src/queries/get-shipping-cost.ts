@@ -1,5 +1,5 @@
 import { client } from '@workspace/server/client-rpc';
-import { CarrierAccountWithExtraInfo } from 'shippo/models/components/index';
+import { CarrierAccountWithExtraInfo } from 'shippo/models/components/index.js';
 
 export const getShippingCarriers = async (): Promise<CarrierAccountWithExtraInfo[]> => {
 	const carriersResponse = await client.shipment_provider.auth.active_carriers.$get();

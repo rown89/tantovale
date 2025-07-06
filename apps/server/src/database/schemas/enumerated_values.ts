@@ -28,6 +28,15 @@ export const orderProposalStatusValues = [
 ] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
+export const chatMessageMetadataValues = {
+	proposal_accepted: 'proposal_accepted',
+	proposal_rejected: 'proposal_rejected',
+} as const;
+export type ChatMessageMetadata = {
+	type: (typeof chatMessageMetadataValues)[keyof typeof chatMessageMetadataValues];
+	order_id: number;
+};
+
 export const currencyValues = [
 	'usd',
 	'eur',

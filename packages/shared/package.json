@@ -13,7 +13,8 @@
 		"./hooks/*": "./src/hooks/*.ts",
 		"./types/*": "./src/types/*.ts",
 		"./schema/*": "./src/schema/*.ts",
-		"./utils/*": "./src/utils/*.ts"
+		"./utils/*": "./src/utils/*.ts",
+		"./server_bridge": "./src/server_bridge.ts"
 	},
 	"dependencies": {
 		"@workspace/eslint-config": "workspace:*",

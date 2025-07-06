@@ -30,38 +30,38 @@
 	},
 	"packageManager": "pnpm@10.12.1+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39",
 	"imports": {
-		"#database/*": [
-			"./src/database/*.ts",
-			"./src/database/*.tsx"
-		],
-		"#create-client": [
-			"./src/database/index.ts",
-			"./src/database/index.tsx"
-		],
-		"#extended_schemas": [
-			"./src/extended_schemas/index.ts",
-			"./src/extended_schemas/index.tsx"
-		],
-		"#db-schema": [
-			"./src/database/schemas/schema.ts",
-			"./src/database/schemas/schema.tsx"
-		],
-		"#utils/*": [
-			"./src/utils/*.ts",
-			"./src/utils/*.tsx"
-		],
-		"#lib/*": [
-			"./src/lib/*.ts",
-			"./src/lib/*.tsx"
-		],
-		"#middlewares/*": [
-			"./src/middlewares/*.ts",
-			"./src/middlewares/*.tsx"
-		],
-		"#mailer/*": [
-			"./src/mailer/*.ts",
-			"./src/mailer/*.tsx"
-		]
+		"#database/*": {
+			"development": "./src/database/*.ts",
+			"default": "./dist/src/database/*.js"
+		},
+		"#create-client": {
+			"development": "./src/database/index.ts",
+			"default": "./dist/src/database/index.js"
+		},
+		"#extended_schemas": {
+			"development": "./src/extended_schemas/index.ts",
+			"default": "./dist/src/extended_schemas/index.js"
+		},
+		"#db-schema": {
+			"development": "./src/database/schemas/schema.ts",
+			"default": "./dist/src/database/schemas/schema.js"
+		},
+		"#utils/*": {
+			"development": "./src/utils/*.ts",
+			"default": "./dist/src/utils/*.js"
+		},
+		"#lib/*": {
+			"development": "./src/lib/*.ts",
+			"default": "./dist/src/lib/*.js"
+		},
+		"#middlewares/*": {
+			"development": "./src/middlewares/*.ts",
+			"default": "./dist/src/middlewares/*.js"
+		},
+		"#mailer/*": {
+			"development": "./src/mailer/*.ts",
+			"default": "./dist/src/mailer/*.js"
+		}
 	},
 	"exports": {
 		"./apiRoutes": {

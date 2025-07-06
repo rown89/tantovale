@@ -48,6 +48,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 	const isTextMessage = message.message_type === 'text';
 
 	const proposalStatus = orderProposal?.status;
+	const proposalMetadata = message.metadata;
 
 	return (
 		<div className={cn('mb-4 flex items-start gap-2 break-all', isChatOwner ? 'flex-row-reverse' : 'flex-row')}>
@@ -68,18 +69,21 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 											proposalStatus === 'pending' && 'bg-background',
 										)}>
 										<CardHeader>
-											<CardTitle className='flex justify-between'>
-												<div>
-													😃 &nbsp;
-													{isChatOwner ? 'Your ' : 'You have a buy '}
-													proposal
-												</div>
-												<p className='text-muted-foreground'>#{orderProposal.id}</p>
+											<CardTitle className='text-accent flex items-center gap-2'>
+												<RssIcon /> Tantovale Bot
 											</CardTitle>
 										</CardHeader>
 										<CardContent>
-											<p className='my-2 italic'>&quot;{message.message}&quot;</p>
-											<div className='flex'>
+											<div className='flex justify-between'>
+												<div>
+													😃 &nbsp;
+													{isChatOwner ? 'Your ' : 'You have a '}
+													buy proposal
+												</div>
+												<p className='text-muted-foreground'>#{orderProposal.id}</p>
+											</div>
+											<p className='mt-3 italic'>&quot;{message.message}&quot;</p>
+											<div className='mb-3 flex'>
 												{isChatOwner ? (
 													<span className='flex gap-1'>
 														You are offering <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
@@ -93,18 +97,19 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 													</span>
 												)}
 											</div>
-											<p className='text-muted-foreground mt-2 italic'>
-												* This proposal will expire automatically in{' '}
-												{formatDistanceToNow(addDays(new Date(orderProposal.created_at), 7))}
+											<p className='text-muted-foreground/90 mt-2 italic'>
+												This proposal will expire automatically in{' '}
+												{formatDistanceToNow(addDays(new Date(orderProposal.created_at), 4))}
 											</p>
-										</CardContent>
-										<CardFooter
-											className={cn(
-												'flex gap-2',
-												proposalStatus === 'pending' && !isChatOwner ? 'justify-between' : 'justify-center',
-											)}>
-											{/* Buyer actions (when not chat owner and proposal is pending) */}
-											{!isChatOwner && proposalStatus === 'pending' && (
+										</CardContent>{' '}
+										{!isChatOwner && proposalStatus === 'pending' && (
+											<CardFooter
+												className={cn(
+													'flex gap-2',
+													proposalStatus === 'pending' && !isChatOwner ? 'justify-between' : 'justify-center',
+												)}>
+												{/* Buyer actions (when not chat owner and proposal is pending) */}
+
 												<>
 													<Dialog>
 														<DialogTrigger asChild>
@@ -149,43 +154,8 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 														</DialogContent>
 													</Dialog>
 												</>
-											)}
-
-											{/* Proposal status */}
-											<div className='flex w-full flex-col gap-2'>
-												{/* Buyer view of status (when not pending) */}
-												{!isChatOwner && proposalStatus !== 'pending' && (
-													<span className='flex'>
-														Proposal status:&nbsp;&nbsp;
-														<p
-															className={cn(
-																'font-bold',
-																proposalStatus === 'rejected' || proposalStatus === 'expired'
-																	? 'text-destructive'
-																	: 'text-green-500',
-															)}>
-															{proposalStatus}
-														</p>
-													</span>
-												)}
-
-												{/* Seller view of status (always shown) */}
-												{isChatOwner && (
-													<div className='flex gap-2'>
-														<p className='text-foreground'>Proposal status:</p>
-														<p
-															className={cn(
-																'font-bold',
-																proposalStatus === 'rejected' || proposalStatus === 'expired'
-																	? 'text-destructive'
-																	: 'text-green-500',
-															)}>
-															{proposalStatus}
-														</p>
-													</div>
-												)}
-											</div>
-										</CardFooter>
+											</CardFooter>
+										)}
 									</Card>
 								</div>
 							)
@@ -209,15 +179,19 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 						</CardHeader>
 						<CardContent>
 							<p className='text-sm'>{message.message}</p>
-							{message.message.includes('accepted') && !isChatOwner && (
+							{proposalMetadata?.type === 'proposal_accepted' && !isChatOwner && (
 								<p className='text-sm'>
-									An order has been added to your{' '}
-									<Link href='/auth/profile/orders' className='text-accent'>
-										Orders.
-									</Link>
-									<br></br>
 									You have 2 days to pay or the order will automatically expire.
+									<br />
+									Check your{' '}
+									<Link href={`/auth/profile/orders?highlight=${proposalMetadata?.order_id}`} className='text-accent'>
+										Orders page
+									</Link>
+									.
 								</p>
+							)}
+							{proposalMetadata?.type === 'proposal_rejected' && !isChatOwner && (
+								<p className='text-sm'>Your proposal has been rejected.</p>
 							)}
 						</CardContent>
 					</Card>

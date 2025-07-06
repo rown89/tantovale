@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
@@ -21,6 +21,7 @@ export const chat_messages = pgTable('chat_messages', {
 		onDelete: 'cascade',
 		onUpdate: 'cascade',
 	}),
+	metadata: jsonb('metadata'),
 	read_at: timestamp('read_at', { withTimezone: true }),
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

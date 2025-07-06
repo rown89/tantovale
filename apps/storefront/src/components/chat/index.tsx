@@ -1,35 +1,18 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+
+import { client } from '@workspace/server/client-rpc';
+
 import { ChatHeader } from './chat-header';
 import { ChatInput } from './chat-input';
-import { ItemStatus } from '@workspace/server/enumerated_values';
-import { ChatMessage } from './chat-message/types';
 import { ChatMessage as ChatMessageComponent } from './chat-message';
-
-export interface ChatItem {
-	id: number;
-	title: string;
-	price: number;
-	published: boolean;
-	status: ItemStatus;
-}
+import { ChatRoomType, ChatMessageType } from './types';
 
 export interface ChatProps {
 	currentUserId: number;
-	chatRoom: {
-		id: number;
-		item: ChatItem;
-		author: {
-			id: number | null;
-			username: string;
-		};
-		buyer: {
-			id: number;
-			username: string;
-		};
-	};
-	messages: ChatMessage[] | undefined;
+	chatRoom: ChatRoomType;
+	messages: ChatMessageType[] | undefined;
 }
 
 export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {

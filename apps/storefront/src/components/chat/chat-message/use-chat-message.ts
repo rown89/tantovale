@@ -1,9 +1,11 @@
-import { ChatMessage } from './types';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { client } from '@workspace/server/client-rpc';
 import { useQueryClient } from '@tanstack/react-query';
 
-export const useChatMessageHook = (message: ChatMessage) => {
+import { client } from '@workspace/server/client-rpc';
+
+import { ChatMessageType } from '../types';
+
+export const useChatMessageHook = (message: ChatMessageType) => {
 	const queryClient = useQueryClient();
 
 	const {

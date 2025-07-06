@@ -1,10 +1,21 @@
 import { and, eq } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { items, users, property_values, orders, items_properties_values, profiles } from '#db-schema';
+import {
+	items,
+	users,
+	property_values,
+	orders,
+	items_properties_values,
+	profiles,
+	addresses,
+	cities,
+} from '#db-schema';
 import { authPath } from '#utils/constants';
+import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 
 // TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
@@ -14,6 +25,9 @@ export const ordersRoute = createRouter()
 		const { status } = c.req.param();
 
 		const { db } = createClient();
+
+		const cityAlias = alias(cities, 'city');
+		const provinceAlias = alias(cities, 'province');
 
 		let userOrders = [];
 
@@ -25,6 +39,9 @@ export const ordersRoute = createRouter()
 				.innerJoin(items, eq(orders.item_id, items.id))
 				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
 				.innerJoin(users, eq(profiles.user_id, users.id))
+				.innerJoin(addresses, eq(orders.buyer_address, addresses.id))
+				.innerJoin(cityAlias, eq(addresses.city_id, cityAlias.id))
+				.innerJoin(provinceAlias, eq(addresses.province_id, provinceAlias.id))
 				.where(eq(orders.buyer_id, user.id));
 		} else {
 			const response = await db
@@ -33,6 +50,9 @@ export const ordersRoute = createRouter()
 				.innerJoin(items, eq(orders.item_id, items.id))
 				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
 				.innerJoin(users, eq(profiles.user_id, users.id))
+				.innerJoin(addresses, eq(orders.buyer_address, addresses.id))
+				.innerJoin(cityAlias, eq(addresses.city_id, cityAlias.id))
+				.innerJoin(provinceAlias, eq(addresses.province_id, provinceAlias.id))
 				.where(and(eq(orders.buyer_id, user.id), eq(orders.status, status)));
 
 			if (!response.length) return c.json([], 200);
@@ -49,13 +69,12 @@ export const ordersRoute = createRouter()
 
 			return {
 				id,
-				status,
+				status: status as (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES],
 				original_price: order.items.price,
-				shipping_price,
 				payment_provider_charge,
 				platform_charge,
+				shipping_price,
 				shipping_label_id,
-				created_at,
 				item: {
 					id: order.items.id,
 					title: order.items.title,
@@ -64,6 +83,16 @@ export const ordersRoute = createRouter()
 					id: order.users.id,
 					username: order.users.username,
 				},
+				buyer: {
+					street_address: order.addresses.street_address,
+					civic_number: order.addresses.civic_number,
+					city: order.city.name,
+					province: order.province.name,
+					postal_code: order.addresses.postal_code,
+					country_code: order.addresses.country_code,
+				},
+				updated_at: order.orders.updated_at,
+				created_at,
 			};
 		});
 

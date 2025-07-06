@@ -12,7 +12,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
 import { ChatMessageSchema } from 'src/extended_schemas';
 import { createRoom, sendChatRoomMessage } from './utils';
-import { itemStatus } from '#database/schemas/enumerated_values';
+import { ChatMessageMetadata, itemStatus } from '#database/schemas/enumerated_values';
 
 export const chatRoute = createRouter()
 	// get all user chat rooms
@@ -21,17 +21,6 @@ export const chatRoute = createRouter()
 		const { db } = createClient();
 
 		try {
-			// Get user's profile ID
-			const [userProfile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!userProfile) {
-				return c.json({ error: 'Profile not found' }, 404);
-			}
-
 			const lastMessagesSubquery = db
 				.select({
 					chat_room_id: chat_messages.chat_room_id,
@@ -90,7 +79,7 @@ export const chatRoute = createRouter()
 				.where(
 					or(
 						eq(profilesSeller.user_id, user.id), // User is the seller
-						eq(chat_rooms.buyer_id, userProfile.id), // User is the buyer
+						eq(chat_rooms.buyer_id, user.profile_id), // User is the buyer
 					),
 				)
 				.orderBy(desc(chat_rooms.created_at))
@@ -140,23 +129,12 @@ export const chatRoute = createRouter()
 		const { db } = createClient();
 
 		try {
-			// Get user's profile ID
-			const [userProfile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!userProfile) {
-				return c.json({ error: 'Profile not found' }, 404);
-			}
-
 			const existingRoom = await db
 				.select({
 					id: chat_rooms.id,
 				})
 				.from(chat_rooms)
-				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, userProfile.id)))
+				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
 				.limit(1);
 
 			const id = existingRoom?.[0]?.id;
@@ -182,17 +160,6 @@ export const chatRoute = createRouter()
 		const { db } = createClient();
 
 		try {
-			// Get user's profile ID
-			const [userProfile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!userProfile) {
-				return c.json({ error: 'Profile not found' }, 404);
-			}
-
 			// Start a transaction
 			return await db.transaction(async (tx) => {
 				// Verify the user has access to this chat room
@@ -212,7 +179,7 @@ export const chatRoute = createRouter()
 
 				// Check if user is either the buyer or the seller
 				const room = roomResult[0];
-				if (room?.buyer_id !== userProfile.id && room?.seller_id !== userProfile.id) {
+				if (room?.buyer_id !== user.profile_id && room?.seller_id !== user.profile_id) {
 					return c.json({ error: 'Unauthorized access to chat room' }, 403);
 				}
 
@@ -227,6 +194,7 @@ export const chatRoute = createRouter()
 						read_at: chat_messages.read_at,
 						sender_id: users.id,
 						sender_username: users.username,
+						metadata: chat_messages.metadata,
 					})
 					.from(chat_messages)
 					.innerJoin(profiles, eq(chat_messages.sender_id, profiles.id))
@@ -246,6 +214,7 @@ export const chatRoute = createRouter()
 						username: msg.sender_username,
 					},
 					sender_id: msg.sender_id, // Keep this for the filter below
+					metadata: msg.metadata as ChatMessageMetadata,
 				}));
 
 				// Mark unread messages as read if the user is not the sender
@@ -259,12 +228,12 @@ export const chatRoute = createRouter()
 							and(
 								eq(chat_messages.chat_room_id, roomId),
 								isNull(chat_messages.read_at),
-								not(eq(chat_messages.sender_id, userProfile.id)),
+								not(eq(chat_messages.sender_id, user.profile_id)),
 							),
 						);
 				}
 
-				return c.json(messages);
+				return c.json(messages, 200);
 			});
 		} catch (error) {
 			console.error('Error in chat messages endpoint:', error);
@@ -287,15 +256,6 @@ export const chatRoute = createRouter()
 
 			const { db } = createClient();
 
-			// get the profile id of the logged user
-			const [profile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!profile) return c.json({ error: 'Profile not found' }, 404);
-
 			// Check if the item exists and user is not the owner
 			const itemResult = await db.select().from(items).where(eq(items.id, item_id));
 
@@ -305,7 +265,7 @@ export const chatRoute = createRouter()
 				return c.json({ error: 'Item not found' }, 404);
 			}
 
-			if (item.profile_id === profile.id) {
+			if (item.profile_id === user.profile_id) {
 				return c.json({ error: 'You cannot chat about your own item' }, 400);
 			}
 
@@ -313,7 +273,7 @@ export const chatRoute = createRouter()
 			const existingRoomResult = await db
 				.select({ id: chat_rooms.id })
 				.from(chat_rooms)
-				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, profile.id)));
+				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)));
 
 			const existingRoom = existingRoomResult[0];
 
@@ -324,7 +284,7 @@ export const chatRoute = createRouter()
 			// Create a new chat room
 			const newRoomResult = await createRoom({
 				item_id,
-				buyer_id: profile.id,
+				buyer_id: user.profile_id,
 			});
 
 			return c.json({ id: newRoomResult[0]?.id });
@@ -338,17 +298,6 @@ export const chatRoute = createRouter()
 		const { message } = c.req.valid('json');
 
 		const { db } = createClient();
-
-		// Get user's profile ID
-		const [userProfile] = await db
-			.select({ id: profiles.id })
-			.from(profiles)
-			.where(eq(profiles.user_id, user.id))
-			.limit(1);
-
-		if (!userProfile) {
-			return c.json({ error: 'Profile not found' }, 404);
-		}
 
 		// Verify the user has access to this chat room
 		const roomResult = await db
@@ -367,7 +316,7 @@ export const chatRoute = createRouter()
 
 		// Check if user is either the buyer or the seller
 		const room = roomResult[0];
-		if (room?.buyer_id !== userProfile.id && room?.seller_id !== userProfile.id) {
+		if (room?.buyer_id !== user.profile_id && room?.seller_id !== user.profile_id) {
 			return c.json({ error: 'Unauthorized access to chat room' }, 403);
 		}
 
@@ -377,7 +326,7 @@ export const chatRoute = createRouter()
 				created_at: chat_messages.created_at,
 			})
 			.from(chat_messages)
-			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.sender_id, userProfile.id)))
+			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.sender_id, user.profile_id)))
 
 			.orderBy(desc(chat_messages.created_at))
 			.limit(1);
@@ -394,7 +343,7 @@ export const chatRoute = createRouter()
 
 			if (shouldSendEmailAlert) {
 				// Determine recipient (the one who is NOT sending the message)
-				const recipientProfileId = userProfile.id === room.buyer_id ? room.seller_id : room.buyer_id;
+				const recipientProfileId = user.profile_id === room.buyer_id ? room.seller_id : room.buyer_id;
 
 				// Get recipient email by first getting the profile's user_id
 				const [recipientProfile] = await db
@@ -429,7 +378,7 @@ export const chatRoute = createRouter()
 			}
 		} else {
 			// No previous messages in this room, we should send an email
-			const recipientProfileId = userProfile.id === room.buyer_id ? room.seller_id : room.buyer_id;
+			const recipientProfileId = user.profile_id === room.buyer_id ? room.seller_id : room.buyer_id;
 
 			// Get recipient email by first getting the profile's user_id
 			const [recipientProfile] = await db
@@ -465,7 +414,7 @@ export const chatRoute = createRouter()
 		// Send message
 		const newMessageResult = await sendChatRoomMessage({
 			chat_room_id: roomId,
-			sender_id: userProfile.id,
+			sender_id: user.profile_id,
 			message,
 		});
 

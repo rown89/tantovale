@@ -1,8 +1,8 @@
 import { eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
-import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate';
-import { shipmentsGet } from 'shippo/funcs/shipmentsGet';
+import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
+import { shipmentsGet } from 'shippo/funcs/shipmentsGet.js';
 
 import { createClient } from '#create-client';
 import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
@@ -10,7 +10,7 @@ import { profiles, addresses, items, cities, users, shippings } from '#db-schema
 
 import { shippoClient } from '#lib/shippo-client';
 
-import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index';
+import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index.js';
 import type { ShipmentCalculationData } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
 

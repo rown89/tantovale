@@ -341,8 +341,11 @@ export const ordersProposalsRoute = createRouter()
 						.values({
 							chat_room_id: chatRoom.id,
 							sender_id: user.profile_id,
-							message: `Proposal #${existingProposal.id} - "${item.title}" has been rejected by the seller.`,
+							message: `"${item.title}", proposal #${existingProposal.id}, has been rejected by the seller.`,
 							message_type: 'system',
+							metadata: {
+								type: 'proposal_rejected',
+							},
 						})
 						.returning();
 
@@ -454,8 +457,12 @@ export const ordersProposalsRoute = createRouter()
 						.values({
 							chat_room_id: chatRoom.id,
 							sender_id: user.profile_id,
-							message: `Proposal #${existingProposal.id} - "${item.title}" has been accepted by the seller.`,
+							message: `"${item.title}", proposal #${existingProposal.id}, has been accepted by the seller.`,
 							message_type: 'system',
+							metadata: {
+								order_id: newOrder.id,
+								type: 'proposal_accepted',
+							},
 						})
 						.returning();
 

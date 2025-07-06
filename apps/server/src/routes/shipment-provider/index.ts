@@ -7,7 +7,7 @@ import {
 	DistanceUnitEnum,
 	ParcelCreateRequest,
 	WeightUnitEnum,
-} from 'shippo/models/components/index';
+} from 'shippo/models/components/index.js';
 import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
 import { ratesGet } from 'shippo/funcs/ratesGet.js';
 import { carrierAccountsList } from 'shippo/funcs/carrierAccountsList.js';
