@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, not } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -17,15 +17,26 @@ import {
 	items_images,
 	property_values,
 	profiles,
+	entityTrustapTransactions,
 	orders,
+	chat_rooms,
+	chat_messages,
 } from '#db-schema';
 import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
-import { itemStatus } from '#database/schemas/enumerated_values';
 import { createRouter } from '#lib/create-app';
 import { authPath } from '#utils/constants';
 import { createItemSchema } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { itemDetailResponseType } from '#extended_schemas';
+import { addressStatus, EntityTrustapTransactionStatus, itemStatus } from '#database/schemas/enumerated_values';
+import { calculatePlatformCosts } from '#utils/platform-costs';
+import { ORDER_PHASES } from '#utils/order-phases';
+import { environment } from '#utils/constants';
+import { sendBuyNowOrderCreatedBuyer } from '../../mailer/templates/orders/buyer/buy-now-order-created-buyer';
+
+import { formatPriceToCents } from '#utils/price-formatter';
+
+import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 
 export const itemRoute = createRouter()
@@ -315,6 +326,267 @@ export const itemRoute = createRouter()
 	.put(`/${authPath}/edit/:id`, authMiddleware, async (c) => {
 		return c.json({});
 	})
+	.post(
+		`/${authPath}/buy_now`,
+		authMiddleware,
+		zValidator(
+			'json',
+			z.object({
+				item_id: z.number(),
+			}),
+		),
+		async (c) => {
+			const user = c.var.user;
+
+			const { item_id } = c.req.valid('json');
+
+			const { db } = createClient();
+
+			try {
+				return await db.transaction(async (tx) => {
+					//  Validate item availability and get seller info
+					const [item] = await tx
+						.select({
+							id: items.id,
+							title: items.title,
+							profile_id: items.profile_id,
+							price: items.price,
+							status: items.status,
+							published: items.published,
+							payment_provider_id: profiles.payment_provider_id,
+							seller_address_id: addresses.id,
+							seller_username: users.username,
+						})
+						.from(items)
+						.innerJoin(profiles, eq(profiles.id, items.profile_id))
+						.innerJoin(users, eq(users.id, profiles.user_id))
+						.innerJoin(addresses, eq(addresses.id, items.address_id))
+						.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
+						.limit(1);
+
+					if (!item || !item.payment_provider_id) {
+						return c.json({ error: 'Item not available' }, 400);
+					}
+
+					// Check if user has placed already an order for this item
+					const [userHasAnOrder] = await tx
+						.select({ id: orders.id })
+						.from(orders)
+						.where(and(eq(orders.item_id, item_id), eq(orders.buyer_id, user.profile_id)))
+						.limit(1);
+
+					if (userHasAnOrder) {
+						return c.json({ error: 'You have already placed an order for this item' }, 400);
+					}
+
+					// Check if an order already exists in a different status than PAYMENT_PENDING
+					const [existingOrders] = await tx
+						.select({ id: orders.id })
+						.from(orders)
+						.where(and(eq(orders.item_id, item_id), not(eq(orders.status, ORDER_PHASES.PAYMENT_PENDING))))
+						.limit(1);
+
+					if (existingOrders) {
+						return c.json({ error: 'An order already exists for this item' }, 400);
+					}
+
+					// Get buyer payment provider id
+					const [buyerInfo] = await tx
+						.select({ payment_provider_id: profiles.payment_provider_id, address_id: addresses.id, email: users.email })
+						.from(profiles)
+						.innerJoin(
+							addresses,
+							and(eq(profiles.id, addresses.profile_id), eq(addresses.status, addressStatus.ACTIVE)),
+						)
+						.innerJoin(users, eq(users.id, profiles.user_id))
+						.where(eq(profiles.id, user.profile_id))
+						.limit(1);
+
+					if (!buyerInfo || !buyerInfo.payment_provider_id) {
+						return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
+					}
+
+					// Create a shipping label
+					const shipmentService = new ShipmentService();
+					const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, user.profile_id, user.email);
+					const labelPreview = rates[0];
+
+					const shipping_label_id = labelPreview?.shipment;
+					const shipping_price = labelPreview?.amount ? formatPriceToCents(parseFloat(labelPreview.amount)) : 0;
+
+					if (!labelPreview || !shipping_label_id || !shipping_price) {
+						return c.json({ error: 'Failed to generate a label preview' }, 500);
+					}
+
+					// Calculate platform charge amount
+					const { platform_charge_amount } = await calculatePlatformCosts(
+						{ price: item.price },
+						{ platform_charge_amount: true },
+					);
+
+					if (!platform_charge_amount) {
+						return c.json({ error: 'Failed to calculate platform charge amount' }, 500);
+					}
+
+					// Total price to pay for the transaction
+					const transactionPreviewPrice = item.price + platform_charge_amount;
+
+					// Calculate payment provider charge
+					const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
+						{
+							price: transactionPreviewPrice,
+							postage_fee: shipping_price,
+						},
+						{
+							payment_provider_charge: true,
+						},
+					);
+
+					if (!payment_provider_charge || !payment_provider_charge_calculator_version) {
+						return c.json({ error: 'Failed to calculate payment provider charge' }, 500);
+					}
+
+					const paymentProviderService = new PaymentProviderService();
+
+					const transaction = await paymentProviderService.createTransactionWithBothUsers({
+						buyer_id: buyerInfo.payment_provider_id,
+						seller_id: item.payment_provider_id,
+						creator_role: 'buyer',
+						currency: 'eur',
+						description: `Transaction for ${item.title} - (Buy Now)`,
+						price: transactionPreviewPrice,
+						postage_fee: shipping_price,
+						charge: payment_provider_charge,
+						charge_calculator_version: payment_provider_charge_calculator_version,
+					});
+
+					if (!transaction) {
+						return c.json({ error: 'Failed to create Trustap transaction' }, 500);
+					}
+
+					// Store transaction details
+					const [trustapTransaction] = await tx
+						.insert(entityTrustapTransactions)
+						.values({
+							entityId: item_id,
+							sellerId: transaction.seller_id,
+							buyerId: transaction.buyer_id,
+							transactionId: transaction.id,
+							transactionType: 'online_payment',
+							status: transaction.status as EntityTrustapTransactionStatus,
+							price: transaction.price,
+							charge: transaction.charge,
+							chargeSeller: transaction.charge_seller || 0,
+							currency: 'eur',
+							entityTitle: item.title,
+							claimedBySeller: false,
+							claimedByBuyer: false,
+							complaintPeriodDeadline: null, // Will be set by webhook
+						})
+						.returning();
+
+					if (!trustapTransaction) {
+						return c.json({ error: 'Failed to store Trustap transaction' }, 500);
+					}
+
+					// Create new order
+					const [newOrder] = await tx
+						.insert(orders)
+						.values({
+							item_id,
+							buyer_id: user.profile_id,
+							seller_id: item.profile_id,
+							buyer_address: buyerInfo.address_id,
+							seller_address: item.seller_address_id,
+							shipping_price,
+							payment_provider_charge,
+							platform_charge: platform_charge_amount!,
+							payment_transaction_id: transaction.id,
+							shipping_label_id,
+						})
+						.returning();
+
+					if (!newOrder) {
+						return c.json({ error: 'Failed to create order' }, 500);
+					}
+
+					// Check if user already has an ongoing chat with the seller for this item
+					const [chatRoom] = await tx
+						.select()
+						.from(chat_rooms)
+						.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
+						.limit(1);
+
+					let chatRoomId = null;
+
+					if (chatRoom) {
+						// Send a new chat message of type proposal
+						const [newChatMessage] = await tx
+							.insert(chat_messages)
+							.values({
+								chat_room_id: chatRoom.id,
+								sender_id: user.profile_id,
+								message: `Order created for ${item.title} by ${user.username}`,
+								message_type: 'buy_now',
+							})
+							.returning();
+
+						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
+						chatRoomId = chatRoom.id;
+					} else {
+						// Create a new chat room
+						const [newChatRoom] = await tx
+							.insert(chat_rooms)
+							.values({
+								item_id,
+								buyer_id: user.profile_id,
+							})
+							.returning();
+
+						if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
+
+						// Create a new chat message of type proposal
+						const [newChatMessage] = await tx
+							.insert(chat_messages)
+							.values({
+								chat_room_id: newChatRoom.id,
+								sender_id: user.profile_id,
+								message: `Order created for ${item.title} by ${user.username}`,
+								message_type: 'buy_now',
+							})
+							.returning();
+
+						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
+						chatRoomId = newChatRoom.id;
+					}
+
+					// send email to the buyer
+					await sendBuyNowOrderCreatedBuyer({
+						to: buyerInfo.email,
+						roomId: chatRoomId,
+						seller_username: item.seller_username,
+						itemName: item.title,
+					});
+
+					return c.json(
+						{
+							success: true,
+							order: { id: newOrder.id, status: newOrder.status },
+							// Return payment URL
+							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${environment.PAYMENT_PROVIDER_API_VERSION}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
+							message: 'Order created, complete the payment for the next step',
+						},
+						200,
+					);
+				});
+			} catch (error) {
+				console.error('Buy now error:', error);
+				return c.json({ success: false, error: 'Failed to process purchase' }, 500);
+			}
+		},
+	)
 	.post(
 		`/${authPath}/user_delete_item`,
 		authMiddleware,

@@ -23,7 +23,7 @@ export const PaymentButton = ({
 					) : (
 						<>
 							<ShoppingCart />
-							<p>Buy</p>
+							<p>Buy Now</p>
 						</>
 					)}
 				</Button>

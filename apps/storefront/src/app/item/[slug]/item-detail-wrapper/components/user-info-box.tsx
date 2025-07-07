@@ -43,11 +43,11 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 	const router = useRouter();
 	const {
 		chatId: chatIdClient,
-		proposal_created_at,
 		setIsProposalModalOpen,
 		setIsAddressLoading,
 		isAddressLoading,
 		setAddressId,
+		setIsBuyNowModalOpen,
 	} = useTantovaleStore();
 
 	const { messageBoxForm } = useItemChat({
@@ -59,10 +59,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 		isFavorite,
 	});
 
-	const proposal_date = format(
-		new Date(orderProposal?.created_at || proposal_created_at || new Date()),
-		'dd/MM/yyyy - hh:mm a',
-	);
+	const proposal_date = format(new Date(orderProposal?.created_at || new Date()), 'dd/MM/yyyy - hh:mm a');
 
 	const chatId = chatIdClient || chatIdServer;
 
@@ -74,7 +71,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 						<CardTitle>
 							{!item.order.id ? (
 								<div className={`flex flex-col items-center justify-between gap-3 break-all`}>
-									{item?.easy_pay && (
+									{item?.easy_pay && !item.order.id && (
 										<PaymentButton
 											isLoading={isAddressLoading}
 											handlePayment={async () => {
@@ -87,6 +84,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 
 													if (address_id) {
 														setAddressId(address_id);
+														setIsBuyNowModalOpen(true);
 
 														// handlePayment.mutate(item.price);
 													} else {
@@ -100,7 +98,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 										/>
 									)}
 
-									{item?.easy_pay && !orderProposal?.id && !proposal_created_at && (
+									{item?.easy_pay && !orderProposal?.id && (
 										<ProposalButton
 											isLoading={isAddressLoading}
 											handleProposal={async () => {
@@ -125,7 +123,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(function
 										/>
 									)}
 
-									{(orderProposal?.id || proposal_created_at) && (
+									{orderProposal?.id && (
 										<div className='mt-2 flex w-full justify-center'>
 											<Alert>
 												<Repeat className='h-4 w-4' />

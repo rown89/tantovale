@@ -20,35 +20,36 @@ import {
 	DialogDescription,
 } from '@workspace/ui/components/dialog';
 
-export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
-	const { orderProposal, isOrderProposalLoading, orderProposalError, updateProposal } = useChatMessageHook(message);
+export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessageProps) {
+	const { orderProposal, isOrderProposalLoading, orderProposalError, updateProposal } =
+		useChatMessageHook(chatMessageProps);
 
 	const handleAcceptProposal = () => {
-		if (!message.order_proposal_id) return;
+		if (!chatMessageProps.order_proposal_id) return;
 
 		updateProposal.mutate({
-			orderProposalId: message.order_proposal_id,
+			orderProposalId: chatMessageProps.order_proposal_id,
 			item_id: item.id,
 			status: 'accepted',
 		});
 	};
 
 	const handleRejectProposal = () => {
-		if (!message.order_proposal_id) return;
+		if (!chatMessageProps.order_proposal_id) return;
 
 		updateProposal.mutate({
-			orderProposalId: message.order_proposal_id,
+			orderProposalId: chatMessageProps.order_proposal_id,
 			item_id: item.id,
 			status: 'rejected',
 		});
 	};
 
-	const isProposalMessage = message.order_proposal_id && message.message_type === 'proposal';
-	const isSystemMessage = message.message_type === 'system';
-	const isTextMessage = message.message_type === 'text';
+	const isProposalMessage = chatMessageProps.order_proposal_id && chatMessageProps.message_type === 'proposal';
+	const isSystemMessage = chatMessageProps.message_type === 'system';
+	const isTextMessage = chatMessageProps.message_type === 'text';
 
 	const proposalStatus = orderProposal?.status;
-	const proposalMetadata = message.metadata;
+	const proposalMetadata = chatMessageProps.metadata;
 
 	return (
 		<div className={cn('mb-4 flex items-start gap-2 break-all', isChatOwner ? 'flex-row-reverse' : 'flex-row')}>
@@ -82,7 +83,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 												</div>
 												<p className='text-muted-foreground'>#{orderProposal.id}</p>
 											</div>
-											<p className='mt-3 italic'>&quot;{message.message}&quot;</p>
+											<p className='mt-3 italic'>&quot;{chatMessageProps.message}&quot;</p>
 											<div className='mb-3 flex'>
 												{isChatOwner ? (
 													<span className='flex gap-1'>
@@ -90,8 +91,10 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 													</span>
 												) : (
 													<span className='flex gap-1'>
-														<Link className='text-accent hover:underline' href={`/user/${message.sender.username}`}>
-															{message.sender.username}
+														<Link
+															className='text-accent hover:underline'
+															href={`/user/${chatMessageProps.sender.username}`}>
+															{chatMessageProps.sender.username}
 														</Link>{' '}
 														is offering you <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
 													</span>
@@ -166,7 +169,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 				{isTextMessage && (
 					<div
 						className={cn('rounded-lg px-3 py-2', isChatOwner ? 'bg-primary text-primary-foreground' : 'bg-muted/80')}>
-						<p className='text-sm'>{message.message}</p>
+						<p className='text-sm'>{chatMessageProps.message}</p>
 					</div>
 				)}
 
@@ -178,7 +181,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<p className='text-sm'>{message.message}</p>
+							<p className='text-sm'>{chatMessageProps.message}</p>
 							{proposalMetadata?.type === 'proposal_accepted' && !isChatOwner && (
 								<p className='text-sm'>
 									You have 2 days to pay or the order will automatically expire.
@@ -197,7 +200,7 @@ export function ChatMessage({ message, item, isChatOwner }: ChatMessageProps) {
 					</Card>
 				)}
 				<div className='text-muted-foreground mt-1 flex items-center text-xs'>
-					{formatDistanceToNow(new Date(message.created_at), {
+					{formatDistanceToNow(new Date(chatMessageProps.created_at), {
 						addSuffix: true,
 					})}
 				</div>

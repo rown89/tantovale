@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@workspace/ui/components/button';
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
 	DialogDescription,
 	DialogFooter,
@@ -30,7 +31,8 @@ import { getShippingCost } from '#queries/get-shipping-cost';
 export function ProposalDialog() {
 	const { user } = useAuth();
 
-	const { setChatId, item, isProposalModalOpen, setIsProposalModalOpen, handleProposal } = useTantovaleStore();
+	const { setChatId, item, isProposalModalOpen, isCreatingProposal, setIsProposalModalOpen, handleProposal } =
+		useTantovaleStore();
 
 	const formSchema = create_order_proposal_schema.extend({
 		proposal_price: z
@@ -79,6 +81,9 @@ export function ProposalDialog() {
 	const priceField = useField({ form, name: 'proposal_price' });
 	const formPrice = priceField.state.value;
 
+	const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
+	const hasMandatoryArguments = userIsNotSeller && !!item && !!item?.id && !!item?.price;
+
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
@@ -86,23 +91,17 @@ export function ProposalDialog() {
 	} = useQuery({
 		queryKey: ['shipping_cost', item?.id],
 		queryFn: async () => {
-			const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
+			if (!item) return null;
 
-			const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
+			const shippingCost = await getShippingCost(item.id);
 
-			if (hasMandatoryArguments) {
-				const shippingCost = await getShippingCost(item.id);
-
-				if (shippingCost?.shipment_label_id) {
-					form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
-				}
-
-				return shippingCost;
+			if (shippingCost?.shipment_label_id) {
+				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
 			}
 
-			return null;
+			return shippingCost;
 		},
-		enabled: isProposalModalOpen,
+		enabled: isProposalModalOpen && hasMandatoryArguments,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
@@ -113,21 +112,14 @@ export function ProposalDialog() {
 	} = useQuery({
 		queryKey: ['platforms_costs', formPrice, shippingCost, item?.id],
 		queryFn: async () => {
-			const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
-			const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
+			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
+			const totalPrice = formatPriceToCents(formPrice);
 
-			if (hasMandatoryArguments && shippingCost) {
-				const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
-				const totalPrice = formatPriceToCents(formPrice);
+			const platformsCosts = await getPlatformsCosts(totalPrice, shippingCostValue);
 
-				const platformsCosts = await getPlatformsCosts(totalPrice, shippingCostValue);
-
-				return platformsCosts;
-			}
-
-			return null;
+			return platformsCosts;
 		},
-		enabled: isProposalModalOpen,
+		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingCost,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
@@ -141,9 +133,14 @@ export function ProposalDialog() {
 				if (!value) form.reset();
 			}}>
 			<DialogContent className='sm:max-w-[425px]'>
+				<DialogClose disabled={isCreatingProposal} />
 				<DialogHeader>
 					<DialogTitle>Make a Price Proposal</DialogTitle>
-					<DialogDescription />
+					<DialogDescription>
+						Propose a price to start a negotiation.
+						<br />
+						Avoid crazy low prices, the seller will reject it.
+					</DialogDescription>
 				</DialogHeader>
 				<form
 					onSubmit={(e) => {
@@ -164,7 +161,7 @@ export function ProposalDialog() {
 										const { value } = state;
 
 										return (
-											<div>
+											<>
 												<Input
 													id={name}
 													name={name}
@@ -183,38 +180,12 @@ export function ProposalDialog() {
 													onBlur={handleBlur}
 												/>
 												<FieldInfo field={field} />
-											</div>
+											</>
 										);
 									}}
 								</form.Field>
 							</div>
-							<Label className='text-muted-foreground/70 text-sm'>
-								Propose a price to start a negotiation.
-								<br />
-								Avoid crazy low prices, it will be rejected by the seller.
-							</Label>
 						</div>
-
-						<form.Field name='shipping_label_id'>
-							{(field) => {
-								const { name, handleBlur, handleChange, state } = field;
-								const { value } = state;
-
-								return (
-									<div>
-										<Input
-											className='hidden'
-											id={name}
-											name={name}
-											type='text'
-											value={value}
-											onChange={(e) => handleChange(e.target.value)}
-											onBlur={handleBlur}
-										/>
-									</div>
-								);
-							}}
-						</form.Field>
 
 						{/* Shipping cost */}
 						<div className='mb-2 flex flex-col gap-1'>
@@ -233,8 +204,8 @@ export function ProposalDialog() {
 								'---'
 							) : errorShippingCost ? (
 								<Label className='text-sm text-red-500'>
-									Error loading shipping cost, please check your address details or contact the seller asking to check
-									his address.
+									There was an error retrieving the shipping cost. Please verify your address or contact the seller to
+									confirm their address details.
 								</Label>
 							) : (
 								shippingCost && (
@@ -334,7 +305,8 @@ export function ProposalDialog() {
 											isLoadingPlatformsCosts ||
 											isLoadingShippingCost ||
 											!shippingCost ||
-											!platformsCosts?.platform_charge
+											!platformsCosts?.platform_charge ||
+											!!errorPlatformsCosts
 										}>
 										{form.state.isSubmitting ? 'Submitting...' : 'Send'}
 									</Button>

@@ -2,8 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 
-import { client } from '@workspace/server/client-rpc';
-
 import { ChatHeader } from './chat-header';
 import { ChatInput } from './chat-input';
 import { ChatMessage as ChatMessageComponent } from './chat-message';
@@ -27,12 +25,12 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
 			<ChatHeader id='chat-header' room={chatRoom} currentUserId={currentUserId} />
 			<div className='flex-1 overflow-y-auto px-8 py-4'>
 				{messages && messages?.length > 0 ? (
-					messages?.map((message) => (
+					messages?.map((chatMessageProps) => (
 						<ChatMessageComponent
-							key={message.id}
-							message={message}
+							key={chatMessageProps.id}
+							chatMessageProps={chatMessageProps}
 							item={chatRoom.item}
-							isChatOwner={message.sender.id === currentUserId}
+							isChatOwner={chatMessageProps.sender.id === currentUserId}
 						/>
 					))
 				) : (

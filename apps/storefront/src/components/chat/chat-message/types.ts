@@ -1,7 +1,7 @@
 import { ChatMessageType, ChatRoomType } from '../types';
 
 export interface ChatMessageProps {
-	message: ChatMessageType;
+	chatMessageProps: ChatMessageType;
 	item: ChatRoomType['item'];
 	isChatOwner: boolean;
 }

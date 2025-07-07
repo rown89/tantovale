@@ -1,5 +1,5 @@
-import { createMailer } from '../lib/createMailer';
-import { parseEnv } from '../../env';
+import { createMailer } from '../../../lib/createMailer';
+import { parseEnv } from '../../../../env';
 
 export async function sendProposalRejectedMessage({
 	to,

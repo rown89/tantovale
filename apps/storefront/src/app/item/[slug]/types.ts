@@ -30,7 +30,6 @@ interface ItemOwnerData {
 interface OrderProposal {
 	id: number;
 	created_at: string;
-	status: OrderProposalStatus;
 }
 
 // Main data interface for the page

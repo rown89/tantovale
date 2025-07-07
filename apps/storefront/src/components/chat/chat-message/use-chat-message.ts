@@ -5,7 +5,7 @@ import { client } from '@workspace/server/client-rpc';
 
 import { ChatMessageType } from '../types';
 
-export const useChatMessageHook = (message: ChatMessageType) => {
+export const useChatMessageHook = (chatMessageProps: ChatMessageType) => {
 	const queryClient = useQueryClient();
 
 	const {
@@ -13,12 +13,12 @@ export const useChatMessageHook = (message: ChatMessageType) => {
 		isLoading: isOrderProposalLoading,
 		error: orderProposalError,
 	} = useQuery({
-		queryKey: ['orderProposal', message.order_proposal_id],
+		queryKey: ['orderProposal', chatMessageProps.order_proposal_id],
 		queryFn: async () => {
-			if (!message.order_proposal_id) return null;
+			if (!chatMessageProps.order_proposal_id) return null;
 
 			const response = await client.orders_proposals.auth[':id'].$get({
-				param: { id: message.order_proposal_id.toString() },
+				param: { id: chatMessageProps.order_proposal_id.toString() },
 			});
 
 			if (!response.ok) throw new Error('Failed to fetch order proposal');

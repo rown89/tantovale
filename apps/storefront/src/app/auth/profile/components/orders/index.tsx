@@ -9,7 +9,6 @@ import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index'
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
-import { PaymentDialog } from '#components/dialogs/pay-dialog';
 import { useAuth } from '#providers/auth-providers';
 
 export default function UserSellingItemsComponent() {
@@ -98,12 +97,7 @@ export default function UserSellingItemsComponent() {
 
 				{orders && orders.length && (
 					<>
-						<PaymentDialog
-							isOpen={isPaymentDialogOpen}
-							setIsOpen={setIsPaymentDialogOpen}
-							order={selectedOrder}
-							onPaymentComplete={completePayment}
-						/>
+						{/* TODO: Add payment dialog or redirect to payment page */}
 
 						<ShippingDialog
 							isOpen={isShippingDialogOpen}

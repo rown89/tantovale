@@ -1,7 +1,6 @@
 import { StateCreator } from 'zustand';
 import { client } from '@workspace/server/client-rpc';
 import { SelectOrderProposal } from '@workspace/server/database';
-import { getPlatformsCosts } from '#queries/get-platforms-costs';
 
 type OrderProposalProps = Omit<
 	SelectOrderProposal,
@@ -21,12 +20,12 @@ interface handleProposalProps {
 }
 
 export type OrderProposalStore = {
-	proposal_price: number;
-	proposal_created_at: string | null;
-	proposal_status: SelectOrderProposal['status'] | undefined;
+	clientProposalId?: number;
+	clientProposalCreatedAt?: string;
 	isProposalModalOpen: boolean;
+	isCreatingProposal: boolean;
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => void;
-	setProposalPrice: (proposal_price: number) => void;
+	setIsCreatingProposal: (isCreatingProposal: boolean) => void;
 	handleProposal: ({
 		item_id,
 		proposal_price,
@@ -37,13 +36,17 @@ export type OrderProposalStore = {
 };
 
 export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
-	proposal_price: 0,
-	proposal_created_at: null,
-	proposal_status: undefined,
+	clientProposalId: undefined,
+	clientProposalCreatedAt: undefined,
 	isProposalModalOpen: false,
-	setProposalPrice: (proposal_price: number) => set({ proposal_price }),
+	isCreatingProposal: false,
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
+	setIsCreatingProposal: (isCreatingProposal: boolean) => set({ isCreatingProposal }),
 	handleProposal: async ({ item_id, proposal_price, shipping_label_id, message }: handleProposalProps) => {
+		set({
+			isCreatingProposal: true,
+		});
+
 		try {
 			const response = await client.orders_proposals.auth.create.$post({
 				json: {
@@ -59,9 +62,8 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			const data = await response.json();
 
 			set({
-				proposal_price: data.proposal.proposal_price,
-				proposal_created_at: data.proposal.created_at,
-				proposal_status: data.proposal.status,
+				clientProposalId: data.proposal.id,
+				clientProposalCreatedAt: data.proposal.created_at,
 			});
 
 			// Transform the response to match OrderProposalProps
@@ -81,13 +83,16 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 		} catch (error) {
 			console.error('Failed to create proposal:', error);
 			return undefined;
+		} finally {
+			set({
+				isCreatingProposal: false,
+			});
 		}
 	},
 	resetProposal: () =>
 		set({
-			proposal_price: 0,
-			proposal_created_at: null,
-			proposal_status: undefined,
+			clientProposalId: undefined,
+			clientProposalCreatedAt: undefined,
 			isProposalModalOpen: false,
 		}),
 });

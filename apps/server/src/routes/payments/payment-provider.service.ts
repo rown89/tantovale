@@ -17,14 +17,8 @@ export class PaymentProviderService {
 	/**
 	 * Create a guest user for the payment provider
 	 */
-	async createGuestUser({
-		id,
-		email,
-		first_name,
-		last_name,
-		country_code,
-		tos_acceptance,
-	}: CreateGuestUserProps): Promise<CreateUserGuestResponse> {
+	async createGuestUser({ ...props }: CreateGuestUserProps): Promise<CreateUserGuestResponse> {
+		const { id, email, first_name, last_name, country_code, tos_acceptance } = props;
 		const response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
 			method: 'POST',
 			headers: {
@@ -54,11 +48,10 @@ export class PaymentProviderService {
 	 * Calculate the transaction fee
 	 */
 	async calculateTransactionFee({
-		price = 0,
-		currency = 'eur',
-		postage_fee = 0,
-		use_hr_post = false,
+		...props
 	}: CalculateTransactionFeeProps): Promise<CalculateTransactionFeeResponse | undefined> {
+		const { price = 0, currency = 'eur', postage_fee = 0, use_hr_post = false } = props;
+
 		const response = await fetch(
 			`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
 			{
@@ -83,16 +76,20 @@ export class PaymentProviderService {
 	 * Create a transaction
 	 */
 	async createTransactionWithBothUsers({
-		buyer_id,
-		seller_id,
-		creator_role,
-		currency,
-		description,
-		price,
-		postage_fee,
-		charge,
-		charge_calculator_version,
+		...props
 	}: CreateTransactionWithBothUsersProps): Promise<CreateTransactionResponse | undefined> {
+		const {
+			buyer_id,
+			seller_id,
+			creator_role,
+			currency,
+			description,
+			price,
+			postage_fee,
+			charge,
+			charge_calculator_version,
+		} = props;
+
 		const response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
 			method: 'POST',
 			headers: {

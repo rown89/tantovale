@@ -15,7 +15,7 @@ import { UserInfoBox } from './components/user-info-box';
 import { ProposalButton } from './components/proposal-button';
 import { PaymentButton } from './components/payment-button';
 import { ItemWrapperProps } from '../types';
-import { PaymentDialog } from '#components/dialogs/pay-dialog';
+import { BuyNowDialog } from '#components/dialogs/buy-now-dialog';
 import { ProposalDialog } from '#components/dialogs/order-proposal-dialog';
 import { useAuth } from '#providers/auth-providers';
 import useTantovaleStore from '#stores';
@@ -33,7 +33,8 @@ export default function ItemWDetailWrapper({
 	const isMobile = useIsMobile();
 	const router = useRouter();
 	const {
-		proposal_created_at,
+		clientProposalId,
+		clientProposalCreatedAt,
 		setItem,
 		setItemOwnerData,
 		setOrderProposal,
@@ -43,6 +44,9 @@ export default function ItemWDetailWrapper({
 		setAddressId,
 	} = useTantovaleStore();
 
+	const proposalId = orderProposal?.id || clientProposalId || 0;
+	const proposalCreatedAt = orderProposal?.created_at || clientProposalCreatedAt || '';
+
 	// Use null as initial state to match SSR
 	const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 	// Track if UserInfoBox is in view
@@ -51,7 +55,7 @@ export default function ItemWDetailWrapper({
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const infoBoxRef = useRef<HTMLDivElement>(null);
 
-	const { setIsProposalModalOpen } = useTantovaleStore();
+	const { setIsProposalModalOpen, setIsBuyNowModalOpen } = useTantovaleStore();
 
 	// Effect to check if the UserInfoBox is in view
 	useEffect(() => {
@@ -134,7 +138,10 @@ export default function ItemWDetailWrapper({
 						item={item}
 						chatId={chatId}
 						itemOwnerData={itemOwnerData}
-						orderProposal={orderProposal}
+						orderProposal={{
+							id: proposalId,
+							created_at: proposalCreatedAt,
+						}}
 						isFavorite={isFavorite}
 						isCurrentUserTheItemOwner={isCurrentUserTheItemOwner}
 					/>
@@ -144,7 +151,7 @@ export default function ItemWDetailWrapper({
 					<div className='fixed bottom-0 left-0 flex w-full items-center justify-center gap-2 px-8 pb-4'>
 						{item.order.id && <p>Venduto</p>}
 
-						{!item.order.id && !orderProposal?.id && !proposal_created_at && (
+						{!item.order.id && !proposalId && (
 							<ProposalButton
 								isLoading={isAddressLoading}
 								handleProposal={async () => {
@@ -169,7 +176,7 @@ export default function ItemWDetailWrapper({
 							/>
 						)}
 
-						{!item.order.id && (
+						{item.easy_pay && !item.order.id && (
 							<PaymentButton
 								isLoading={isAddressLoading}
 								handlePayment={async () => {
@@ -182,8 +189,7 @@ export default function ItemWDetailWrapper({
 
 										if (address_id) {
 											setAddressId(address_id);
-
-											// handlePayment.mutate(item.price);
+											setIsBuyNowModalOpen(true);
 										} else {
 											toast.error('You must have an active address to sell');
 											router.push('/auth/profile-setup/address');
@@ -201,7 +207,7 @@ export default function ItemWDetailWrapper({
 
 			{item?.easy_pay && (
 				<>
-					<PaymentDialog isOpen={false} setIsOpen={() => {}} order={null} onPaymentComplete={() => {}} />
+					<BuyNowDialog />
 					<ProposalDialog />
 				</>
 			)}

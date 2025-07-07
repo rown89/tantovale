@@ -1,7 +1,7 @@
-import { createMailer } from '../lib/createMailer';
-import { parseEnv } from '../../env';
+import { createMailer } from '../../../lib/createMailer';
+import { parseEnv } from '../../../../env';
 
-export async function sendNewProposalMessage({
+export async function sendNewProposalMessageSeller({
 	to,
 	roomId,
 	buyer_username,

@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
@@ -24,11 +24,11 @@ import {
 	orderProposalStatusValues,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
-import { authPath, environment } from '#utils/constants';
+import { authPath } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
-import { sendNewProposalMessage } from '#mailer/templates/order-proposal-received';
-import { sendProposalAcceptedMessage } from '#mailer/templates/order-proposal-accepted';
-import { sendProposalRejectedMessage } from '#mailer/templates/order-proposal-rejected';
+import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
+import { sendProposalAcceptedMessage } from '../../mailer/templates/proposals/buyer/proposal-accepted';
+import { sendProposalRejectedMessage } from '../../mailer/templates/proposals/buyer/proposal-rejected';
 import { create_order_proposal_schema, seller_update_order_proposal_schema } from '#extended_schemas';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 import { ShipmentService } from '../shipment-provider/shipment.service';
@@ -57,7 +57,7 @@ export const ordersProposalsRoute = createRouter()
 
 				if (!item) return c.json({ error: 'Item not found' }, 404);
 
-				// Check if the user already has a proposal in pending status for this item
+				// Check if the user already has an ongoing proposal for this item
 				const [proposalAlreadyExists] = await tx
 					.select()
 					.from(orders_proposals)
@@ -65,12 +65,15 @@ export const ordersProposalsRoute = createRouter()
 						and(
 							eq(orders_proposals.item_id, item_id),
 							eq(orders_proposals.profile_id, user.profile_id),
-							eq(orders_proposals.status, 'pending'),
+							or(
+								eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
+								eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.accepted),
+							),
 						),
 					)
 					.limit(1);
 
-				if (proposalAlreadyExists) return c.json({ error: 'Proposal already exists' }, 400);
+				if (proposalAlreadyExists) return c.json({ error: 'You already have an ongoing proposal for this item' }, 400);
 
 				// Retrieve shipment label from shippo
 				const shipmentService = new ShipmentService();
@@ -165,7 +168,7 @@ export const ordersProposalsRoute = createRouter()
 				const [itemOwner] = await tx
 					.select({ email: users.email })
 					.from(profiles)
-					.innerJoin(users, eq(profiles.user_id, users.id))
+					.innerJoin(users, eq(profiles.user_id, item.profile_id))
 					.where(eq(profiles.id, item.profile_id))
 					.limit(1);
 
@@ -225,12 +228,13 @@ export const ordersProposalsRoute = createRouter()
 					chatRoomId = newChatRoom.id;
 				}
 
-				await sendNewProposalMessage({
+				// send email to the seller
+				await sendNewProposalMessageSeller({
 					to: itemOwner.email,
 					roomId: chatRoomId,
 					buyer_username: user.username,
 					itemName: item.title,
-					message: message || `Proposal from ${user.username} for the object ${item.title}`,
+					message,
 				});
 
 				return c.json({ proposal, chatRoomId }, 200);
@@ -393,7 +397,7 @@ export const ordersProposalsRoute = createRouter()
 						seller_id: item.payment_provider_id,
 						creator_role: 'seller',
 						currency: 'eur',
-						description: `Payment for ${item.title}`,
+						description: `Transaction for ${item.title} - (Proposal #${existingProposal.id})`,
 						price: transactionPrice,
 						postage_fee: shipping_price,
 						charge: payment_provider_charge,
