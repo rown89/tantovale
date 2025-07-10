@@ -4,14 +4,14 @@ import { StateCreator } from 'zustand';
 interface ItemDetailState {
 	item?: ItemWrapperProps['item'];
 	itemOwnerData?: ItemWrapperProps['itemOwnerData'];
-	orderProposal?: ItemWrapperProps['orderProposal'];
+	orderProposal?: ItemWrapperProps['item']['orderProposal'];
 	chatId?: number;
 }
 
 interface ItemDetailActions {
 	setItem: (item: ItemWrapperProps['item']) => void;
 	setItemOwnerData: (itemOwnerData: ItemWrapperProps['itemOwnerData']) => void;
-	setOrderProposal: (orderProposal: ItemWrapperProps['orderProposal']) => void;
+	setOrderProposal: (orderProposal: ItemWrapperProps['item']['orderProposal']) => void;
 	setChatId: (chatId: number) => void;
 	resetAllItemDetail: () => void;
 }
@@ -26,7 +26,7 @@ export const createItemDetailSlice: StateCreator<ItemDetailStore> = (set) => ({
 	chatId: undefined,
 	setItem: (item: ItemWrapperProps['item']) => set({ item }),
 	setItemOwnerData: (itemOwnerData: ItemWrapperProps['itemOwnerData']) => set({ itemOwnerData }),
-	setOrderProposal: (orderProposal: ItemWrapperProps['orderProposal']) => set({ orderProposal }),
+	setOrderProposal: (orderProposal: ItemWrapperProps['item']['orderProposal']) => set({ orderProposal }),
 	setChatId: (chatId: number) => set({ chatId }),
 	resetAllItemDetail: () =>
 		set({

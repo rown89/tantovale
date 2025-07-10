@@ -17,6 +17,7 @@ export const ORDER_PROPOSAL_PHASES = {
 	pending: 'pending',
 	accepted: 'accepted',
 	rejected: 'rejected',
+	buyer_aborted: 'buyer_aborted',
 	expired: 'expired',
 } as const;
 
@@ -25,12 +26,15 @@ export const orderProposalStatusValues = [
 	ORDER_PROPOSAL_PHASES.accepted,
 	ORDER_PROPOSAL_PHASES.rejected,
 	ORDER_PROPOSAL_PHASES.expired,
+	ORDER_PROPOSAL_PHASES.buyer_aborted,
 ] as const;
 export type OrderProposalStatus = (typeof orderProposalStatusValues)[number];
 
 export const chatMessageMetadataValues = {
 	proposal_accepted: 'proposal_accepted',
 	proposal_rejected: 'proposal_rejected',
+	proposal_expired: 'proposal_expired',
+	proposal_buyer_aborted: 'proposal_buyer_aborted',
 } as const;
 export type ChatMessageMetadata = {
 	type: (typeof chatMessageMetadataValues)[keyof typeof chatMessageMetadataValues];

@@ -4,6 +4,7 @@ import { client } from '@workspace/server/client-rpc';
 
 export type OrderBuyNowStore = {
 	clientBuyNowOrderId: number;
+	clientBuyNowOrderStatus: string;
 	setClientBuyNowOrderId: (id: number) => void;
 	isBuyNowModalOpen: boolean;
 	isCreatingOrder: boolean;
@@ -23,6 +24,7 @@ type BuyNowResponse = {
 
 export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 	clientBuyNowOrderId: 0,
+	clientBuyNowOrderStatus: '',
 	isBuyNowModalOpen: false,
 	isCreatingOrder: false,
 	setClientBuyNowOrderId: (id) => set({ clientBuyNowOrderId: id }),
@@ -48,18 +50,14 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 
 		const { success, order, payment_url, message } = await responseCreateOrder.json();
 
-		set({ clientBuyNowOrderId: order.id });
-
-		set({
-			isCreatingOrder: false,
-		});
-
 		if (!success) {
 			return {
 				success,
 				error: message,
 			};
 		}
+
+		set({ isCreatingOrder: false, clientBuyNowOrderId: order.id, clientBuyNowOrderStatus: order.status });
 
 		return {
 			success,

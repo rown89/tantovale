@@ -72,27 +72,6 @@ export async function fetchChatData(itemId: string, authHeaders: Record<string, 
 	}
 }
 
-export async function fetchOrderProposalData(itemId: string, authHeaders: Record<string, string>) {
-	try {
-		const response = await client.orders_proposals.auth.by_item[':item_id'].$get(
-			{
-				param: { item_id: itemId },
-				query: { status: 'pending' },
-			},
-			{ headers: authHeaders },
-		);
-
-		if (!response.ok) return undefined;
-
-		const orderProposal = await response.json();
-
-		return orderProposal;
-	} catch (error) {
-		console.warn('Failed to fetch order proposal data:', error);
-		return undefined;
-	}
-}
-
 export async function fetchFavoriteStatus(itemId: string, authHeaders: Record<string, string>) {
 	try {
 		const response = await client.favorites.auth.check[':item_id'].$get(

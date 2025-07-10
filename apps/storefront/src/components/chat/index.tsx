@@ -30,7 +30,7 @@ export function Chat({ chatRoom, messages, currentUserId }: ChatProps) {
 							key={chatMessageProps.id}
 							chatMessageProps={chatMessageProps}
 							item={chatRoom.item}
-							isChatOwner={chatMessageProps.sender.id === currentUserId}
+							isMsgSenderCurrentUser={chatMessageProps.sender.id === currentUserId}
 						/>
 					))
 				) : (

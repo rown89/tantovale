@@ -3,7 +3,7 @@ import { formatDistanceToNow, addDays } from 'date-fns';
 import { RssIcon } from 'lucide-react';
 
 import { cn } from '@workspace/ui/lib/utils';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@workspace/ui/components/card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@workspace/ui/components/card';
 import { Button } from '@workspace/ui/components/button';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { formatPrice } from '@workspace/server/price-formatter';
@@ -19,8 +19,9 @@ import {
 	DialogFooter,
 	DialogDescription,
 } from '@workspace/ui/components/dialog';
+import { chatMessageMetadataValues, ORDER_PROPOSAL_PHASES } from '@workspace/server/enumerated_values';
 
-export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessageProps) {
+export function ChatMessage({ chatMessageProps, item, isMsgSenderCurrentUser }: ChatMessageProps) {
 	const { orderProposal, isOrderProposalLoading, orderProposalError, updateProposal } =
 		useChatMessageHook(chatMessageProps);
 
@@ -30,7 +31,7 @@ export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessage
 		updateProposal.mutate({
 			orderProposalId: chatMessageProps.order_proposal_id,
 			item_id: item.id,
-			status: 'accepted',
+			status: ORDER_PROPOSAL_PHASES.accepted,
 		});
 	};
 
@@ -40,7 +41,7 @@ export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessage
 		updateProposal.mutate({
 			orderProposalId: chatMessageProps.order_proposal_id,
 			item_id: item.id,
-			status: 'rejected',
+			status: ORDER_PROPOSAL_PHASES.rejected,
 		});
 	};
 
@@ -49,126 +50,134 @@ export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessage
 	const isTextMessage = chatMessageProps.message_type === 'text';
 
 	const proposalStatus = orderProposal?.status;
+
+	const proposalRejected = proposalStatus === ORDER_PROPOSAL_PHASES.rejected;
+	const proposalExpired = proposalStatus === ORDER_PROPOSAL_PHASES.expired;
+	const proposalAccepted = proposalStatus === ORDER_PROPOSAL_PHASES.accepted;
+	const proposalPending = proposalStatus === ORDER_PROPOSAL_PHASES.pending;
+	const proposalBuyerAborted = proposalStatus === ORDER_PROPOSAL_PHASES.buyer_aborted;
+
 	const proposalMetadata = chatMessageProps.metadata;
 
 	return (
-		<div className={cn('mb-4 flex items-start gap-2 break-all', isChatOwner ? 'flex-row-reverse' : 'flex-row')}>
-			<div className={cn('flex max-w-[80%] flex-col', isChatOwner ? 'items-end' : 'items-start')}>
+		<div
+			className={cn('mb-4 flex items-start gap-2 break-all', isMsgSenderCurrentUser ? 'flex-row-reverse' : 'flex-row')}>
+			<div className={cn('flex max-w-[80%] flex-col', isMsgSenderCurrentUser ? 'items-end' : 'items-start')}>
 				{isProposalMessage && (
 					<>
-						{isOrderProposalLoading ? (
+						{isOrderProposalLoading || !orderProposal ? (
 							<Spinner />
 						) : (
-							orderProposal &&
-							!orderProposalError && (
-								<div className='flex flex-col gap-2'>
-									<Card
-										className={cn(
-											'min-w-[300px]',
-											(proposalStatus === 'rejected' || proposalStatus === 'expired') && 'bg-destructive/10',
-											proposalStatus === 'accepted' && 'bg-green-500/10',
-											proposalStatus === 'pending' && 'bg-background',
-										)}>
-										<CardHeader>
-											<CardTitle className='text-accent flex items-center gap-2'>
-												<RssIcon /> Tantovale Bot
-											</CardTitle>
-										</CardHeader>
-										<CardContent>
-											<div className='flex justify-between'>
-												<div>
-													😃 &nbsp;
-													{isChatOwner ? 'Your ' : 'You have a '}
-													buy proposal
-												</div>
-												<p className='text-muted-foreground'>#{orderProposal.id}</p>
+							<div className='flex flex-col gap-2'>
+								<Card
+									className={cn(
+										'min-w-[300px]',
+										// Card Background Colors
+										(proposalRejected || proposalExpired || proposalBuyerAborted) && 'bg-destructive/10',
+										proposalAccepted && 'bg-green-500/10',
+										proposalPending && 'bg-background',
+									)}>
+									<CardHeader>
+										<CardTitle className='text-accent flex items-center gap-2'>
+											<RssIcon /> Tantovale Bot
+										</CardTitle>
+									</CardHeader>
+									<CardContent>
+										<div className='flex justify-between'>
+											<div>
+												😃 &nbsp;
+												{isMsgSenderCurrentUser ? 'Your ' : 'You have a '}
+												buy proposal
 											</div>
-											<p className='mt-3 italic'>&quot;{chatMessageProps.message}&quot;</p>
-											<div className='mb-3 flex'>
-												{isChatOwner ? (
-													<span className='flex gap-1'>
-														You are offering <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
-													</span>
-												) : (
-													<span className='flex gap-1'>
-														<Link
-															className='text-accent hover:underline'
-															href={`/user/${chatMessageProps.sender.username}`}>
-															{chatMessageProps.sender.username}
-														</Link>{' '}
-														is offering you <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
-													</span>
-												)}
-											</div>
-											<p className='text-muted-foreground/90 mt-2 italic'>
-												This proposal will expire automatically in{' '}
-												{formatDistanceToNow(addDays(new Date(orderProposal.created_at), 4))}
-											</p>
-										</CardContent>{' '}
-										{!isChatOwner && proposalStatus === 'pending' && (
-											<CardFooter
-												className={cn(
-													'flex gap-2',
-													proposalStatus === 'pending' && !isChatOwner ? 'justify-between' : 'justify-center',
-												)}>
-												{/* Buyer actions (when not chat owner and proposal is pending) */}
-
-												<>
-													<Dialog>
-														<DialogTrigger asChild>
-															<Button
-																variant='destructive'
-																className='bg-destructive hover:bg-destructive/70 flex-1 font-bold'>
+											<p className='text-muted-foreground'>#{orderProposal.id}</p>
+										</div>
+										<p className='mt-3 italic'>&quot;{chatMessageProps.message}&quot;</p>
+										<div className='mb-3 flex'>
+											{isMsgSenderCurrentUser ? (
+												<span className='flex gap-1'>
+													You are offering <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
+												</span>
+											) : (
+												<span className='flex gap-1'>
+													<Link
+														className='text-accent hover:underline'
+														href={`/user/${chatMessageProps.sender.username}`}>
+														{chatMessageProps.sender.username}
+													</Link>{' '}
+													is offering you <p className='font-bold'>{formatPrice(orderProposal.proposal_price)}€</p>
+												</span>
+											)}
+										</div>
+										<p className='text-muted-foreground/90 mt-2 italic'>
+											This proposal will expire automatically in{' '}
+											{formatDistanceToNow(addDays(new Date(orderProposal.created_at), 4))}
+										</p>
+									</CardContent>
+									{/* Seller actions (when not chat owner and proposal is pending) */}
+									{!isMsgSenderCurrentUser && proposalPending && (
+										<CardFooter className='flex justify-between gap-2'>
+											<>
+												<Dialog>
+													<DialogTrigger asChild>
+														<Button
+															variant='destructive'
+															className='bg-destructive hover:bg-destructive/70 flex-1 font-bold'>
+															Reject
+														</Button>
+													</DialogTrigger>
+													<DialogContent>
+														<DialogHeader>
+															<DialogTitle>Reject Proposal</DialogTitle>
+														</DialogHeader>
+														<DialogDescription>Are you sure you want to reject this proposal?</DialogDescription>
+														<DialogFooter>
+															<Button variant='destructive' onClick={handleRejectProposal}>
 																Reject
 															</Button>
-														</DialogTrigger>
-														<DialogContent>
-															<DialogHeader>
-																<DialogTitle>Reject Proposal</DialogTitle>
-															</DialogHeader>
-															<DialogDescription>Are you sure you want to reject this proposal?</DialogDescription>
-															<DialogFooter>
-																<Button variant='destructive' onClick={handleRejectProposal}>
-																	Reject
-																</Button>
-															</DialogFooter>
-														</DialogContent>
-													</Dialog>
+														</DialogFooter>
+													</DialogContent>
+												</Dialog>
 
-													<Dialog>
-														<DialogTrigger asChild>
-															<Button variant='default' className='flex-1 bg-green-700 font-bold hover:bg-green-600'>
+												<Dialog>
+													<DialogTrigger asChild>
+														<Button variant='default' className='flex-1 bg-green-700 font-bold hover:bg-green-600'>
+															Accept
+														</Button>
+													</DialogTrigger>
+													<DialogContent>
+														<DialogHeader>
+															<DialogTitle>Accept Proposal</DialogTitle>
+														</DialogHeader>
+														<DialogDescription>Are you sure you want to accept this proposal?</DialogDescription>
+														<DialogFooter>
+															<Button
+																variant='default'
+																className='bg-green-700 font-bold hover:bg-green-600'
+																onClick={handleAcceptProposal}>
 																Accept
 															</Button>
-														</DialogTrigger>
-														<DialogContent>
-															<DialogHeader>
-																<DialogTitle>Accept Proposal</DialogTitle>
-															</DialogHeader>
-															<DialogDescription>Are you sure you want to accept this proposal?</DialogDescription>
-															<DialogFooter>
-																<Button
-																	variant='default'
-																	className='bg-green-700 font-bold hover:bg-green-600'
-																	onClick={handleAcceptProposal}>
-																	Accept
-																</Button>
-															</DialogFooter>
-														</DialogContent>
-													</Dialog>
-												</>
-											</CardFooter>
-										)}
-									</Card>
-								</div>
-							)
+														</DialogFooter>
+													</DialogContent>
+												</Dialog>
+											</>
+										</CardFooter>
+									)}
+								</Card>
+							</div>
+						)}
+
+						{!isOrderProposalLoading && orderProposalError && (
+							<p className='text-destructive'>Error loading proposal</p>
 						)}
 					</>
 				)}
 
 				{isTextMessage && (
 					<div
-						className={cn('rounded-lg px-3 py-2', isChatOwner ? 'bg-primary text-primary-foreground' : 'bg-muted/80')}>
+						className={cn(
+							'rounded-lg px-3 py-2',
+							isMsgSenderCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-muted/80',
+						)}>
 						<p className='text-sm'>{chatMessageProps.message}</p>
 					</div>
 				)}
@@ -182,7 +191,7 @@ export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessage
 						</CardHeader>
 						<CardContent>
 							<p className='text-sm'>{chatMessageProps.message}</p>
-							{proposalMetadata?.type === 'proposal_accepted' && !isChatOwner && (
+							{proposalMetadata?.type === 'proposal_accepted' && !isMsgSenderCurrentUser && (
 								<p className='text-sm'>
 									You have 2 days to pay or the order will automatically expire.
 									<br />
@@ -193,8 +202,14 @@ export function ChatMessage({ chatMessageProps, item, isChatOwner }: ChatMessage
 									.
 								</p>
 							)}
-							{proposalMetadata?.type === 'proposal_rejected' && !isChatOwner && (
+							{proposalMetadata?.type === chatMessageMetadataValues.proposal_rejected && !isMsgSenderCurrentUser && (
 								<p className='text-sm'>Your proposal has been rejected.</p>
+							)}
+							{proposalMetadata?.type === chatMessageMetadataValues.proposal_expired && !isMsgSenderCurrentUser && (
+								<p className='text-sm'>Seller didn't answer, your proposal is expired.</p>
+							)}
+							{proposalMetadata?.type === chatMessageMetadataValues.proposal_buyer_aborted && (
+								<p>Buyer aborted the proposal.</p>
 							)}
 						</CardContent>
 					</Card>

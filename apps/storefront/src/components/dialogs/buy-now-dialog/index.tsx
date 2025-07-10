@@ -171,7 +171,7 @@ export function BuyNowDialog() {
 								setIsBuyNowModalOpen(false);
 							}
 						}}>
-						Pay
+						{!isCreatingOrder ? 'Add to Orders' : <Spinner size='small' className='text-white' />}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

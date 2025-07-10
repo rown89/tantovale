@@ -1,4 +1,4 @@
-import { eq, and, not } from 'drizzle-orm';
+import { eq, and, not, desc } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -21,6 +21,7 @@ import {
 	orders,
 	chat_rooms,
 	chat_messages,
+	orders_proposals,
 } from '#db-schema';
 import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
 import { createRouter } from '#lib/create-app';
@@ -28,7 +29,12 @@ import { authPath } from '#utils/constants';
 import { createItemSchema } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { itemDetailResponseType } from '#extended_schemas';
-import { addressStatus, EntityTrustapTransactionStatus, itemStatus } from '#database/schemas/enumerated_values';
+import {
+	addressStatus,
+	EntityTrustapTransactionStatus,
+	itemStatus,
+	ORDER_PROPOSAL_PHASES,
+} from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { environment } from '#utils/constants';
@@ -52,75 +58,109 @@ export const itemRoute = createRouter()
 		const province = alias(cities, 'province');
 
 		try {
+			// Get basic item data
 			const [item] = await db
 				.select({
-					item: {
-						id: items.id,
-						profile_id: profiles.id,
-						username: users.username,
-						title: items.title,
-						price: items.price,
-						description: items.description,
-						city_id: city.id,
-						city_name: city.name,
-						province_id: province.id,
-						province_name: province.name,
-						easy_pay: items.easy_pay,
-						subcategory_name: subcategories.name,
-						subcategory_slug: subcategories.slug,
-						property_name: property_values.name,
-						property_value: property_values.value,
-						property_boolean_value: property_values.boolean_value,
-						property_numeric_value: property_values.numeric_value,
-						order_id: orders.id,
-					},
+					id: items.id,
+					profile_id: profiles.id,
+					username: users.username,
+					title: items.title,
+					price: items.price,
+					description: items.description,
+					city_id: city.id,
+					city_name: city.name,
+					province_id: province.id,
+					province_name: province.name,
+					easy_pay: items.easy_pay,
+					subcategory_name: subcategories.name,
+					subcategory_slug: subcategories.slug,
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
 				.innerJoin(addresses, eq(addresses.id, items.address_id))
 				.innerJoin(city, eq(city.id, addresses.city_id))
 				.innerJoin(province, eq(province.id, addresses.province_id))
-				.innerJoin(items_properties_values, eq(items_properties_values.item_id, items.id))
-				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.innerJoin(profiles, eq(profiles.id, items.profile_id))
 				.innerJoin(users, eq(users.id, profiles.user_id))
-				.leftJoin(orders, eq(orders.item_id, items.id))
-				.where(and(eq(items.id, id), eq(items.published, true)));
+				.where(and(eq(items.id, id), eq(items.published, true)))
+				.limit(1);
+
+			if (!item) throw new Error('No item found');
+
+			// Get all properties for this item
+			const itemProperties = await db
+				.select({
+					name: property_values.name,
+					value: property_values.value,
+					boolean_value: property_values.boolean_value,
+					numeric_value: property_values.numeric_value,
+				})
+				.from(items_properties_values)
+				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
+				.where(eq(items_properties_values.item_id, id));
+
+			// Get latest pending proposal
+			const [latestPendingProposal] = await db
+				.select({
+					id: orders_proposals.id,
+					status: orders_proposals.status,
+					created_at: orders_proposals.created_at,
+				})
+				.from(orders_proposals)
+				.where(and(eq(orders_proposals.item_id, id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)))
+				.orderBy(desc(orders_proposals.created_at))
+				.limit(1);
+
+			// Get latest payment_pending order
+			const [latestPaymentPendingOrder] = await db
+				.select({
+					id: orders.id,
+					status: orders.status,
+				})
+				.from(orders)
+				.where(and(eq(orders.item_id, id), eq(orders.status, ORDER_PHASES.PAYMENT_PENDING)))
+				.orderBy(desc(orders.created_at))
+				.limit(1);
 
 			const itemImages = await db
 				.select({ url: items_images.url })
 				.from(items_images)
 				.where(and(eq(items_images.item_id, id), eq(items_images.size, 'original')));
 
-			if (!item) throw new Error('No item found');
-
 			const mergedItem: itemDetailResponseType = {
-				id: item.item.id,
+				id: item.id,
 				user: {
-					id: item.item.profile_id,
-					username: item.item.username,
+					id: item.profile_id,
+					username: item.username,
 				},
-				title: item.item.title,
-				price: item.item.price,
-				description: item.item.description,
+				title: item.title,
+				price: item.price,
+				description: item.description,
 				order: {
-					id: item.item.order_id,
+					id: latestPaymentPendingOrder?.id || null,
+					status: latestPaymentPendingOrder?.status || undefined,
+				},
+				orderProposal: {
+					id: latestPendingProposal?.id || null,
+					created_at: latestPendingProposal?.created_at?.toISOString() || undefined,
+					status: latestPendingProposal?.status || undefined,
 				},
 				location: {
 					city: {
-						id: item.item.city_id,
-						name: item.item.city_name,
+						id: item.city_id,
+						name: item.city_name,
 					},
 					province: {
-						id: item.item.province_id,
-						name: item.item.province_name,
+						id: item.province_id,
+						name: item.province_name,
 					},
 				},
-				easy_pay: item.item.easy_pay,
+				easy_pay: item.easy_pay,
 				subcategory: {
-					name: item?.item.subcategory_name,
-					slug: item?.item.subcategory_slug,
+					name: item.subcategory_name,
+					slug: item.subcategory_slug,
 				},
+				properties: itemProperties,
 				images: itemImages.map((item) => item.url),
 			};
 
@@ -354,13 +394,12 @@ export const itemRoute = createRouter()
 							status: items.status,
 							published: items.published,
 							payment_provider_id: profiles.payment_provider_id,
-							seller_address_id: addresses.id,
+							seller_address_id: items.address_id,
 							seller_username: users.username,
 						})
 						.from(items)
 						.innerJoin(profiles, eq(profiles.id, items.profile_id))
 						.innerJoin(users, eq(users.id, profiles.user_id))
-						.innerJoin(addresses, eq(addresses.id, items.address_id))
 						.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
 						.limit(1);
 
@@ -392,7 +431,11 @@ export const itemRoute = createRouter()
 
 					// Get buyer payment provider id
 					const [buyerInfo] = await tx
-						.select({ payment_provider_id: profiles.payment_provider_id, address_id: addresses.id, email: users.email })
+						.select({
+							payment_provider_id: profiles.payment_provider_id,
+							address_id: addresses.id,
+							email: users.email,
+						})
 						.from(profiles)
 						.innerJoin(
 							addresses,
@@ -575,7 +618,7 @@ export const itemRoute = createRouter()
 							success: true,
 							order: { id: newOrder.id, status: newOrder.status },
 							// Return payment URL
-							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${environment.PAYMENT_PROVIDER_API_VERSION}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
+							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
 							message: 'Order created, complete the payment for the next step',
 						},
 						200,

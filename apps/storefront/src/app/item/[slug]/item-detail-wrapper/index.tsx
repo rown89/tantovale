@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,7 +25,6 @@ export default function ItemWDetailWrapper({
 	item,
 	itemOwnerData,
 	chatId,
-	orderProposal,
 	isFavorite,
 	isCurrentUserTheItemOwner,
 }: ItemWrapperProps) {
@@ -33,6 +32,8 @@ export default function ItemWDetailWrapper({
 	const isMobile = useIsMobile();
 	const router = useRouter();
 	const {
+		clientBuyNowOrderId,
+		clientBuyNowOrderStatus,
 		clientProposalId,
 		clientProposalCreatedAt,
 		setItem,
@@ -44,8 +45,13 @@ export default function ItemWDetailWrapper({
 		setAddressId,
 	} = useTantovaleStore();
 
+	const orderProposal = item.orderProposal;
+
 	const proposalId = orderProposal?.id || clientProposalId || 0;
 	const proposalCreatedAt = orderProposal?.created_at || clientProposalCreatedAt || '';
+
+	const orderId = item.order.id || clientBuyNowOrderId || 0;
+	const orderStatus = item.order.status || clientBuyNowOrderStatus;
 
 	// Use null as initial state to match SSR
 	const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -112,6 +118,48 @@ export default function ItemWDetailWrapper({
 		});
 	}, [item.images]);
 
+	const handleProposal = useCallback(async () => {
+		if (!user) {
+			router.push('/login');
+		} else {
+			setIsAddressLoading(true);
+
+			const address_id = await AddressProtectedRoute();
+
+			if (address_id) {
+				setAddressId(address_id);
+				// Open the proposal modal
+				setIsProposalModalOpen(true);
+			} else {
+				toast.error('You must have an active address to sell');
+				router.push('/auth/profile-setup/address');
+			}
+
+			setIsAddressLoading(false);
+		}
+	}, [user, router, setIsAddressLoading, setAddressId, setIsProposalModalOpen]);
+
+	const handlePayment = useCallback(async () => {
+		if (!user) {
+			router.push('/login');
+		} else {
+			setIsAddressLoading(true);
+
+			const address_id = await AddressProtectedRoute();
+
+			if (address_id) {
+				setAddressId(address_id);
+				// Open the buy now modal
+				setIsBuyNowModalOpen(true);
+			} else {
+				toast.error('You must have an active address to sell');
+				router.push('/auth/profile-setup/address');
+			}
+
+			setIsAddressLoading(false);
+		}
+	}, [user, router, setIsAddressLoading, setAddressId, setIsBuyNowModalOpen]);
+
 	return (
 		<div className='container mx-auto my-4 flex flex-col px-4 xl:px-0'>
 			<div className='flex h-full w-full flex-col gap-8 xl:flex-row xl:gap-12'>
@@ -135,70 +183,36 @@ export default function ItemWDetailWrapper({
 				{
 					<UserInfoBox
 						ref={infoBoxRef}
-						item={item}
+						item={{
+							...item,
+							order: {
+								...item.order,
+								id: orderId,
+								status: orderStatus,
+							},
+							orderProposal: {
+								...item.orderProposal,
+								id: proposalId,
+								created_at: proposalCreatedAt,
+							},
+						}}
 						chatId={chatId}
 						itemOwnerData={itemOwnerData}
-						orderProposal={{
-							id: proposalId,
-							created_at: proposalCreatedAt,
-						}}
 						isFavorite={isFavorite}
 						isCurrentUserTheItemOwner={isCurrentUserTheItemOwner}
+						handleProposal={handleProposal}
+						handlePayment={handlePayment}
 					/>
 				}
 
 				{isMobile && !isInfoBoxInView && item?.easy_pay && (
 					<div className='fixed bottom-0 left-0 flex w-full items-center justify-center gap-2 px-8 pb-4'>
 						{item.order.id && <p>Venduto</p>}
-
 						{!item.order.id && !proposalId && (
-							<ProposalButton
-								isLoading={isAddressLoading}
-								handleProposal={async () => {
-									if (!user) {
-										router.push('/login');
-									} else {
-										setIsAddressLoading(true);
-
-										const address_id = await AddressProtectedRoute();
-
-										if (address_id) {
-											setAddressId(address_id);
-											setIsProposalModalOpen(true);
-										} else {
-											toast.error('You must have an active address to sell');
-											router.push('/auth/profile-setup/address');
-										}
-
-										setIsAddressLoading(false);
-									}
-								}}
-							/>
+							<ProposalButton isLoading={isAddressLoading} handleProposal={handleProposal} />
 						)}
-
 						{item.easy_pay && !item.order.id && (
-							<PaymentButton
-								isLoading={isAddressLoading}
-								handlePayment={async () => {
-									if (!user) {
-										router.push('/login');
-									} else {
-										setIsAddressLoading(true);
-
-										const address_id = await AddressProtectedRoute();
-
-										if (address_id) {
-											setAddressId(address_id);
-											setIsBuyNowModalOpen(true);
-										} else {
-											toast.error('You must have an active address to sell');
-											router.push('/auth/profile-setup/address');
-										}
-
-										setIsAddressLoading(false);
-									}
-								}}
-							/>
+							<PaymentButton isLoading={isAddressLoading} handlePayment={handlePayment} />
 						)}
 						<div className='bg-accent fixed bottom-0 left-0 right-0 h-[40px] w-full opacity-50 blur-xl' />
 					</div>

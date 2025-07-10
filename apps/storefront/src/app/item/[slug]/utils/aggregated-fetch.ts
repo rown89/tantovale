@@ -5,7 +5,6 @@ import {
 	fetchItemOwnerData,
 	fetchUserData,
 	fetchChatData,
-	fetchOrderProposalData,
 	fetchFavoriteStatus,
 } from './data-fetchers';
 
@@ -17,11 +16,10 @@ export async function fetchItemDetailData({ id, authTokens }: ItemDetailPagePara
 	const item = await fetchItemData(id);
 
 	// Parallel fetch of all dependent data
-	const [itemOwnerData, userData, chatId, orderProposal, isFavorite] = await Promise.allSettled([
+	const [itemOwnerData, userData, chatId, isFavorite] = await Promise.allSettled([
 		fetchItemOwnerData(item.user.username),
 		authHeaders ? fetchUserData(authHeaders) : Promise.resolve(null),
 		authHeaders ? fetchChatData(id, authHeaders) : Promise.resolve(undefined),
-		authHeaders ? fetchOrderProposalData(id, authHeaders) : Promise.resolve(undefined),
 		authHeaders ? fetchFavoriteStatus(id, authHeaders) : Promise.resolve(false),
 	]);
 
@@ -37,7 +35,6 @@ export async function fetchItemDetailData({ id, authTokens }: ItemDetailPagePara
 
 	const resolvedUserData = userData.status === fulfilled ? userData.value : null;
 	const resolvedChatId = chatId.status === fulfilled ? chatId.value : undefined;
-	const resolvedOrderProposal = orderProposal.status === fulfilled ? orderProposal.value : undefined;
 	const resolvedIsFavorite = isFavorite.status === fulfilled ? isFavorite.value : false;
 
 	const isCurrentUserTheItemOwner = item.user.id === resolvedUserData?.id;
@@ -46,7 +43,6 @@ export async function fetchItemDetailData({ id, authTokens }: ItemDetailPagePara
 		item,
 		itemOwnerData: resolvedItemOwnerData,
 		chatId: resolvedChatId,
-		orderProposal: resolvedOrderProposal,
 		isFavorite: resolvedIsFavorite,
 		isCurrentUserTheItemOwner,
 	};

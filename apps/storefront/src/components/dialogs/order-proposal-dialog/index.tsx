@@ -27,6 +27,7 @@ import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
 import { getShippingCost } from '#queries/get-shipping-cost';
+import { useEffect } from 'react';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
@@ -38,13 +39,13 @@ export function ProposalDialog() {
 		proposal_price: z
 			.number()
 			.min(0.01)
-			.max(formatPrice(item?.price ?? 0 - 1)),
+			.max(item?.price ? formatPrice(item?.price - 1) : 0),
 	});
 
 	const form = useForm({
 		defaultValues: {
 			item_id: item?.id ?? 0,
-			proposal_price: formatPrice(item?.price ?? 0 - 1),
+			proposal_price: !item?.price ? 0 : formatPrice(item.price - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
 			shipping_label_id: '',
 		},
@@ -152,35 +153,38 @@ export function ProposalDialog() {
 					<div className='mb-6 mt-2 grid grid-cols-1 items-center gap-8'>
 						<div className='flex flex-col gap-2'>
 							<div className='flex w-full items-center justify-between gap-2'>
-								<Label className='h-fit' htmlFor='price'>
-									Propose a price:
-								</Label>
 								<form.Field name='proposal_price'>
 									{(field) => {
 										const { name, handleBlur, handleChange, state } = field;
 										const { value } = state;
 
 										return (
-											<>
-												<Input
-													id={name}
-													name={name}
-													className='w-full min-w-[130px]'
-													type='number'
-													step='0.01'
-													min='0.01'
-													max={formatPrice(item.price)}
-													placeholder={`Max: ${formatPrice(item.price)}`}
-													value={value}
-													onChange={(e) => {
-														const value = e.target.value;
+											<div className='item-center flex w-full gap-2'>
+												<Label className='min-w-[180px]' htmlFor='price'>
+													Propose a price:
+												</Label>
 
-														handleChange(value === '' ? 0 : Number(value));
-													}}
-													onBlur={handleBlur}
-												/>
-												<FieldInfo field={field} />
-											</>
+												<div className='flex w-full flex-col gap-2'>
+													<Input
+														id={name}
+														name={name}
+														className='w-full min-w-[130px] text-center'
+														type='number'
+														step='0.01'
+														min='0.01'
+														max={item.price - 1}
+														placeholder={`Max: ${formatPrice(item.price - 0.01)}`}
+														value={value}
+														onChange={(e) => {
+															const value = e.target.value;
+
+															handleChange(value === '' ? 0 : Number(value));
+														}}
+														onBlur={handleBlur}
+													/>
+													<FieldInfo field={field} />
+												</div>
+											</div>
 										);
 									}}
 								</form.Field>
@@ -282,7 +286,7 @@ export function ProposalDialog() {
 
 					<div className='my-7' />
 
-					<DialogFooter className='flex items-center justify-between gap-20'>
+					<DialogFooter className='flex flex-col gap-3'>
 						<Label className='text-sm text-orange-400'>
 							Unanswered proposals will automatically expire in{' '}
 							{platformsCosts ? platformsCosts?.proposalExpireTime / 24 : '--'} days.

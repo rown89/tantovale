@@ -1,5 +1,4 @@
 import { AuthTokens } from '#shared/auth-tokens';
-import { OrderProposalStatus } from '@workspace/server/enumerated_values';
 import { itemDetailResponseType } from '@workspace/server/extended_schemas';
 
 export interface ItemDetailPageParams {
@@ -27,17 +26,11 @@ interface ItemOwnerData {
 	};
 }
 
-interface OrderProposal {
-	id: number;
-	created_at: string;
-}
-
 // Main data interface for the page
 export interface ItemDetailData {
 	item: Item;
 	itemOwnerData: ItemOwnerData;
 	chatId?: number;
-	orderProposal?: OrderProposal;
 	isFavorite: boolean;
 	isCurrentUserTheItemOwner: boolean;
 }

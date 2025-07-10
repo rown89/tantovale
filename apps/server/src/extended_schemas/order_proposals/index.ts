@@ -18,3 +18,8 @@ export const seller_update_order_proposal_schema = ordersProposalsSelectSchema
 	.extend({
 		status: z.enum([ORDER_PROPOSAL_PHASES.accepted, ORDER_PROPOSAL_PHASES.rejected]),
 	});
+
+export const buyer_abort_proposal_schema = z.object({
+	item_id: z.number(),
+	proposal_id: z.number(),
+});

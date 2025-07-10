@@ -29,7 +29,11 @@ import { formatPriceToCents } from '#utils/price-formatter';
 import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
 import { sendProposalAcceptedMessage } from '../../mailer/templates/proposals/buyer/proposal-accepted';
 import { sendProposalRejectedMessage } from '../../mailer/templates/proposals/buyer/proposal-rejected';
-import { create_order_proposal_schema, seller_update_order_proposal_schema } from '#extended_schemas';
+import {
+	create_order_proposal_schema,
+	seller_update_order_proposal_schema,
+	buyer_abort_proposal_schema,
+} from '#extended_schemas';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 import { ShipmentService } from '../shipment-provider/shipment.service';
 
@@ -345,7 +349,7 @@ export const ordersProposalsRoute = createRouter()
 						.values({
 							chat_room_id: chatRoom.id,
 							sender_id: user.profile_id,
-							message: `"${item.title}", proposal #${existingProposal.id}, has been rejected by the seller.`,
+							message: `Proposal #${existingProposal.id}, has been rejected by the seller.`,
 							message_type: 'system',
 							metadata: {
 								type: 'proposal_rejected',
@@ -461,7 +465,7 @@ export const ordersProposalsRoute = createRouter()
 						.values({
 							chat_room_id: chatRoom.id,
 							sender_id: user.profile_id,
-							message: `"${item.title}", proposal #${existingProposal.id}, has been accepted by the seller.`,
+							message: `Proposal #${existingProposal.id}, has been accepted by the seller.`,
 							message_type: 'system',
 							metadata: {
 								order_id: newOrder.id,
@@ -506,7 +510,69 @@ export const ordersProposalsRoute = createRouter()
 			console.error('Error updating proposal:', error);
 			return c.json({ error: 'Failed to update proposal' }, 500);
 		}
-	}) // Get a proposal by id (for the chat)
+	})
+	.post(`${authPath}/buyer_abort`, authMiddleware, zValidator('json', buyer_abort_proposal_schema), async (c) => {
+		const user = c.var.user;
+
+		const { item_id, proposal_id } = c.req.valid('json');
+
+		const { db } = createClient();
+
+		try {
+			return await db.transaction(async (tx) => {
+				// Check if the proposal exists and is in "pending" state
+				const [existingProposal] = await tx
+					.select({
+						id: orders_proposals.id,
+						status: orders_proposals.status,
+					})
+					.from(orders_proposals)
+					.where(and(eq(orders_proposals.id, proposal_id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)))
+					.limit(1);
+
+				if (!existingProposal) return c.json({ error: 'Proposal not found' }, 404);
+
+				// Update proposal status to "buyer_aborted"
+				const [updatedProposal] = await tx
+					.update(orders_proposals)
+					.set({ status: ORDER_PROPOSAL_PHASES.buyer_aborted })
+					.where(eq(orders_proposals.id, proposal_id))
+					.returning();
+
+				if (!updatedProposal) return c.json({ error: 'Failed to update proposal' }, 500);
+
+				// Get the chat room
+				const [chatRoom] = await tx
+					.select({ id: chat_rooms.id })
+					.from(chat_rooms)
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
+					.limit(1);
+
+				if (!chatRoom) return c.json({ error: 'Chat room not found' }, 404);
+
+				const [newChatMessage] = await tx
+					.insert(chat_messages)
+					.values({
+						chat_room_id: chatRoom.id,
+						sender_id: user.profile_id,
+						message: `${user.username} has aborted the proposal #${existingProposal.id}.`,
+						message_type: 'system',
+						metadata: {
+							type: 'proposal_buyer_aborted',
+						},
+					})
+					.returning();
+
+				if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
+				return c.json({ message: 'Proposal aborted successfully' }, 200);
+			});
+		} catch (error) {
+			console.error('Error aborting proposal:', error);
+			return c.json({ error: 'Failed to abort proposal' }, 500);
+		}
+	})
+	// Get a proposal by id (for the chat)
 	.get(`${authPath}/:id`, authMiddleware, async (c) => {
 		const id = Number(c.req.param('id'));
 
