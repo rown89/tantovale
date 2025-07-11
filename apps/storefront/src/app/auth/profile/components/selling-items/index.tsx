@@ -69,12 +69,12 @@ export default function UserSellingItemsComponent() {
 		if (success) {
 			toast.success(`Success!`, {
 				description: `Item deleted correctly!`,
-				duration: 4000,
+				duration: 8000,
 			});
 		} else {
-			toast.error(``, {
+			toast.error(`Oops!`, {
 				description: 'We are encountering technical problems, please retry later.',
-				duration: 4000,
+				duration: 8000,
 			});
 		}
 	};
@@ -84,12 +84,12 @@ export default function UserSellingItemsComponent() {
 		if (success) {
 			toast.success(`Success!`, {
 				description: `Item ${id} ${published ? 'published' : 'unpublished'} correctly!`,
-				duration: 4000,
+				duration: 8000,
 			});
 		} else {
-			toast.error(``, {
+			toast.error(`Oops!`, {
 				description: 'We are encountering technical problems, please retry later.',
-				duration: 4000,
+				duration: 8000,
 			});
 		}
 	};

@@ -13,11 +13,11 @@ export async function fetchItemDetailData({ id, authTokens }: ItemDetailPagePara
 	const authHeaders = createAuthHeaders(authTokens);
 
 	// Fetch core item data first (required for other requests)
-	const item = await fetchItemData(id);
+	const item = await fetchItemData(id, authHeaders);
 
 	// Parallel fetch of all dependent data
 	const [itemOwnerData, userData, chatId, isFavorite] = await Promise.allSettled([
-		fetchItemOwnerData(item.user.username),
+		fetchItemOwnerData(item.user.username, authHeaders),
 		authHeaders ? fetchUserData(authHeaders) : Promise.resolve(null),
 		authHeaders ? fetchChatData(id, authHeaders) : Promise.resolve(undefined),
 		authHeaders ? fetchFavoriteStatus(id, authHeaders) : Promise.resolve(false),

@@ -96,18 +96,18 @@ export default function AddressForm({
 
 	useEffect(() => {
 		if (addAddressError) {
-			toast.error(``, {
+			toast.error(`Oops!`, {
 				description: `Something went wrong, address not added correctly.\n ${addAddressError.message}`,
-				duration: 4000,
+				duration: 8000,
 			});
 		}
 	}, [addAddressError]);
 
 	useEffect(() => {
 		if (updateAddressError) {
-			toast.error(``, {
+			toast.error(`Oops!`, {
 				description: `Something went wrong, address not updated correctly.\n ${updateAddressError.message}`,
-				duration: 4000,
+				duration: 8000,
 			});
 		}
 	}, [updateAddressError]);

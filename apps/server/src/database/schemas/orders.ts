@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, foreignKey, text } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
@@ -61,6 +61,7 @@ export const orders = pgTable(
 			foreignColumns: [addresses.id],
 			name: 'orders_seller_address_fkey',
 		}),
+		index('orders_status_idx').on(table.status),
 	],
 );
 

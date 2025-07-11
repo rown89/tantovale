@@ -2,7 +2,7 @@ import { client } from '@workspace/server/client-rpc';
 
 export const getPlatformsCosts = async (price: number, shipping_price: number) => {
 	try {
-		const response = await client.platforms_costs.auth.calculate.$post({
+		const response = await client.platforms_costs.auth.calculate_platform_costs.$post({
 			json: {
 				price,
 				shipping_price,

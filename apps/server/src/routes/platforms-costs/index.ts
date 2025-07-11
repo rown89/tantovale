@@ -12,7 +12,7 @@ const calculatePlatformCostsSchema = z.object({
 });
 
 export const platformsCostsRoute = createRouter().post(
-	`${authPath}/calculate`,
+	`${authPath}/calculate_platform_costs`,
 	authMiddleware,
 	zValidator('json', calculatePlatformCostsSchema),
 	async (c) => {

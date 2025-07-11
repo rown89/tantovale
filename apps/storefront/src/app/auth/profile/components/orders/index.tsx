@@ -30,7 +30,11 @@ export default function UserSellingItemsComponent() {
 			});
 
 			if (!userOrderListResponse.ok) {
-				toast.error('Error fetching orders');
+				toast.error('Error fetching orders', {
+					description: 'Please try again later.',
+					duration: 8000,
+				});
+
 				return [];
 			}
 

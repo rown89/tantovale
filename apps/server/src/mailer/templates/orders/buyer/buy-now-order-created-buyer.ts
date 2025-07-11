@@ -3,12 +3,10 @@ import { parseEnv } from '../../../../env';
 
 export async function sendBuyNowOrderCreatedBuyer({
 	to,
-	roomId,
 	seller_username,
 	itemName,
 }: {
 	to: string;
-	roomId: number;
 	seller_username: string;
 	itemName: string;
 }) {
@@ -27,8 +25,7 @@ export async function sendBuyNowOrderCreatedBuyer({
 				<p>You have ${days} days to complete the payment:</p>
         <a href="${parseEnv(process.env).STOREFRONT_HOSTNAME}/auth/profile/orders">Go to the orders</a>
         <br>
-        <p>If you have any questions, please contact the seller:</p>
-        <a href="${parseEnv(process.env).STOREFRONT_HOSTNAME}/auth/chat/${roomId}">Go to the chat</a>
+        <p>If you have any questions, please contact the seller.</p>
       </div>
     `,
 	});

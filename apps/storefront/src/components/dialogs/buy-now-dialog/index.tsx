@@ -157,16 +157,25 @@ export function BuyNowDialog() {
 								const { payment_url } = response;
 
 								if (payment_url) {
-									toast.success('Order created successfully, you will be redirected to the payment page...');
+									toast.success('Order created successfully!', {
+										description: 'Please wait while we redirect you to the payment page.',
+										duration: 8000,
+									});
 
 									setTimeout(() => {
 										window.open(payment_url, '_blank');
 									}, 3000);
 								} else {
-									toast.error('Error creating order, please try again later');
+									toast.error('Oops!', {
+										description: 'Error creating order, please try again later.',
+										duration: 8000,
+									});
 								}
 							} catch (error) {
-								toast.error('Error creating order, please try again later');
+								toast.error('Oops!', {
+									description: 'Error creating order, please try again later.',
+									duration: 8000,
+								});
 							} finally {
 								setIsBuyNowModalOpen(false);
 							}

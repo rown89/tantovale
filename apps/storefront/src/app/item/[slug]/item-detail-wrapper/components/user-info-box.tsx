@@ -22,6 +22,17 @@ import { useAuth } from '#providers/auth-providers';
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
 import { PaymentButton } from './payment-button';
+import { toast } from 'sonner';
+import {
+	Dialog,
+	DialogTrigger,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+	DialogDescription,
+	DialogFooter,
+	DialogClose,
+} from '@workspace/ui/components/dialog';
 
 interface UserInfoBoxProps extends ItemWrapperProps {
 	itemOwnerData: Pick<
@@ -42,7 +53,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 
 		const { user } = useAuth();
 		const router = useRouter();
-		const { chatId: chatIdClient, isAddressLoading } = useTantovaleStore();
+		const { chatId: chatIdClient, isAddressLoading, handleBuyerAbortedProposal } = useTantovaleStore();
 
 		const { messageBoxForm } = useItemChat({
 			item_id,
@@ -96,13 +107,53 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 										{orderProposal.id && !order.id ? (
 											<Alert>
 												<Repeat className='h-4 w-4' />
-												<AlertTitle>Waiting for seller response</AlertTitle>
-												<AlertDescription className='flex flex-col gap-2'>
+												<AlertTitle>Waiting for seller response.</AlertTitle>
+												<AlertDescription className='text-foreground/70 flex flex-col gap-2'>
 													Proposal sent on {proposal_date}
 												</AlertDescription>
-												<Button size='sm' variant='destructive' className='mt-2 w-full'>
-													Cancel Proposal
-												</Button>
+
+												<Dialog>
+													<DialogTrigger asChild>
+														<Button size='sm' variant='destructive' className='mt-4 w-full'>
+															Cancel Proposal
+														</Button>
+													</DialogTrigger>
+
+													<DialogContent>
+														<DialogHeader>
+															<DialogTitle>Cancel Proposal</DialogTitle>
+															<DialogDescription>Are you sure you want to cancel your proposal?</DialogDescription>
+														</DialogHeader>
+
+														<DialogFooter>
+															<DialogClose asChild>
+																<Button variant='outline'>Cancel</Button>
+															</DialogClose>
+
+															<Button
+																variant='destructive'
+																type='submit'
+																onClick={async () => {
+																	if (orderProposal.id) {
+																		const result = await handleBuyerAbortedProposal(orderProposal.id);
+																		if (result) {
+																			toast.success('Proposal cancelled successfully', {
+																				description: 'The seller will be notified.',
+																				duration: 8000,
+																			});
+																		} else {
+																			toast.error('Failed to cancel proposal', {
+																				description: 'Please try again later.',
+																				duration: 8000,
+																			});
+																		}
+																	}
+																}}>
+																Confirm
+															</Button>
+														</DialogFooter>
+													</DialogContent>
+												</Dialog>
 											</Alert>
 										) : (
 											<Alert>
@@ -146,7 +197,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 						</div>
 					</CardContent>
 
-					{!isCurrentUserTheItemOwner && !order.id && (
+					{!isCurrentUserTheItemOwner && (
 						<CardFooter>
 							<div className='flex w-full flex-col items-start gap-2'>
 								<Label className='mb-1'>Richiedi informazioni</Label>

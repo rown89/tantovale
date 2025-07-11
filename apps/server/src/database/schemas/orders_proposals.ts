@@ -1,10 +1,11 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, integer, timestamp, foreignKey, text } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 
 import { items } from './items';
 import { ordersProposalStatusEnum } from './enumerated_types';
 import { profiles } from './profiles';
+import { ORDER_PROPOSAL_PHASES } from './enumerated_values';
 
 export const orders_proposals = pgTable(
 	'orders_proposals',
@@ -23,7 +24,7 @@ export const orders_proposals = pgTable(
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
 		shipping_label_id: text('shipping_label_id').notNull(),
-		status: ordersProposalStatusEnum('status').notNull().default('pending'),
+		status: ordersProposalStatusEnum('status').notNull().default(ORDER_PROPOSAL_PHASES.pending),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
@@ -38,6 +39,7 @@ export const orders_proposals = pgTable(
 			foreignColumns: [profiles.id],
 			name: 'orders_proposals_profile_id_fkey',
 		}),
+		index('orders_proposals_status_idx').on(table.status),
 	],
 );
 

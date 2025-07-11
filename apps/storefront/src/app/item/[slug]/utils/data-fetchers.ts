@@ -11,10 +11,15 @@ export function createAuthHeaders(authTokens: AuthTokens): Record<string, string
 }
 
 // Data fetching functions - separated for better maintainability
-export async function fetchItemData(id: string) {
-	const response = await client.item[':id'].$get({
-		param: { id },
-	});
+export async function fetchItemData(id: string, authHeaders?: Record<string, string>) {
+	const response = await client.item[':id'].$get(
+		{
+			param: { id },
+		},
+		{
+			headers: authHeaders,
+		},
+	);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch item: ${response.status}`);
@@ -24,10 +29,15 @@ export async function fetchItemData(id: string) {
 	return item;
 }
 
-export async function fetchItemOwnerData(username: string) {
-	const response = await client.profile.compact[':username'].$get({
-		param: { username },
-	});
+export async function fetchItemOwnerData(username: string, authHeaders?: Record<string, string>) {
+	const response = await client.profile.compact[':username'].$get(
+		{
+			param: { username },
+		},
+		{
+			headers: authHeaders,
+		},
+	);
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch item owner data: ${response.status}`);
@@ -38,7 +48,7 @@ export async function fetchItemOwnerData(username: string) {
 	return itemOwnerData;
 }
 
-export async function fetchUserData(authHeaders: Record<string, string>) {
+export async function fetchUserData(authHeaders?: Record<string, string>) {
 	const response = await client.verify.$get({ credentials: 'include' }, { headers: authHeaders });
 
 	if (!response.ok) {
@@ -52,7 +62,7 @@ export async function fetchUserData(authHeaders: Record<string, string>) {
 	return user;
 }
 
-export async function fetchChatData(itemId: string, authHeaders: Record<string, string>) {
+export async function fetchChatData(itemId: string, authHeaders?: Record<string, string>) {
 	try {
 		const response = await client.chat.auth.rooms.id[':item_id'].$get(
 			{ param: { item_id: itemId } },
@@ -72,7 +82,7 @@ export async function fetchChatData(itemId: string, authHeaders: Record<string, 
 	}
 }
 
-export async function fetchFavoriteStatus(itemId: string, authHeaders: Record<string, string>) {
+export async function fetchFavoriteStatus(itemId: string, authHeaders?: Record<string, string>) {
 	try {
 		const response = await client.favorites.auth.check[':item_id'].$get(
 			{ param: { item_id: itemId } },

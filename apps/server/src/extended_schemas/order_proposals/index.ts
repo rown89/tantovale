@@ -20,6 +20,5 @@ export const seller_update_order_proposal_schema = ordersProposalsSelectSchema
 	});
 
 export const buyer_abort_proposal_schema = z.object({
-	item_id: z.number(),
 	proposal_id: z.number(),
 });

@@ -2,6 +2,10 @@ export const chatMessageTypeValues = ['text', 'proposal', 'system', 'buy_now'] a
 export type ChatMessageType = (typeof chatMessageTypeValues)[number];
 
 export const ORDER_PHASES = {
+	/**
+	 * The order is pending payment
+	 * This state an order from a proposal or if the user has used the "Buy Now" button in the item page
+	 */
 	PAYMENT_PENDING: 'payment_pending',
 	PAYMENT_CONFIRMED: 'payment_confirmed',
 	PAYMENT_FAILED: 'payment_failed',
@@ -12,6 +16,17 @@ export const ORDER_PHASES = {
 	CANCELLED: 'cancelled',
 	EXPIRED: 'expired',
 } as const;
+
+/**
+ * States that are blocked for the user to place a new order
+ */
+export const newOrderBlockedStates = [
+	ORDER_PHASES.PAYMENT_PENDING,
+	ORDER_PHASES.PAYMENT_CONFIRMED,
+	ORDER_PHASES.SHIPPING_PENDING,
+	ORDER_PHASES.SHIPPING_CONFIRMED,
+	ORDER_PHASES.COMPLETED,
+];
 
 export const ORDER_PROPOSAL_PHASES = {
 	pending: 'pending',

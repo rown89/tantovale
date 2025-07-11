@@ -1,4 +1,4 @@
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, count, or, inArray } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
@@ -22,13 +22,15 @@ import {
 	ORDER_PROPOSAL_PHASES,
 	OrderProposalStatus,
 	orderProposalStatusValues,
+	newOrderBlockedStates,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { authPath } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
-import { sendProposalAcceptedMessage } from '../../mailer/templates/proposals/buyer/proposal-accepted';
-import { sendProposalRejectedMessage } from '../../mailer/templates/proposals/buyer/proposal-rejected';
+import { sendProposalAcceptedMessage } from '#mailer/templates/proposals/buyer/proposal-accepted';
+import { sendProposalRejectedMessage } from '#mailer/templates/proposals/buyer/proposal-rejected';
+import { sendProposalCancelledMessage } from '#mailer/templates/proposals/seller/proposal-buyer-cancelled';
 import {
 	create_order_proposal_schema,
 	seller_update_order_proposal_schema,
@@ -61,23 +63,47 @@ export const ordersProposalsRoute = createRouter()
 
 				if (!item) return c.json({ error: 'Item not found' }, 404);
 
-				// Check if the user already has an ongoing proposal for this item
-				const [proposalAlreadyExists] = await tx
-					.select()
+				/* Check if the user already has an ongoing proposal for this item
+				 * I'm getting the count of the pending proposals only because I don't want to allow the user to send multiple proposals in this state for the same item.
+				 * While old proposals are in other states, the user is allowed to send a new proposal.
+				 * Historically for the item - buyer, only a single proposal can exist in pending state.
+				 */
+
+				const blockedProposalStates = [ORDER_PROPOSAL_PHASES.pending];
+
+				const [proposalCountResult] = await tx
+					.select({ count: count() })
 					.from(orders_proposals)
 					.where(
 						and(
 							eq(orders_proposals.item_id, item_id),
 							eq(orders_proposals.profile_id, user.profile_id),
-							or(
-								eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
-								eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.accepted),
-							),
+							inArray(orders_proposals.status, blockedProposalStates),
 						),
-					)
-					.limit(1);
+					);
 
-				if (proposalAlreadyExists) return c.json({ error: 'You already have an ongoing proposal for this item' }, 400);
+				const proposalCount = proposalCountResult?.count || 0;
+
+				if (proposalCount > 0) return c.json({ error: 'You already have an ongoing proposal for this item' }, 400);
+
+				/* Protection against multiple orders for the same item in specific states.
+				 * This prevents the user from sending multiple proposals when they already have an ongoing order.
+				 */
+
+				const [orderCountResult] = await tx
+					.select({ count: count() })
+					.from(orders)
+					.where(
+						and(
+							eq(orders.item_id, item_id),
+							eq(orders.buyer_id, user.profile_id),
+							inArray(orders.status, newOrderBlockedStates),
+						),
+					);
+
+				const orderCount = orderCountResult?.count || 0;
+
+				if (orderCount > 0) return c.json({ error: 'You already have an active order for this item' }, 400);
 
 				// Retrieve shipment label from shippo
 				const shipmentService = new ShipmentService();
@@ -151,19 +177,18 @@ export const ordersProposalsRoute = createRouter()
 					buyerPaymentProviderId = guestUser.id;
 				}
 
-				// Create a new proposal
+				// Create a new proposal with default status (pending)
 				const [proposal] = await tx
 					.insert(orders_proposals)
 					.values({
 						item_id,
 						profile_id: user.profile_id,
 						proposal_price,
-						shipping_price,
 						payment_provider_charge,
 						platform_charge: platform_charge_amount,
 						shipping_label_id,
 						original_price: item.price,
-					} as any)
+					})
 					.returning();
 
 				if (!proposal) return c.json({ error: 'Proposal not found' }, 404);
@@ -511,67 +536,92 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Failed to update proposal' }, 500);
 		}
 	})
-	.post(`${authPath}/buyer_abort`, authMiddleware, zValidator('json', buyer_abort_proposal_schema), async (c) => {
-		const user = c.var.user;
+	.post(
+		`${authPath}/buyer_aborted_proposal`,
+		authMiddleware,
+		zValidator('json', buyer_abort_proposal_schema),
+		async (c) => {
+			const user = c.var.user;
 
-		const { item_id, proposal_id } = c.req.valid('json');
+			const { proposal_id } = c.req.valid('json');
 
-		const { db } = createClient();
+			const { db } = createClient();
 
-		try {
-			return await db.transaction(async (tx) => {
-				// Check if the proposal exists and is in "pending" state
-				const [existingProposal] = await tx
-					.select({
-						id: orders_proposals.id,
-						status: orders_proposals.status,
-					})
-					.from(orders_proposals)
-					.where(and(eq(orders_proposals.id, proposal_id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)))
-					.limit(1);
+			try {
+				return await db.transaction(async (tx) => {
+					// Check if the proposal exists and is in "pending" state
+					const [existingProposal] = await tx
+						.select({
+							id: orders_proposals.id,
+							status: orders_proposals.status,
+							item_id: orders_proposals.item_id,
+							profile_id: orders_proposals.profile_id,
+							item_title: items.title,
+							selelr_email: users.email,
+						})
+						.from(orders_proposals)
+						.innerJoin(items, eq(orders_proposals.item_id, items.id))
+						.innerJoin(profiles, eq(items.profile_id, profiles.id))
+						.innerJoin(users, eq(profiles.user_id, users.id))
+						.where(
+							and(eq(orders_proposals.id, proposal_id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)),
+						)
+						.limit(1);
 
-				if (!existingProposal) return c.json({ error: 'Proposal not found' }, 404);
+					if (!existingProposal || !existingProposal.item_id) return c.json({ error: 'Proposal not found' }, 404);
 
-				// Update proposal status to "buyer_aborted"
-				const [updatedProposal] = await tx
-					.update(orders_proposals)
-					.set({ status: ORDER_PROPOSAL_PHASES.buyer_aborted })
-					.where(eq(orders_proposals.id, proposal_id))
-					.returning();
+					// proposal is owned by the buyer
+					if (existingProposal.profile_id !== user.profile_id) return c.json({ error: 'Proposal not found' }, 404);
 
-				if (!updatedProposal) return c.json({ error: 'Failed to update proposal' }, 500);
+					// Update proposal status to "buyer_aborted"
+					const [updatedProposal] = await tx
+						.update(orders_proposals)
+						.set({ status: ORDER_PROPOSAL_PHASES.buyer_aborted })
+						.where(eq(orders_proposals.id, proposal_id))
+						.returning();
 
-				// Get the chat room
-				const [chatRoom] = await tx
-					.select({ id: chat_rooms.id })
-					.from(chat_rooms)
-					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
-					.limit(1);
+					if (!updatedProposal) return c.json({ error: 'Failed to update proposal' }, 500);
 
-				if (!chatRoom) return c.json({ error: 'Chat room not found' }, 404);
+					// Get the chat room
+					const [chatRoom] = await tx
+						.select({ id: chat_rooms.id })
+						.from(chat_rooms)
+						.where(and(eq(chat_rooms.item_id, existingProposal.item_id), eq(chat_rooms.buyer_id, user.profile_id)))
+						.limit(1);
 
-				const [newChatMessage] = await tx
-					.insert(chat_messages)
-					.values({
-						chat_room_id: chatRoom.id,
-						sender_id: user.profile_id,
-						message: `${user.username} has aborted the proposal #${existingProposal.id}.`,
-						message_type: 'system',
-						metadata: {
-							type: 'proposal_buyer_aborted',
-						},
-					})
-					.returning();
+					if (!chatRoom) return c.json({ error: 'Chat room not found' }, 404);
 
-				if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+					const [newChatMessage] = await tx
+						.insert(chat_messages)
+						.values({
+							chat_room_id: chatRoom.id,
+							sender_id: user.profile_id,
+							message: `${user.username} has aborted the proposal #${existingProposal.id}.`,
+							message_type: 'system',
+							metadata: {
+								type: 'proposal_buyer_aborted',
+							},
+						})
+						.returning();
 
-				return c.json({ message: 'Proposal aborted successfully' }, 200);
-			});
-		} catch (error) {
-			console.error('Error aborting proposal:', error);
-			return c.json({ error: 'Failed to abort proposal' }, 500);
-		}
-	})
+					if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
+
+					// Send to seller the cancelled proposal notification
+					await sendProposalCancelledMessage({
+						to: existingProposal.selelr_email,
+						proposal_id,
+						buyer_username: user.username,
+						itemName: existingProposal.item_title,
+					});
+
+					return c.json({ message: 'Proposal aborted successfully' }, 200);
+				});
+			} catch (error) {
+				console.error('Error aborting proposal:', error);
+				return c.json({ error: 'Failed to abort proposal' }, 500);
+			}
+		},
+	)
 	// Get a proposal by id (for the chat)
 	.get(`${authPath}/:id`, authMiddleware, async (c) => {
 		const id = Number(c.req.param('id'));

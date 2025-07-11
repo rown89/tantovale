@@ -71,10 +71,16 @@ export function ProposalDialog() {
 					setIsProposalModalOpen(false);
 					setChatId(result.chat_room_id);
 
-					toast.success('Proposal sent successfully');
+					toast.success('Proposal sent successfully', {
+						description: 'The seller will be notified to Accept or Reject the proposal.',
+						duration: 8000,
+					});
 				}
 			} catch (error) {
-				toast.error('Failed to submit proposal. Please try again.');
+				toast.error('Failed to submit proposal :(', {
+					description: 'Please try again later.',
+					duration: 8000,
+				});
 			}
 		},
 	});

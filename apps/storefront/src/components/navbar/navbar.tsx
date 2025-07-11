@@ -56,7 +56,10 @@ export default function NavBar() {
 									setAddressId(address_id);
 									router.push('/auth/item/new');
 								} else {
-									toast.error('You must have an active address to sell');
+									toast.error('Oops!', {
+										description: 'You must have an active address to sell or buy.',
+										duration: 8000,
+									});
 									router.push('/auth/profile-setup/address');
 								}
 								setIsAddressLoading(false);

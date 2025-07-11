@@ -1,4 +1,4 @@
-import { eq, and, not, desc } from 'drizzle-orm';
+import { eq, and, not, desc, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -33,24 +33,38 @@ import {
 	addressStatus,
 	EntityTrustapTransactionStatus,
 	itemStatus,
+	newOrderBlockedStates,
 	ORDER_PROPOSAL_PHASES,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { environment } from '#utils/constants';
-import { sendBuyNowOrderCreatedBuyer } from '../../mailer/templates/orders/buyer/buy-now-order-created-buyer';
-
 import { formatPriceToCents } from '#utils/price-formatter';
+import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
 
 import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 
 export const itemRoute = createRouter()
+	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
 	.get('/:id', async (c) => {
+		const { ACCESS_TOKEN_SECRET } = env<{
+			ACCESS_TOKEN_SECRET: string;
+		}>(c);
+
 		const id = Number(c.req.param('id'));
 
 		if (!id) return c.json({ error: 'item id is required' }, 400);
 		if (isNaN(id)) return c.json({ message: 'Invalid item ID' }, 400);
+
+		const access_token = getCookie(c, 'access_token');
+
+		let payload;
+
+		if (access_token) payload = await verify(access_token, ACCESS_TOKEN_SECRET);
+
+		// If user is logged in, we can get the user_profile_id from the payload and use it to filter the data for the logged user
+		const user_profile_id = Number(payload?.profile_id);
 
 		const { db } = createClient();
 
@@ -99,28 +113,48 @@ export const itemRoute = createRouter()
 				.innerJoin(property_values, eq(items_properties_values.property_value_id, property_values.id))
 				.where(eq(items_properties_values.item_id, id));
 
-			// Get latest pending proposal
-			const [latestPendingProposal] = await db
-				.select({
-					id: orders_proposals.id,
-					status: orders_proposals.status,
-					created_at: orders_proposals.created_at,
-				})
-				.from(orders_proposals)
-				.where(and(eq(orders_proposals.item_id, id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)))
-				.orderBy(desc(orders_proposals.created_at))
-				.limit(1);
+			// Get latest pending proposal (only if user is logged in)
+			let latestPendingProposal = null;
+			if (user_profile_id && !isNaN(user_profile_id)) {
+				const [proposal] = await db
+					.select({
+						id: orders_proposals.id,
+						status: orders_proposals.status,
+						created_at: orders_proposals.created_at,
+					})
+					.from(orders_proposals)
+					.where(
+						and(
+							eq(orders_proposals.item_id, id),
+							eq(orders_proposals.profile_id, user_profile_id),
+							eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
+						),
+					)
+					.orderBy(desc(orders_proposals.created_at))
+					.limit(1);
+				latestPendingProposal = proposal;
+			}
 
-			// Get latest payment_pending order
-			const [latestPaymentPendingOrder] = await db
-				.select({
-					id: orders.id,
-					status: orders.status,
-				})
-				.from(orders)
-				.where(and(eq(orders.item_id, id), eq(orders.status, ORDER_PHASES.PAYMENT_PENDING)))
-				.orderBy(desc(orders.created_at))
-				.limit(1);
+			// Get latest payment_pending order (only if user is logged in)
+			let latestPaymentPendingOrder = null;
+			if (user_profile_id && !isNaN(user_profile_id)) {
+				const [order] = await db
+					.select({
+						id: orders.id,
+						status: orders.status,
+					})
+					.from(orders)
+					.where(
+						and(
+							eq(orders.item_id, id),
+							eq(orders.buyer_id, user_profile_id),
+							eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
+						),
+					)
+					.orderBy(desc(orders.created_at))
+					.limit(1);
+				latestPaymentPendingOrder = order;
+			}
 
 			const itemImages = await db
 				.select({ url: items_images.url })
@@ -407,11 +441,20 @@ export const itemRoute = createRouter()
 						return c.json({ error: 'Item not available' }, 400);
 					}
 
+					/* Protection against multiple orders for the same item in specific states.
+					 */
+
 					// Check if user has placed already an order for this item
 					const [userHasAnOrder] = await tx
 						.select({ id: orders.id })
 						.from(orders)
-						.where(and(eq(orders.item_id, item_id), eq(orders.buyer_id, user.profile_id)))
+						.where(
+							and(
+								eq(orders.item_id, item_id),
+								eq(orders.buyer_id, user.profile_id),
+								inArray(orders.status, newOrderBlockedStates),
+							),
+						)
 						.limit(1);
 
 					if (userHasAnOrder) {
@@ -553,62 +596,9 @@ export const itemRoute = createRouter()
 						return c.json({ error: 'Failed to create order' }, 500);
 					}
 
-					// Check if user already has an ongoing chat with the seller for this item
-					const [chatRoom] = await tx
-						.select()
-						.from(chat_rooms)
-						.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
-						.limit(1);
-
-					let chatRoomId = null;
-
-					if (chatRoom) {
-						// Send a new chat message of type proposal
-						const [newChatMessage] = await tx
-							.insert(chat_messages)
-							.values({
-								chat_room_id: chatRoom.id,
-								sender_id: user.profile_id,
-								message: `Order created for ${item.title} by ${user.username}`,
-								message_type: 'buy_now',
-							})
-							.returning();
-
-						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
-
-						chatRoomId = chatRoom.id;
-					} else {
-						// Create a new chat room
-						const [newChatRoom] = await tx
-							.insert(chat_rooms)
-							.values({
-								item_id,
-								buyer_id: user.profile_id,
-							})
-							.returning();
-
-						if (!newChatRoom) return c.json({ error: 'Chat room not found' }, 404);
-
-						// Create a new chat message of type proposal
-						const [newChatMessage] = await tx
-							.insert(chat_messages)
-							.values({
-								chat_room_id: newChatRoom.id,
-								sender_id: user.profile_id,
-								message: `Order created for ${item.title} by ${user.username}`,
-								message_type: 'buy_now',
-							})
-							.returning();
-
-						if (!newChatMessage) return c.json({ error: 'Chat message not found' }, 404);
-
-						chatRoomId = newChatRoom.id;
-					}
-
 					// send email to the buyer
 					await sendBuyNowOrderCreatedBuyer({
 						to: buyerInfo.email,
-						roomId: chatRoomId,
 						seller_username: item.seller_username,
 						itemName: item.title,
 					});

@@ -131,7 +131,11 @@ export default function ItemWDetailWrapper({
 				// Open the proposal modal
 				setIsProposalModalOpen(true);
 			} else {
-				toast.error('You must have an active address to sell');
+				toast.error('Oops!', {
+					description: 'You must have an active address to sell or buy.',
+					duration: 8000,
+				});
+
 				router.push('/auth/profile-setup/address');
 			}
 
@@ -152,7 +156,11 @@ export default function ItemWDetailWrapper({
 				// Open the buy now modal
 				setIsBuyNowModalOpen(true);
 			} else {
-				toast.error('You must have an active address to sell');
+				toast.error('Oops!', {
+					description: 'You must have an active address to sell or buy.',
+					duration: 8000,
+				});
+
 				router.push('/auth/profile-setup/address');
 			}
 

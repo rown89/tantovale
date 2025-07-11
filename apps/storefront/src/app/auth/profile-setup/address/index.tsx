@@ -22,7 +22,10 @@ export default function ProfileSetupAddress() {
 						firstAddress
 						mode='add'
 						onComplete={() => {
-							toast.success('Address added successfully');
+							toast.success('Success!', {
+								description: 'Address correctly added!',
+								duration: 8000,
+							});
 							router.push('/');
 						}}
 					/>

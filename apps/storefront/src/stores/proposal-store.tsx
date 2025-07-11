@@ -26,6 +26,7 @@ export type OrderProposalStore = {
 	isCreatingProposal: boolean;
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => void;
 	setIsCreatingProposal: (isCreatingProposal: boolean) => void;
+	handleBuyerAbortedProposal: (proposal_id: number) => Promise<boolean>;
 	handleProposal: ({
 		item_id,
 		proposal_price,
@@ -42,6 +43,33 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 	isCreatingProposal: false,
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
 	setIsCreatingProposal: (isCreatingProposal: boolean) => set({ isCreatingProposal }),
+	handleBuyerAbortedProposal: async (proposal_id: number) => {
+		set({
+			isCreatingProposal: true,
+		});
+
+		try {
+			await client.orders_proposals.auth.buyer_aborted_proposal.$post({
+				json: {
+					proposal_id,
+				},
+			});
+
+			set({
+				clientProposalId: undefined,
+				clientProposalCreatedAt: undefined,
+			});
+
+			return true;
+		} catch (error) {
+			console.error('Failed to abort proposal:', error);
+			return false;
+		} finally {
+			set({
+				isCreatingProposal: false,
+			});
+		}
+	},
 	handleProposal: async ({ item_id, proposal_price, shipping_label_id, message }: handleProposalProps) => {
 		set({
 			isCreatingProposal: true,

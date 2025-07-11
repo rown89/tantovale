@@ -43,6 +43,7 @@ export async function validateRefreshToken(c: Context<AppBindings>, db: DrizzleC
 	}
 
 	const refreshTokenExpiry = new Date(storedRefreshToken.expires_at);
+
 	if (refreshTokenExpiry < new Date()) {
 		await db.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
 		throw new Error('Refresh token expired');
