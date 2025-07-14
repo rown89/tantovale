@@ -48,5 +48,5 @@ WORKDIR /app/apps/storefront
 USER nextjs
 # Expose the port Next.js will run on
 EXPOSE 3000
-# The command to start the Next.js production server
-CMD ["pnpm", "start"]
+# The command to start the Next.js production server with standalone output
+CMD ["node", ".next/standalone/server.js"]
