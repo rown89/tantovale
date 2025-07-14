@@ -1,4 +1,4 @@
-import { eq, and, count, or, inArray } from 'drizzle-orm';
+import { eq, and, count, or, inArray, not } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
@@ -23,6 +23,7 @@ import {
 	OrderProposalStatus,
 	orderProposalStatusValues,
 	newOrderBlockedStates,
+	ORDER_PHASES,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { authPath } from '#utils/constants';
@@ -40,6 +41,7 @@ import { PaymentProviderService } from '../payments/payment-provider.service';
 import { ShipmentService } from '../shipment-provider/shipment.service';
 
 export const ordersProposalsRoute = createRouter()
+	// Buyer create a new proposal
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 
@@ -58,13 +60,21 @@ export const ordersProposalsRoute = createRouter()
 						price: items.price,
 					})
 					.from(items)
-					.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
+					.where(
+						and(
+							eq(items.id, item_id),
+							eq(items.status, itemStatus.AVAILABLE),
+							eq(items.published, true),
+							// Proposal can't be sent if item owner is the seller
+							not(eq(items.profile_id, user.profile_id)),
+						),
+					)
 					.limit(1);
 
 				if (!item) return c.json({ error: 'Item not found' }, 404);
 
 				/* Check if the user already has an ongoing proposal for this item
-				 * I'm getting the count of the pending proposals only because I don't want to allow the user to send multiple proposals in this state for the same item.
+				 * I'm getting the count of the "pending" proposals because I don't want to allow users to send multiple proposals in this state.
 				 * While old proposals are in other states, the user is allowed to send a new proposal.
 				 * Historically for the item - buyer, only a single proposal can exist in pending state.
 				 */
@@ -84,7 +94,9 @@ export const ordersProposalsRoute = createRouter()
 
 				const proposalCount = proposalCountResult?.count || 0;
 
-				if (proposalCount > 0) return c.json({ error: 'You already have an ongoing proposal for this item' }, 400);
+				if (proposalCount > 0) {
+					return c.json({ error: 'You already have an ongoing proposal for this item' }, 400);
+				}
 
 				/* Protection against multiple orders for the same item in specific states.
 				 * This prevents the user from sending multiple proposals when they already have an ongoing order.
@@ -301,11 +313,20 @@ export const ordersProposalsRoute = createRouter()
 						profile_id: items.profile_id,
 						user_id: users.id,
 						payment_provider_id: profiles.payment_provider_id,
+						address_id: addresses.id,
 					})
 					.from(items)
 					.innerJoin(profiles, eq(items.profile_id, profiles.id))
 					.innerJoin(users, eq(profiles.user_id, users.id))
-					.where(and(eq(items.id, item_id), eq(profiles.user_id, user.id)))
+					.innerJoin(addresses, and(eq(profiles.id, addresses.profile_id), eq(addresses.status, 'active')))
+					.where(
+						and(
+							eq(items.id, item_id),
+							eq(items.profile_id, user.profile_id),
+							eq(items.status, itemStatus.AVAILABLE),
+							eq(items.published, true),
+						),
+					)
 					.limit(1);
 
 				if (!item) {
@@ -338,9 +359,11 @@ export const ordersProposalsRoute = createRouter()
 						email: users.email,
 						username: users.username,
 						payment_provider_id: profiles.payment_provider_id,
+						address_id: addresses.id,
 					})
 					.from(users)
 					.innerJoin(profiles, eq(users.id, profiles.user_id))
+					.innerJoin(addresses, and(eq(profiles.id, addresses.profile_id), eq(addresses.status, 'active')))
 					.where(eq(profiles.id, buyerProfileId))
 					.limit(1);
 
@@ -464,12 +487,15 @@ export const ordersProposalsRoute = createRouter()
 						.values({
 							item_id,
 							buyer_id: buyerProfileId,
+							buyer_address: buyerInfo.address_id,
 							seller_id: user.profile_id,
+							seller_address: item.address_id,
 							shipping_price,
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
 							payment_transaction_id: transaction.id,
 							shipping_label_id: existingProposal.shipping_label_id,
+							proposal_id: existingProposal.id,
 						})
 						.returning({ id: orders.id });
 
@@ -509,7 +535,7 @@ export const ordersProposalsRoute = createRouter()
 					});
 				}
 
-				// 6: finally update proposal status
+				// Update proposal status (accepted or rejected)
 				const [updatedProposal] = await tx
 					.update(orders_proposals)
 					.set({ status })
@@ -536,6 +562,7 @@ export const ordersProposalsRoute = createRouter()
 			return c.json({ error: 'Failed to update proposal' }, 500);
 		}
 	})
+	// Buyer abort a proposal
 	.post(
 		`${authPath}/buyer_aborted_proposal`,
 		authMiddleware,
@@ -549,7 +576,7 @@ export const ordersProposalsRoute = createRouter()
 
 			try {
 				return await db.transaction(async (tx) => {
-					// Check if the proposal exists and is in "pending" state
+					// Check if the proposal exists, is in "pending" state and is owned by the buyer
 					const [existingProposal] = await tx
 						.select({
 							id: orders_proposals.id,
@@ -564,7 +591,13 @@ export const ordersProposalsRoute = createRouter()
 						.innerJoin(profiles, eq(items.profile_id, profiles.id))
 						.innerJoin(users, eq(profiles.user_id, users.id))
 						.where(
-							and(eq(orders_proposals.id, proposal_id), eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending)),
+							and(
+								eq(orders_proposals.profile_id, user.profile_id),
+								eq(orders_proposals.id, proposal_id),
+								eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
+								eq(items.status, itemStatus.AVAILABLE),
+								eq(items.published, true),
+							),
 						)
 						.limit(1);
 
@@ -581,6 +614,15 @@ export const ordersProposalsRoute = createRouter()
 						.returning();
 
 					if (!updatedProposal) return c.json({ error: 'Failed to update proposal' }, 500);
+
+					// Cancel the order connected to the proposal
+					const [updatedOrder] = await tx
+						.update(orders)
+						.set({ status: ORDER_PHASES.CANCELLED })
+						.where(eq(orders.proposal_id, proposal_id))
+						.returning();
+
+					if (!updatedOrder) return c.json({ error: 'Failed to cancel order' }, 500);
 
 					// Get the chat room
 					const [chatRoom] = await tx

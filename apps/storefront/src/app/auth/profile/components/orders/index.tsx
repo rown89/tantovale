@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
 import { client } from '@workspace/server/client-rpc';
 import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index';
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
+import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
 import { useAuth } from '#providers/auth-providers';
@@ -84,19 +86,50 @@ export default function UserSellingItemsComponent() {
 
 	return (
 		<div className='flex w-full flex-col gap-7 overflow-auto px-4'>
-			<div className='flex flex-col gap-4 space-y-6'>
+			<div className='bg-background z-1 sticky top-0 flex items-center justify-between'>
+				<div className='w-full space-y-6'>
+					<h1 className='text-3xl font-bold'>Orders</h1>
+
+					<p className='text-muted-foreground'>Manage your orders.</p>
+				</div>
+			</div>
+
+			<div className='grid grid-cols-1 gap-2'>
 				{orders &&
 					orders.length &&
 					orders?.map((order) => (
-						<>
-							<OrderPreviewCard
-								order={order}
-								onCompletePayment={() => handleCompletePayment(order)}
-								onCancel={() => handleCancel(order)}
-								onRequestAssistance={() => handleRequestAssistance(order)}
-								onViewShipment={() => handleShipping(order)}
-							/>
-						</>
+						<OrderPreviewCard
+							key={order.id}
+							order={{
+								...order,
+								item: {
+									...order.item,
+									itemLink: (
+										<h1 className='text-accent overflow-hidden truncate text-ellipsis font-bold hover:underline'>
+											<Link
+												href={`/item/${linkBuilder({ id: order.item.id, title: order.item.title })}`}
+												className='text-xl'>
+												{order.item.title}
+											</Link>
+										</h1>
+									),
+								},
+								seller: {
+									...order.seller,
+									usernameLink: (
+										<Link
+											className='text-primary overflow-hidden truncate text-ellipsis hover:underline'
+											href={`/user/${order.seller.username}`}>
+											{order.seller.username}
+										</Link>
+									),
+								},
+							}}
+							onCompletePayment={() => handleCompletePayment(order)}
+							onCancel={() => handleCancel(order)}
+							onRequestAssistance={() => handleRequestAssistance(order)}
+							onViewShipment={() => handleShipping(order)}
+						/>
 					))}
 
 				{orders && orders.length && (

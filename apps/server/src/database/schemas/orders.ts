@@ -6,36 +6,51 @@ import { profiles } from './profiles';
 import { addresses } from './addresses';
 import { items } from './items';
 import { ORDER_PHASES } from './enumerated_values';
+import { orders_proposals } from './orders_proposals';
 
 export const orders = pgTable(
 	'orders',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
-		item_id: integer('item_id').references(() => items.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
+		item_id: integer('item_id')
+			.references(() => items.id, {
+				onDelete: 'cascade',
+				onUpdate: 'cascade',
+			})
+			.notNull(),
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
 		shipping_label_id: text('shipping_label_id').notNull(),
 		shipping_price: integer('shipping_price').notNull(),
-		buyer_id: integer('buyer_id').references(() => profiles.id, {
+		buyer_id: integer('buyer_id')
+			.references(() => profiles.id, {
+				onDelete: 'cascade',
+				onUpdate: 'cascade',
+			})
+			.notNull(),
+		seller_id: integer('seller_id')
+			.references(() => profiles.id, {
+				onDelete: 'cascade',
+				onUpdate: 'cascade',
+			})
+			.notNull(),
+		buyer_address: integer('buyer_address')
+			.references(() => addresses.id, {
+				onDelete: 'cascade',
+				onUpdate: 'cascade',
+			})
+			.notNull(),
+		seller_address: integer('seller_address')
+			.references(() => addresses.id, {
+				onDelete: 'cascade',
+				onUpdate: 'cascade',
+			})
+			.notNull(),
+		proposal_id: integer('proposal_id').references(() => orders_proposals.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		seller_id: integer('seller_id').references(() => profiles.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
-		buyer_address: integer('buyer_address').references(() => addresses.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
-		seller_address: integer('seller_address').references(() => addresses.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
-		payment_transaction_id: integer('payment_transaction_id'),
+		payment_transaction_id: integer('payment_transaction_id').notNull(),
 		status: text('status').notNull().default(ORDER_PHASES.PAYMENT_PENDING),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

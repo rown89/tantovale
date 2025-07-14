@@ -29,16 +29,16 @@ export function OrderActions({
 			case ORDER_PHASES.PAYMENT_PENDING:
 				return [
 					{
+						label: 'Cancel',
+						icon: X,
+						onClick: onCancel,
+						variant: 'destructive' as const,
+					},
+					{
 						label: 'Complete Payment',
 						icon: CreditCard,
 						onClick: onCompletePayment,
 						variant: 'default' as const,
-					},
-					{
-						label: 'Cancel',
-						icon: X,
-						onClick: onCancel,
-						variant: 'outline' as const,
 					},
 				];
 
@@ -117,7 +117,7 @@ export function OrderActions({
 	if (actions.length === 0) return null;
 
 	return (
-		<div className='flex flex-wrap gap-2 sm:flex-nowrap'>
+		<div className='flex w-full flex-wrap justify-end gap-2 sm:flex-nowrap'>
 			{actions.map((action, index) => {
 				const Icon = action.icon;
 				return (

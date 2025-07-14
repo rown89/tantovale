@@ -37,7 +37,7 @@ export function OrderStatusBadge({ status }: OrderStatusBadgeProps) {
 	const config = getStatusConfig(status);
 
 	return (
-		<Badge variant={config.variant} className='text-xs'>
+		<Badge variant={config.variant} className='text-slate-900'>
 			{config.label}
 		</Badge>
 	);

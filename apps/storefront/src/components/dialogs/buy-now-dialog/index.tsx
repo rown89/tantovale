@@ -67,6 +67,19 @@ export function BuyNowDialog() {
 
 	if (!item) return null;
 
+	const getTotalAmount = () => {
+		if (!platformsCosts || !shippingCost) return 0;
+
+		// Ensure all values are numbers (in cents)
+		const itemPriceInCents = Number(item.price);
+		const shippingCostInCents = formatPriceToCents(Number(shippingCost.amount));
+		const easyPayCharge = Number(platformsCosts.payment_provider_charge) + Number(platformsCosts.platform_charge);
+
+		const totalInCents = itemPriceInCents + easyPayCharge + shippingCostInCents;
+
+		return formatPrice(totalInCents);
+	};
+
 	return (
 		<Dialog open={isBuyNowModalOpen} onOpenChange={setIsBuyNowModalOpen}>
 			<DialogContent className='sm:max-w-[425px]'>
@@ -115,9 +128,11 @@ export function BuyNowDialog() {
 							<Label>Easy pay service:</Label>
 							{isLoadingPlatformsCosts ? (
 								<Spinner size='small' />
-							) : platformsCosts?.platform_charge ? (
+							) : platformsCosts?.platform_charge && platformsCosts?.payment_provider_charge ? (
 								<div className='flex flex-col gap-1'>
-									<p className='text-sm'>{formatPrice(platformsCosts.platform_charge).toFixed(2)}€</p>
+									<p className='text-sm'>
+										{formatPrice(platformsCosts.platform_charge) + formatPrice(platformsCosts.payment_provider_charge)}€
+									</p>
 								</div>
 							) : (
 								<p className='text-sm text-red-500'>-- €</p>
@@ -130,21 +145,9 @@ export function BuyNowDialog() {
 
 					{/* Total price */}
 					<div className='mb-2 flex flex-col items-end gap-1'>
-						<Label className='font-extrabold uppercase'>Total price</Label>
+						<Label className='font-extrabold uppercase'>YOU PAY</Label>
 						<span className='w-fit text-sm'>
-							{isLoadingPlatformsCosts ? (
-								<Spinner size='small' />
-							) : (
-								<p>
-									{formatPrice(
-										formatPriceToCents(formatPrice(item.price)) +
-											(platformsCosts?.platform_charge ?? 0) +
-											formatPriceToCents(shippingCost?.amount ?? 0) +
-											(platformsCosts?.payment_provider_charge ?? 0),
-									)}{' '}
-									€
-								</p>
-							)}
+							{isLoadingPlatformsCosts ? <Spinner size='small' /> : <p>{getTotalAmount()} €</p>}
 						</span>
 					</div>
 				</div>

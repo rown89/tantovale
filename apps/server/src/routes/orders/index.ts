@@ -4,16 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import {
-	items,
-	users,
-	property_values,
-	orders,
-	items_properties_values,
-	profiles,
-	addresses,
-	cities,
-} from '#db-schema';
+import { items, users, orders, profiles, addresses, cities, orders_proposals } from '#db-schema';
 import { authPath } from '#utils/constants';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 
@@ -29,38 +20,29 @@ export const ordersRoute = createRouter()
 		const cityAlias = alias(cities, 'city');
 		const provinceAlias = alias(cities, 'province');
 
-		let userOrders = [];
+		// Build where conditions dynamically
+		const whereConditions = [eq(orders.seller_id, user.profile_id)];
 
-		// if status is all or undefined, get all orders
-		if (status === 'all' || !status) {
-			userOrders = await db
-				.select()
-				.from(orders)
-				.innerJoin(items, eq(orders.item_id, items.id))
-				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
-				.innerJoin(users, eq(profiles.user_id, users.id))
-				.innerJoin(addresses, eq(orders.buyer_address, addresses.id))
-				.innerJoin(cityAlias, eq(addresses.city_id, cityAlias.id))
-				.innerJoin(provinceAlias, eq(addresses.province_id, provinceAlias.id))
-				.where(eq(orders.buyer_id, user.id));
-		} else {
-			const response = await db
-				.select()
-				.from(orders)
-				.innerJoin(items, eq(orders.item_id, items.id))
-				.innerJoin(profiles, eq(orders.seller_id, profiles.id))
-				.innerJoin(users, eq(profiles.user_id, users.id))
-				.innerJoin(addresses, eq(orders.buyer_address, addresses.id))
-				.innerJoin(cityAlias, eq(addresses.city_id, cityAlias.id))
-				.innerJoin(provinceAlias, eq(addresses.province_id, provinceAlias.id))
-				.where(and(eq(orders.buyer_id, user.id), eq(orders.status, status)));
-
-			if (!response.length) return c.json([], 200);
-
-			userOrders = response;
+		// Add status filter if not 'all' and not undefined
+		if (status !== 'all' && status) {
+			whereConditions.push(eq(orders.status, status));
 		}
 
-		if (!userOrders.length) return c.json([], 200);
+		const userOrders = await db
+			.select()
+			.from(orders)
+			.innerJoin(items, eq(orders.item_id, items.id))
+			.leftJoin(orders_proposals, eq(orders_proposals.id, orders.proposal_id))
+			.innerJoin(profiles, eq(profiles.id, orders.seller_id))
+			.innerJoin(users, eq(users.id, profiles.user_id))
+			.innerJoin(addresses, eq(addresses.id, orders.buyer_address))
+			.innerJoin(cityAlias, eq(cityAlias.id, addresses.city_id))
+			.innerJoin(provinceAlias, eq(provinceAlias.id, addresses.province_id))
+			.where(and(...whereConditions));
+
+		if (!userOrders.length) {
+			return c.json([], 200);
+		}
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
@@ -78,6 +60,10 @@ export const ordersRoute = createRouter()
 				item: {
 					id: order.items.id,
 					title: order.items.title,
+				},
+				proposal: {
+					id: order.orders_proposals?.id,
+					price: order.orders_proposals?.proposal_price,
 				},
 				seller: {
 					id: order.users.id,

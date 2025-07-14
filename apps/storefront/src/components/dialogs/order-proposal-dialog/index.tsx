@@ -106,7 +106,7 @@ export function ProposalDialog() {
 				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
 			}
 
-			return shippingCost;
+			return shippingCost ?? null;
 		},
 		enabled: isProposalModalOpen && hasMandatoryArguments,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
@@ -131,6 +131,18 @@ export function ProposalDialog() {
 	});
 
 	if (!item) return null;
+
+	const getTotalAmount = () => {
+		if (!platformsCosts || !shippingCost) return 0;
+
+		const itemPriceInCents = Number(formatPriceToCents(formPrice) || item.price);
+		const shippingCostInCents = formatPriceToCents(Number(shippingCost.amount));
+		const easyPayCharge = Number(platformsCosts.payment_provider_charge) + Number(platformsCosts.platform_charge);
+
+		const totalInCents = itemPriceInCents + easyPayCharge + shippingCostInCents;
+
+		return formatPrice(totalInCents);
+	};
 
 	return (
 		<Dialog
@@ -231,14 +243,21 @@ export function ProposalDialog() {
 						<div className='mb-2 flex flex-col gap-1'>
 							<div className='flex justify-between gap-2'>
 								<Label>Easy pay service:</Label>
+								{errorPlatformsCosts && !isLoadingPlatformsCosts && <p className='text-sm text-red-500'>-- €</p>}
+
 								{isLoadingPlatformsCosts ? (
 									<Spinner size='small' />
-								) : platformsCosts?.platform_charge ? (
-									<div className='flex flex-col gap-1'>
-										<p className='text-sm'>{formatPrice(platformsCosts.platform_charge).toFixed(2)}€</p>
-									</div>
 								) : (
-									<p className='text-sm text-red-500'>-- €</p>
+									platformsCosts?.platform_charge &&
+									platformsCosts?.payment_provider_charge && (
+										<div className='flex flex-col gap-1'>
+											<p className='text-sm'>
+												{formatPrice(platformsCosts.platform_charge) +
+													formatPrice(platformsCosts.payment_provider_charge)}
+												€
+											</p>
+										</div>
+									)
 								)}
 							</div>
 							<Label className='text-muted-foreground/70 text-sm'>
@@ -248,20 +267,19 @@ export function ProposalDialog() {
 
 						{/* Total price */}
 						<div className='mb-2 flex flex-col items-end gap-1'>
-							<Label className='font-extrabold uppercase'>Total price</Label>
+							<Label className='font-extrabold uppercase'>YOU PAY:</Label>
 							<span className='w-fit text-sm'>
-								{isLoadingPlatformsCosts ? (
+								{(errorPlatformsCosts || errorShippingCost) && !isLoadingPlatformsCosts && (
+									<p className='text-sm text-red-500'>-- €</p>
+								)}
+
+								{(isLoadingPlatformsCosts || isLoadingShippingCost) &&
+								!errorPlatformsCosts &&
+								!errorShippingCost &&
+								!platformsCosts?.platform_charge ? (
 									<Spinner size='small' />
 								) : (
-									<p>
-										{formatPrice(
-											formatPriceToCents(formPrice || formatPrice(item.price)) +
-												(platformsCosts?.platform_charge ?? 0) +
-												formatPriceToCents(shippingCost?.amount ?? 0) +
-												(platformsCosts?.payment_provider_charge ?? 0),
-										)}{' '}
-										€
-									</p>
+									<p>{getTotalAmount()} €</p>
 								)}
 							</span>
 						</div>

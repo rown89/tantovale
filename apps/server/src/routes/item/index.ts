@@ -581,8 +581,8 @@ export const itemRoute = createRouter()
 						.values({
 							item_id,
 							buyer_id: user.profile_id,
-							seller_id: item.profile_id,
 							buyer_address: buyerInfo.address_id,
+							seller_id: item.profile_id,
 							seller_address: item.seller_address_id,
 							shipping_price,
 							payment_provider_charge,
