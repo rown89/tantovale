@@ -1,7 +1,7 @@
 'use client';
 
 import React, { ReactNode, useMemo } from 'react';
-import { Package, User, Calendar } from 'lucide-react';
+import { Package, User, Calendar, ShoppingBag } from 'lucide-react';
 
 import { Card, CardContent, CardFooter, CardHeader } from '@workspace/ui/components/card';
 import { Separator } from '@workspace/ui/components/separator';
@@ -58,7 +58,7 @@ export default function OrderPreviewCard({
 
 	const pricingItems = [
 		{
-			label: '• Original Price',
+			label: 'Original Price',
 			value: order.original_price,
 			isConditional: false,
 			isStrikethrough: !!order.proposal?.id,
@@ -66,7 +66,7 @@ export default function OrderPreviewCard({
 		...(order.proposal?.id && order.proposal.price
 			? [
 					{
-						label: '• Proposal Price',
+						label: 'Proposal Price',
 						value: order.proposal.price,
 						isConditional: true,
 						isStrikethrough: false,
@@ -74,13 +74,13 @@ export default function OrderPreviewCard({
 				]
 			: []),
 		{
-			label: '• Shipping service',
+			label: 'Shipping service',
 			value: order.shipping_price,
 			isConditional: false,
 			isStrikethrough: false,
 		},
 		{
-			label: '• EasyPay Fee',
+			label: 'EasyPay Fee',
 			value: order.payment_provider_charge + order.platform_charge,
 			isConditional: false,
 			isStrikethrough: false,
@@ -114,12 +114,18 @@ export default function OrderPreviewCard({
 				</div>
 			</CardHeader>
 
-			<CardContent className='space-y-4'>
+			<CardContent className='space-y-2'>
 				{/* Item Link */}
-				{order.item.itemLink}
-
+				<span className='flex items-center gap-2'>
+					<ShoppingBag size={15} className='text-accent' /> {order.item.itemLink}
+				</span>
+				{/* Order Date */}
+				<div className='text-muted-foreground flex w-full items-center gap-2'>
+					<Calendar className='h-4 w-4' />
+					<span className='text-[13px]'>Created on {formatDate(order.created_at)}</span>
+				</div>
 				{/* Pricing Breakdown */}
-				<div className='space-y-2'>
+				<div className='space-y-2 pt-2'>
 					{pricingItems.map((item, index) => (
 						<div key={index} className='flex justify-between gap-3 text-sm'>
 							<span className={cn(item.isStrikethrough && 'line-through', 'font-semibold')}>{item.label}</span>
@@ -135,12 +141,7 @@ export default function OrderPreviewCard({
 					</div>
 				</div>
 			</CardContent>
-			<CardFooter className='flex justify-between gap-2'>
-				{/* Order Date */}
-				<div className='text-muted-foreground flex w-full items-center gap-2 text-sm'>
-					<Calendar className='h-4 w-4' />
-					<span>Created on {formatDate(order.created_at)}</span>
-				</div>
+			<CardFooter>
 				{/* Actions */}
 				<OrderActions
 					status={order.status}

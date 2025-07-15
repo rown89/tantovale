@@ -46,7 +46,8 @@ import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 
 export const itemRoute = createRouter()
-	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
+	// Get item route
+	// This endpoint can be consumed by both logged and guest users
 	.get('/:id', async (c) => {
 		const { ACCESS_TOKEN_SECRET } = env<{
 			ACCESS_TOKEN_SECRET: string;
@@ -204,6 +205,7 @@ export const itemRoute = createRouter()
 			return c.json({ message: 'Get item error' }, 500);
 		}
 	})
+	// Create item route
 	.post(`/${authPath}/new`, authMiddleware, zValidator('json', createItemSchema), async (c) => {
 		try {
 			const user = c.var.user;
@@ -397,9 +399,11 @@ export const itemRoute = createRouter()
 			);
 		}
 	})
+	// Edit item route
 	.put(`/${authPath}/edit/:id`, authMiddleware, async (c) => {
 		return c.json({});
 	})
+	// Buy now route
 	.post(
 		`/${authPath}/buy_now`,
 		authMiddleware,
@@ -478,6 +482,9 @@ export const itemRoute = createRouter()
 							payment_provider_id: profiles.payment_provider_id,
 							address_id: addresses.id,
 							email: users.email,
+							name: profiles.name,
+							surname: profiles.surname,
+							country_code: addresses.country_code,
 						})
 						.from(profiles)
 						.innerJoin(
@@ -488,8 +495,38 @@ export const itemRoute = createRouter()
 						.where(eq(profiles.id, user.profile_id))
 						.limit(1);
 
-					if (!buyerInfo || !buyerInfo.payment_provider_id) {
-						return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
+					if (!buyerInfo) {
+						return c.json({ error: 'Buyer information not found' }, 404);
+					}
+
+					let buyerPaymentProviderId = buyerInfo?.payment_provider_id || null;
+
+					// Create a new payment provider guest user (buyer) if he has no payment_provider_id
+					if (!buyerPaymentProviderId) {
+						const paymentService = new PaymentProviderService();
+						const guestUser = await paymentService.createGuestUser({
+							id: user.id,
+							email: user.email,
+							first_name: buyerInfo.name,
+							last_name: buyerInfo.surname,
+							country_code: buyerInfo.country_code,
+							tos_acceptance: {
+								unix_timestamp: Math.floor(new Date().getTime() / 1000),
+								ip: c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1',
+							},
+						});
+
+						if (!guestUser) {
+							throw new Error('Failed to create buyer guest user');
+						}
+
+						// Update the profile with the payment provider ID
+						await tx
+							.update(profiles)
+							.set({ payment_provider_id: guestUser.id })
+							.where(eq(profiles.id, user.profile_id));
+
+						buyerPaymentProviderId = guestUser.id;
 					}
 
 					// Create a shipping label
@@ -535,7 +572,7 @@ export const itemRoute = createRouter()
 					const paymentProviderService = new PaymentProviderService();
 
 					const transaction = await paymentProviderService.createTransactionWithBothUsers({
-						buyer_id: buyerInfo.payment_provider_id,
+						buyer_id: buyerPaymentProviderId,
 						seller_id: item.payment_provider_id,
 						creator_role: 'buyer',
 						currency: 'eur',
@@ -620,6 +657,7 @@ export const itemRoute = createRouter()
 			}
 		},
 	)
+	// User (seller) Delete item route
 	.post(
 		`/${authPath}/user_delete_item`,
 		authMiddleware,
@@ -702,6 +740,7 @@ export const itemRoute = createRouter()
 			}
 		},
 	)
+	// User (seller) Publish/Unpublish item route
 	.post(
 		`/${authPath}/publish_state`,
 		authMiddleware,
@@ -721,9 +760,9 @@ export const itemRoute = createRouter()
 
 			const accessToken = getCookie(c, 'access_token');
 			let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-			const user_id = Number(payload.id);
+			const profile_id = Number(payload.profile_id);
 
-			if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
+			if (!profile_id) return c.json({ message: 'Invalid profile id' }, 401);
 
 			const { db } = createClient();
 			try {
@@ -733,14 +772,14 @@ export const itemRoute = createRouter()
 						.select({ id: items.id })
 						.from(items)
 						.innerJoin(profiles, eq(profiles.id, items.profile_id))
-						.where(and(eq(items.id, id), eq(profiles.user_id, user_id)))
+						.where(and(eq(items.id, id), eq(profiles.id, profile_id)))
 						.limit(1)
 						.then((results) => results[0]);
 
 					if (!itemExists) {
 						return c.json(
 							{
-								message: "Item not found or you don't have permission to delete it",
+								message: "Item not found or you don't have permission to change the publish state",
 							},
 							404,
 						);
@@ -758,7 +797,7 @@ export const itemRoute = createRouter()
 					if (!updatedItem?.id) {
 						return c.json(
 							{
-								message: `Item ${id} cant be deleted because doesn't exist.`,
+								message: `Item ${id} cant be changed the publish state because doesn't exist.`,
 								id,
 							},
 							401,
@@ -768,7 +807,7 @@ export const itemRoute = createRouter()
 
 				return c.json(
 					{
-						message: 'Item deleted successfully',
+						message: 'Item publish state changed successfully',
 						id,
 					},
 					200,
@@ -776,7 +815,7 @@ export const itemRoute = createRouter()
 			} catch (error) {
 				return c.json(
 					{
-						message: error instanceof Error ? error.message : `Failed to delete item ${id}`,
+						message: error instanceof Error ? error.message : `Failed to change the publish state of item ${id}`,
 					},
 					500,
 				);

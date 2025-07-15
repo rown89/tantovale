@@ -21,7 +21,7 @@ export const ordersRoute = createRouter()
 		const provinceAlias = alias(cities, 'province');
 
 		// Build where conditions dynamically
-		const whereConditions = [eq(orders.seller_id, user.profile_id)];
+		const whereConditions = [eq(orders.buyer_id, user.profile_id)];
 
 		// Add status filter if not 'all' and not undefined
 		if (status !== 'all' && status) {

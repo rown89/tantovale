@@ -22,7 +22,11 @@ export default function UserSellingItemsComponent() {
 
 	const { user } = useAuth();
 
-	const { data: orders = [], isLoading: isOrdersLoading } = useQuery({
+	const {
+		data: orders = [],
+		isLoading: isOrdersLoading,
+		isError: isOrdersError,
+	} = useQuery({
 		queryKey: ['orders', statusFilter],
 		queryFn: async () => {
 			const userOrderListResponse = await client.orders.auth.status[':status'].$get({
@@ -84,6 +88,8 @@ export default function UserSellingItemsComponent() {
 		console.log('request assistance', order);
 	};
 
+	const ordersArePrintable = orders.length > 0 && !isOrdersLoading && !isOrdersError;
+
 	return (
 		<div className='flex w-full flex-col gap-7 overflow-auto px-4'>
 			<div className='bg-background z-1 sticky top-0 flex items-center justify-between'>
@@ -95,9 +101,12 @@ export default function UserSellingItemsComponent() {
 			</div>
 
 			<div className='grid grid-cols-1 gap-2'>
-				{orders &&
-					orders.length &&
-					orders?.map((order) => (
+				{isOrdersLoading && <p>Loading...</p>}
+
+				{!isOrdersLoading && isOrdersError && <p>Error fetching orders</p>}
+
+				{ordersArePrintable &&
+					orders.map((order) => (
 						<OrderPreviewCard
 							key={order.id}
 							order={{
@@ -108,7 +117,7 @@ export default function UserSellingItemsComponent() {
 										<h1 className='text-accent overflow-hidden truncate text-ellipsis font-bold hover:underline'>
 											<Link
 												href={`/item/${linkBuilder({ id: order.item.id, title: order.item.title })}`}
-												className='text-xl'>
+												className='text-md'>
 												{order.item.title}
 											</Link>
 										</h1>
@@ -132,7 +141,7 @@ export default function UserSellingItemsComponent() {
 						/>
 					))}
 
-				{orders && orders.length && (
+				{ordersArePrintable && (
 					<>
 						{/* TODO: Add payment dialog or redirect to payment page */}
 

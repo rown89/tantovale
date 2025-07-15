@@ -117,7 +117,7 @@ export function OrderActions({
 	if (actions.length === 0) return null;
 
 	return (
-		<div className='flex w-full flex-wrap justify-end gap-2 sm:flex-nowrap'>
+		<div className='flex w-full flex-wrap justify-end gap-2 md:flex-nowrap'>
 			{actions.map((action, index) => {
 				const Icon = action.icon;
 				return (

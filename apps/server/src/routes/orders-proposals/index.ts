@@ -147,7 +147,7 @@ export const ordersProposalsRoute = createRouter()
 				}
 
 				// Get more informations about the buyer profile
-				const [profile] = await tx
+				const [buyerInfo] = await tx
 					.select({
 						name: profiles.name,
 						surname: profiles.surname,
@@ -158,11 +158,11 @@ export const ordersProposalsRoute = createRouter()
 					.innerJoin(addresses, and(eq(profiles.id, addresses.profile_id), eq(addresses.status, 'active')))
 					.where(eq(profiles.id, user.profile_id));
 
-				if (!profile) {
+				if (!buyerInfo) {
 					throw new Error('User has no name or surname or payment_provider_id');
 				}
 
-				let buyerPaymentProviderId = profile.payment_provider_id;
+				let buyerPaymentProviderId = buyerInfo.payment_provider_id;
 
 				// Create a new payment provider guest user (buyer) if he has no payment_provider_id
 				if (!buyerPaymentProviderId) {
@@ -170,9 +170,9 @@ export const ordersProposalsRoute = createRouter()
 					const guestUser = await paymentService.createGuestUser({
 						id: user.id,
 						email: user.email,
-						first_name: profile.name,
-						last_name: profile.surname,
-						country_code: profile.country_code,
+						first_name: buyerInfo.name,
+						last_name: buyerInfo.surname,
+						country_code: buyerInfo.country_code,
 						tos_acceptance: {
 							unix_timestamp: Math.floor(new Date().getTime() / 1000),
 							ip: c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1',

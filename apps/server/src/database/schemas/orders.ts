@@ -18,10 +18,11 @@ export const orders = pgTable(
 				onUpdate: 'cascade',
 			})
 			.notNull(),
-		payment_provider_charge: integer('payment_provider_charge').notNull(),
-		platform_charge: integer('platform_charge').notNull(),
-		shipping_label_id: text('shipping_label_id').notNull(),
-		shipping_price: integer('shipping_price').notNull(),
+		proposal_id: integer('proposal_id').references(() => orders_proposals.id, {
+			onDelete: 'cascade',
+			onUpdate: 'cascade',
+		}),
+		status: text('status').notNull().default(ORDER_PHASES.PAYMENT_PENDING),
 		buyer_id: integer('buyer_id')
 			.references(() => profiles.id, {
 				onDelete: 'cascade',
@@ -46,12 +47,11 @@ export const orders = pgTable(
 				onUpdate: 'cascade',
 			})
 			.notNull(),
-		proposal_id: integer('proposal_id').references(() => orders_proposals.id, {
-			onDelete: 'cascade',
-			onUpdate: 'cascade',
-		}),
+		platform_charge: integer('platform_charge').notNull(),
+		payment_provider_charge: integer('payment_provider_charge').notNull(),
+		shipping_price: integer('shipping_price').notNull(),
+		shipping_label_id: text('shipping_label_id').notNull(),
 		payment_transaction_id: integer('payment_transaction_id').notNull(),
-		status: text('status').notNull().default(ORDER_PHASES.PAYMENT_PENDING),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
