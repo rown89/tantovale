@@ -19,6 +19,7 @@ import {
 } from '@workspace/ui/components/dialog';
 import { Label } from '@workspace/ui/components/label';
 import { Spinner } from '@workspace/ui/components/spinner';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
 export function BuyNowDialog() {
@@ -87,11 +88,19 @@ export function BuyNowDialog() {
 				<DialogHeader>
 					<DialogTitle>Buy Now</DialogTitle>
 					<DialogDescription>
-						Please review the details before proceeding with the purchase. If you click on "Pay" an order will be
-						created and you will be redirected to the payment page.
+						Please review the details before proceeding with the purchase. If you click on "Order and Pay" an order will
+						be created and you will be redirected to the payment page.
 					</DialogDescription>
 				</DialogHeader>
 				<div className='flex flex-col gap-8'>
+					{/* Item price */}
+					<div className='my-2 flex flex-col gap-1'>
+						<div className='flex justify-between gap-2'>
+							<Label className='max-w-[220px] overflow-hidden text-ellipsis'>{item.title}</Label>
+							<p className='text-sm font-semibold'>€{formatPrice(Number(item.price))}</p>
+						</div>
+					</div>
+
 					{/* Shipping cost */}
 					<div className='my-2 flex flex-col gap-1'>
 						<div className='flex justify-between gap-2'>
@@ -99,9 +108,9 @@ export function BuyNowDialog() {
 							{isLoadingShippingCost ? (
 								<Spinner size='small' />
 							) : shippingCost?.amount ? (
-								<p className='text-sm'>{shippingCost.amount}€</p>
+								<p className='text-sm font-semibold'>€{shippingCost.amount}</p>
 							) : (
-								<p className='text-sm text-red-500'>-- €</p>
+								<p className='text-red-500'>€ --</p>
 							)}
 						</div>
 
@@ -126,28 +135,56 @@ export function BuyNowDialog() {
 					<div className='mb-2 flex flex-col gap-1'>
 						<div className='flex justify-between gap-2'>
 							<Label>Easy pay service:</Label>
+
+							{errorPlatformsCosts && !isLoadingPlatformsCosts && <p className='text-sm text-red-500'>€--</p>}
+
 							{isLoadingPlatformsCosts ? (
 								<Spinner size='small' />
-							) : platformsCosts?.platform_charge && platformsCosts?.payment_provider_charge ? (
-								<div className='flex flex-col gap-1'>
-									<p className='text-sm'>
-										{formatPrice(platformsCosts.platform_charge) + formatPrice(platformsCosts.payment_provider_charge)}€
-									</p>
-								</div>
 							) : (
-								<p className='text-sm text-red-500'>-- €</p>
+								platformsCosts?.platform_charge &&
+								platformsCosts?.payment_provider_charge && (
+									<div className='flex flex-col gap-1'>
+										<p className='text-sm font-semibold'>
+											€
+											{(
+												Number(formatPrice(platformsCosts.platform_charge)) +
+												Number(formatPrice(platformsCosts.payment_provider_charge))
+											).toFixed(2)}
+										</p>
+									</div>
+								)
 							)}
 						</div>
 						<Label className='text-muted-foreground/70 text-sm'>
-							Platform fee for organizing the shipment and improving the security of the payment.
+							Tantovale fee
+							{platformsCosts?.platform_charge ? (
+								<span> €{formatPrice(Number(platformsCosts?.platform_charge))} </span>
+							) : (
+								''
+							)}
+							for organizing the shipment and{' '}
+							<Link href='https://trustap.com' className='text-primary hover:underline' target='_blank'>
+								Trustap
+							</Link>
+							{' fee '}
+							{platformsCosts?.payment_provider_charge ? (
+								<span>€{formatPrice(Number(platformsCosts?.payment_provider_charge))} </span>
+							) : (
+								''
+							)}
+							for improving payment security.
 						</Label>
 					</div>
 
 					{/* Total price */}
 					<div className='mb-2 flex flex-col items-end gap-1'>
-						<Label className='font-extrabold uppercase'>YOU PAY</Label>
+						<Label className='font-extrabold uppercase'>You pay</Label>
 						<span className='w-fit text-sm'>
-							{isLoadingPlatformsCosts ? <Spinner size='small' /> : <p>{getTotalAmount()} €</p>}
+							{isLoadingPlatformsCosts ? (
+								<Spinner size='small' />
+							) : (
+								<p className='font-semibold'>€{getTotalAmount()}</p>
+							)}
 						</span>
 					</div>
 				</div>
@@ -183,7 +220,7 @@ export function BuyNowDialog() {
 								setIsBuyNowModalOpen(false);
 							}
 						}}>
-						{!isCreatingOrder ? 'Add to Orders' : <Spinner size='small' className='text-white' />}
+						{!isCreatingOrder ? 'Order and Pay' : <Spinner size='small' className='text-white' />}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

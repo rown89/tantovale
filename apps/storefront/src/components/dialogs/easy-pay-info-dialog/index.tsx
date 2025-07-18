@@ -11,9 +11,9 @@ import { Info } from 'lucide-react';
 export default function EasyPayInfoDialog() {
 	return (
 		<Dialog>
-			<DialogTrigger asChild>
+			<DialogTrigger className='cursor-pointer' asChild>
 				<div className='flex items-center gap-2'>
-					<p className={`text-primary text-lg font-bold`}>Easy Pay</p>
+					<p className={`text-primary text-md font-bold`}>Easy Pay</p>
 					<Info className='h-4 w-4 text-blue-500' />
 				</div>
 			</DialogTrigger>

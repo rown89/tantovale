@@ -151,7 +151,7 @@ export const ordersProposalsRoute = createRouter()
 					.select({
 						name: profiles.name,
 						surname: profiles.surname,
-						payment_provider_id: profiles.payment_provider_id,
+						payment_provider_id_guest: profiles.payment_provider_id_guest,
 						country_code: addresses.country_code,
 					})
 					.from(profiles)
@@ -159,13 +159,13 @@ export const ordersProposalsRoute = createRouter()
 					.where(eq(profiles.id, user.profile_id));
 
 				if (!buyerInfo) {
-					throw new Error('User has no name or surname or payment_provider_id');
+					throw new Error('User has no name or surname or payment_provider_id_guest');
 				}
 
-				let buyerPaymentProviderId = buyerInfo.payment_provider_id;
+				let buyer_pp_id_guest = buyerInfo?.payment_provider_id_guest || null;
 
-				// Create a new payment provider guest user (buyer) if he has no payment_provider_id
-				if (!buyerPaymentProviderId) {
+				// Create a new payment provider guest user (buyer) if he has no payment_provider_id_guest
+				if (!buyer_pp_id_guest) {
 					const paymentService = new PaymentProviderService();
 					const guestUser = await paymentService.createGuestUser({
 						id: user.id,
@@ -184,9 +184,12 @@ export const ordersProposalsRoute = createRouter()
 					}
 
 					// Update the profile with the payment provider ID
-					await tx.update(profiles).set({ payment_provider_id: guestUser.id }).where(eq(profiles.id, user.profile_id));
+					await tx
+						.update(profiles)
+						.set({ payment_provider_id_guest: guestUser.id })
+						.where(eq(profiles.id, user.profile_id));
 
-					buyerPaymentProviderId = guestUser.id;
+					buyer_pp_id_guest = guestUser.id;
 				}
 
 				// Create a new proposal with default status (pending)
@@ -312,7 +315,8 @@ export const ordersProposalsRoute = createRouter()
 						title: items.title,
 						profile_id: items.profile_id,
 						user_id: users.id,
-						payment_provider_id: profiles.payment_provider_id,
+						payment_provider_id_guest: profiles.payment_provider_id_guest,
+						payment_provider_id_full: profiles.payment_provider_id_full,
 						address_id: addresses.id,
 					})
 					.from(items)
@@ -333,7 +337,12 @@ export const ordersProposalsRoute = createRouter()
 					return c.json({ error: 'Seller has no item or you do not have permission to manage this item' }, 404);
 				}
 
-				if (!item.payment_provider_id) return c.json({ error: 'Seller has no payment provider id' }, 404);
+				const seller_pp_id_guest = item.payment_provider_id_guest;
+				const seller_pp_id_full = item.payment_provider_id_full;
+
+				if (!seller_pp_id_guest && !seller_pp_id_full) {
+					return c.json({ error: 'Seller has no payment provider id' }, 404);
+				}
 
 				// 2. Check if proposal exists and is in "pending" state
 				const [existingProposal] = await tx
@@ -358,7 +367,8 @@ export const ordersProposalsRoute = createRouter()
 					.select({
 						email: users.email,
 						username: users.username,
-						payment_provider_id: profiles.payment_provider_id,
+						payment_provider_id_guest: profiles.payment_provider_id_guest,
+						payment_provider_id_full: profiles.payment_provider_id_full,
 						address_id: addresses.id,
 					})
 					.from(users)
@@ -367,8 +377,15 @@ export const ordersProposalsRoute = createRouter()
 					.where(eq(profiles.id, buyerProfileId))
 					.limit(1);
 
-				if (!buyerInfo || !buyerInfo.payment_provider_id) {
+				if (!buyerInfo) {
 					return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
+				}
+
+				let buyer_pp_id_guest = buyerInfo?.payment_provider_id_guest || null;
+				let buyer_pp_id_full = buyerInfo?.payment_provider_id_full || null;
+
+				if (!buyer_pp_id_guest && !buyer_pp_id_full) {
+					return c.json({ error: 'Buyer has no payment provider id' }, 404);
 				}
 
 				// 4: Get the chat room
@@ -445,8 +462,8 @@ export const ordersProposalsRoute = createRouter()
 
 					// Create a new payment transaction
 					const transaction = await paymentProviderService.createTransactionWithBothUsers({
-						buyer_id: buyerInfo.payment_provider_id,
-						seller_id: item.payment_provider_id,
+						buyer_id: buyer_pp_id_full ?? buyer_pp_id_guest ?? '',
+						seller_id: seller_pp_id_full ?? seller_pp_id_guest ?? '',
 						creator_role: 'seller',
 						currency: 'eur',
 						description: `Transaction for ${item.title} - (Proposal #${existingProposal.id})`,

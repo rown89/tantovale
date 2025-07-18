@@ -8,7 +8,6 @@ import { items, users, orders, profiles, addresses, cities, orders_proposals } f
 import { authPath } from '#utils/constants';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 
-// TODO: NEED TO BE FINISHED
 export const ordersRoute = createRouter()
 	.get(`${authPath}/status/:status`, authMiddleware, async (c) => {
 		const user = c.var.user;

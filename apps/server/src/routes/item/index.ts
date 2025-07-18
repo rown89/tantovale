@@ -19,8 +19,6 @@ import {
 	profiles,
 	entityTrustapTransactions,
 	orders,
-	chat_rooms,
-	chat_messages,
 	orders_proposals,
 } from '#db-schema';
 import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
@@ -251,7 +249,8 @@ export const itemRoute = createRouter()
 					.select({
 						name: profiles.name,
 						surname: profiles.surname,
-						payment_provider_id: profiles.payment_provider_id,
+						payment_provider_id_guest: profiles.payment_provider_id_guest,
+						payment_provider_id_full: profiles.payment_provider_id_full,
 					})
 					.from(profiles)
 					.where(eq(profiles.id, user.profile_id))
@@ -259,8 +258,8 @@ export const itemRoute = createRouter()
 
 				if (!profile) return c.json({ message: 'Profile not found' }, 404);
 
-				// If item has easyPay, we need to check if the user has a payment_provider_id
-				if (commons.easy_pay && !profile.payment_provider_id) {
+				// If item has easyPay flag and the user has no payment_provider_id_guest, we need to create a new one
+				if (commons.easy_pay && !profile.payment_provider_id_guest) {
 					// get the active address from the user
 					const [address] = await tx
 						.select({ country_code: addresses.country_code })
@@ -289,7 +288,7 @@ export const itemRoute = createRouter()
 
 					await tx
 						.update(profiles)
-						.set({ payment_provider_id: paymentProviderId.id })
+						.set({ payment_provider_id_guest: paymentProviderId.id })
 						.where(eq(profiles.id, user.profile_id));
 				}
 
@@ -431,7 +430,8 @@ export const itemRoute = createRouter()
 							price: items.price,
 							status: items.status,
 							published: items.published,
-							payment_provider_id: profiles.payment_provider_id,
+							payment_provider_id_guest: profiles.payment_provider_id_guest,
+							payment_provider_id_full: profiles.payment_provider_id_full,
 							seller_address_id: items.address_id,
 							seller_username: users.username,
 						})
@@ -441,8 +441,15 @@ export const itemRoute = createRouter()
 						.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
 						.limit(1);
 
-					if (!item || !item.payment_provider_id) {
+					if (!item) {
 						return c.json({ error: 'Item not available' }, 400);
+					}
+
+					const seller_pp_id_guest = item.payment_provider_id_guest;
+					const seller_pp_id_full = item.payment_provider_id_full;
+
+					if (!seller_pp_id_guest && !seller_pp_id_full) {
+						return c.json({ error: 'Seller has no payment provider id' }, 400);
 					}
 
 					/* Protection against multiple orders for the same item in specific states.
@@ -479,7 +486,8 @@ export const itemRoute = createRouter()
 					// Get buyer payment provider id
 					const [buyerInfo] = await tx
 						.select({
-							payment_provider_id: profiles.payment_provider_id,
+							payment_provider_id_guest: profiles.payment_provider_id_guest,
+							payment_provider_id_full: profiles.payment_provider_id_full,
 							address_id: addresses.id,
 							email: users.email,
 							name: profiles.name,
@@ -499,10 +507,15 @@ export const itemRoute = createRouter()
 						return c.json({ error: 'Buyer information not found' }, 404);
 					}
 
-					let buyerPaymentProviderId = buyerInfo?.payment_provider_id || null;
+					let buyer_pp_id_guest = buyerInfo?.payment_provider_id_guest || null;
+					let buyer_pp_id_full = buyerInfo?.payment_provider_id_full || null;
 
-					// Create a new payment provider guest user (buyer) if he has no payment_provider_id
-					if (!buyerPaymentProviderId) {
+					if (!buyer_pp_id_guest && !buyer_pp_id_full) {
+						return c.json({ error: 'Buyer has no payment provider id' }, 404);
+					}
+
+					// Create a new payment provider guest user (buyer) if he has no payment_provider_id_guest
+					if (!buyer_pp_id_guest) {
 						const paymentService = new PaymentProviderService();
 						const guestUser = await paymentService.createGuestUser({
 							id: user.id,
@@ -523,10 +536,10 @@ export const itemRoute = createRouter()
 						// Update the profile with the payment provider ID
 						await tx
 							.update(profiles)
-							.set({ payment_provider_id: guestUser.id })
+							.set({ payment_provider_id_guest: guestUser.id })
 							.where(eq(profiles.id, user.profile_id));
 
-						buyerPaymentProviderId = guestUser.id;
+						buyer_pp_id_guest = guestUser.id;
 					}
 
 					// Create a shipping label
@@ -572,8 +585,8 @@ export const itemRoute = createRouter()
 					const paymentProviderService = new PaymentProviderService();
 
 					const transaction = await paymentProviderService.createTransactionWithBothUsers({
-						buyer_id: buyerPaymentProviderId,
-						seller_id: item.payment_provider_id,
+						buyer_id: buyer_pp_id_full ?? buyer_pp_id_guest ?? '',
+						seller_id: seller_pp_id_full ?? seller_pp_id_guest ?? '',
 						creator_role: 'buyer',
 						currency: 'eur',
 						description: `Transaction for ${item.title} - (Buy Now)`,
@@ -645,7 +658,7 @@ export const itemRoute = createRouter()
 							success: true,
 							order: { id: newOrder.id, status: newOrder.status },
 							// Return payment URL
-							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
+							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/${buyer_pp_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
 							message: 'Order created, complete the payment for the next step',
 						},
 						200,

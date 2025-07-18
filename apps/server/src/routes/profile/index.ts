@@ -12,7 +12,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const profileRoute = createRouter()
 	// get authenticated user
-	.get(`/${authPath}`, authMiddleware, async (c) => {
+	.get(`/${authPath}/info`, authMiddleware, async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
@@ -27,6 +27,7 @@ export const profileRoute = createRouter()
 				name: profiles.name,
 				surname: profiles.surname,
 				gender: profiles.gender,
+				payment_provider_id_full: profiles.payment_provider_id_full,
 				location: {
 					street_address: addresses.street_address,
 					city: city.name,

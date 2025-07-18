@@ -45,14 +45,16 @@ function getPaymentProviderService(): PaymentProviderService {
 }
 
 export function calculatePlatformFee(price: number): number {
-	if (price <= 10) return 0.01; // 1.00%
-	if (price <= 50) return 0.0095; // 0.95%
-	if (price <= 100) return 0.009; // 0.90%
-	if (price <= 200) return 0.0085; // 0.85%
-	if (price <= 500) return 0.008; // 0.80%
-	if (price <= 1000) return 0.0075; // 0.75%
-	if (price <= 2000) return 0.007; // 0.70%
-	if (price <= 5000) return 0.0065; // 0.65%
+	console.log('price', price);
+
+	if (price <= 1000) return 0.01; // €10.00 - 1.00%
+	if (price <= 5000) return 0.0095; // €50.00 - 0.95%
+	if (price <= 10000) return 0.009; // €100.00 - 0.90%
+	if (price <= 20000) return 0.0085; // €200.00 - 0.85%
+	if (price <= 50000) return 0.008; // €500.00 - 0.80%
+	if (price <= 100000) return 0.0075; // €1000.00 - 0.75%
+	if (price <= 200000) return 0.007; // €2000.00 - 0.70%
+	if (price <= 500000) return 0.0065; // €5000.00 - 0.65%
 	return 0.006; // 0.60%
 }
 

@@ -27,7 +27,7 @@ import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
 import { getShippingCost } from '#queries/get-shipping-cost';
-import { useEffect } from 'react';
+import Link from 'next/link';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
@@ -168,7 +168,7 @@ export function ProposalDialog() {
 
 						form.handleSubmit();
 					}}>
-					<div className='mb-6 mt-2 grid grid-cols-1 items-center gap-8'>
+					<div id='proposal-price' className='mb-6 mt-2 grid grid-cols-1 items-center gap-8'>
 						<div className='flex flex-col gap-2'>
 							<div className='flex w-full items-center justify-between gap-2'>
 								<form.Field name='proposal_price'>
@@ -210,7 +210,7 @@ export function ProposalDialog() {
 						</div>
 
 						{/* Shipping cost */}
-						<div className='mb-2 flex flex-col gap-1'>
+						<div id='shipping-cost' className='mb-2 flex flex-col gap-1'>
 							<div className='flex justify-between gap-2'>
 								<Label>Shipping cost:</Label>{' '}
 								{isLoadingShippingCost ? (
@@ -240,7 +240,7 @@ export function ProposalDialog() {
 						</div>
 
 						{/* Platform Charge (Easy pay service) */}
-						<div className='mb-2 flex flex-col gap-1'>
+						<div id='easy-pay-service' className='mb-2 flex flex-col gap-1'>
 							<div className='flex justify-between gap-2'>
 								<Label>Easy pay service:</Label>
 								{errorPlatformsCosts && !isLoadingPlatformsCosts && <p className='text-sm text-red-500'>-- €</p>}
@@ -252,8 +252,10 @@ export function ProposalDialog() {
 									platformsCosts?.payment_provider_charge && (
 										<div className='flex flex-col gap-1'>
 											<p className='text-sm'>
-												{formatPrice(platformsCosts.platform_charge) +
-													formatPrice(platformsCosts.payment_provider_charge)}
+												{(
+													Number(formatPrice(platformsCosts.platform_charge)) +
+													Number(formatPrice(platformsCosts.payment_provider_charge))
+												).toFixed(2)}
 												€
 											</p>
 										</div>
@@ -261,12 +263,28 @@ export function ProposalDialog() {
 								)}
 							</div>
 							<Label className='text-muted-foreground/70 text-sm'>
-								Platform fee for organizing the shipment and improving the security of the payment.
+								Tantovale fee
+								{platformsCosts?.platform_charge ? (
+									<span> €{formatPrice(Number(platformsCosts?.platform_charge))} </span>
+								) : (
+									''
+								)}
+								for organizing the shipment and{' '}
+								<Link href='https://trustap.com' className='text-primary hover:underline' target='_blank'>
+									Trustap
+								</Link>
+								{' fee '}
+								{platformsCosts?.payment_provider_charge ? (
+									<span>€{formatPrice(Number(platformsCosts?.payment_provider_charge))} </span>
+								) : (
+									''
+								)}
+								for improving payment security.
 							</Label>
 						</div>
 
 						{/* Total price */}
-						<div className='mb-2 flex flex-col items-end gap-1'>
+						<div id='total-price' className='mb-2 flex flex-col items-end gap-1'>
 							<Label className='font-extrabold uppercase'>YOU PAY:</Label>
 							<span className='w-fit text-sm'>
 								{(errorPlatformsCosts || errorShippingCost) && !isLoadingPlatformsCosts && (

@@ -1,6 +1,9 @@
 'use client';
 
 import { Edit, Trash } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import z from 'zod/v4';
+import Link from 'next/link';
 
 import { Label } from '@workspace/ui/components/label';
 import { Input } from '@workspace/ui/components/input';
@@ -24,14 +27,16 @@ import {
 	DialogTrigger,
 } from '@workspace/ui/components/dialog';
 import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
+import { client } from '@workspace/server/client-rpc';
+import { Spinner } from '@workspace/ui/components/spinner';
+import { UserProfileSchema } from '@workspace/server/extended_schemas';
+import { AddressStatus } from '@workspace/server/enumerated_values';
 
 import { FieldInfo } from '#components/forms/utils/field-info';
 import AddressForm from '#components/forms/address-form';
-import { AddressStatus } from '@workspace/server/enumerated_values';
 import useAddressForm from '#components/forms/address-form/use-address-form';
+import EasyPayInfoDialog from '#components/dialogs/easy-pay-info-dialog';
 import { useProfileInfoForm } from './use-profile-info';
-import { UserProfileSchema } from '@workspace/server/extended_schemas';
-import z from 'zod/v4';
 
 const schema = UserProfileSchema.pick({
 	name: true,
@@ -41,7 +46,9 @@ const schema = UserProfileSchema.pick({
 	email: true,
 });
 
-type profileSchema = z.infer<typeof schema>;
+type profileSchema = z.infer<typeof schema> & {
+	payment_provider_id_full: string | null;
+};
 
 export default function UserInfoComponent({ profile }: { profile: profileSchema }) {
 	const { profileForm, isSubmittingProfileForm } = useProfileInfoForm(profile);
@@ -65,9 +72,71 @@ export default function UserInfoComponent({ profile }: { profile: profileSchema 
 		}
 	});
 
+	const {
+		data: paymentProviderConnectLink,
+		isLoading: isLoadingPaymentProviderConnectLink,
+		isError: isErrorPaymentProviderConnectLink,
+	} = useQuery({
+		queryKey: ['payment-provider-connect-link'],
+		queryFn: async () => {
+			const response = await client.payments.trustap.connect_link[':state'].$get({
+				param: {
+					state: 'profile-connect-button',
+				},
+			});
+
+			if (!response.ok) return null;
+
+			const data = await response.json();
+
+			return data;
+		},
+		enabled: !!profile.payment_provider_id_full,
+	});
+
 	return (
 		<div className='flex flex-col gap-4'>
 			{/* Basic Informations */}
+			<Card id='payment-provider'>
+				<CardHeader>
+					<CardTitle>
+						<EasyPayInfoDialog />
+					</CardTitle>
+					<CardDescription>
+						<div className='flex flex-col justify-between gap-8 sm:flex-row'>
+							<p className='text-sm'>
+								The EasyPay service is backed by{' '}
+								<Link href='https://trustap.com' className='text-primary hover:underline' target='_blank'>
+									Trustap
+								</Link>
+								, a secure and reliable payment provider. <br />
+								As a potential Seller, to be able to retrieve payments, you need to connect your Tantovale account to
+								Trustap.
+							</p>
+							{isErrorPaymentProviderConnectLink && !isLoadingPaymentProviderConnectLink && (
+								<p className='text-red-500'>Error retrieving payment provider connect link. Please try again later.</p>
+							)}
+
+							{!isLoadingPaymentProviderConnectLink &&
+								!isErrorPaymentProviderConnectLink &&
+								(!profile.payment_provider_id_full ? (
+									<Button
+										className='w-fit'
+										onClick={() => {
+											if (paymentProviderConnectLink?.connect_link) {
+												window.location.href = paymentProviderConnectLink.connect_link;
+											}
+										}}>
+										Connect to Trustap
+									</Button>
+								) : (
+									<p className='text-center text-green-600'>Account correctly connected</p>
+								))}
+						</div>
+					</CardDescription>
+				</CardHeader>
+				<CardContent></CardContent>
+			</Card>
 			<Card id='info'>
 				<CardHeader>
 					<CardTitle>Basic Informations</CardTitle>

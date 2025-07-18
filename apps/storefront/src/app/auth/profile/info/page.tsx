@@ -15,7 +15,7 @@ export default async function UserInfoPage() {
 		},
 	};
 
-	const res = await client.profile.auth.$get({}, additionalOptions);
+	const res = await client.profile.auth.info.$get({}, additionalOptions);
 
 	if (!res.ok) return null;
 
