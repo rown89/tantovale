@@ -10,8 +10,6 @@ import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index'
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 
-import { ShippingDialog } from '#components/dialogs/shipping-dialog';
-import { useAuth } from '#providers/auth-providers';
 import {
 	Dialog,
 	DialogContent,
@@ -23,6 +21,8 @@ import {
 } from '@workspace/ui/components/dialog';
 import { Button } from '@workspace/ui/components/button';
 
+import { ShippingDialog } from '#components/dialogs/shipping-dialog';
+
 export default function PurchasedOrdersComponent() {
 	const [statusFilter, setStatusFilter] = useState<(typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all'>('all');
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
@@ -31,8 +31,6 @@ export default function PurchasedOrdersComponent() {
 	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
 
-	const { user } = useAuth();
-
 	const {
 		data: orders = [],
 		isLoading: isOrdersLoading,
@@ -40,7 +38,7 @@ export default function PurchasedOrdersComponent() {
 	} = useQuery({
 		queryKey: ['orders', statusFilter],
 		queryFn: async () => {
-			const userOrderListResponse = await client.orders.auth.status[':status'].$get({
+			const userOrderListResponse = await client.orders.auth.purchased[':status'].$get({
 				param: {
 					status: statusFilter,
 				},
@@ -66,6 +64,8 @@ export default function PurchasedOrdersComponent() {
 	const handleCompletePayment = (order: OrderType) => {
 		setSelectedOrder(order);
 		setIsPaymentDialogOpen(true);
+
+		window.open(order.buyer.payment_url, '_blank');
 	};
 
 	const handleShipping = (order: OrderType) => {
@@ -92,7 +92,6 @@ export default function PurchasedOrdersComponent() {
 	};
 
 	const handleCancel = (order: OrderType) => {
-		console.log('cancel', order);
 		setSelectedOrder(order);
 		setIsCancelOrderDialogOpen(true);
 	};

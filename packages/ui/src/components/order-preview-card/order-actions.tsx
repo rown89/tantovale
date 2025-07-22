@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Button } from '@workspace/ui/components/button';
-import { CreditCard, X, HelpCircle, Truck } from 'lucide-react';
+import { CreditCard, X, HelpCircle } from 'lucide-react';
 import { enumeratedValues } from '@workspace/shared/server_bridge';
 
 const { ORDER_PHASES } = enumeratedValues;
@@ -42,6 +42,16 @@ export function OrderActions({
 					},
 				];
 
+			case ORDER_PHASES.PAYMENT_REFUNDED:
+				return [
+					{
+						label: 'Request Assistance',
+						icon: HelpCircle,
+						onClick: onRequestAssistance,
+						variant: 'outline' as const,
+					},
+				];
+
 			case ORDER_PHASES.PAYMENT_FAILED:
 				return [
 					{
@@ -59,7 +69,6 @@ export function OrderActions({
 				];
 
 			case ORDER_PHASES.PAYMENT_CONFIRMED:
-			case ORDER_PHASES.SHIPPING_PENDING:
 				return [
 					{
 						label: 'Request Assistance',
@@ -69,14 +78,8 @@ export function OrderActions({
 					},
 				];
 
-			case ORDER_PHASES.SHIPPING_CONFIRMED:
+			case ORDER_PHASES.COMPLAINED:
 				return [
-					{
-						label: 'Shipment Info',
-						icon: Truck,
-						onClick: onViewShipment,
-						variant: 'default' as const,
-					},
 					{
 						label: 'Request Assistance',
 						icon: HelpCircle,
@@ -95,9 +98,7 @@ export function OrderActions({
 					},
 				];
 
-			case ORDER_PHASES.CANCELLED:
-			case ORDER_PHASES.EXPIRED:
-			case ORDER_PHASES.PAYMENT_REFUNDED:
+			case ORDER_PHASES.REJECTED:
 				return [
 					{
 						label: 'Request Assistance',
@@ -106,6 +107,18 @@ export function OrderActions({
 						variant: 'outline' as const,
 					},
 				];
+
+			case ORDER_PHASES.CANCELLED:
+				return [
+					{
+						label: 'Request Assistance',
+						icon: HelpCircle,
+						onClick: onRequestAssistance,
+						variant: 'outline' as const,
+					},
+				];
+
+			case ORDER_PHASES.EXPIRED:
 
 			default:
 				return [];

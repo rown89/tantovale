@@ -448,6 +448,9 @@ export const itemRoute = createRouter()
 					const seller_pp_id_guest = item.payment_provider_id_guest;
 					const seller_pp_id_full = item.payment_provider_id_full;
 
+					console.log('seller_pp_id_guest', seller_pp_id_guest);
+					console.log('seller_pp_id_full', seller_pp_id_full);
+
 					if (!seller_pp_id_guest && !seller_pp_id_full) {
 						return c.json({ error: 'Seller has no payment provider id' }, 400);
 					}
@@ -585,8 +588,8 @@ export const itemRoute = createRouter()
 					const paymentProviderService = new PaymentProviderService();
 
 					const transaction = await paymentProviderService.createTransactionWithBothUsers({
-						buyer_id: buyer_pp_id_full ?? buyer_pp_id_guest ?? '',
-						seller_id: seller_pp_id_full ?? seller_pp_id_guest ?? '',
+						buyer_id: buyer_pp_id_full || buyer_pp_id_guest || '',
+						seller_id: seller_pp_id_full || seller_pp_id_guest || '',
 						creator_role: 'buyer',
 						currency: 'eur',
 						description: `Transaction for ${item.title} - (Buy Now)`,
@@ -658,7 +661,7 @@ export const itemRoute = createRouter()
 							success: true,
 							order: { id: newOrder.id, status: newOrder.status },
 							// Return payment URL
-							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/${buyer_pp_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
+							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/${buyer_pp_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/api/pp-payment-callback?highlight=${newOrder.id}`,
 							message: 'Order created, complete the payment for the next step',
 						},
 						200,

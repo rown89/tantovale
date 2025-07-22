@@ -1,9 +1,14 @@
+'use client';
+
+import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@workspace/ui/components/tabs';
 
 import PurchasedOrdersComponent from './purchased';
 import SoldOrdersComponent from './sold';
 
 export default function UserSellingItemsComponent() {
+	const [activeTab, setActiveTab] = useState('purchased');
+
 	return (
 		<div className='flex w-full flex-col gap-7 overflow-auto px-4'>
 			<div className='bg-background z-1 sticky top-0 flex items-center justify-between'>
@@ -12,10 +17,14 @@ export default function UserSellingItemsComponent() {
 				</div>
 			</div>
 
-			<Tabs defaultValue='purchased'>
+			<Tabs defaultValue='purchased' onValueChange={setActiveTab}>
 				<TabsList className='w-full'>
-					<TabsTrigger value='sold'>Sold</TabsTrigger>
-					<TabsTrigger value='purchased'>Purchased</TabsTrigger>
+					<TabsTrigger value='sold' className={activeTab === 'sold' ? 'font-bold' : ''}>
+						Sold
+					</TabsTrigger>
+					<TabsTrigger value='purchased' className={activeTab === 'purchased' ? 'font-bold' : ''}>
+						Purchased
+					</TabsTrigger>
 				</TabsList>
 				<TabsContent value='purchased' className='mt-2'>
 					<PurchasedOrdersComponent />

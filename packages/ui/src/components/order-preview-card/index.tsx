@@ -30,6 +30,7 @@ interface OrderPreviewCardProps {
 	onCancel?: () => void;
 	onRequestAssistance?: () => void;
 	onViewShipment?: () => void;
+	showActions?: boolean;
 }
 
 export default function OrderPreviewCard({
@@ -38,6 +39,7 @@ export default function OrderPreviewCard({
 	onCancel,
 	onRequestAssistance,
 	onViewShipment,
+	showActions = true,
 }: OrderPreviewCardProps) {
 	const formatPrice = (price: number) => {
 		return new Intl.NumberFormat('it-IT', {
@@ -141,16 +143,18 @@ export default function OrderPreviewCard({
 					</div>
 				</div>
 			</CardContent>
-			<CardFooter>
-				{/* Actions */}
-				<OrderActions
-					status={order.status}
-					onCompletePayment={onCompletePayment}
-					onCancel={onCancel}
-					onRequestAssistance={onRequestAssistance}
-					onViewShipment={onViewShipment}
-				/>
-			</CardFooter>
+			{showActions && (
+				<CardFooter>
+					{/* Actions */}
+					<OrderActions
+						status={order.status}
+						onCompletePayment={onCompletePayment}
+						onCancel={onCancel}
+						onRequestAssistance={onRequestAssistance}
+						onViewShipment={onViewShipment}
+					/>
+				</CardFooter>
+			)}
 		</Card>
 	);
 }

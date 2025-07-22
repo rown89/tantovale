@@ -45,8 +45,6 @@ function getPaymentProviderService(): PaymentProviderService {
 }
 
 export function calculatePlatformFee(price: number): number {
-	console.log('price', price);
-
 	if (price <= 1000) return 0.01; // €10.00 - 1.00%
 	if (price <= 5000) return 0.0095; // €50.00 - 0.95%
 	if (price <= 10000) return 0.009; // €100.00 - 0.90%
