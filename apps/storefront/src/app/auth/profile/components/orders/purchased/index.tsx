@@ -71,6 +71,7 @@ export default function PurchasedOrdersComponent() {
 
 	const handleShipping = (order: OrderType) => {
 		setSelectedOrder(order);
+
 		setIsShippingDialogOpen(true);
 	};
 

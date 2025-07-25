@@ -5,7 +5,7 @@ import { z } from 'zod/v4';
 export const create_order_proposal_schema = z.object({
 	item_id: z.number().min(1),
 	proposal_price: z.number().min(0.01),
-	shipping_label_id: z.string().min(1),
+	sp_shipment_id: z.string().min(1),
 	message: z.string(),
 });
 

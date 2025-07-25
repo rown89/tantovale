@@ -35,7 +35,7 @@ export const ordersRoute = createRouter()
 					shipping_price: orders.shipping_price,
 					payment_provider_charge: orders.payment_provider_charge,
 					platform_charge: orders.platform_charge,
-					shipping_label_id: orders.shipping_label_id,
+					sp_shipment_id: orders.sp_shipment_id,
 					payment_transaction_id: orders.payment_transaction_id,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
@@ -85,7 +85,7 @@ export const ordersRoute = createRouter()
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
-			const { status, shipping_price, payment_provider_charge, platform_charge, shipping_label_id, created_at } =
+			const { status, shipping_price, payment_provider_charge, platform_charge, sp_shipment_id, created_at } =
 				order.orders;
 
 			const payment_url = `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${order.orders.payment_transaction_id}/${order.profiles.payment_provider_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${order.orders.id}`;
@@ -97,7 +97,7 @@ export const ordersRoute = createRouter()
 				payment_provider_charge,
 				platform_charge,
 				shipping_price,
-				shipping_label_id,
+				sp_shipment_id,
 				item: {
 					id: order.items.id,
 					title: order.items.title,
@@ -154,7 +154,7 @@ export const ordersRoute = createRouter()
 					shipping_price: orders.shipping_price,
 					payment_provider_charge: orders.payment_provider_charge,
 					platform_charge: orders.platform_charge,
-					shipping_label_id: orders.shipping_label_id,
+					sp_shipment_id: orders.sp_shipment_id,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
 				},
@@ -186,7 +186,7 @@ export const ordersRoute = createRouter()
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
-			const { status, shipping_price, payment_provider_charge, platform_charge, shipping_label_id, created_at } =
+			const { status, shipping_price, payment_provider_charge, platform_charge, sp_shipment_id, created_at } =
 				order.orders;
 
 			const order_shape = {
@@ -196,7 +196,7 @@ export const ordersRoute = createRouter()
 				payment_provider_charge,
 				platform_charge,
 				shipping_price,
-				shipping_label_id,
+				sp_shipment_id,
 				item: {
 					id: order.items.id,
 					title: order.items.title,

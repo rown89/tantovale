@@ -50,7 +50,14 @@ export const orders = pgTable(
 		platform_charge: integer('platform_charge').notNull(),
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		shipping_price: integer('shipping_price').notNull(),
-		shipping_label_id: text('shipping_label_id').notNull(),
+		// Shippo shipment ID
+		sp_shipment_id: text('sp_shipment_id').notNull(),
+		/**
+		 * Shippo shipment Label ID
+		 * This id comes after the buyer has paid for the order
+		 */
+		sp_shipment_label_id: text('sp_shipment_label_id'),
+		// Trustap transaction ID
 		payment_transaction_id: integer('payment_transaction_id').notNull(),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

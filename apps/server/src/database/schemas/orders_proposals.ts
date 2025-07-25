@@ -23,7 +23,8 @@ export const orders_proposals = pgTable(
 		proposal_price: integer('proposal_price').notNull(),
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
-		shipping_label_id: text('shipping_label_id').notNull(),
+		// Shippo shipment ID
+		sp_shipment_id: text('sp_shipment_id').notNull(),
 		status: ordersProposalStatusEnum('status').notNull().default(ORDER_PROPOSAL_PHASES.pending),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

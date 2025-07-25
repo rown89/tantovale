@@ -548,12 +548,14 @@ export const itemRoute = createRouter()
 					// Create a shipping label
 					const shipmentService = new ShipmentService();
 					const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, user.profile_id, user.email);
-					const labelPreview = rates[0];
+					const selectedShipmentRate = rates[0];
 
-					const shipping_label_id = labelPreview?.shipment;
-					const shipping_price = labelPreview?.amount ? formatPriceToCents(parseFloat(labelPreview.amount)) : 0;
+					const sp_shipment_id = selectedShipmentRate?.shipment;
+					const shipping_price = selectedShipmentRate?.amount
+						? formatPriceToCents(parseFloat(selectedShipmentRate.amount))
+						: 0;
 
-					if (!labelPreview || !shipping_label_id || !shipping_price) {
+					if (!selectedShipmentRate || !sp_shipment_id || !shipping_price) {
 						return c.json({ error: 'Failed to generate a label preview' }, 500);
 					}
 
@@ -641,7 +643,7 @@ export const itemRoute = createRouter()
 							payment_provider_charge,
 							platform_charge: platform_charge_amount!,
 							payment_transaction_id: transaction.id,
-							shipping_label_id,
+							sp_shipment_id,
 						})
 						.returning();
 

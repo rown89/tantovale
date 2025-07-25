@@ -3,16 +3,17 @@ import { alias } from 'drizzle-orm/pg-core';
 
 import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
 import { shipmentsGet } from 'shippo/funcs/shipmentsGet.js';
+import type { Rate, Shipment, ShipmentCreateRequest } from 'shippo/models/components/index.js';
+import { transactionsCreate } from 'shippo/funcs/transactionsCreate.js';
 
 import { createClient } from '#create-client';
 import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { profiles, addresses, items, cities, users, shippings } from '#db-schema';
 
 import { shippoClient } from '#lib/shippo-client';
-
-import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index.js';
-import type { ShipmentCalculationData } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
+
+import type { ShipmentCalculationData } from './types';
 
 const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
@@ -267,15 +268,44 @@ export class ShipmentService {
 		};
 	}
 
-	async getShippingLabel(shipmentLabelId: string) {
-		const shipmentLabel = await shipmentsGet(shippoClient, shipmentLabelId);
+	async getShipment(shipmentLabelId: string): Promise<Shipment> {
+		const shipment = await shipmentsGet(shippoClient, shipmentLabelId);
 
-		const shipmentLabelData = shipmentLabel.value;
+		const shipmentData = shipment.value;
 
-		if (!shipmentLabelData) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND);
+		if (!shipmentData) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_NOT_FOUND);
 		}
 
-		return shipmentLabelData;
+		return shipmentData;
+	}
+
+	/**
+	 * Generate a shipment label from an order
+	 *
+	 * @param shipmentId - The ID of the shipment to generate a shipment label for
+	 * @param orderId - The ID of the order to generate a shipment label for
+	 * @returns Promise<string> - The ID of the shipment label
+	 */
+	async generateShipmentLabel(shipmentId: string, orderId: number) {
+		const shipment = await this.getShipment(shipmentId);
+
+		if (!shipment || !shipment.rates?.[0]?.objectId) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_NOT_FOUND);
+		}
+
+		const shipmentLabel = await transactionsCreate(shippoClient, {
+			async: false,
+			metadata: `Order ID #${orderId}`,
+			rate: shipment.rates?.[0]?.objectId,
+		});
+
+		if (!shipmentLabel.ok) {
+			throw shipmentLabel.error;
+		}
+
+		const { value: result } = shipmentLabel;
+
+		return result;
 	}
 }

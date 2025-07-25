@@ -6,9 +6,9 @@ import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders, chat_rooms, users, items } from '#db-schema';
 import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
-import { sendOrderPaidNotificationBuyer } from '#mailer/templates/orders/buyer/order-paid';
-import { sendOrderPaidNotificationSeller } from '#mailer/templates/orders/seller/order-paid';
+import { sendOrderPaidNotificationBuyer, sendOrderPaidNotificationSeller } from '#mailer/index';
 import { ORDER_PHASES } from '#utils/order-phases';
+import { ShipmentService } from '../shipment-provider/shipment.service';
 
 // Trustap event codes
 const TrustapEventCode = z.enum([
@@ -241,6 +241,26 @@ export const webhooksRoute = createRouter()
 							.where(eq(orders.id, updatedOrder.id))
 							.returning();
 
+						/*
+						 * Generate the shipment label using the selected rate retrieved from the order with the sp_shipment_id
+						 */
+						const shipmentService = new ShipmentService();
+
+						const shipmentLabel = await shipmentService.generateShipmentLabel(
+							updatedOrder.sp_shipment_id,
+							updatedOrder.id,
+						);
+
+						if (!shipmentLabel) {
+							throw new Error('Failed to generate shipment label');
+						}
+
+						// Update the order with the shipment label ID
+						await tx
+							.update(orders)
+							.set({ sp_shipment_label_id: shipmentLabel.objectId })
+							.where(eq(orders.id, updatedOrder.id));
+
 						// Send email to the buyer
 						await sendOrderPaidNotificationBuyer({
 							to: buyer.email,
@@ -254,6 +274,7 @@ export const webhooksRoute = createRouter()
 							item_name: order.item_title,
 							buyer_name: buyer.username,
 							roomId: room.id,
+							labelUrl: shipmentLabel.labelUrl,
 						});
 
 					case 'basic_tx.funds_released':

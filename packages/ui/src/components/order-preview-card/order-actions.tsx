@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Button } from '@workspace/ui/components/button';
-import { CreditCard, X, HelpCircle } from 'lucide-react';
+import { CreditCard, X, HelpCircle, Truck } from 'lucide-react';
 import { enumeratedValues } from '@workspace/shared/server_bridge';
 
 const { ORDER_PHASES } = enumeratedValues;
@@ -74,6 +74,12 @@ export function OrderActions({
 						label: 'Request Assistance',
 						icon: HelpCircle,
 						onClick: onRequestAssistance,
+						variant: 'outline' as const,
+					},
+					{
+						label: 'View Shipment',
+						icon: Truck,
+						onClick: onViewShipment,
 						variant: 'outline' as const,
 					},
 				];

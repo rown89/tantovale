@@ -45,7 +45,7 @@ export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 
-		const { item_id, proposal_price, shipping_label_id, message } = c.req.valid('json');
+		const { item_id, proposal_price, sp_shipment_id, message } = c.req.valid('json');
 
 		const { db } = createClient();
 
@@ -119,7 +119,7 @@ export const ordersProposalsRoute = createRouter()
 
 				// Retrieve shipment label from shippo
 				const shipmentService = new ShipmentService();
-				const shippingLabel = await shipmentService.getShippingLabel(shipping_label_id);
+				const shippingLabel = await shipmentService.getShipment(sp_shipment_id);
 				const shipping_price = shippingLabel.rates?.[0]?.amount
 					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
 					: 0;
@@ -201,7 +201,7 @@ export const ordersProposalsRoute = createRouter()
 						proposal_price,
 						payment_provider_charge,
 						platform_charge: platform_charge_amount,
-						shipping_label_id,
+						sp_shipment_id,
 						original_price: item.price,
 					})
 					.returning();
@@ -352,7 +352,7 @@ export const ordersProposalsRoute = createRouter()
 						profile_id: orders_proposals.profile_id,
 						proposal_price: orders_proposals.proposal_price,
 						platform_charge: orders_proposals.platform_charge,
-						shipping_label_id: orders_proposals.shipping_label_id,
+						sp_shipment_id: orders_proposals.sp_shipment_id,
 					})
 					.from(orders_proposals)
 					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, pending)))
@@ -434,7 +434,7 @@ export const ordersProposalsRoute = createRouter()
 				} else {
 					// Get the shipping label id from the proposal
 					const shipmentService = new ShipmentService();
-					const shippingLabel = await shipmentService.getShippingLabel(existingProposal.shipping_label_id);
+					const shippingLabel = await shipmentService.getShipment(existingProposal.sp_shipment_id);
 					const shipping_price = shippingLabel.rates?.[0]?.amount
 						? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
 						: 0;
@@ -511,7 +511,7 @@ export const ordersProposalsRoute = createRouter()
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
 							payment_transaction_id: transaction.id,
-							shipping_label_id: existingProposal.shipping_label_id,
+							sp_shipment_id: existingProposal.sp_shipment_id,
 							proposal_id: existingProposal.id,
 						})
 						.returning({ id: orders.id });

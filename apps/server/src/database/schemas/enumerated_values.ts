@@ -15,10 +15,10 @@ export const ORDER_PHASES = {
 	 * The order is "expired"
 	 * This state is an order from a proposal that has not been accepted by the seller or if the user has not paid for the order in the tolerance time
 	 */
-	EXPIRED: 'expired',
 	CANCELLED: 'cancelled',
 	REJECTED: 'rejected',
 	COMPLETED: 'completed',
+	EXPIRED: 'expired',
 } as const;
 
 /**

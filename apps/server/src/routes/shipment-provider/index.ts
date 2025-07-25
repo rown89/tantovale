@@ -104,45 +104,4 @@ export const shipmentProviderRoute = createRouter()
 				return c.json({ message: 'Internal server error' }, 500);
 			}
 		},
-	)
-	.post(`/${authPath}/create_label`, describeRoute(createLabelDescription), async (c) => {
-		const rates = await ratesGet(shippoClient, '377cad39afe049ac959063bb3b251a50');
-
-		const { db } = createClient();
-
-		const addressFrom: AddressCreateRequest = {
-			name: 'Shawn Ippotle',
-			street1: '215 Clayton St.',
-			city: 'San Francisco',
-			state: 'CA',
-			zip: '94117',
-			country: 'US',
-		};
-
-		const addressTo: AddressCreateRequest = {
-			name: 'Mr Hippo',
-			street1: 'Broadway 1',
-			city: 'New York',
-			state: 'NY',
-			zip: '10007',
-			country: 'US',
-		};
-
-		const parcel: ParcelCreateRequest = {
-			length: '5',
-			width: '5',
-			height: '5',
-			distanceUnit: DistanceUnitEnum.Cm,
-			weight: '2',
-			massUnit: WeightUnitEnum.G,
-		};
-
-		const shipment = await shipmentsCreate(shippoClient, {
-			addressFrom,
-			addressTo,
-			parcels: [parcel],
-			async: false,
-		});
-
-		return c.json({ rates: [] });
-	});
+	);

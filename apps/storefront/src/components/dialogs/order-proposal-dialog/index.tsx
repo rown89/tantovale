@@ -47,7 +47,7 @@ export function ProposalDialog() {
 			item_id: item?.id ?? 0,
 			proposal_price: !item?.price ? 0 : formatPrice(item.price - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
-			shipping_label_id: '',
+			sp_shipment_id: '',
 		},
 		validators: {
 			onSubmit: formSchema,
@@ -63,7 +63,7 @@ export function ProposalDialog() {
 				const result = await handleProposal({
 					item_id,
 					proposal_price,
-					shipping_label_id: value.shipping_label_id,
+					sp_shipment_id: value.sp_shipment_id,
 					message,
 				});
 
@@ -103,7 +103,7 @@ export function ProposalDialog() {
 			const shippingCost = await getShippingCost(item.id);
 
 			if (shippingCost?.shipment_label_id) {
-				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
+				form.setFieldValue('sp_shipment_id', shippingCost.shipment_label_id);
 			}
 
 			return shippingCost ?? null;

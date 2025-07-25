@@ -15,7 +15,7 @@ type OrderProposalProps = Omit<
 interface handleProposalProps {
 	item_id: number;
 	proposal_price: number;
-	shipping_label_id: string;
+	sp_shipment_id: string;
 	message: string;
 }
 
@@ -30,7 +30,7 @@ export type OrderProposalStore = {
 	handleProposal: ({
 		item_id,
 		proposal_price,
-		shipping_label_id,
+		sp_shipment_id,
 		message,
 	}: handleProposalProps) => Promise<OrderProposalProps | undefined>;
 	resetProposal: () => void;
@@ -70,7 +70,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			});
 		}
 	},
-	handleProposal: async ({ item_id, proposal_price, shipping_label_id, message }: handleProposalProps) => {
+	handleProposal: async ({ item_id, proposal_price, sp_shipment_id, message }: handleProposalProps) => {
 		set({
 			isCreatingProposal: true,
 		});
@@ -80,7 +80,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 				json: {
 					item_id,
 					proposal_price,
-					shipping_label_id,
+					sp_shipment_id,
 					message,
 				},
 			});
@@ -104,7 +104,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 				created_at: data.proposal.created_at,
 				updated_at: data.proposal.updated_at,
 				chat_room_id: data.chatRoomId,
-				shipping_label_id: data.proposal.shipping_label_id,
+				sp_shipment_id: data.proposal.sp_shipment_id,
 			};
 
 			return orderProposalProps;
