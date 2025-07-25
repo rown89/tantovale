@@ -4,8 +4,11 @@ import { eq } from 'drizzle-orm';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
-import { entityTrustapTransactions, orders } from '#db-schema';
+import { entityTrustapTransactions, orders, chat_rooms, users, items } from '#db-schema';
 import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
+import { sendOrderPaidNotificationBuyer } from '#mailer/templates/orders/buyer/order-paid';
+import { sendOrderPaidNotificationSeller } from '#mailer/templates/orders/seller/order-paid';
+import { ORDER_PHASES } from '#utils/order-phases';
 
 // Trustap event codes
 const TrustapEventCode = z.enum([
@@ -81,10 +84,8 @@ function verifyBasicAuth(authHeader: string | undefined): boolean {
 	return username === expectedUsername && password === expectedPassword;
 }
 
-export const webhooksRoute = createRouter().post(
-	'/trustap/transaction-update',
-	zValidator('json', trustapWebhookSchema),
-	async (c) => {
+export const webhooksRoute = createRouter()
+	.post('/trustap/transaction-update', zValidator('json', trustapWebhookSchema), async (c) => {
 		const payload = c.req.valid('json');
 		const { db } = createClient();
 
@@ -117,8 +118,23 @@ export const webhooksRoute = createRouter().post(
 					return c.json({ error: 'Transaction not found' }, 404);
 				}
 
+				// Get the order
+				const [order] = await tx
+					.select({
+						item_title: items.title,
+					})
+					.from(orders)
+					.where(eq(orders.payment_transaction_id, transactionId))
+					.innerJoin(items, eq(orders.item_id, items.id))
+					.limit(1);
+
+				if (!order) {
+					console.error(`Order ${transactionId} not found in database`);
+					return c.json({ error: 'Order not found' }, 404);
+				}
+
 				// Map Trustap event codes to internal status
-				const getInternalStatus = (code: string): string => {
+				const getInternalStatus = (code: z.infer<typeof TrustapEventCode>): string => {
 					switch (code) {
 						case 'basic_tx.joined':
 
@@ -168,12 +184,77 @@ export const webhooksRoute = createRouter().post(
 					.returning();
 
 				if (!updatedOrder) {
-					console.warn(`Order not found for transaction ${transactionId}`);
+					return c.json({ error: 'Order not found' }, 404);
+				}
+
+				// Get the buyer email
+				const [buyer] = await db
+					.select({
+						email: users.email,
+						username: users.username,
+					})
+					.from(users)
+					.where(eq(users.id, Number(updatedOrder?.buyer_id)))
+					.limit(1);
+
+				if (!buyer) {
+					return c.json({ error: 'Buyer not found' }, 404);
+				}
+
+				// Get the seller email
+				const [seller] = await db
+					.select({
+						email: users.email,
+						username: users.username,
+					})
+					.from(users)
+					.where(eq(users.id, Number(updatedOrder?.seller_id)))
+					.limit(1);
+
+				if (!seller) {
+					return c.json({ error: 'Seller not found' }, 404);
+				}
+
+				// Get the room id
+				const [room] = await db
+					.select({
+						id: chat_rooms.id,
+					})
+					.from(chat_rooms)
+					.where(eq(chat_rooms.item_id, updatedOrder.item_id))
+					.limit(1);
+
+				if (!room) {
+					return c.json({ error: 'Room not found' }, 404);
 				}
 
 				// Handle specific event codes
 				switch (payload.code) {
 					case 'basic_tx.paid':
+						// Update the order
+						await tx
+							.update(orders)
+							.set({
+								status: ORDER_PHASES.PAYMENT_CONFIRMED,
+								updated_at: new Date(),
+							})
+							.where(eq(orders.id, updatedOrder.id))
+							.returning();
+
+						// Send email to the buyer
+						await sendOrderPaidNotificationBuyer({
+							to: buyer.email,
+							orderId: updatedOrder.id,
+							roomId: room.id,
+						});
+
+						// Send email to the seller
+						await sendOrderPaidNotificationSeller({
+							to: seller.email,
+							item_name: order.item_title,
+							buyer_name: buyer.username,
+							roomId: room.id,
+						});
 
 					case 'basic_tx.funds_released':
 
@@ -207,5 +288,24 @@ export const webhooksRoute = createRouter().post(
 			console.error('Error processing Trustap webhook:', error);
 			return c.json({ error: 'Internal server error' }, 500);
 		}
-	},
-);
+	})
+	.post(
+		'shippo/shipment-update',
+		zValidator(
+			'json',
+			z.object({
+				shipment_id: z.string(),
+				status: z.string(),
+				tracking_number: z.string(),
+				tracking_url: z.string(),
+				carrier: z.string(),
+				service: z.string(),
+			}),
+		),
+		async (c) => {
+			const payload = c.req.valid('json');
+			// TODO: Update the order status
+
+			return c.json({ success: true }, 200);
+		},
+	);

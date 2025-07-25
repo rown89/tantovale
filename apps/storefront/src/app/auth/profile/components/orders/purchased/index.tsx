@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 import { client } from '@workspace/server/client-rpc';
 import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index';
@@ -26,6 +27,7 @@ import { ShippingDialog } from '#components/dialogs/shipping-dialog';
 export default function PurchasedOrdersComponent() {
 	const [statusFilter, setStatusFilter] = useState<(typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all'>('all');
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
+	const router = useRouter();
 
 	const [isCancelOrderDialogOpen, setIsCancelOrderDialogOpen] = useState(false);
 	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -64,8 +66,7 @@ export default function PurchasedOrdersComponent() {
 	const handleCompletePayment = (order: OrderType) => {
 		setSelectedOrder(order);
 		setIsPaymentDialogOpen(true);
-
-		window.open(order.buyer.payment_url, '_blank');
+		router.push(order.buyer.payment_url);
 	};
 
 	const handleShipping = (order: OrderType) => {
