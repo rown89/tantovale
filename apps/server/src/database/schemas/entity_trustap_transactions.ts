@@ -3,13 +3,14 @@ import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
 import { items } from './items';
-import { entityTrustapTransactionTypeEnum } from './enumerated_types';
+import { orders } from './orders';
 
 export const entityTrustapTransactions = pgTable(
 	'entity_trustap_transactions',
 	{
 		id: integer('id').primaryKey().notNull().generatedAlwaysAsIdentity(),
-		entityId: integer('entity_id').references(() => items.id, {
+		// Store order id as reference
+		entityId: integer('order_id').references(() => orders.id, {
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
@@ -17,7 +18,7 @@ export const entityTrustapTransactions = pgTable(
 		buyerId: text('buyer_id'),
 		transactionId: integer('transaction_id').notNull(),
 		transactionType: varchar('transaction_type', { length: 255 }).notNull().default('online_payment'),
-		status: entityTrustapTransactionTypeEnum('status').notNull(),
+		status: text('status').notNull(),
 		price: integer('price').notNull(),
 		charge: integer('charge').notNull(),
 		chargeSeller: integer('charge_seller').notNull(),

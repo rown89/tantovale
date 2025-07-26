@@ -17,6 +17,13 @@ export const shippings = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
+		/* Shippo shipment ID */
+		sp_shipment_id: text('sp_shipment_id').notNull(),
+		/**
+		 * Shippo shipment Label ID
+		 * This id comes after the buyer has paid for the order
+		 */
+		sp_shipment_label_id: text('sp_shipment_label_id'),
 		tracking_number: text('tracking_number'),
 		tracking_url: text('tracking_url'),
 		tracking_status: text('tracking_status'),

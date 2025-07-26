@@ -1,18 +1,17 @@
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
-import { entityTrustapTransactions, orders, chat_rooms, users, items } from '#db-schema';
-import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
+import { entityTrustapTransactions, orders, chat_rooms, users, items, shippings } from '#db-schema';
 import { sendOrderPaidNotificationBuyer, sendOrderPaidNotificationSeller } from '#mailer/index';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { ShipmentService } from '../shipment-provider/shipment.service';
 
-// Trustap event codes
+// Trustap event codes (Online transaction events)
 const TrustapEventCode = z.enum([
-	// Online transaction events
 	'basic_tx.joined',
 	'basic_tx.rejected',
 	'basic_tx.cancelled',
@@ -68,151 +67,53 @@ const trustapWebhookSchema = z.object({
 	metadata: z.record(z.string(), z.any()).optional(), // Additional metadata
 });
 
-// Helper function to verify Basic Authentication (you should configure these credentials)
-function verifyBasicAuth(authHeader: string | undefined): boolean {
-	if (!authHeader || !authHeader.startsWith('Basic ')) {
-		return false;
-	}
-
-	// TODO: Configure these credentials in your environment
-	const expectedUsername = process.env.TRUSTAP_WEBHOOK_USERNAME || 'trustap_user';
-	const expectedPassword = process.env.TRUSTAP_WEBHOOK_PASSWORD || 'trustap_password';
-
-	const credentials = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
-	const [username, password] = credentials.split(':');
-
-	return username === expectedUsername && password === expectedPassword;
-}
-
 export const webhooksRoute = createRouter()
 	.post('/trustap/transaction-update', zValidator('json', trustapWebhookSchema), async (c) => {
 		const payload = c.req.valid('json');
 		const { db } = createClient();
 
 		try {
-			// Verify Basic Authentication
-			const authHeader = c.req.header('Authorization');
-			if (!verifyBasicAuth(authHeader)) {
-				console.error('Unauthorized webhook request - invalid credentials');
-				return c.json({ error: 'Unauthorized' }, 401);
-			}
+			// TODO: Verify Basic Authentication for the webhook
 
 			// Convert target_id to number for database lookup
-			const transactionId = parseInt(payload.target_id, 10);
+			const payload_transactionId = parseInt(payload.target_id, 10);
 
-			if (isNaN(transactionId)) {
-				console.error(`Invalid transaction ID: ${payload.target_id}`);
+			if (isNaN(payload_transactionId)) {
 				return c.json({ error: 'Invalid transaction ID' }, 400);
 			}
 
 			return await db.transaction(async (tx) => {
-				// Find the transaction in our database
-				const [trustapTransaction] = await tx
-					.select()
-					.from(entityTrustapTransactions)
-					.where(eq(entityTrustapTransactions.transactionId, transactionId))
-					.limit(1);
+				// Create aliases for buyer and seller users
+				const buyerUser = alias(users, 'buyer_user');
+				const sellerUser = alias(users, 'seller_user');
 
-				if (!trustapTransaction) {
-					console.error(`Transaction ${transactionId} not found in database`);
-					return c.json({ error: 'Transaction not found' }, 404);
-				}
-
-				// Get the order
+				// Main query to get order infos and users infos
 				const [order] = await tx
 					.select({
+						id: orders.id,
 						item_title: items.title,
+						sp_shipment_id: shippings.sp_shipment_id,
+						buyer_id: orders.buyer_id,
+						seller_id: orders.seller_id,
+						item_id: orders.item_id,
+						transaction_id: entityTrustapTransactions.transactionId,
+						buyer_email: buyerUser.email,
+						buyer_username: buyerUser.username,
+						seller_email: sellerUser.email,
+						seller_username: sellerUser.username,
 					})
-					.from(orders)
-					.where(eq(orders.payment_transaction_id, transactionId))
+					.from(entityTrustapTransactions)
+					.where(eq(entityTrustapTransactions.transactionId, payload_transactionId))
+					.innerJoin(orders, eq(entityTrustapTransactions.entityId, orders.id))
 					.innerJoin(items, eq(orders.item_id, items.id))
+					.innerJoin(shippings, eq(orders.id, shippings.order_id))
+					.innerJoin(buyerUser, eq(buyerUser.id, orders.buyer_id))
+					.innerJoin(sellerUser, eq(sellerUser.id, orders.seller_id))
 					.limit(1);
 
 				if (!order) {
-					console.error(`Order ${transactionId} not found in database`);
+					console.error(`Order ${payload_transactionId} not found in database`);
 					return c.json({ error: 'Order not found' }, 404);
-				}
-
-				// Map Trustap event codes to internal status
-				const getInternalStatus = (code: z.infer<typeof TrustapEventCode>): string => {
-					switch (code) {
-						case 'basic_tx.joined':
-
-						case 'basic_tx.paid':
-
-						case 'basic_tx.funds_released':
-
-						case 'basic_tx.tracked':
-
-						case 'basic_tx.delivered':
-
-						case 'basic_tx.complained':
-
-						case 'basic_tx.rejected':
-
-						case 'basic_tx.cancelled':
-
-						default:
-							return payload.target_preview?.status || code;
-					}
-				};
-
-				const internalStatus = getInternalStatus(payload.code);
-
-				// Update transaction status
-				const [updatedTransaction] = await tx
-					.update(entityTrustapTransactions)
-					.set({
-						status: internalStatus as EntityTrustapTransactionStatus,
-						updated_at: new Date(),
-					})
-					.where(eq(entityTrustapTransactions.transactionId, transactionId))
-					.returning();
-
-				if (!updatedTransaction) {
-					throw new Error('Failed to update transaction status');
-				}
-
-				// Update corresponding order status
-				const [updatedOrder] = await tx
-					.update(orders)
-					.set({
-						status: internalStatus,
-						updated_at: new Date(),
-					})
-					.where(eq(orders.payment_transaction_id, transactionId))
-					.returning();
-
-				if (!updatedOrder) {
-					return c.json({ error: 'Order not found' }, 404);
-				}
-
-				// Get the buyer email
-				const [buyer] = await db
-					.select({
-						email: users.email,
-						username: users.username,
-					})
-					.from(users)
-					.where(eq(users.id, Number(updatedOrder?.buyer_id)))
-					.limit(1);
-
-				if (!buyer) {
-					return c.json({ error: 'Buyer not found' }, 404);
-				}
-
-				// Get the seller email
-				const [seller] = await db
-					.select({
-						email: users.email,
-						username: users.username,
-					})
-					.from(users)
-					.where(eq(users.id, Number(updatedOrder?.seller_id)))
-					.limit(1);
-
-				if (!seller) {
-					return c.json({ error: 'Seller not found' }, 404);
 				}
 
 				// Get the room id
@@ -221,7 +122,7 @@ export const webhooksRoute = createRouter()
 						id: chat_rooms.id,
 					})
 					.from(chat_rooms)
-					.where(eq(chat_rooms.item_id, updatedOrder.item_id))
+					.where(eq(chat_rooms.item_id, order.item_id))
 					.limit(1);
 
 				if (!room) {
@@ -238,41 +139,38 @@ export const webhooksRoute = createRouter()
 								status: ORDER_PHASES.PAYMENT_CONFIRMED,
 								updated_at: new Date(),
 							})
-							.where(eq(orders.id, updatedOrder.id))
-							.returning();
+							.where(eq(orders.id, order.id));
 
-						/*
-						 * Generate the shipment label using the selected rate retrieved from the order with the sp_shipment_id
-						 */
 						const shipmentService = new ShipmentService();
 
-						const shipmentLabel = await shipmentService.generateShipmentLabel(
-							updatedOrder.sp_shipment_id,
-							updatedOrder.id,
-						);
+						/*
+						 * Generate the Shipment Label.
+						 * I'm retrieving the rate from the order with the Shippo shipment id (sp_shipment_id) and generate the label.
+						 */
+						const shipmentLabel = await shipmentService.generateShipmentLabel(order.sp_shipment_id, order.id);
 
 						if (!shipmentLabel) {
 							throw new Error('Failed to generate shipment label');
 						}
 
-						// Update the order with the shipment label ID
+						// Update the order related shipping with the shipment label ID
 						await tx
-							.update(orders)
+							.update(shippings)
 							.set({ sp_shipment_label_id: shipmentLabel.objectId })
-							.where(eq(orders.id, updatedOrder.id));
+							.where(eq(orders.id, order.id));
 
 						// Send email to the buyer
 						await sendOrderPaidNotificationBuyer({
-							to: buyer.email,
-							orderId: updatedOrder.id,
+							to: order.buyer_email,
+							orderId: order.id,
 							roomId: room.id,
 						});
 
 						// Send email to the seller
 						await sendOrderPaidNotificationSeller({
-							to: seller.email,
+							to: order.seller_email,
 							item_name: order.item_title,
-							buyer_name: buyer.username,
+							buyer_name: order.buyer_username,
 							roomId: room.id,
 							labelUrl: shipmentLabel.labelUrl,
 						});
@@ -288,19 +186,35 @@ export const webhooksRoute = createRouter()
 					case 'basic_tx.payment_failed':
 
 					default:
-						console.log(`Transaction ${transactionId} event: ${payload.code}`);
+						console.log(`Transaction ${payload_transactionId} event: ${payload.code}`);
+				}
+
+				// Update transaction status
+				const [updatedTransaction] = await tx
+					.update(entityTrustapTransactions)
+					.set({
+						status: payload.code,
+						updated_at: new Date(),
+					})
+					.where(eq(entityTrustapTransactions.transactionId, payload_transactionId))
+					.returning();
+
+				if (!updatedTransaction) {
+					throw new Error('Failed to update transaction status');
 				}
 
 				// Log webhook event for audit
-				console.log(`Trustap webhook processed: ${payload.code} for transaction ${transactionId} at ${payload.time}`);
+				console.log(
+					`Trustap webhook processed: ${payload.code} for transaction ${payload_transactionId} at ${payload.time}`,
+				);
 
 				return c.json(
 					{
 						success: true,
 						message: 'Transaction updated successfully',
-						transaction_id: transactionId,
+						transaction_id: payload_transactionId,
 						event_code: payload.code,
-						status: internalStatus,
+						status: payload.target_preview?.status,
 					},
 					200,
 				);

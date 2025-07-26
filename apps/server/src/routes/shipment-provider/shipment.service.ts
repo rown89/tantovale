@@ -210,6 +210,7 @@ export class ShipmentService {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 
+		// Currently we only support one rate per item and we are getting automatically the first one
 		const rateAmount = shipmentLabelCreateResponse.value?.rates?.[0]?.amount;
 
 		if (!rateAmount) {
@@ -281,11 +282,11 @@ export class ShipmentService {
 	}
 
 	/**
-	 * Generate a shipment label from an order
+	 * Generate a shipment label
 	 *
-	 * @param shipmentId - The ID of the shipment to generate a shipment label for
-	 * @param orderId - The ID of the order to generate a shipment label for
-	 * @returns Promise<string> - The ID of the shipment label
+	 * @param shipmentId - The ID of the shipment to generate a shipment label.
+	 * @param orderId - The ID of the order to generate a shipment label.
+	 * @returns Promise<Transaction> - The transaction object
 	 */
 	async generateShipmentLabel(shipmentId: string, orderId: number) {
 		const shipment = await this.getShipment(shipmentId);
@@ -297,6 +298,7 @@ export class ShipmentService {
 		const shipmentLabel = await transactionsCreate(shippoClient, {
 			async: false,
 			metadata: `Order ID #${orderId}`,
+			// Currently we only support one rate per item and we are getting automatically the first one
 			rate: shipment.rates?.[0]?.objectId,
 		});
 

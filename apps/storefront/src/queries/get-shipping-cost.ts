@@ -24,6 +24,7 @@ export const getShippingCost = async (item_id: number) => {
 
 	const { rates } = await ratesResponse.json();
 
+	// Currently we only support one rate per item and we are getting automatically the first one
 	const firstRate = rates?.[0];
 
 	if (!firstRate) {

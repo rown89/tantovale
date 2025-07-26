@@ -13,11 +13,11 @@ import {
 	profiles,
 	addresses,
 	entityTrustapTransactions,
+	shippings,
 } from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import {
-	EntityTrustapTransactionStatus,
 	itemStatus,
 	ORDER_PROPOSAL_PHASES,
 	OrderProposalStatus,
@@ -117,11 +117,13 @@ export const ordersProposalsRoute = createRouter()
 
 				if (orderCount > 0) return c.json({ error: 'You already have an active order for this item' }, 400);
 
-				// Retrieve shipment label from shippo
+				// Retrieve shipment object from Shippo
 				const shipmentService = new ShipmentService();
-				const shippingLabel = await shipmentService.getShipment(sp_shipment_id);
-				const shipping_price = shippingLabel.rates?.[0]?.amount
-					? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
+				const shippingObject = await shipmentService.getShipment(sp_shipment_id);
+
+				// Currently we only support one rate per item and we are getting automatically the first one
+				const shipping_price = shippingObject.rates?.[0]?.amount
+					? formatPriceToCents(parseFloat(shippingObject.rates[0].amount))
 					: 0;
 
 				// Calculate platform charge amount
@@ -432,11 +434,13 @@ export const ordersProposalsRoute = createRouter()
 						itemName: item.title,
 					});
 				} else {
-					// Get the shipping label id from the proposal
+					// Get the shipping object from Shippo
 					const shipmentService = new ShipmentService();
-					const shippingLabel = await shipmentService.getShipment(existingProposal.sp_shipment_id);
-					const shipping_price = shippingLabel.rates?.[0]?.amount
-						? formatPriceToCents(parseFloat(shippingLabel.rates[0].amount))
+					const shippingObject = await shipmentService.getShipment(existingProposal.sp_shipment_id);
+
+					// Currently we only support one rate per item and we are getting automatically the first one
+					const shipping_price = shippingObject.rates?.[0]?.amount
+						? formatPriceToCents(parseFloat(shippingObject.rates[0].amount))
 						: 0;
 
 					// Total price to pay for the transaction
@@ -475,29 +479,6 @@ export const ordersProposalsRoute = createRouter()
 
 					if (!transaction) return c.json({ error: 'Failed to create transaction' }, 500);
 
-					// Store Trustap transaction details for tracking
-					const [trustapTransaction] = await tx
-						.insert(entityTrustapTransactions)
-						.values({
-							entityId: item_id,
-							sellerId: transaction.seller_id,
-							buyerId: transaction.buyer_id,
-							transactionId: transaction.id,
-							transactionType: 'online_payment',
-							status: transaction.status as EntityTrustapTransactionStatus,
-							price: transactionPrice,
-							charge: payment_provider_charge,
-							chargeSeller: transaction.charge_seller || 0,
-							currency: 'eur',
-							entityTitle: item.title,
-							claimedBySeller: false,
-							claimedByBuyer: false,
-							complaintPeriodDeadline: null, // Will be set by webhook
-						})
-						.returning();
-
-					if (!trustapTransaction) throw new Error('Failed to store Trustap transaction details');
-
 					// Create a temporary new order when proposal is accepted
 					const [newOrder] = await tx
 						.insert(orders)
@@ -510,13 +491,40 @@ export const ordersProposalsRoute = createRouter()
 							shipping_price,
 							payment_provider_charge,
 							platform_charge: existingProposal.platform_charge,
-							payment_transaction_id: transaction.id,
-							sp_shipment_id: existingProposal.sp_shipment_id,
 							proposal_id: existingProposal.id,
 						})
 						.returning({ id: orders.id });
 
 					if (!newOrder) throw new Error('Failed to create order');
+
+					// Store initial Shipping data
+					await tx.insert(shippings).values({
+						order_id: newOrder.id,
+						sp_shipment_id: existingProposal.sp_shipment_id,
+					});
+
+					// Store Trustap transaction details for tracking
+					const [trustapTransaction] = await tx
+						.insert(entityTrustapTransactions)
+						.values({
+							entityId: newOrder.id,
+							sellerId: transaction.seller_id,
+							buyerId: transaction.buyer_id,
+							transactionId: transaction.id,
+							transactionType: 'online_payment',
+							status: transaction.status,
+							price: transactionPrice,
+							charge: payment_provider_charge,
+							chargeSeller: transaction.charge_seller || 0,
+							currency: 'eur',
+							entityTitle: item.title,
+							claimedBySeller: false,
+							claimedByBuyer: false,
+							complaintPeriodDeadline: null, // Will be set by webhook
+						})
+						.returning();
+
+					if (!trustapTransaction) throw new Error('Failed to store Trustap transaction details');
 
 					transaction_response = {
 						id: transaction.id,

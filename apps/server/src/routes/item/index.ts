@@ -20,6 +20,7 @@ import {
 	entityTrustapTransactions,
 	orders,
 	orders_proposals,
+	shippings,
 } from '#db-schema';
 import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
 import { createRouter } from '#lib/create-app';
@@ -29,7 +30,6 @@ import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { itemDetailResponseType } from '#extended_schemas';
 import {
 	addressStatus,
-	EntityTrustapTransactionStatus,
 	itemStatus,
 	newOrderBlockedStates,
 	ORDER_PROPOSAL_PHASES,
@@ -548,6 +548,7 @@ export const itemRoute = createRouter()
 					// Create a shipping label
 					const shipmentService = new ShipmentService();
 					const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, user.profile_id, user.email);
+					// Currently we only support one rate per item and we are getting automatically the first one
 					const selectedShipmentRate = rates[0];
 
 					const sp_shipment_id = selectedShipmentRate?.shipment;
@@ -605,16 +606,41 @@ export const itemRoute = createRouter()
 						return c.json({ error: 'Failed to create Trustap transaction' }, 500);
 					}
 
+					// Create new order
+					const [newOrder] = await tx
+						.insert(orders)
+						.values({
+							item_id,
+							buyer_id: user.profile_id,
+							buyer_address: buyerInfo.address_id,
+							seller_id: item.profile_id,
+							seller_address: item.seller_address_id,
+							shipping_price,
+							payment_provider_charge,
+							platform_charge: platform_charge_amount!,
+						})
+						.returning();
+
+					if (!newOrder) {
+						return c.json({ error: 'Failed to create order' }, 500);
+					}
+
+					// Store initial Shipping data
+					await tx.insert(shippings).values({
+						order_id: newOrder.id,
+						sp_shipment_id,
+					});
+
 					// Store transaction details
 					const [trustapTransaction] = await tx
 						.insert(entityTrustapTransactions)
 						.values({
-							entityId: item_id,
+							entityId: newOrder.id,
 							sellerId: transaction.seller_id,
 							buyerId: transaction.buyer_id,
 							transactionId: transaction.id,
 							transactionType: 'online_payment',
-							status: transaction.status as EntityTrustapTransactionStatus,
+							status: transaction.status,
 							price: transaction.price,
 							charge: transaction.charge,
 							chargeSeller: transaction.charge_seller || 0,
@@ -628,27 +654,6 @@ export const itemRoute = createRouter()
 
 					if (!trustapTransaction) {
 						return c.json({ error: 'Failed to store Trustap transaction' }, 500);
-					}
-
-					// Create new order
-					const [newOrder] = await tx
-						.insert(orders)
-						.values({
-							item_id,
-							buyer_id: user.profile_id,
-							buyer_address: buyerInfo.address_id,
-							seller_id: item.profile_id,
-							seller_address: item.seller_address_id,
-							shipping_price,
-							payment_provider_charge,
-							platform_charge: platform_charge_amount!,
-							payment_transaction_id: transaction.id,
-							sp_shipment_id,
-						})
-						.returning();
-
-					if (!newOrder) {
-						return c.json({ error: 'Failed to create order' }, 500);
 					}
 
 					// send email to the buyer

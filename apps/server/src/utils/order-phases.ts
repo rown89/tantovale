@@ -5,7 +5,10 @@ export const ORDER_PHASES = {
 	PAYMENT_REFUNDED: 'payment_refunded',
 	SHIPPING_PENDING: 'shipping_pending',
 	SHIPPING_CONFIRMED: 'shipping_confirmed',
+	SHIPPING_DELIVERED: 'shipping_delivered',
+	SHIPPING_FAILED: 'shipping_failed',
 	COMPLETED: 'completed',
+	COMPLAINED: 'complained',
 	CANCELLED: 'cancelled',
 	EXPIRED: 'expired',
 } as const;

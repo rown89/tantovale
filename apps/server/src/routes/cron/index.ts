@@ -8,7 +8,6 @@ import { orders_proposals } from 'src/database/schemas/orders_proposals';
 import { orders } from 'src/database/schemas/orders';
 import { authPath, environment } from 'src/utils/constants';
 import { authMiddleware } from 'src/middlewares/authMiddleware';
-import { TransactionSyncService } from '../payments/transaction-sync.service';
 import { ORDER_PHASES, ORDER_PROPOSAL_PHASES } from 'src/database/schemas/enumerated_values';
 
 const expiredOrdersTolleranceInHours = environment.ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS;
@@ -72,22 +71,4 @@ export const cronRoute = createRouter()
 		});
 
 		return c.json(result, result.status as ContentfulStatusCode);
-	})
-	.get(`${authPath}/sync-transactions`, authMiddleware, async (c) => {
-		const { key } = c.req.query();
-		const secretKey = environment.TRANSACTIONS_SYNC_SECRET_KEY;
-
-		if (key !== secretKey) {
-			return c.json({ error: 'Invalid key' }, 401);
-		}
-
-		try {
-			const syncService = new TransactionSyncService();
-			const result = await syncService.syncTransactionStatuses();
-
-			return c.json(result, 200);
-		} catch (error) {
-			console.error('Transaction sync error:', error);
-			return c.json({ error: 'Failed to sync transactions' }, 500);
-		}
 	});

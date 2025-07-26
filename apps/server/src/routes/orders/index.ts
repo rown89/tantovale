@@ -4,7 +4,17 @@ import { alias } from 'drizzle-orm/pg-core';
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { items, users, orders, profiles, addresses, cities, orders_proposals } from '#db-schema';
+import {
+	items,
+	users,
+	orders,
+	profiles,
+	addresses,
+	cities,
+	orders_proposals,
+	shippings,
+	entityTrustapTransactions,
+} from '#db-schema';
 import { authPath, environment } from '#utils/constants';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 
@@ -35,8 +45,8 @@ export const ordersRoute = createRouter()
 					shipping_price: orders.shipping_price,
 					payment_provider_charge: orders.payment_provider_charge,
 					platform_charge: orders.platform_charge,
-					sp_shipment_id: orders.sp_shipment_id,
-					payment_transaction_id: orders.payment_transaction_id,
+					sp_shipment_id: shippings.sp_shipment_id,
+					payment_transaction_id: entityTrustapTransactions.transactionId,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
 				},
@@ -77,6 +87,8 @@ export const ordersRoute = createRouter()
 			.innerJoin(addresses, eq(addresses.id, orders.buyer_address))
 			.innerJoin(cityAlias, eq(cityAlias.id, addresses.city_id))
 			.innerJoin(provinceAlias, eq(provinceAlias.id, addresses.province_id))
+			.innerJoin(shippings, eq(shippings.order_id, orders.id))
+			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
 			.where(and(...whereConditions));
 
 		if (!userOrders.length) {
@@ -154,7 +166,8 @@ export const ordersRoute = createRouter()
 					shipping_price: orders.shipping_price,
 					payment_provider_charge: orders.payment_provider_charge,
 					platform_charge: orders.platform_charge,
-					sp_shipment_id: orders.sp_shipment_id,
+					sp_shipment_id: shippings.sp_shipment_id,
+					payment_transaction_id: entityTrustapTransactions.transactionId,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
 				},
@@ -180,6 +193,8 @@ export const ordersRoute = createRouter()
 			.innerJoin(addresses, eq(addresses.id, orders.seller_address))
 			.innerJoin(cityAlias, eq(cityAlias.id, addresses.city_id))
 			.innerJoin(provinceAlias, eq(provinceAlias.id, addresses.province_id))
+			.innerJoin(shippings, eq(shippings.order_id, orders.id))
+			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
 			.where(and(...whereConditions));
 
 		if (!userOrders.length) return c.json([], 200);

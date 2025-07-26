@@ -9,7 +9,6 @@ import {
 	profileValues,
 	sexValues,
 	addressStatusValues,
-	entityTrustapTransactionStatusValues,
 } from './enumerated_values';
 
 export const itemStatusEnum = pgEnum('status_enum', itemStatusValues);
@@ -27,8 +26,3 @@ export const profileEnum = pgEnum('profile_types_enum', profileValues);
 export const itemImagesSizeEnum = pgEnum('item_images_size_enum', itemImagesSizeValues);
 
 export const addressStatusEnum = pgEnum('address_status_enum', addressStatusValues);
-
-export const entityTrustapTransactionTypeEnum = pgEnum(
-	'entity_trustap_transaction_type_enum',
-	entityTrustapTransactionStatusValues,
-);
