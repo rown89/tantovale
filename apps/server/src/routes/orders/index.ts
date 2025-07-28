@@ -46,8 +46,8 @@ export const ordersRoute = createRouter()
 					shipping_price: shippings.sp_price,
 					payment_provider_charge: entityTrustapTransactions.charge,
 					platform_charge: entityPlatformTransactions.charge,
-					sp_shipment_id: shippings.sp_shipment_id,
 					payment_transaction_id: entityTrustapTransactions.transactionId,
+					sp_shipment_id: shippings.sp_shipment_id,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
 				},
@@ -133,6 +133,8 @@ export const ordersRoute = createRouter()
 				created_at,
 			};
 
+			console.log('order_shape', order_shape);
+
 			return order_shape;
 		});
 
@@ -149,7 +151,7 @@ export const ordersRoute = createRouter()
 		const provinceAlias = alias(cities, 'province');
 
 		// Build where conditions dynamically
-		const whereConditions = [eq(orders.seller_id, user.profile_id)];
+		const whereConditions = [eq(orders.seller_id, user.profile_id), eq(items.status, 'sold')];
 
 		// Add status filter if not 'all' and not undefined
 		if (status !== 'all' && status) {
@@ -164,8 +166,8 @@ export const ordersRoute = createRouter()
 					shipping_price: shippings.sp_price,
 					payment_provider_charge: entityTrustapTransactions.charge,
 					platform_charge: entityPlatformTransactions.charge,
-					sp_shipment_id: shippings.sp_shipment_id,
 					payment_transaction_id: entityTrustapTransactions.transactionId,
+					sp_shipment_id: shippings.sp_shipment_id,
 					created_at: orders.created_at,
 					updated_at: orders.updated_at,
 				},

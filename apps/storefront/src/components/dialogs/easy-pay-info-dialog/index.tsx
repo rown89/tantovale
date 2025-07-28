@@ -8,12 +8,12 @@ import {
 } from '@workspace/ui/components/dialog';
 import { Info } from 'lucide-react';
 
-export default function EasyPayInfoDialog() {
+export default function EasyPayInfoDialog({ label = 'Easy Pay' }: { label?: string }) {
 	return (
 		<Dialog>
 			<DialogTrigger className='cursor-pointer' asChild>
 				<div className='flex items-center gap-2'>
-					<p className={`text-primary text-md font-bold`}>Easy Pay</p>
+					<p className={`text-primary text-md font-bold`}>{label}</p>
 					<Info className='h-4 w-4 text-blue-500' />
 				</div>
 			</DialogTrigger>
