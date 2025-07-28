@@ -4,6 +4,7 @@ export * from './chat_messages';
 export * from './chat_rooms';
 export * from './cities';
 export * from './countries';
+export * from './entity_platform_transactions';
 export * from './entity_trustap_transactions';
 export * from './enumerated_types';
 export * from './items_images';

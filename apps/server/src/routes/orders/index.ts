@@ -17,6 +17,7 @@ import {
 } from '#db-schema';
 import { authPath, environment } from '#utils/constants';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
+import { entityPlatformTransactions } from '#database/schemas/entity_platform_transactions';
 
 export const ordersRoute = createRouter()
 	.get(`${authPath}/purchased/:status`, authMiddleware, async (c) => {
@@ -42,9 +43,9 @@ export const ordersRoute = createRouter()
 				orders: {
 					id: orders.id,
 					status: orders.status,
-					shipping_price: orders.shipping_price,
-					payment_provider_charge: orders.payment_provider_charge,
-					platform_charge: orders.platform_charge,
+					shipping_price: shippings.sp_price,
+					payment_provider_charge: entityTrustapTransactions.charge,
+					platform_charge: entityPlatformTransactions.charge,
 					sp_shipment_id: shippings.sp_shipment_id,
 					payment_transaction_id: entityTrustapTransactions.transactionId,
 					created_at: orders.created_at,
@@ -59,35 +60,32 @@ export const ordersRoute = createRouter()
 					id: orders_proposals.id,
 					proposal_price: orders_proposals.proposal_price,
 				},
-				profiles: {
-					payment_provider_id_full: profiles.payment_provider_id_full,
-				},
-				users: {
+				seller: {
 					id: users.id,
 					username: users.username,
 				},
-				addresses: {
+				buyer: {
+					payment_provider_id_full: profiles.payment_provider_id_full,
 					street_address: addresses.street_address,
 					civic_number: addresses.civic_number,
+					city_id: addresses.city_id,
+					province_id: addresses.province_id,
 					postal_code: addresses.postal_code,
+					city: cityAlias.name,
+					province: provinceAlias.name,
 					country_code: addresses.country_code,
-				},
-				city: {
-					name: cityAlias.name,
-				},
-				province: {
-					name: provinceAlias.name,
 				},
 			})
 			.from(orders)
 			.innerJoin(items, eq(orders.item_id, items.id))
 			.leftJoin(orders_proposals, eq(orders_proposals.id, orders.proposal_id))
-			.innerJoin(profiles, eq(profiles.id, orders.seller_id))
+			.innerJoin(profiles, eq(profiles.id, orders.buyer_id))
 			.innerJoin(users, eq(users.id, profiles.user_id))
-			.innerJoin(addresses, eq(addresses.id, orders.buyer_address))
+			.innerJoin(addresses, eq(addresses.id, orders.seller_address))
 			.innerJoin(cityAlias, eq(cityAlias.id, addresses.city_id))
 			.innerJoin(provinceAlias, eq(provinceAlias.id, addresses.province_id))
 			.innerJoin(shippings, eq(shippings.order_id, orders.id))
+			.innerJoin(entityPlatformTransactions, eq(entityPlatformTransactions.entityId, orders.id))
 			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
 			.where(and(...whereConditions));
 
@@ -100,7 +98,7 @@ export const ordersRoute = createRouter()
 			const { status, shipping_price, payment_provider_charge, platform_charge, sp_shipment_id, created_at } =
 				order.orders;
 
-			const payment_url = `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${order.orders.payment_transaction_id}/${order.profiles.payment_provider_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${order.orders.id}`;
+			const payment_url = `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${order.orders.payment_transaction_id}/${order.buyer.payment_provider_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${order.orders.id}`;
 
 			const order_shape = {
 				id,
@@ -119,16 +117,16 @@ export const ordersRoute = createRouter()
 					price: order.orders_proposals?.proposal_price,
 				},
 				seller: {
-					id: order.users.id,
-					username: order.users.username,
+					id: order.seller.id,
+					username: order.seller.username,
 				},
 				buyer: {
-					street_address: order.addresses.street_address,
-					civic_number: order.addresses.civic_number,
-					city: order.city.name,
-					province: order.province.name,
-					postal_code: order.addresses.postal_code,
-					country_code: order.addresses.country_code,
+					street_address: order.buyer.street_address,
+					civic_number: order.buyer.civic_number,
+					city: order.buyer.city,
+					province: order.buyer.province,
+					postal_code: order.buyer.postal_code,
+					country_code: order.buyer.country_code,
 					payment_url,
 				},
 				updated_at: order.orders.updated_at,
@@ -163,9 +161,9 @@ export const ordersRoute = createRouter()
 				orders: {
 					id: orders.id,
 					status: orders.status,
-					shipping_price: orders.shipping_price,
-					payment_provider_charge: orders.payment_provider_charge,
-					platform_charge: orders.platform_charge,
+					shipping_price: shippings.sp_price,
+					payment_provider_charge: entityTrustapTransactions.charge,
+					platform_charge: entityPlatformTransactions.charge,
 					sp_shipment_id: shippings.sp_shipment_id,
 					payment_transaction_id: entityTrustapTransactions.transactionId,
 					created_at: orders.created_at,
@@ -180,9 +178,20 @@ export const ordersRoute = createRouter()
 					id: orders_proposals.id,
 					proposal_price: orders_proposals.proposal_price,
 				},
-				users: {
+				seller: {
 					id: users.id,
 					username: users.username,
+				},
+				buyer: {
+					payment_provider_id_full: profiles.payment_provider_id_full,
+					street_address: addresses.street_address,
+					civic_number: addresses.civic_number,
+					city_id: addresses.city_id,
+					province_id: addresses.province_id,
+					postal_code: addresses.postal_code,
+					city: cityAlias.name,
+					province: provinceAlias.name,
+					country_code: addresses.country_code,
 				},
 			})
 			.from(orders)
@@ -194,15 +203,20 @@ export const ordersRoute = createRouter()
 			.innerJoin(cityAlias, eq(cityAlias.id, addresses.city_id))
 			.innerJoin(provinceAlias, eq(provinceAlias.id, addresses.province_id))
 			.innerJoin(shippings, eq(shippings.order_id, orders.id))
+			.innerJoin(entityPlatformTransactions, eq(entityPlatformTransactions.entityId, orders.id))
 			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
 			.where(and(...whereConditions));
 
-		if (!userOrders.length) return c.json([], 200);
+		if (!userOrders.length) {
+			return c.json([], 200);
+		}
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
 			const { status, shipping_price, payment_provider_charge, platform_charge, sp_shipment_id, created_at } =
 				order.orders;
+
+			const payment_url = `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${order.orders.payment_transaction_id}/${order.buyer.payment_provider_id_full ? 'pay' : 'guest_pay'}?redirect_uri=${environment.PP_POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${order.orders.id}`;
 
 			const order_shape = {
 				id,
@@ -220,13 +234,18 @@ export const ordersRoute = createRouter()
 					id: order.orders_proposals?.id,
 					price: order.orders_proposals?.proposal_price,
 				},
-				buyer: {
-					id: order.users.id,
-					username: order.users.username,
-				},
 				seller: {
-					id: order.users.id,
-					username: order.users.username,
+					id: order.seller.id,
+					username: order.seller.username,
+				},
+				buyer: {
+					street_address: order.buyer.street_address,
+					civic_number: order.buyer.civic_number,
+					city: order.buyer.city,
+					province: order.buyer.province,
+					postal_code: order.buyer.postal_code,
+					country_code: order.buyer.country_code,
+					payment_url,
 				},
 				updated_at: order.orders.updated_at,
 				created_at,

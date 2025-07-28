@@ -39,6 +39,7 @@ import {
 } from '#extended_schemas';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 import { ShipmentService } from '../shipment-provider/shipment.service';
+import { entityPlatformTransactions } from '#database/schemas/entity_platform_transactions';
 
 export const ordersProposalsRoute = createRouter()
 	// Buyer create a new proposal
@@ -488,19 +489,30 @@ export const ordersProposalsRoute = createRouter()
 							buyer_address: buyerInfo.address_id,
 							seller_id: user.profile_id,
 							seller_address: item.address_id,
-							shipping_price,
-							payment_provider_charge,
-							platform_charge: existingProposal.platform_charge,
 							proposal_id: existingProposal.id,
 						})
 						.returning({ id: orders.id });
 
 					if (!newOrder) throw new Error('Failed to create order');
 
+					// Store Platform charges
+					await tx.insert(entityPlatformTransactions).values({
+						entityId: newOrder.id,
+						charge: existingProposal.platform_charge,
+					});
+
 					// Store initial Shipping data
 					await tx.insert(shippings).values({
 						order_id: newOrder.id,
+						item_id,
 						sp_shipment_id: existingProposal.sp_shipment_id,
+						sp_price: shipping_price,
+					});
+
+					// Store Platform transaction details
+					await tx.insert(entityPlatformTransactions).values({
+						entityId: newOrder.id,
+						charge: payment_provider_charge,
 					});
 
 					// Store Trustap transaction details for tracking
@@ -516,7 +528,6 @@ export const ordersProposalsRoute = createRouter()
 							price: transactionPrice,
 							charge: payment_provider_charge,
 							chargeSeller: transaction.charge_seller || 0,
-							currency: 'eur',
 							entityTitle: item.title,
 							claimedBySeller: false,
 							claimedByBuyer: false,

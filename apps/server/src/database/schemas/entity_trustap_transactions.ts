@@ -2,7 +2,6 @@ import { pgTable, integer, timestamp, text, boolean, varchar, foreignKey } from 
 import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
 import { relations } from 'drizzle-orm';
 
-import { items } from './items';
 import { orders } from './orders';
 
 export const entityTrustapTransactions = pgTable(
@@ -14,6 +13,7 @@ export const entityTrustapTransactions = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
+		entityTitle: text('entity_title').notNull(),
 		sellerId: text('seller_id'),
 		buyerId: text('buyer_id'),
 		transactionId: integer('transaction_id').notNull(),
@@ -23,7 +23,6 @@ export const entityTrustapTransactions = pgTable(
 		charge: integer('charge').notNull(),
 		chargeSeller: integer('charge_seller').notNull(),
 		currency: varchar('currency', { length: 10 }).notNull().default('eur'),
-		entityTitle: text('entity_title').notNull(),
 		claimedBySeller: boolean('claimed_by_seller').notNull().default(false),
 		claimedByBuyer: boolean('claimed_by_buyer').notNull().default(false),
 		complaintPeriodDeadline: timestamp('complaint_period_deadline'),
@@ -33,16 +32,16 @@ export const entityTrustapTransactions = pgTable(
 	(table) => [
 		foreignKey({
 			columns: [table.entityId],
-			foreignColumns: [items.id],
+			foreignColumns: [orders.id],
 			name: 'entity_trustap_transactions_entity_id_fkey',
 		}),
 	],
 );
 
 export const entityTrustapTransactionsRelations = relations(entityTrustapTransactions, ({ one }) => ({
-	item: one(items, {
+	item: one(orders, {
 		fields: [entityTrustapTransactions.entityId],
-		references: [items.id],
+		references: [orders.id],
 	}),
 }));
 

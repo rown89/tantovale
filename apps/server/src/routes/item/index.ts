@@ -42,6 +42,7 @@ import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-
 
 import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
+import { entityPlatformTransactions } from '#database/schemas/entity_platform_transactions';
 
 export const itemRoute = createRouter()
 	// Get item route
@@ -448,9 +449,6 @@ export const itemRoute = createRouter()
 					const seller_pp_id_guest = item.payment_provider_id_guest;
 					const seller_pp_id_full = item.payment_provider_id_full;
 
-					console.log('seller_pp_id_guest', seller_pp_id_guest);
-					console.log('seller_pp_id_full', seller_pp_id_full);
-
 					if (!seller_pp_id_guest && !seller_pp_id_full) {
 						return c.json({ error: 'Seller has no payment provider id' }, 400);
 					}
@@ -615,9 +613,6 @@ export const itemRoute = createRouter()
 							buyer_address: buyerInfo.address_id,
 							seller_id: item.profile_id,
 							seller_address: item.seller_address_id,
-							shipping_price,
-							payment_provider_charge,
-							platform_charge: platform_charge_amount!,
 						})
 						.returning();
 
@@ -629,6 +624,13 @@ export const itemRoute = createRouter()
 					await tx.insert(shippings).values({
 						order_id: newOrder.id,
 						sp_shipment_id,
+						sp_price: shipping_price,
+					});
+
+					// Store Platform charges
+					await tx.insert(entityPlatformTransactions).values({
+						entityId: newOrder.id,
+						charge: platform_charge_amount!,
 					});
 
 					// Store transaction details

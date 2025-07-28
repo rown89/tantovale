@@ -47,9 +47,6 @@ export const orders = pgTable(
 				onUpdate: 'cascade',
 			})
 			.notNull(),
-		platform_charge: integer('platform_charge').notNull(),
-		payment_provider_charge: integer('payment_provider_charge').notNull(),
-		shipping_price: integer('shipping_price').notNull(),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},

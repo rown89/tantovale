@@ -24,6 +24,7 @@ export const shippings = pgTable(
 		 * This id comes after the buyer has paid for the order
 		 */
 		sp_shipment_label_id: text('sp_shipment_label_id'),
+		sp_price: integer('sp_price').notNull(),
 		tracking_number: text('tracking_number'),
 		tracking_url: text('tracking_url'),
 		tracking_status: text('tracking_status'),

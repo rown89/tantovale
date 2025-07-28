@@ -5,8 +5,11 @@ import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { getShippingCost } from '#queries/get-shipping-cost';
 import useTantovaleStore from '#stores';
 import { useQuery } from '@tanstack/react-query';
-import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { toast } from 'sonner';
 
+import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { Button } from '@workspace/ui/components/button';
 import {
 	Dialog,
@@ -19,11 +22,11 @@ import {
 } from '@workspace/ui/components/dialog';
 import { Label } from '@workspace/ui/components/label';
 import { Spinner } from '@workspace/ui/components/spinner';
-import Link from 'next/link';
-import { toast } from 'sonner';
+import { ItemWrapperProps } from '#app/item/[slug]/types';
 
 export function BuyNowDialog() {
 	const { user } = useAuth();
+	const router = useRouter();
 
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
 
@@ -80,6 +83,36 @@ export function BuyNowDialog() {
 
 		return formatPrice(totalInCents);
 	};
+
+	async function completeBuyNow(item: ItemWrapperProps['item']) {
+		try {
+			const response = await handleBuyNow(item.id);
+			const { payment_url } = response;
+
+			if (payment_url) {
+				toast.success('Order created successfully!', {
+					description: 'Please wait while we redirect you to the payment page...',
+					duration: 8000,
+				});
+
+				setTimeout(() => {
+					router.push(payment_url);
+				}, 3000);
+			} else {
+				toast.error('Oops!', {
+					description: 'Error creating order, please try again later.',
+					duration: 8000,
+				});
+			}
+		} catch (error) {
+			toast.error('Oops!', {
+				description: 'Error creating order, please try again later.',
+				duration: 8000,
+			});
+		} finally {
+			setIsBuyNowModalOpen(false);
+		}
+	}
 
 	return (
 		<Dialog open={isBuyNowModalOpen} onOpenChange={setIsBuyNowModalOpen}>
@@ -191,35 +224,7 @@ export function BuyNowDialog() {
 				<DialogFooter>
 					<Button
 						disabled={isLoadingPlatformsCosts || isLoadingShippingCost || !!errorShippingCost || !!errorPlatformsCosts}
-						onClick={async () => {
-							try {
-								const response = await handleBuyNow(item.id);
-								const { payment_url } = response;
-
-								if (payment_url) {
-									toast.success('Order created successfully!', {
-										description: 'Please wait while we redirect you to the payment page.',
-										duration: 8000,
-									});
-
-									setTimeout(() => {
-										window.open(payment_url, '_blank');
-									}, 3000);
-								} else {
-									toast.error('Oops!', {
-										description: 'Error creating order, please try again later.',
-										duration: 8000,
-									});
-								}
-							} catch (error) {
-								toast.error('Oops!', {
-									description: 'Error creating order, please try again later.',
-									duration: 8000,
-								});
-							} finally {
-								setIsBuyNowModalOpen(false);
-							}
-						}}>
+						onClick={() => completeBuyNow(item)}>
 						{!isCreatingOrder ? 'Order and Pay' : <Spinner size='small' className='text-white' />}
 					</Button>
 				</DialogFooter>
