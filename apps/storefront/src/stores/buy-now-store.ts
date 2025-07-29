@@ -10,7 +10,7 @@ export type OrderBuyNowStore = {
 	isCreatingOrder: boolean;
 	setIsBuyNowModalOpen: (isBuyNowModalOpen: boolean) => void;
 	setIsCreatingOrder: (isCreatingOrder: boolean) => void;
-	handleBuyNow: (item_id: number) => Promise<BuyNowResponse>;
+	handleBuyNow: (item_id: number, shipping_id: string, shipping_rate_id: string) => Promise<BuyNowResponse>;
 	resetBuyNowStore: () => void;
 };
 
@@ -30,7 +30,7 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 	setClientBuyNowOrderId: (id) => set({ clientBuyNowOrderId: id }),
 	setIsBuyNowModalOpen: (isBuyNowModalOpen) => set({ isBuyNowModalOpen }),
 	setIsCreatingOrder: (isCreatingOrder) => set({ isCreatingOrder }),
-	handleBuyNow: async (item_id: number): Promise<BuyNowResponse> => {
+	handleBuyNow: async (item_id: number, shipping_id: string, shipping_rate_id: string): Promise<BuyNowResponse> => {
 		set({
 			isCreatingOrder: true,
 		});
@@ -38,6 +38,8 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 		const responseCreateOrder = await client.item.auth.buy_now.$post({
 			json: {
 				item_id,
+				shipping_id,
+				shipping_rate_id,
 			},
 		});
 

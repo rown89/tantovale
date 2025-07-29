@@ -16,6 +16,7 @@ interface handleProposalProps {
 	item_id: number;
 	proposal_price: number;
 	sp_shipment_id: string;
+	sp_rate_id: string;
 	message: string;
 }
 
@@ -70,7 +71,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			});
 		}
 	},
-	handleProposal: async ({ item_id, proposal_price, sp_shipment_id, message }: handleProposalProps) => {
+	handleProposal: async ({ item_id, proposal_price, sp_shipment_id, sp_rate_id, message }: handleProposalProps) => {
 		set({
 			isCreatingProposal: true,
 		});
@@ -81,6 +82,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 					item_id,
 					proposal_price,
 					sp_shipment_id,
+					sp_rate_id,
 					message,
 				},
 			});
@@ -105,6 +107,7 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 				updated_at: data.proposal.updated_at,
 				chat_room_id: data.chatRoomId,
 				sp_shipment_id: data.proposal.sp_shipment_id,
+				sp_rate_id: data.proposal.sp_rate_id,
 			};
 
 			return orderProposalProps;

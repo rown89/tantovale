@@ -19,10 +19,10 @@ export default function UserSellingItemsComponent() {
 
 			<Tabs defaultValue='purchased' onValueChange={setActiveTab}>
 				<TabsList className='w-full'>
-					<TabsTrigger value='sold' className={activeTab === 'sold' ? 'font-bold' : ''}>
+					<TabsTrigger value='sold' className={activeTab === 'sold' ? 'font-bold underline' : ''}>
 						Sold
 					</TabsTrigger>
-					<TabsTrigger value='purchased' className={activeTab === 'purchased' ? 'font-bold' : ''}>
+					<TabsTrigger value='purchased' className={activeTab === 'purchased' ? 'font-bold underline' : ''}>
 						Purchased
 					</TabsTrigger>
 				</TabsList>

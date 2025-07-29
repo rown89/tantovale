@@ -411,12 +411,14 @@ export const itemRoute = createRouter()
 			'json',
 			z.object({
 				item_id: z.number(),
+				shipping_id: z.string(),
+				shipping_rate_id: z.string(),
 			}),
 		),
 		async (c) => {
 			const user = c.var.user;
 
-			const { item_id } = c.req.valid('json');
+			const { item_id, shipping_id, shipping_rate_id } = c.req.valid('json');
 
 			const { db } = createClient();
 
@@ -543,20 +545,23 @@ export const itemRoute = createRouter()
 						buyer_pp_id_guest = guestUser.id;
 					}
 
-					// Create a shipping label
+					// Check if this shipping_id is valid
 					const shipmentService = new ShipmentService();
-					const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, user.profile_id, user.email);
-					// Currently we only support one rate per item and we are getting automatically the first one
-					const selectedShipmentRate = rates[0];
+					const retrivedShipment = await shipmentService.getShipment(shipping_id);
 
-					const sp_shipment_id = selectedShipmentRate?.shipment;
+					if (!retrivedShipment) {
+						return c.json({ error: 'Invalid shipping id' }, 400);
+					}
+
+					const selectedShipmentRate = retrivedShipment.rates.find((rate) => rate.objectId === shipping_rate_id);
+
+					if (!selectedShipmentRate) {
+						return c.json({ error: 'Failed to get the shipping rate or shipping price' }, 500);
+					}
+
 					const shipping_price = selectedShipmentRate?.amount
 						? formatPriceToCents(parseFloat(selectedShipmentRate.amount))
 						: 0;
-
-					if (!selectedShipmentRate || !sp_shipment_id || !shipping_price) {
-						return c.json({ error: 'Failed to generate a label preview' }, 500);
-					}
 
 					// Calculate platform charge amount
 					const { platform_charge_amount } = await calculatePlatformCosts(
@@ -623,7 +628,8 @@ export const itemRoute = createRouter()
 					// Store initial Shipping data
 					await tx.insert(shippings).values({
 						order_id: newOrder.id,
-						sp_shipment_id,
+						sp_shipment_id: shipping_id,
+						sp_rate_id: selectedShipmentRate.objectId,
 						sp_price: shipping_price,
 					});
 

@@ -25,6 +25,7 @@ export const orders_proposals = pgTable(
 		platform_charge: integer('platform_charge').notNull(),
 		// Shippo shipment ID
 		sp_shipment_id: text('sp_shipment_id').notNull(),
+		sp_rate_id: text('sp_rate_id').notNull(),
 		status: ordersProposalStatusEnum('status').notNull().default(ORDER_PROPOSAL_PHASES.pending),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

@@ -1,5 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, desc, not } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { zValidator } from '@hono/zod-validator';
+import z from 'zod/v4';
 
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
@@ -16,10 +18,11 @@ import {
 	entityTrustapTransactions,
 } from '#db-schema';
 import { authPath, environment } from '#utils/constants';
-import { ORDER_PHASES } from '#database/schemas/enumerated_values';
+import { itemStatus, ORDER_PHASES } from '#database/schemas/enumerated_values';
 import { entityPlatformTransactions } from '#database/schemas/entity_platform_transactions';
 
 export const ordersRoute = createRouter()
+	// Buyer view purchased orders
 	.get(`${authPath}/purchased/:status`, authMiddleware, async (c) => {
 		const user = c.var.user;
 
@@ -39,7 +42,7 @@ export const ordersRoute = createRouter()
 		}
 
 		const userOrders = await db
-			.select({
+			.selectDistinctOn([orders.id], {
 				orders: {
 					id: orders.id,
 					status: orders.status,
@@ -87,11 +90,15 @@ export const ordersRoute = createRouter()
 			.innerJoin(shippings, eq(shippings.order_id, orders.id))
 			.innerJoin(entityPlatformTransactions, eq(entityPlatformTransactions.entityId, orders.id))
 			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
-			.where(and(...whereConditions));
+			.where(and(...whereConditions))
+			.orderBy(
+				orders.id,
+				desc(entityPlatformTransactions.created_at),
+				desc(entityTrustapTransactions.created_at),
+				desc(orders.created_at),
+			);
 
-		if (!userOrders.length) {
-			return c.json([], 200);
-		}
+		if (!userOrders.length) return c.json([], 200);
 
 		const orderList = userOrders.map((order) => {
 			const id = order.orders.id;
@@ -133,13 +140,12 @@ export const ordersRoute = createRouter()
 				created_at,
 			};
 
-			console.log('order_shape', order_shape);
-
 			return order_shape;
 		});
 
 		return c.json(orderList, 200);
 	})
+	// Seller view sold orders
 	.get(`${authPath}/sold/:status`, authMiddleware, async (c) => {
 		const user = c.var.user;
 
@@ -151,7 +157,11 @@ export const ordersRoute = createRouter()
 		const provinceAlias = alias(cities, 'province');
 
 		// Build where conditions dynamically
-		const whereConditions = [eq(orders.seller_id, user.profile_id), eq(items.status, 'sold')];
+		const whereConditions = [
+			eq(orders.seller_id, user.profile_id),
+			not(eq(orders.status, ORDER_PHASES.PAYMENT_PENDING)),
+			eq(items.status, itemStatus.SOLD),
+		];
 
 		// Add status filter if not 'all' and not undefined
 		if (status !== 'all' && status) {
@@ -159,7 +169,7 @@ export const ordersRoute = createRouter()
 		}
 
 		const userOrders = await db
-			.select({
+			.selectDistinctOn([orders.id], {
 				orders: {
 					id: orders.id,
 					status: orders.status,
@@ -207,7 +217,13 @@ export const ordersRoute = createRouter()
 			.innerJoin(shippings, eq(shippings.order_id, orders.id))
 			.innerJoin(entityPlatformTransactions, eq(entityPlatformTransactions.entityId, orders.id))
 			.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
-			.where(and(...whereConditions));
+			.where(and(...whereConditions))
+			.orderBy(
+				orders.id,
+				desc(entityPlatformTransactions.created_at),
+				desc(entityTrustapTransactions.created_at),
+				desc(orders.created_at),
+			);
 
 		if (!userOrders.length) {
 			return c.json([], 200);
@@ -258,6 +274,94 @@ export const ordersRoute = createRouter()
 
 		return c.json(orderList, 200);
 	})
+	// Buyer confirm order shipment delivery is complete
+	.post(
+		`${authPath}/buyer/confirm_shipment`,
+		authMiddleware,
+		zValidator(
+			'json',
+			z.object({
+				order_id: z.number(),
+			}),
+		),
+		async (c) => {
+			const user = c.var.user;
+			const { order_id } = c.req.valid('json');
+
+			const { db } = createClient();
+
+			db.transaction(async (tx) => {
+				// Get transaction id from order
+				const [order] = await tx
+					.select({
+						transaction_id: entityTrustapTransactions.transactionId,
+						item_id: items.id,
+					})
+					.from(orders)
+					.where(
+						and(
+							eq(orders.id, order_id),
+							eq(orders.status, ORDER_PHASES.PAYMENT_CONFIRMED),
+							eq(orders.buyer_id, user.profile_id),
+						),
+					)
+					.innerJoin(entityTrustapTransactions, eq(entityTrustapTransactions.entityId, orders.id))
+					.innerJoin(items, eq(items.id, orders.item_id));
+
+				if (!order) {
+					return c.json({ error: 'Order not found' }, 404);
+				}
+
+				// Check if profile has a full payment provider id
+				const [profile] = await tx
+					.select({
+						payment_provider_id_full: profiles.payment_provider_id_full,
+					})
+					.from(profiles)
+					.where(eq(profiles.id, user.profile_id));
+
+				// If profile has a full payment provider id, confirm delivery with full buyer
+				if (profile?.payment_provider_id_full) {
+					await fetch(`https://dev.stage.trustap.com/api/v1/transactions/${order.transaction_id}/confirm_delivery`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Basic ${Buffer.from(`${environment.PAYMENT_PROVIDER_API_URL}:`).toString('base64')}`,
+						},
+					});
+				} else {
+					// Else confirm delivery with guest buyer
+					await fetch(
+						`https://dev.stage.trustap.com/api/v1/transactions/${order.transaction_id}/confirm_delivery_with_guest_buyer`,
+						{
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								Authorization: `Basic ${Buffer.from(`${environment.PAYMENT_PROVIDER_API_URL}:`).toString('base64')}`,
+							},
+						},
+					);
+				}
+
+				// Update order status
+				await tx
+					.update(orders)
+					.set({
+						status: ORDER_PHASES.COMPLETED,
+					})
+					.where(eq(orders.id, order_id));
+
+				// Update item status
+				await tx
+					.update(items)
+					.set({
+						status: itemStatus.SOLD,
+					})
+					.where(eq(items.id, order.item_id));
+			});
+		},
+	)
+	// Get specific order by id
 	.get(`${authPath}/:id`, authMiddleware, async (c) => {
 		const { db } = createClient();
 

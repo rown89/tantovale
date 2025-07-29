@@ -23,6 +23,7 @@ export const shippings = pgTable(
 		 * Shippo shipment Label ID
 		 * This id comes after the buyer has paid for the order
 		 */
+		sp_rate_id: text('sp_rate_id').notNull(),
 		sp_shipment_label_id: text('sp_shipment_label_id'),
 		sp_price: integer('sp_price').notNull(),
 		tracking_number: text('tracking_number'),

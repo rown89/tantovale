@@ -9,6 +9,7 @@ import { entityTrustapTransactions, orders, chat_rooms, users, items, shippings 
 import { sendOrderPaidNotificationBuyer, sendOrderPaidNotificationSeller } from '#mailer/index';
 import { ORDER_PHASES } from '#utils/order-phases';
 import { ShipmentService } from '../shipment-provider/shipment.service';
+import { itemStatus } from '#database/schemas/enumerated_values';
 
 // Trustap event codes (Online transaction events)
 const TrustapEventCode = z.enum([
@@ -93,6 +94,7 @@ export const webhooksRoute = createRouter()
 						id: orders.id,
 						item_title: items.title,
 						sp_shipment_id: shippings.sp_shipment_id,
+						sp_shipment_rate_id: shippings.sp_rate_id,
 						buyer_id: orders.buyer_id,
 						seller_id: orders.seller_id,
 						item_id: orders.item_id,
@@ -147,17 +149,27 @@ export const webhooksRoute = createRouter()
 						 * Generate the Shipment Label.
 						 * I'm retrieving the rate from the order with the Shippo shipment id (sp_shipment_id) and generate the label.
 						 */
-						const shipmentLabel = await shipmentService.generateShipmentLabel(order.sp_shipment_id, order.id);
+						const shipmentLabel = await shipmentService.generateShipmentLabel(order.sp_shipment_rate_id, order.id);
 
 						if (!shipmentLabel) {
 							throw new Error('Failed to generate shipment label');
 						}
 
-						// Update the order related shipping with the shipment label ID
+						// Update related shipping with the shipment label ID
 						await tx
 							.update(shippings)
-							.set({ sp_shipment_label_id: shipmentLabel.objectId })
+							.set({
+								sp_shipment_label_id: shipmentLabel.objectId,
+								tracking_number: shipmentLabel.trackingNumber,
+								tracking_url: shipmentLabel.trackingUrlProvider,
+							})
 							.where(eq(orders.id, order.id));
+
+						// update the item status
+						await tx.update(items).set({
+							status: itemStatus.SOLD,
+							updated_at: new Date(),
+						});
 
 						// Send email to the buyer
 						await sendOrderPaidNotificationBuyer({

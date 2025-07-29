@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -25,13 +25,16 @@ import { Button } from '@workspace/ui/components/button';
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
 
 export default function PurchasedOrdersComponent() {
+	const router = useRouter();
+	const queryClient = useQueryClient();
+
 	const [statusFilter, setStatusFilter] = useState<(typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all'>('all');
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
-	const router = useRouter();
-
 	const [isCancelOrderDialogOpen, setIsCancelOrderDialogOpen] = useState(false);
 	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
+	const [isConfirmShipmentDialogOpen, setIsConfirmShipmentDialogOpen] = useState(false);
+	const [isRequestAssistanceDialogOpen, setIsRequestAssistanceDialogOpen] = useState(false);
 
 	const {
 		data: orders = [],
@@ -61,6 +64,35 @@ export default function PurchasedOrdersComponent() {
 		},
 	});
 
+	const { mutate: confirmShipment, isPending: isConfirmShipmentPending } = useMutation({
+		mutationFn: async (order: OrderType) => {
+			const response = await client.orders.auth.buyer.confirm_shipment.$post({
+				json: {
+					order_id: order.id,
+				},
+			});
+
+			if (!response.ok) {
+				toast.error('Error confirming shipment', {
+					description: 'Please try again later.',
+					duration: 8000,
+				});
+
+				return;
+			} else {
+				toast.success('Shipment confirmed', {
+					description: 'The shipment has been confirmed.',
+					duration: 8000,
+				});
+
+				queryClient.invalidateQueries({ queryKey: ['orders'] });
+			}
+		},
+		onSuccess: () => {
+			setIsConfirmShipmentDialogOpen(false);
+		},
+	});
+
 	type OrderType = (typeof orders)[number];
 
 	const handleCompletePayment = (order: OrderType) => {
@@ -69,9 +101,8 @@ export default function PurchasedOrdersComponent() {
 		router.push(order.buyer.payment_url);
 	};
 
-	const handleShipping = (order: OrderType) => {
+	const viewShipping = (order: OrderType) => {
 		setSelectedOrder(order);
-
 		setIsShippingDialogOpen(true);
 	};
 
@@ -98,8 +129,14 @@ export default function PurchasedOrdersComponent() {
 		setIsCancelOrderDialogOpen(true);
 	};
 
+	const handleConfirmShipment = (order: OrderType) => {
+		console.log('confirm shipment', order);
+		setIsConfirmShipmentDialogOpen(true);
+	};
+
 	const handleRequestAssistance = (order: OrderType) => {
 		console.log('request assistance', order);
+		setIsRequestAssistanceDialogOpen(true);
 	};
 
 	const ordersArePrintable = orders.length > 0 && !isOrdersLoading && !isOrdersError;
@@ -145,7 +182,8 @@ export default function PurchasedOrdersComponent() {
 							onCompletePayment={() => handleCompletePayment(order)}
 							onCancel={() => handleCancel(order)}
 							onRequestAssistance={() => handleRequestAssistance(order)}
-							onViewShipment={() => handleShipping(order)}
+							onViewShipment={() => viewShipping(order)}
+							onConfirmShipment={() => handleConfirmShipment(order)}
 						/>
 					))}
 			</div>
@@ -153,6 +191,33 @@ export default function PurchasedOrdersComponent() {
 			{ordersArePrintable && (
 				<>
 					{/* TODO: Add payment dialog or redirect to payment page */}
+
+					{/* Confirm Shipment Dialog */}
+					<Dialog
+						open={isConfirmShipmentDialogOpen}
+						onOpenChange={setIsConfirmShipmentDialogOpen}
+						modal={!isConfirmShipmentPending}>
+						<DialogContent>
+							<DialogClose />
+							<DialogHeader>
+								<DialogTitle>Confirm Shipment</DialogTitle>
+								<DialogDescription>
+									Are you sure you want to confirm the shipment for this order? <br />
+									This will mark the order as completed and cannot be undone.
+								</DialogDescription>
+							</DialogHeader>
+							<DialogFooter>
+								<Button
+									disabled={isConfirmShipmentPending}
+									onClick={() => {
+										if (selectedOrder) confirmShipment(selectedOrder);
+									}}
+									variant='default'>
+									{isConfirmShipmentPending ? 'Confirming...' : 'Confirm'}
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 
 					{/* Cancel Order Dialog */}
 					<Dialog open={isCancelOrderDialogOpen} onOpenChange={setIsCancelOrderDialogOpen}>
@@ -173,13 +238,19 @@ export default function PurchasedOrdersComponent() {
 						</DialogContent>
 					</Dialog>
 
-					{/* Shipping Dialog */}
-					<ShippingDialog
-						isOpen={isShippingDialogOpen}
-						setIsOpen={setIsShippingDialogOpen}
-						order={selectedOrder}
-						onShippingComplete={completeShipping}
-					/>
+					{/* View Shipment Dialog */}
+					<ShippingDialog isOpen={isShippingDialogOpen} setIsOpen={setIsShippingDialogOpen} order={selectedOrder} />
+
+					{/* Request Assistance Dialog */}
+					<Dialog open={isRequestAssistanceDialogOpen} onOpenChange={setIsRequestAssistanceDialogOpen}>
+						<DialogContent>
+							<DialogClose />
+							<DialogHeader>
+								<DialogTitle>Request Assistance</DialogTitle>
+							</DialogHeader>
+							<DialogDescription>Are you sure you want to request assistance for this order?</DialogDescription>
+						</DialogContent>
+					</Dialog>
 				</>
 			)}
 		</div>

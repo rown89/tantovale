@@ -1,11 +1,10 @@
 'use client';
 
-import { Button } from '@workspace/ui/components/button';
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from '@workspace/ui/components/dialog';
@@ -14,30 +13,21 @@ export function ShippingDialog({
 	isOpen,
 	setIsOpen,
 	order,
-	onShippingComplete,
 }: {
 	isOpen: boolean;
 	setIsOpen: (open: boolean) => void;
 	order: any;
-	onShippingComplete: () => void;
 }) {
 	if (!order) return null;
 
 	return (
 		<Dialog open={isOpen} onOpenChange={setIsOpen}>
-			<DialogContent className='sm:max-w-[425px]'>
+			<DialogContent>
+				<DialogClose />
 				<DialogHeader>
-					<DialogTitle>Complete Shipping</DialogTitle>
-					<DialogDescription>Complete shipping for the order.</DialogDescription>
+					<DialogTitle>View Shipment</DialogTitle>
 				</DialogHeader>
-				<div className='grid gap-4 py-4'>
-					<p>
-						{order.item.title} - {order.item.id}
-					</p>
-				</div>
-				<DialogFooter>
-					<Button type='submit'>Save changes</Button>
-				</DialogFooter>
+				<DialogDescription>View the shipment for this order.</DialogDescription>
 			</DialogContent>
 		</Dialog>
 	);

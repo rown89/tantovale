@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Button } from '@workspace/ui/components/button';
-import { CreditCard, X, HelpCircle, Truck } from 'lucide-react';
+import { CreditCard, X, HelpCircle, Truck, Check } from 'lucide-react';
 import { enumeratedValues } from '@workspace/shared/server_bridge';
 
 const { ORDER_PHASES } = enumeratedValues;
@@ -15,6 +15,7 @@ interface OrderActionsProps {
 	onCancel?: () => void;
 	onRequestAssistance?: () => void;
 	onViewShipment?: () => void;
+	onConfirmShipment?: () => void;
 }
 
 export function OrderActions({
@@ -22,6 +23,7 @@ export function OrderActions({
 	onCompletePayment,
 	onCancel,
 	onRequestAssistance,
+	onConfirmShipment,
 	onViewShipment,
 }: OrderActionsProps) {
 	const getActions = (status: status) => {
@@ -29,7 +31,7 @@ export function OrderActions({
 			case ORDER_PHASES.PAYMENT_PENDING:
 				return [
 					{
-						label: 'Cancel',
+						label: 'Delete Order',
 						icon: X,
 						onClick: onCancel,
 						variant: 'destructive' as const,
@@ -81,6 +83,12 @@ export function OrderActions({
 						icon: Truck,
 						onClick: onViewShipment,
 						variant: 'outline' as const,
+					},
+					{
+						label: 'Confirm Delivery',
+						icon: Check,
+						onClick: onConfirmShipment,
+						variant: 'default' as const,
 					},
 				];
 

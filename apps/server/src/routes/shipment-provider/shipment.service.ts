@@ -284,22 +284,17 @@ export class ShipmentService {
 	/**
 	 * Generate a shipment label
 	 *
-	 * @param shipmentId - The ID of the shipment to generate a shipment label.
-	 * @param orderId - The ID of the order to generate a shipment label.
+	 * @param rateId - The ID of the choosen rate
+	 * @param orderId - The ID of the order
 	 * @returns Promise<Transaction> - The transaction object
 	 */
-	async generateShipmentLabel(shipmentId: string, orderId: number) {
-		const shipment = await this.getShipment(shipmentId);
-
-		if (!shipment || !shipment.rates?.[0]?.objectId) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_NOT_FOUND);
-		}
-
+	async generateShipmentLabel(rateId: string, orderId: number) {
 		const shipmentLabel = await transactionsCreate(shippoClient, {
 			async: false,
-			metadata: `Order ID #${orderId}`,
-			// Currently we only support one rate per item and we are getting automatically the first one
-			rate: shipment.rates?.[0]?.objectId,
+			labelFileType: 'PDF',
+			metadata: `order id ${orderId}`,
+			order: orderId.toString(),
+			rate: rateId,
 		});
 
 		if (!shipmentLabel.ok) {

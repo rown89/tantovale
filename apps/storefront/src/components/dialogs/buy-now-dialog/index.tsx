@@ -2,7 +2,7 @@
 
 import { useAuth } from '#providers/auth-providers';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
-import { getShippingCost } from '#queries/get-shipping-cost';
+import { getShippingRates } from '#queries/get-shipping-rates';
 import useTantovaleStore from '#stores';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -34,17 +34,17 @@ export function BuyNowDialog() {
 	const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
 
 	const {
-		data: shippingCost,
-		isLoading: isLoadingShippingCost,
-		error: errorShippingCost,
+		data: shippingRates,
+		isLoading: isLoadingshippingRates,
+		error: errorshippingRates,
 	} = useQuery({
 		queryKey: ['shipping_cost', item?.id],
 		queryFn: async () => {
 			if (!item) return null;
+			// getShippingRates automatically gets theonly support first rate first shipping rate
+			const shippingRates = await getShippingRates(item.id);
 
-			const shippingCost = await getShippingCost(item.id);
-
-			return shippingCost;
+			return shippingRates;
 		},
 		enabled: isBuyNowModalOpen && hasMandatoryArguments,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
@@ -55,38 +55,46 @@ export function BuyNowDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', shippingCost, item?.id],
+		queryKey: ['platforms_costs', shippingRates, item?.id],
 		queryFn: async () => {
 			if (!item) return null;
 
-			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
+			const shippingRatesValue = shippingRates?.amount ? formatPriceToCents(shippingRates.amount) : 0;
 
-			const platformsCosts = await getPlatformsCosts(item.price, shippingCostValue);
+			const platformsCosts = await getPlatformsCosts(item.price, shippingRatesValue);
 
 			return platformsCosts;
 		},
-		enabled: isBuyNowModalOpen && hasMandatoryArguments && !!shippingCost,
+		enabled: isBuyNowModalOpen && hasMandatoryArguments && !!shippingRates,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
 	if (!item) return null;
 
 	const getTotalAmount = () => {
-		if (!platformsCosts || !shippingCost) return 0;
+		if (!platformsCosts || !shippingRates) return 0;
 
 		// Ensure all values are numbers (in cents)
 		const itemPriceInCents = Number(item.price);
-		const shippingCostInCents = formatPriceToCents(Number(shippingCost.amount));
+		const shippingRatesInCents = formatPriceToCents(Number(shippingRates.amount));
 		const easyPayCharge = Number(platformsCosts.payment_provider_charge) + Number(platformsCosts.platform_charge);
 
-		const totalInCents = itemPriceInCents + easyPayCharge + shippingCostInCents;
+		const totalInCents = itemPriceInCents + easyPayCharge + shippingRatesInCents;
 
 		return formatPrice(totalInCents);
 	};
 
 	async function completeBuyNow(item: ItemWrapperProps['item']) {
+		if (!shippingRates?.shipment_id) {
+			toast.error('Oops!', {
+				description: 'Error creating order, please try again later.',
+				duration: 8000,
+			});
+			return;
+		}
+
 		try {
-			const response = await handleBuyNow(item.id);
+			const response = await handleBuyNow(item.id, shippingRates?.shipment_id, shippingRates?.rate_id);
 			const { payment_url } = response;
 
 			if (payment_url) {
@@ -138,10 +146,10 @@ export function BuyNowDialog() {
 					<div className='my-2 flex flex-col gap-1'>
 						<div className='flex justify-between gap-2'>
 							<Label>Shipping cost:</Label>{' '}
-							{isLoadingShippingCost ? (
+							{isLoadingshippingRates ? (
 								<Spinner size='small' />
-							) : shippingCost?.amount ? (
-								<p className='text-sm font-semibold'>€{shippingCost.amount}</p>
+							) : shippingRates?.amount ? (
+								<p className='text-sm font-semibold'>€{shippingRates.amount}</p>
 							) : (
 								<p className='text-red-500'>€ --</p>
 							)}
@@ -149,13 +157,13 @@ export function BuyNowDialog() {
 
 						{isLoadingPlatformsCosts ? (
 							'---'
-						) : errorShippingCost ? (
+						) : errorshippingRates ? (
 							<Label className='text-sm text-red-500'>
 								There was an error retrieving the shipping cost. Please verify your address or contact the seller to
 								confirm their address details.
 							</Label>
 						) : (
-							shippingCost && (
+							shippingRates && (
 								<Label className='text-muted-foreground/70 text-sm'>
 									Shipping is calculated based on your and item location. It's fixed and excluded from this proposal
 									price.
@@ -223,7 +231,9 @@ export function BuyNowDialog() {
 				</div>
 				<DialogFooter>
 					<Button
-						disabled={isLoadingPlatformsCosts || isLoadingShippingCost || !!errorShippingCost || !!errorPlatformsCosts}
+						disabled={
+							isLoadingPlatformsCosts || isLoadingshippingRates || !!errorshippingRates || !!errorPlatformsCosts
+						}
 						onClick={() => completeBuyNow(item)}>
 						{!isCreatingOrder ? 'Order and Pay' : <Spinner size='small' className='text-white' />}
 					</Button>

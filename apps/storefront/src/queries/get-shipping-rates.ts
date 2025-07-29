@@ -11,7 +11,7 @@ export const getShippingCarriers = async (): Promise<CarrierAccountWithExtraInfo
 	return activeCarriers;
 };
 
-export const getShippingCost = async (item_id: number) => {
+export const getShippingRates = async (item_id: number) => {
 	const ratesResponse = await client.shipment_provider.auth.calculate_shipment_cost.$post({
 		json: {
 			item_id,

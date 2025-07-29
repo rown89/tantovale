@@ -46,7 +46,7 @@ export const ordersProposalsRoute = createRouter()
 	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
 		const user = c.var.user;
 
-		const { item_id, proposal_price, sp_shipment_id, message } = c.req.valid('json');
+		const { item_id, proposal_price, sp_shipment_id, sp_rate_id, message } = c.req.valid('json');
 
 		const { db } = createClient();
 
@@ -205,6 +205,7 @@ export const ordersProposalsRoute = createRouter()
 						payment_provider_charge,
 						platform_charge: platform_charge_amount,
 						sp_shipment_id,
+						sp_rate_id,
 						original_price: item.price,
 					})
 					.returning();
@@ -356,6 +357,7 @@ export const ordersProposalsRoute = createRouter()
 						proposal_price: orders_proposals.proposal_price,
 						platform_charge: orders_proposals.platform_charge,
 						sp_shipment_id: orders_proposals.sp_shipment_id,
+						sp_rate_id: orders_proposals.sp_rate_id,
 					})
 					.from(orders_proposals)
 					.where(and(eq(orders_proposals.id, id), eq(orders_proposals.status, pending)))
@@ -506,6 +508,7 @@ export const ordersProposalsRoute = createRouter()
 						order_id: newOrder.id,
 						item_id,
 						sp_shipment_id: existingProposal.sp_shipment_id,
+						sp_rate_id: existingProposal.sp_rate_id,
 						sp_price: shipping_price,
 					});
 

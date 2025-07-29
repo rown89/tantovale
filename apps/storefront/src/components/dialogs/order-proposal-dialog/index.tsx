@@ -4,6 +4,7 @@ import { z } from 'zod/v4';
 import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -26,8 +27,7 @@ import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
-import { getShippingCost } from '#queries/get-shipping-cost';
-import Link from 'next/link';
+import { getShippingRates } from '#queries/get-shipping-rates';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
@@ -39,6 +39,7 @@ export function ProposalDialog() {
 		proposal_price: z
 			.number()
 			.min(0.01)
+			// item price should be at least 1 cent less than the item price
 			.max(item?.price ? formatPrice(item?.price - 1) : 0),
 	});
 
@@ -48,6 +49,7 @@ export function ProposalDialog() {
 			proposal_price: !item?.price ? 0 : formatPrice(item.price - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
 			sp_shipment_id: '',
+			sp_rate_id: '',
 		},
 		validators: {
 			onSubmit: formSchema,
@@ -64,6 +66,7 @@ export function ProposalDialog() {
 					item_id,
 					proposal_price,
 					sp_shipment_id: value.sp_shipment_id,
+					sp_rate_id: value.sp_rate_id,
 					message,
 				});
 
@@ -92,21 +95,22 @@ export function ProposalDialog() {
 	const hasMandatoryArguments = userIsNotSeller && !!item && !!item?.id && !!item?.price;
 
 	const {
-		data: shippingCost,
-		isLoading: isLoadingShippingCost,
-		error: errorShippingCost,
+		data: shippingRates,
+		isLoading: isLoadingShippingRates,
+		error: errorshippingRates,
 	} = useQuery({
 		queryKey: ['shipping_cost', item?.id],
 		queryFn: async () => {
 			if (!item) return null;
 
-			const shippingCost = await getShippingCost(item.id);
+			const shippingRates = await getShippingRates(item.id);
 
-			if (shippingCost?.shipment_label_id) {
-				form.setFieldValue('sp_shipment_id', shippingCost.shipment_label_id);
+			if (shippingRates?.shipment_id) {
+				form.setFieldValue('sp_shipment_id', shippingRates.shipment_id);
+				form.setFieldValue('sp_rate_id', shippingRates.rate_id);
 			}
 
-			return shippingCost ?? null;
+			return shippingRates ?? null;
 		},
 		enabled: isProposalModalOpen && hasMandatoryArguments,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
@@ -117,29 +121,29 @@ export function ProposalDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', formPrice, shippingCost, item?.id],
+		queryKey: ['platforms_costs', formPrice, shippingRates, item?.id],
 		queryFn: async () => {
-			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
+			const shippingRatesValue = shippingRates?.amount ? formatPriceToCents(shippingRates.amount) : 0;
 			const totalPrice = formatPriceToCents(formPrice);
 
-			const platformsCosts = await getPlatformsCosts(totalPrice, shippingCostValue);
+			const platformsCosts = await getPlatformsCosts(totalPrice, shippingRatesValue);
 
 			return platformsCosts;
 		},
-		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingCost,
+		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingRates,
 		staleTime: 1000 * 60 * 60 * 24, // 24 hours
 	});
 
 	if (!item) return null;
 
 	const getTotalAmount = () => {
-		if (!platformsCosts || !shippingCost) return 0;
+		if (!platformsCosts || !shippingRates) return 0;
 
 		const itemPriceInCents = Number(formatPriceToCents(formPrice) || item.price);
-		const shippingCostInCents = formatPriceToCents(Number(shippingCost.amount));
+		const shippingRatesInCents = formatPriceToCents(Number(shippingRates.amount));
 		const easyPayCharge = Number(platformsCosts.payment_provider_charge) + Number(platformsCosts.platform_charge);
 
-		const totalInCents = itemPriceInCents + easyPayCharge + shippingCostInCents;
+		const totalInCents = itemPriceInCents + easyPayCharge + shippingRatesInCents;
 
 		return formatPrice(totalInCents);
 	};
@@ -213,10 +217,10 @@ export function ProposalDialog() {
 						<div id='shipping-cost' className='mb-2 flex flex-col gap-1'>
 							<div className='flex justify-between gap-2'>
 								<Label>Shipping cost:</Label>{' '}
-								{isLoadingShippingCost ? (
+								{isLoadingShippingRates ? (
 									<Spinner size='small' />
-								) : shippingCost?.amount ? (
-									<p className='text-sm'>{shippingCost.amount}€</p>
+								) : shippingRates?.amount ? (
+									<p className='text-sm'>{shippingRates.amount}€</p>
 								) : (
 									<p className='text-sm text-red-500'>-- €</p>
 								)}
@@ -224,13 +228,13 @@ export function ProposalDialog() {
 
 							{isLoadingPlatformsCosts ? (
 								'---'
-							) : errorShippingCost ? (
+							) : errorshippingRates ? (
 								<Label className='text-sm text-red-500'>
 									There was an error retrieving the shipping cost. Please verify your address or contact the seller to
 									confirm their address details.
 								</Label>
 							) : (
-								shippingCost && (
+								shippingRates && (
 									<Label className='text-muted-foreground/70 text-sm'>
 										Shipping is calculated based on your and item location. It's fixed and excluded from this proposal
 										price.
@@ -287,13 +291,13 @@ export function ProposalDialog() {
 						<div id='total-price' className='mb-2 flex flex-col items-end gap-1'>
 							<Label className='font-extrabold uppercase'>YOU PAY:</Label>
 							<span className='w-fit text-sm'>
-								{(errorPlatformsCosts || errorShippingCost) && !isLoadingPlatformsCosts && (
+								{(errorPlatformsCosts || errorshippingRates) && !isLoadingPlatformsCosts && (
 									<p className='text-sm text-red-500'>-- €</p>
 								)}
 
-								{(isLoadingPlatformsCosts || isLoadingShippingCost) &&
+								{(isLoadingPlatformsCosts || isLoadingShippingRates) &&
 								!errorPlatformsCosts &&
-								!errorShippingCost &&
+								!errorshippingRates &&
 								!platformsCosts?.platform_charge ? (
 									<Spinner size='small' />
 								) : (
@@ -349,8 +353,8 @@ export function ProposalDialog() {
 											isSubmitting ||
 											!canSubmit ||
 											isLoadingPlatformsCosts ||
-											isLoadingShippingCost ||
-											!shippingCost ||
+											isLoadingShippingRates ||
+											!shippingRates ||
 											!platformsCosts?.platform_charge ||
 											!!errorPlatformsCosts
 										}>

@@ -3,6 +3,7 @@
 import { Edit, Trash } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import z from 'zod/v4';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 import { Label } from '@workspace/ui/components/label';
@@ -51,6 +52,7 @@ type profileSchema = z.infer<typeof schema> & {
 };
 
 export default function UserInfoComponent({ profile }: { profile: profileSchema }) {
+	const router = useRouter();
 	const { profileForm, isSubmittingProfileForm } = useProfileInfoForm(profile);
 
 	const { userAddress } = useAddressesRetrieval();
@@ -91,7 +93,7 @@ export default function UserInfoComponent({ profile }: { profile: profileSchema 
 
 			return data;
 		},
-		enabled: !!profile.payment_provider_id_full,
+		enabled: !profile.payment_provider_id_full,
 	});
 
 	return (
@@ -124,7 +126,7 @@ export default function UserInfoComponent({ profile }: { profile: profileSchema 
 										className='w-fit'
 										onClick={() => {
 											if (paymentProviderConnectLink?.connect_link) {
-												window.location.href = paymentProviderConnectLink.connect_link;
+												router.push(paymentProviderConnectLink.connect_link);
 											}
 										}}>
 										Connect to Trustap
