@@ -1,6 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import { pgTable, integer, text, index, boolean } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { properties } from './properties';
 

@@ -1,6 +1,6 @@
 import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
 import { items } from './items';

@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, varchar, numeric, smallint, integer, index } from 'drizzle-orm/pg-core';
-import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
 import { countries } from './countries';
 import { states } from './states';

@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
-import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
 import { itemStatusEnum } from './enumerated_types';
 import { subcategories } from './subcategories';

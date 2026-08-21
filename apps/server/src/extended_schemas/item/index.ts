@@ -1,4 +1,4 @@
-import { createInsertSchema } from 'drizzle-zod';
+import { createInsertSchema } from 'drizzle-orm/zod';
 import { boolean, array, number, string, z } from 'zod/v4';
 
 import { items } from '@workspace/server/database';

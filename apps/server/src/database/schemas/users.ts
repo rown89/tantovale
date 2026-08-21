@@ -1,5 +1,5 @@
 import { pgTable, integer, varchar, timestamp, boolean } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 export const users = pgTable('users', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity().notNull(),

@@ -1,4 +1,4 @@
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 import { pgTable, integer, timestamp, date, boolean, varchar, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 

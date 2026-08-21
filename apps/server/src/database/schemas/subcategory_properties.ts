@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 import { pgTable, integer, boolean, uniqueIndex, timestamp } from 'drizzle-orm/pg-core';
 
 import { properties } from './properties';

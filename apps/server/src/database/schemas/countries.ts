@@ -1,6 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, varchar, numeric, json, integer } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { regions } from './regions';
 import { subRegions } from './subRegions';
