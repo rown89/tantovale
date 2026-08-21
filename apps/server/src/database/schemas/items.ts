@@ -1,4 +1,3 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
@@ -49,21 +48,6 @@ export const items = pgTable(
 		index('status_idx').on(table.status),
 	],
 );
-
-export const itemsRelations = relations(items, ({ one }) => ({
-	author: one(profiles, {
-		fields: [items.profile_id],
-		references: [profiles.id],
-	}),
-	subcategory: one(subcategories, {
-		fields: [items.subcategory_id],
-		references: [subcategories.id],
-	}),
-	address: one(addresses, {
-		fields: [items.address_id],
-		references: [addresses.id],
-	}),
-}));
 
 export type SelectItem = typeof items.$inferSelect;
 export type InsertItem = typeof items.$inferInsert;

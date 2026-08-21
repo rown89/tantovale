@@ -1,4 +1,4 @@
-import { relations, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { pgTable, integer, text, index, boolean } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
@@ -28,13 +28,6 @@ export const property_values = pgTable(
     )`,
 	],
 );
-
-export const property_valuesRelations = relations(property_values, ({ one }) => ({
-	property: one(properties, {
-		fields: [property_values.property_id],
-		references: [properties.id],
-	}),
-}));
 
 export type SelectPropertyValue = typeof property_values.$inferSelect;
 export type InsertPropertyValue = typeof property_values.$inferInsert;

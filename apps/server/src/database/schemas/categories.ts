@@ -1,8 +1,5 @@
 import { pgTable, integer, text, timestamp, boolean } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
-
-import { subcategories } from './subcategories';
 
 export const categories = pgTable('categories', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -13,10 +10,6 @@ export const categories = pgTable('categories', {
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const categoriesRelations = relations(categories, ({ many }) => ({
-	subcategories: many(subcategories),
-}));
 
 export type SelectCategory = typeof categories.$inferSelect;
 export type InsertCategory = typeof categories.$inferInsert;

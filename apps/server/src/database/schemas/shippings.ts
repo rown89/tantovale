@@ -1,4 +1,3 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, integer, timestamp, text, foreignKey } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
@@ -33,13 +32,6 @@ export const shippings = pgTable(
 		}),
 	],
 );
-
-export const shippingsRelations = relations(shippings, ({ one }) => ({
-	item: one(items, {
-		fields: [shippings.item_id],
-		references: [items.id],
-	}),
-}));
 
 export type SelectShipping = typeof shippings.$inferSelect;
 export type InsertShipping = typeof shippings.$inferInsert;

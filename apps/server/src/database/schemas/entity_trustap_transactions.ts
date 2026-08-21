@@ -1,6 +1,5 @@
 import { pgTable, integer, timestamp, text, boolean, varchar, foreignKey } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
-import { relations } from 'drizzle-orm';
 
 import { items } from './items';
 import { entityTrustapTransactionTypeEnum } from './enumerated_types';
@@ -37,13 +36,6 @@ export const entityTrustapTransactions = pgTable(
 		}),
 	],
 );
-
-export const entityTrustapTransactionsRelations = relations(entityTrustapTransactions, ({ one }) => ({
-	item: one(items, {
-		fields: [entityTrustapTransactions.entityId],
-		references: [items.id],
-	}),
-}));
 
 export type SelectEntityTrustapTransaction = typeof entityTrustapTransactions.$inferSelect;
 export type InsertEntityTrustapTransaction = typeof entityTrustapTransactions.$inferInsert;

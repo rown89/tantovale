@@ -1,10 +1,8 @@
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 import { pgTable, integer, timestamp, date, boolean, varchar, index } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 
 import { profileEnum, sexEnum } from './enumerated_types';
 import { users } from './users';
-import { cities } from './cities';
 
 export const profiles = pgTable(
 	'profiles',
@@ -28,11 +26,6 @@ export const profiles = pgTable(
 	},
 	(table) => [index('profiles_name_surname_idx').on(table.name, table.surname)],
 );
-
-export const profilesRelations = relations(profiles, ({ one }) => ({
-	user: one(users),
-	city: one(cities),
-}));
 
 export type SelectProfile = typeof profiles.$inferSelect;
 export type InsertProfile = typeof profiles.$inferInsert;

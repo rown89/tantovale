@@ -1,4 +1,3 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
@@ -42,17 +41,6 @@ export const orders_proposals = pgTable(
 		index('orders_proposals_status_idx').on(table.status),
 	],
 );
-
-export const orders_proposalsRelations = relations(orders_proposals, ({ one }) => ({
-	item: one(items, {
-		fields: [orders_proposals.item_id],
-		references: [items.id],
-	}),
-	profile: one(profiles, {
-		fields: [orders_proposals.profile_id],
-		references: [profiles.id],
-	}),
-}));
 
 export type SelectOrderProposal = typeof orders_proposals.$inferSelect;
 export type InsertOrderProposal = typeof orders_proposals.$inferInsert;

@@ -1,10 +1,8 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, varchar, numeric, json, integer } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { regions } from './regions';
 import { subRegions } from './subRegions';
-import { states } from './states';
 import { cities } from './cities';
 
 export const countries = pgTable('countries', {
@@ -38,19 +36,6 @@ export const countries = pgTable('countries', {
 	emoji: varchar('emoji', { length: 5 }), // Unicode emoji
 	emojiU: varchar('emoji_u', { length: 25 }), // Unicode sequence
 });
-
-export const countriesRelations = relations(countries, ({ one, many }) => ({
-	region: one(regions, {
-		fields: [countries.region_id],
-		references: [regions.id],
-	}),
-	subRegion: one(subRegions, {
-		fields: [countries.subregion_id],
-		references: [subRegions.id],
-	}),
-	states: many(states),
-	cities: many(cities),
-}));
 
 export type SelectCountry = typeof cities.$inferSelect;
 export type InsertCountry = typeof cities.$inferInsert;

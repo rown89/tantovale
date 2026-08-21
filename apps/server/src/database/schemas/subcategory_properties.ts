@@ -1,4 +1,3 @@
-import { relations } from 'drizzle-orm';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 import { pgTable, integer, boolean, uniqueIndex, timestamp } from 'drizzle-orm/pg-core';
 
@@ -33,17 +32,6 @@ export const subcategory_properties = pgTable(
 		uniqueIndex('unique_property_per_subcategory').on(table.property_id, table.subcategory_id),
 	],
 );
-
-export const subcategory_propertiesRelations = relations(subcategory_properties, ({ one }) => ({
-	property: one(properties, {
-		fields: [subcategory_properties.property_id],
-		references: [properties.id],
-	}),
-	subcategory: one(subcategories, {
-		fields: [subcategory_properties.subcategory_id],
-		references: [subcategories.id],
-	}),
-}));
 
 export type SelectSubcategoryProperty = typeof subcategory_properties.$inferSelect;
 export type InsertSubcategoryProperty = typeof subcategory_properties.$inferInsert;

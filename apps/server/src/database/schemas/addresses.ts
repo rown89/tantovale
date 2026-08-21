@@ -1,4 +1,3 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, integer, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
@@ -25,10 +24,6 @@ export const addresses = pgTable('addresses', {
 	created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const addressesRelations = relations(addresses, ({ many }) => ({
-	profile: many(profiles),
-}));
 
 export type SelectAddress = typeof addresses.$inferSelect;
 export type InsertAddress = typeof addresses.$inferInsert;

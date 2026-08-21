@@ -1,6 +1,5 @@
 import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
-import { relations } from 'drizzle-orm';
 
 import { profiles } from './profiles';
 import { addresses } from './addresses';
@@ -64,17 +63,6 @@ export const orders = pgTable(
 		index('orders_status_idx').on(table.status),
 	],
 );
-
-export const ordersRelations = relations(orders, ({ one }) => ({
-	buyer: one(profiles, {
-		fields: [orders.buyer_id],
-		references: [profiles.id],
-	}),
-	seller: one(profiles, {
-		fields: [orders.seller_id],
-		references: [profiles.id],
-	}),
-}));
 
 export type SelectOrder = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
