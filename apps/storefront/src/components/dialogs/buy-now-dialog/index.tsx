@@ -28,17 +28,19 @@ export function BuyNowDialog() {
 
 	const userIsNotSeller = !!user && !!item && user.profile_id !== item.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
+	const itemId = item?.id;
+	const itemPrice = item?.price;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', item?.id],
+		queryKey: ['shipping_cost', itemId],
 		queryFn: async () => {
-			if (!item) return null;
+			if (!itemId) return null;
 
-			const shippingCost = await getShippingCost(item.id);
+			const shippingCost = await getShippingCost(itemId);
 
 			return shippingCost;
 		},
@@ -51,13 +53,13 @@ export function BuyNowDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', shippingCost, item?.id],
+		queryKey: ['platforms_costs', shippingCost, itemId, itemPrice],
 		queryFn: async () => {
-			if (!item) return null;
+			if (!itemPrice) return null;
 
 			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
 
-			const platformsCosts = await getPlatformsCosts(item.price, shippingCostValue);
+			const platformsCosts = await getPlatformsCosts(itemPrice, shippingCostValue);
 
 			return platformsCosts;
 		},
@@ -74,8 +76,8 @@ export function BuyNowDialog() {
 				<DialogHeader>
 					<DialogTitle>Buy Now</DialogTitle>
 					<DialogDescription>
-						Please review the details before proceeding with the purchase. If you click on "Pay" an order will be
-						created and you will be redirected to the payment page.
+						Please review the details before proceeding with the purchase. If you click on &quot;Pay&quot; an order will
+						be created and you will be redirected to the payment page.
 					</DialogDescription>
 				</DialogHeader>
 				<div className='flex flex-col gap-8'>
@@ -102,8 +104,8 @@ export function BuyNowDialog() {
 						) : (
 							shippingCost && (
 								<Label className='text-muted-foreground/70 text-sm'>
-									Shipping is calculated based on your and item location. It's fixed and excluded from this proposal
-									price.
+									Shipping is calculated based on your and item location. It&apos;s fixed and excluded from this
+									proposal price.
 								</Label>
 							)
 						)}
@@ -171,7 +173,7 @@ export function BuyNowDialog() {
 										duration: 8000,
 									});
 								}
-							} catch (error) {
+							} catch {
 								toast.error('Oops!', {
 									description: 'Error creating order, please try again later.',
 									duration: 8000,

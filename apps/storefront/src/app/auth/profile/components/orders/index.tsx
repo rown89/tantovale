@@ -9,18 +9,14 @@ import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index'
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
-import { useAuth } from '#providers/auth-providers';
 
 export default function UserSellingItemsComponent() {
-	const [statusFilter, setStatusFilter] = useState<(typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all'>('all');
+	const statusFilter: (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all' = 'all';
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
 
-	const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
 
-	const { user } = useAuth();
-
-	const { data: orders = [], isLoading: isOrdersLoading } = useQuery({
+	const { data: orders = [] } = useQuery({
 		queryKey: ['orders', statusFilter],
 		queryFn: async () => {
 			const userOrderListResponse = await client.orders.auth.status[':status'].$get({
@@ -48,23 +44,11 @@ export default function UserSellingItemsComponent() {
 
 	const handleCompletePayment = (order: OrderType) => {
 		setSelectedOrder(order);
-		setIsPaymentDialogOpen(true);
 	};
 
 	const handleShipping = (order: OrderType) => {
 		setSelectedOrder(order);
 		setIsShippingDialogOpen(true);
-	};
-
-	// Update the completePayment function to use order status
-	const completePayment = () => {
-		if (selectedOrder) {
-			// Update the order status in the orders array
-			// Note: This would typically be handled by a server update
-			// and subsequent refetch of orders
-			setIsPaymentDialogOpen(false);
-			setSelectedOrder(null);
-		}
 	};
 
 	const completeShipping = () => {

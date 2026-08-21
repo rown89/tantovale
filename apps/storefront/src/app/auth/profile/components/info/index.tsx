@@ -33,17 +33,9 @@ import { useProfileInfoForm } from './use-profile-info';
 import { UserProfileSchema } from '@workspace/server/extended_schemas';
 import z from 'zod/v4';
 
-const schema = UserProfileSchema.pick({
-	name: true,
-	surname: true,
-	gender: true,
-	username: true,
-	email: true,
-});
+type ProfileSchema = Pick<z.infer<typeof UserProfileSchema>, 'name' | 'surname' | 'gender' | 'username' | 'email'>;
 
-type profileSchema = z.infer<typeof schema>;
-
-export default function UserInfoComponent({ profile }: { profile: profileSchema }) {
+export default function UserInfoComponent({ profile }: { profile: ProfileSchema }) {
 	const { profileForm, isSubmittingProfileForm } = useProfileInfoForm(profile);
 
 	const { userAddress } = useAddressesRetrieval();
@@ -255,7 +247,7 @@ export default function UserInfoComponent({ profile }: { profile: profileSchema 
 												{!activeStatus && (
 													<Dialog
 														open={deleteAddressStates[address.id] || false}
-														onOpenChange={(open) => {
+														onOpenChange={() => {
 															toggleDeleteAddress(address.id);
 														}}>
 														<DialogTrigger className='hover:text-accent flex items-center gap-2'>

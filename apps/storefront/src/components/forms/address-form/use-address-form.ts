@@ -65,12 +65,12 @@ export default function useAddressForm(onComplete?: (e?: { id: number }) => void
 			onSubmit: schema,
 		},
 		onSubmit: async ({ value }: { value: schemaType }) => {
-			if (value.mode === 'add') {
-				const { mode, ...rest } = value;
-				addAddress(rest);
+			const { mode, ...address } = value;
+
+			if (mode === 'add') {
+				addAddress(address);
 			} else {
-				const { mode, ...rest } = value;
-				updateAddress(rest);
+				updateAddress(address);
 			}
 		},
 	});
@@ -122,10 +122,10 @@ export default function useAddressForm(onComplete?: (e?: { id: number }) => void
 
 			return response.json();
 		},
-		onError: (error, variables) => {
+		onError: (error) => {
 			console.error('UpdateAddress mutation error:', error);
 		},
-		onSuccess: (data, variables) => {
+		onSuccess: (data) => {
 			console.log('UpdateAddress mutation success:', data);
 			invalidateAddresses();
 

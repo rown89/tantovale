@@ -16,7 +16,7 @@ export const getPlatformsCosts = async (price: number, shipping_price: number) =
 		const result = await response.json();
 
 		return result;
-	} catch (error) {
+	} catch {
 		return null;
 	}
 };

@@ -23,7 +23,7 @@ export interface UseItemFormProps {
 export function useHandleItemForm({ subcategory, subCatProperties, defaultValues }: UseItemFormProps) {
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	const { isManualShipping, isPickup, easyPay, setIsManualShipping, setIsPickup, setEasyPay } = useTantovaleStore();
+	const { isManualShipping, isPickup, setIsManualShipping, setIsPickup, setEasyPay } = useTantovaleStore();
 
 	const [selectedSubCategory, setSelectedSubCategory] = useState<Partial<Category> | undefined>(subcategory);
 	const [isSubmittingForm, setIsSubmittingForm] = useState(false);
@@ -68,7 +68,7 @@ export function useHandleItemForm({ subcategory, subCatProperties, defaultValues
 					const compressedImages = await Promise.all(
 						images.map(async (image) => {
 							try {
-								// @ts-ignore
+								// @ts-expect-error imageCompression accepts File values at runtime, but the form schema permits a wider image type.
 								return await imageCompression(image, compressionOptions);
 							} catch (error) {
 								console.error('Error compressing image:', error);

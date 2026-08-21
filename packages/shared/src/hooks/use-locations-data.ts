@@ -24,11 +24,7 @@ export function useLocationData({
 	const [cities, setCities] = useState<LocationTypes[]>([]);
 	const [provinces, setProvinces] = useState<LocationTypes[]>([]);
 
-	const {
-		data: locations,
-		isLoading: isLoadingLocations,
-		isError: isErrorLocations,
-	} = useQuery({
+	const { isLoading: isLoadingLocations, isError: isErrorLocations } = useQuery({
 		queryKey: [locationType, locationName, locationStateCode],
 		queryFn: async () => {
 			if (locationName && locationName?.length > 2) {

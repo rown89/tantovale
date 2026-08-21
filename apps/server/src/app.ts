@@ -41,7 +41,7 @@ configureOpenAPI(app);
 // Serve static files
 app.use('/*', serveStatic({ root: './dist' }));
 
-const apiRoutes = app
+export const apiRoutes = app
 	.route(`/addresses`, addressesRoute)
 	.route(`/categories`, categoriesRoute)
 	.route(`/chat`, chatRoute)

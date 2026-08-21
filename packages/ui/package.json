@@ -6,7 +6,8 @@
 	"type": "module",
 	"scripts": {
 		"shadcn": "npx shadcn@canary",
-		"lint": "eslint . --max-warnings 0"
+		"lint": "eslint . --max-warnings 0",
+		"typecheck": "tsc --noEmit"
 	},
 	"exports": {
 		"./globals.css": "./src/styles/globals.css",
@@ -64,6 +65,7 @@
 		"@types/react-dom": "19.0.3",
 		"autoprefixer": "^10.4.20",
 		"class-variance-authority": "^0.7.1",
+		"eslint": "^9.15.0",
 		"tailwindcss": "^4",
 		"typescript": "*"
 	}

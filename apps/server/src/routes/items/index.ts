@@ -42,7 +42,7 @@ export const itemsRoute = createRouter()
 		const params = await c.req.json();
 
 		const accessToken = getCookie(c, 'access_token');
-		let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+		const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 		const user_id = Number(payload.id);
 
 		if (!user_id) return c.json({ message: 'Invalid user id' }, 401);

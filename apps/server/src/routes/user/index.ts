@@ -1,14 +1,8 @@
-import { env } from 'hono/adapter';
-
 import { createRouter } from '../../lib/create-app';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { authPath } from '../../utils/constants';
 
 export const userRoute = createRouter().get(`/${authPath}`, authMiddleware, async (c) => {
-	const { ACCESS_TOKEN_SECRET } = env<{
-		ACCESS_TOKEN_SECRET: string;
-	}>(c);
-
 	const user = c.var.user;
 
 	try {

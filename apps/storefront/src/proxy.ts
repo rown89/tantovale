@@ -4,7 +4,7 @@ import { client } from '@workspace/server/client-rpc';
 
 const restrictedPaths = ['/auth'];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
 	const { nextUrl } = req;
 	const { pathname } = nextUrl;
 

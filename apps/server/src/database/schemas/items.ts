@@ -50,7 +50,7 @@ export const items = pgTable(
 	],
 );
 
-export const itemsRelations = relations(items, ({ one, many }) => ({
+export const itemsRelations = relations(items, ({ one }) => ({
 	author: one(profiles, {
 		fields: [items.profile_id],
 		references: [profiles.id],

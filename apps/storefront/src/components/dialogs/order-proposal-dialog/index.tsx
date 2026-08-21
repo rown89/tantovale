@@ -27,7 +27,6 @@ import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
 import { getShippingCost } from '#queries/get-shipping-cost';
-import { useEffect } from 'react';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
@@ -76,7 +75,7 @@ export function ProposalDialog() {
 						duration: 8000,
 					});
 				}
-			} catch (error) {
+			} catch {
 				toast.error('Failed to submit proposal :(', {
 					description: 'Please try again later.',
 					duration: 8000,
@@ -90,17 +89,18 @@ export function ProposalDialog() {
 
 	const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item && !!item?.id && !!item?.price;
+	const itemId = item?.id;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', item?.id],
+		queryKey: ['shipping_cost', itemId],
 		queryFn: async () => {
-			if (!item) return null;
+			if (!itemId) return null;
 
-			const shippingCost = await getShippingCost(item.id);
+			const shippingCost = await getShippingCost(itemId);
 
 			if (shippingCost?.shipment_label_id) {
 				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
@@ -220,8 +220,8 @@ export function ProposalDialog() {
 							) : (
 								shippingCost && (
 									<Label className='text-muted-foreground/70 text-sm'>
-										Shipping is calculated based on your and item location. It's fixed and excluded from this proposal
-										price.
+										Shipping is calculated based on your and item location. It&apos;s fixed and excluded from this
+										proposal price.
 									</Label>
 								)
 							)}
@@ -305,7 +305,7 @@ export function ProposalDialog() {
 								isDirty: formState.isDirty,
 							})}>
 							{(state) => {
-								const { canSubmit, isSubmitting, isDirty } = state;
+								const { canSubmit, isSubmitting } = state;
 								return (
 									<Button
 										type='submit'

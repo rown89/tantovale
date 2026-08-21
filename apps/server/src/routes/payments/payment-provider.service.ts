@@ -143,7 +143,7 @@ export class PaymentProviderService {
 	/**
 	 * Verify webhook signature (implement based on Trustap documentation)
 	 */
-	verifyWebhookSignature(payload: any, signature: string | undefined): boolean {
+	verifyWebhookSignature(payload: unknown, signature: string | undefined): boolean {
 		// TODO: Implement webhook signature verification based on Trustap documentation
 		// This is a placeholder - you should implement proper signature verification
 		if (!signature) {

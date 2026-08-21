@@ -74,11 +74,7 @@ export const shipmentProviderRoute = createRouter()
 				const shipmentService = new ShipmentService();
 
 				// Calculate shipping cost and get rates using the centralized function
-				const { cost: shippingCost, rates } = await shipmentService.calculateShippingCostWithRates(
-					item_id,
-					profile_id,
-					user.email,
-				);
+				const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, profile_id, user.email);
 
 				// exclude object_owner object from rates
 				const filteredRates = rates.map((rate) => {
@@ -96,7 +92,9 @@ export const shipmentProviderRoute = createRouter()
 
 				if (error instanceof Error) {
 					const errorMessage = error.message;
-					if (Object.values(ERROR_MESSAGES).includes(errorMessage as any)) {
+					if (
+						Object.values(ERROR_MESSAGES).includes(errorMessage as (typeof ERROR_MESSAGES)[keyof typeof ERROR_MESSAGES])
+					) {
 						return c.json({ message: errorMessage }, 400);
 					}
 				}
@@ -143,6 +141,11 @@ export const shipmentProviderRoute = createRouter()
 			parcels: [parcel],
 			async: false,
 		});
+
+		// Preserve the existing endpoint side effects and response contract until its label workflow is redesigned.
+		void rates;
+		void db;
+		void shipment;
 
 		return c.json({ rates: [] });
 	});

@@ -168,7 +168,7 @@ export default function MultiImageUpload({
 				fileInputRef.current.value = '';
 			}
 		},
-		[images, maxImages, maxSizeInMB, acceptedFileTypes, onImagesChange],
+		[images, maxImages, maxSizeInMB, acceptedFileTypes, fileInputRef, onImagesChange],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -390,7 +390,7 @@ function getFileNameFromUrl(url: string): string {
 		const filename = pathname.split('/').pop() || 'image';
 		// Remove any query parameters
 		return filename.split('?')[0] || 'image';
-	} catch (e) {
+	} catch {
 		return 'External image';
 	}
 }

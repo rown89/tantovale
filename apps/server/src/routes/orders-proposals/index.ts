@@ -1,4 +1,4 @@
-import { eq, and, count, or, inArray } from 'drizzle-orm';
+import { eq, and, count, inArray } from 'drizzle-orm';
 import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
@@ -654,8 +654,6 @@ export const ordersProposalsRoute = createRouter()
 		),
 		authMiddleware,
 		async (c) => {
-			const user = c.var.user;
-
 			const item_id = Number(c.req.param('item_id'));
 			const { status } = c.req.valid('query');
 

@@ -4,16 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { createClient } from '#database/index';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import {
-	items,
-	users,
-	property_values,
-	orders,
-	items_properties_values,
-	profiles,
-	addresses,
-	cities,
-} from '#db-schema';
+import { items, users, orders, profiles, addresses, cities } from '#db-schema';
 import { authPath } from '#utils/constants';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 

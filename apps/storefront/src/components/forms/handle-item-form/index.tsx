@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { File as NodeFile } from 'node:buffer';
 import { useField } from '@tanstack/react-form';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -37,7 +38,6 @@ import type { PropertyFormValue, HandleItemFormComponent } from './types';
 
 export default function HandleItemFormComponent({
 	subcategory,
-	formModel = 'create',
 	profileAddress,
 	defaultValues,
 }: HandleItemFormComponent) {
@@ -224,7 +224,7 @@ export default function HandleItemFormComponent({
 														maxImages={maxImages}
 														initialImages={images as unknown as File[]}
 														onImagesChange={(images) => {
-															if (images) handleChange(images as any);
+															if (images) handleChange(images as unknown as NodeFile[]);
 														}}
 													/>
 													<FieldInfo field={field} />

@@ -6,7 +6,7 @@ import { subcategories } from '../../database/schemas/schema';
 
 import type { AppBindings } from '../../lib/types';
 
-export const getSubcategories = async (c: Context<AppBindings>) => {
+export const getSubcategories = async () => {
 	const { db } = createClient();
 
 	const subcategories_ = await db

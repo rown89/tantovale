@@ -7,7 +7,7 @@ export function useAddressesRetrieval({ status }: { status?: 'active' | 'inactiv
 		isLoading: isUserAddressLoading,
 		isError: isUserAddressError,
 	} = useQuery({
-		queryKey: ['userAddress'],
+		queryKey: ['userAddress', status],
 		queryFn: async () => {
 			const addressesResponse = await client.addresses.auth.addresses_profile.$get();
 
@@ -21,7 +21,7 @@ export function useAddressesRetrieval({ status }: { status?: 'active' | 'inactiv
 				throw new Error(addresses.message);
 			}
 
-			return addresses;
+			return status ? addresses.filter((address) => address.status === status) : addresses;
 		},
 	});
 

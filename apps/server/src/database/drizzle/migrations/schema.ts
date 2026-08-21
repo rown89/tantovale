@@ -14,7 +14,6 @@ import {
 	date,
 	pgEnum,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 export const addressStatusEnum = pgEnum('address_status_enum', ['active', 'inactive', 'deleted']);
 export const chatMessageTypeEnum = pgEnum('chat_message_type_enum', ['text', 'proposal']);
@@ -48,16 +47,14 @@ export const transactionCurrencyEnum = pgEnum('transaction_currency_enum', [
 export const categories = pgTable(
 	'categories',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'categories_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'categories_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		name: text().notNull(),
 		slug: text().notNull(),
 		menuOrder: integer('menu_order').default(0).notNull(),
@@ -69,16 +66,14 @@ export const categories = pgTable(
 );
 
 export const items = pgTable('items', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'items_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'items_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	userId: integer('user_id').notNull(),
 	subcategoryId: integer('subcategory_id').notNull(),
 	addressId: integer('address_id').notNull(),
@@ -96,16 +91,14 @@ export const items = pgTable('items', {
 export const chatRooms = pgTable(
 	'chat_rooms',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'chat_rooms_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'chat_rooms_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		itemId: integer('item_id').notNull(),
 		buyerId: integer('buyer_id').notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -156,16 +149,14 @@ export const countries = pgTable('countries', {
 });
 
 export const itemsImages = pgTable('items_images', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'items_images_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'items_images_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	itemId: integer('item_id').notNull(),
 	url: text().notNull(),
 	orderPosition: integer('order_position').default(0).notNull(),
@@ -175,16 +166,14 @@ export const itemsImages = pgTable('items_images', {
 });
 
 export const itemsPropertiesValues = pgTable('items_properties_values', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'items_properties_values_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'items_properties_values_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	itemId: integer('item_id').notNull(),
 	propertyValueId: integer('property_value_id').notNull(),
 });
@@ -192,16 +181,14 @@ export const itemsPropertiesValues = pgTable('items_properties_values', {
 export const addresses = pgTable(
 	'addresses',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'addresses_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'addresses_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		profileId: integer('profile_id'),
 		streetAddress: text('street_address').notNull(),
 		cityId: integer('city_id').notNull(),
@@ -236,16 +223,14 @@ export const addresses = pgTable(
 );
 
 export const ordersItems = pgTable('orders_items', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'orders_items_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'orders_items_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	orderId: integer('order_id'),
 	itemId: integer('item_id'),
 	finishedPrice: integer('finished_price').notNull(),
@@ -255,16 +240,14 @@ export const ordersItems = pgTable('orders_items', {
 });
 
 export const orders = pgTable('orders', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'orders_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'orders_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	buyerId: integer('buyer_id'),
 	sellerId: integer('seller_id'),
 	createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
@@ -272,16 +255,14 @@ export const orders = pgTable('orders', {
 });
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'password_reset_tokens_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'password_reset_tokens_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	userId: integer('user_id').notNull(),
 	token: text().notNull(),
 	expiresAt: timestamp('expires_at', { mode: 'string' }).notNull(),
@@ -289,16 +270,14 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 });
 
 export const ordersProposals = pgTable('orders_proposals', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'orders_proposals_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'orders_proposals_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	itemId: integer('item_id'),
 	userId: integer('user_id'),
 	proposalPrice: integer('proposal_price').notNull(),
@@ -308,16 +287,14 @@ export const ordersProposals = pgTable('orders_proposals', {
 });
 
 export const propertyValues = pgTable('property_values', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'property_values_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'property_values_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	propertyId: integer('property_id').notNull(),
 	name: text().notNull(),
 	value: text(),
@@ -330,16 +307,14 @@ export const propertyValues = pgTable('property_values', {
 export const properties = pgTable(
 	'properties',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'properties_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'properties_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		name: text().notNull(),
 		slug: text().notNull(),
 		type: text().notNull(),
@@ -367,16 +342,14 @@ export const regions = pgTable('regions', {
 });
 
 export const shippingsOrders = pgTable('shippings_orders', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'shippings_orders_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'shippings_orders_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	shippingId: integer('shipping_id'),
 	orderId: integer('order_id'),
 	createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
@@ -384,16 +357,14 @@ export const shippingsOrders = pgTable('shippings_orders', {
 });
 
 export const shippings = pgTable('shippings', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'shippings_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'shippings_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	itemId: integer('item_id'),
 	shippingPrice: integer('shipping_price').notNull(),
 	trackingNumber: text('tracking_number'),
@@ -408,16 +379,14 @@ export const shippings = pgTable('shippings', {
 export const subcategories = pgTable(
 	'subcategories',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'subcategories_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'subcategories_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		name: text().notNull(),
 		slug: text().notNull(),
 		categoryId: integer('category_id').notNull(),
@@ -468,16 +437,14 @@ export const cities = pgTable(
 );
 
 export const subcategoryProperties = pgTable('subcategory_properties', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'subcategory_properties_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'subcategory_properties_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	propertyId: integer('property_id').notNull(),
 	subcategoryId: integer('subcategory_id').notNull(),
 	position: integer().default(0).notNull(),
@@ -497,16 +464,14 @@ export const subRegions = pgTable('sub_regions', {
 });
 
 export const userItemsFavorites = pgTable('user_items_favorites', {
-	id: integer()
-		.primaryKey()
-		.generatedAlwaysAsIdentity({
-			name: 'user_items_favorites_id_seq',
-			startWith: 1,
-			increment: 1,
-			minValue: 1,
-			maxValue: 2147483647,
-			cache: 1,
-		}),
+	id: integer().primaryKey().generatedAlwaysAsIdentity({
+		name: 'user_items_favorites_id_seq',
+		startWith: 1,
+		increment: 1,
+		minValue: 1,
+		maxValue: 2147483647,
+		cache: 1,
+	}),
 	userId: integer('user_id').notNull(),
 	itemId: integer('item_id').notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -516,16 +481,14 @@ export const userItemsFavorites = pgTable('user_items_favorites', {
 export const profiles = pgTable(
 	'profiles',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'profiles_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'profiles_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		profileType: profileTypesEnum('profile_type').default('private').notNull(),
 		userId: integer('user_id').notNull(),
 		name: varchar({ length: 50 }).notNull(),
@@ -544,16 +507,14 @@ export const profiles = pgTable(
 export const chatMessages = pgTable(
 	'chat_messages',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'chat_messages_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'chat_messages_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		chatRoomId: integer('chat_room_id').notNull(),
 		senderId: integer('sender_id').notNull(),
 		message: text().notNull(),
@@ -590,16 +551,14 @@ export const chatMessages = pgTable(
 export const users = pgTable(
 	'users',
 	{
-		id: integer()
-			.primaryKey()
-			.generatedAlwaysAsIdentity({
-				name: 'users_id_seq',
-				startWith: 1,
-				increment: 1,
-				minValue: 1,
-				maxValue: 2147483647,
-				cache: 1,
-			}),
+		id: integer().primaryKey().generatedAlwaysAsIdentity({
+			name: 'users_id_seq',
+			startWith: 1,
+			increment: 1,
+			minValue: 1,
+			maxValue: 2147483647,
+			cache: 1,
+		}),
 		username: varchar({ length: 50 }).notNull(),
 		email: varchar({ length: 255 }).notNull(),
 		phone: varchar({ length: 30 }),

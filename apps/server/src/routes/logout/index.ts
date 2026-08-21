@@ -9,9 +9,8 @@ import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 
 export const logoutRoute = createRouter().post(`/${authPath}`, authMiddleware, async (c) => {
-	const { REFRESH_TOKEN_SECRET, COOKIE_SECRET } = env<{
+	const { REFRESH_TOKEN_SECRET } = env<{
 		REFRESH_TOKEN_SECRET: string;
-		COOKIE_SECRET: string;
 	}>(c);
 
 	// Get the refresh token from the cookie

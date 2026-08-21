@@ -12,9 +12,8 @@ import type { AppBindings } from '../../lib/types';
 import { profiles } from '#database/schemas/profiles';
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
-	const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
+	const { ACCESS_TOKEN_SECRET, NODE_ENV } = env<{
 		ACCESS_TOKEN_SECRET: string;
-		REFRESH_TOKEN_SECRET: string;
 		NODE_ENV: string;
 	}>(c);
 	const { isProductionMode } = getNodeEnvMode(NODE_ENV);

@@ -139,7 +139,7 @@ export const verifyRoute = createRouter()
 				NODE_ENV: string;
 			}>(c);
 
-			const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
+			const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 
 			const token = c.req.query('token');
 			if (!token) return c.json({ error: 'Token required' }, 409);
@@ -167,7 +167,7 @@ export const verifyRoute = createRouter()
 				return c.json({ error: 'User not found' }, 404);
 			}
 
-			const { id: userId, profile_id, username, email_verified, phone_verified, email } = user;
+			const { id: userId, username, email_verified, phone_verified, email } = user;
 
 			if (user.email_verified) {
 				return c.json({ message: 'User already verified' });

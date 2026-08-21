@@ -20,7 +20,7 @@
 		"@workspace/server/*": ["../server/src/*"],
 		"@workspace/ui/*": ["../../packages/ui/src/*"]
 	},
-	"references": [{ "path": "../server/" }, { "path": "../../packages/ui/" }],
+	"references": [{ "path": "../server/" }],
 	"include": [
 		".",
 		"**/*.ts",
@@ -28,7 +28,6 @@
 		"next-env.d.ts",
 		"next.config.js",
 		".next/types/**/*.ts",
-		"../../packages/ui/",
 		"../server/*.ts",
 		"../../prettier.config.js"
 	],

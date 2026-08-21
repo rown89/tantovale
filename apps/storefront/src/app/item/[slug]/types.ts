@@ -7,7 +7,7 @@ export interface ItemDetailPageParams {
 }
 
 // Core data interfaces
-interface Item extends itemDetailResponseType {}
+type Item = itemDetailResponseType;
 
 interface ItemOwnerData {
 	id: number;
@@ -36,7 +36,7 @@ export interface ItemDetailData {
 }
 
 // Re-export existing types for backward compatibility
-export interface ItemWrapperProps extends ItemDetailData {}
+export type ItemWrapperProps = ItemDetailData;
 
 // Error handling types
 export interface FetchError {

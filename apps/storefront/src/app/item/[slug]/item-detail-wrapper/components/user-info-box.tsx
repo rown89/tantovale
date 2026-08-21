@@ -1,6 +1,6 @@
 'use client';
 
-import { Heart, Frown, FileSpreadsheet } from 'lucide-react';
+import { Heart, FileSpreadsheet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { forwardRef } from 'react';
 import Link from 'next/link';
@@ -49,8 +49,6 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 		ref,
 	) => {
 		const { id: item_id, order, orderProposal, easy_pay } = item;
-		const { phone_verified, email_verified } = itemOwnerData || {};
-
 		const { user } = useAuth();
 		const router = useRouter();
 		const { chatId: chatIdClient, isAddressLoading, handleBuyerAbortedProposal } = useTantovaleStore();
@@ -282,3 +280,5 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 		);
 	},
 );
+
+UserInfoBox.displayName = 'UserInfoBox';

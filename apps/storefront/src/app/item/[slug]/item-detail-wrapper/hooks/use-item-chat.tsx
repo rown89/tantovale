@@ -60,7 +60,7 @@ export function useItemChat({ item_id }: useItemChatProps) {
 					description: 'Message correctly sent, check your inbox!',
 					duration: 5000,
 				});
-			} catch (error) {
+			} catch {
 				toast(`Error :(`, {
 					description: 'We are encountering technical problems, please retry later.',
 					duration: 4000,

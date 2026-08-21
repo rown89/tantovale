@@ -29,7 +29,7 @@ function readJsonFile<T>(filename: string): T[] {
 }
 
 // Type-safe batch insert function
-async function batchInsert<T extends Record<string, any>>(
+async function batchInsert<T extends object>(
 	table: typeof countries | typeof states | typeof cities | typeof regions | typeof subRegions,
 	data: T[],
 	entityName: string,
@@ -42,7 +42,7 @@ async function batchInsert<T extends Record<string, any>>(
 
 		const result = await db
 			.insert(table)
-			.values(batch as any)
+			.values(batch as never)
 			.onConflictDoNothing()
 			.returning();
 
@@ -75,7 +75,7 @@ async function insertSubRegions(): Promise<number> {
 
 	return await batchInsert<typeof subRegions>(
 		subRegions,
-		// @ts-expect-error ignore seeder
+		// @ts-expect-error The seed JSON is reshaped to the insert payload rather than Drizzle's table type.
 		subRegionsReshape,
 		'subRegions',
 	);

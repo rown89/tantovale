@@ -4,7 +4,7 @@ export interface PropertyValues {
 	value: string;
 	name: string;
 	icon?: string;
-	meta?: Record<string, any>;
+	meta?: Record<string, unknown>;
 }
 
 export const Categories = {

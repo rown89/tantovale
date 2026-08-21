@@ -18,7 +18,7 @@ export function ShippingDialog({
 }: {
 	isOpen: boolean;
 	setIsOpen: (open: boolean) => void;
-	order: any;
+	order: { item: { id: number; title: string } } | null;
 	onShippingComplete: () => void;
 }) {
 	if (!order) return null;
@@ -36,7 +36,9 @@ export function ShippingDialog({
 					</p>
 				</div>
 				<DialogFooter>
-					<Button type='submit'>Save changes</Button>
+					<Button type='button' onClick={onShippingComplete}>
+						Save changes
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

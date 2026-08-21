@@ -206,7 +206,7 @@ export function ChatMessage({ chatMessageProps, item, isMsgSenderCurrentUser }: 
 								<p className='text-sm'>Your proposal has been rejected.</p>
 							)}
 							{proposalMetadata?.type === chatMessageMetadataValues.proposal_expired && !isMsgSenderCurrentUser && (
-								<p className='text-sm'>Seller didn't answer, your proposal is expired.</p>
+								<p className='text-sm'>Seller didn&apos;t answer, your proposal is expired.</p>
 							)}
 							{proposalMetadata?.type === chatMessageMetadataValues.proposal_buyer_aborted && (
 								<p>Buyer aborted the proposal.</p>

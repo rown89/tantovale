@@ -22,6 +22,7 @@
 		"seed:categories": "npx tsx ./src/database/scripts/seeders/categories/index.ts",
 		"seed:countries": "npx tsx ./src/database/scripts/seeders/countries/index.ts",
 		"seed:users": "npx tsx ./src/database/scripts/seeders/users/index.ts",
+		"lint": "eslint . --max-warnings 0",
 		"typecheck": "npx tsc --noEmit"
 	},
 	"engines": {
@@ -125,6 +126,7 @@
 		"@types/nodemailer": "^6.4.17",
 		"@types/pg": "^8.11.11",
 		"dotenv-cli": "^8.0.0",
+		"eslint": "^9.15.0",
 		"tsx": "^4.19.2",
 		"typescript": "^5.8.3"
 	}

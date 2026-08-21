@@ -74,7 +74,6 @@ export const locationsRoute = createRouter()
 		}
 	})
 	.get('/search_by_id/:locationType/:locationId', async (c) => {
-		const locationType = c.req.param('locationType');
 		const locationId = Number(c.req.param('locationId'));
 
 		if (!locationId) return c.json({ message: 'Invalid location id provided' }, 401);

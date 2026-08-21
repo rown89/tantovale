@@ -17,7 +17,7 @@ export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, auth
 	}>(c);
 
 	const accessToken = getCookie(c, 'access_token');
-	let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+	const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 	const user_id = Number(payload.id);
 
 	const formData = await c.req.parseBody({ all: true, dot: true });
@@ -40,9 +40,7 @@ export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, auth
 		}
 	}
 
-	let refinedImages = [];
-
-	Array.isArray(images) ? (refinedImages = images) : (refinedImages = [images]);
+	const refinedImages = receivedImages;
 
 	try {
 		// Define S3 paths

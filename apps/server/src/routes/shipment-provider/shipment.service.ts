@@ -20,13 +20,15 @@ const ERROR_MESSAGES = {
 	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
 } as const;
 
+type DatabaseQuery = Pick<ReturnType<typeof createClient>['db'], 'select'>;
+
 export class ShipmentService {
 	private db = createClient().db;
 
 	/**
 	 * Get item data with seller information and shipping dimensions
 	 */
-	async getItemData(tx: any, itemId: number): Promise<ShipmentCalculationData['itemData']> {
+	async getItemData(tx: DatabaseQuery, itemId: number): Promise<ShipmentCalculationData['itemData']> {
 		const cityTable = alias(cities, 'city');
 		const provinceTable = alias(cities, 'province');
 
@@ -86,7 +88,7 @@ export class ShipmentService {
 	/**
 	 * Get buyer profile and address information
 	 */
-	async getBuyerProfile(tx: any, profileId: number): Promise<ShipmentCalculationData['buyerProfile']> {
+	async getBuyerProfile(tx: DatabaseQuery, profileId: number): Promise<ShipmentCalculationData['buyerProfile']> {
 		const cityTable = alias(cities, 'city');
 		const provinceTable = alias(cities, 'province');
 

@@ -5,7 +5,7 @@ import type { AppBindings } from '../../lib/types';
 
 export const getSubcategoriesController = async (c: Context<AppBindings>) => {
 	try {
-		const subcategories = await getSubcategories(c);
+		const subcategories = await getSubcategories();
 
 		if (!subcategories.length) {
 			return c.json({ message: 'Missing subcategories' }, 500);

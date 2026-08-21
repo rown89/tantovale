@@ -6,12 +6,13 @@
 	"private": true,
 	"exports": {
 		"./base": "./base.js",
+		"./node": "./node.js",
 		"./next-js": "./next.js",
 		"./react-internal": "./react-internal.js"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.17.0",
-		"@next/eslint-plugin-next": "^15.1.0",
+		"@next/eslint-plugin-next": "16.3.2",
 		"eslint": "^9.15.0",
 		"eslint-config-prettier": "^9.1.0",
 		"eslint-plugin-only-warn": "^1.1.0",

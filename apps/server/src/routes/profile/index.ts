@@ -1,6 +1,5 @@
 import { count, eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
 
 import { createClient } from '../../database';

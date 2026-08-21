@@ -10,12 +10,8 @@ import { OrderStatusBadge } from './order-status-badge';
 import { OrderActions } from './order-actions';
 
 import { OrderType } from '@workspace/shared/server_bridge';
-import { enumeratedValues } from '@workspace/shared/server_bridge';
-
-const { ORDER_PHASES } = enumeratedValues;
-
 interface OrderPreviewCardProps {
-	order: OrderType & { status: (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] };
+	order: OrderType;
 	onCompletePayment?: () => void;
 	onCancel?: () => void;
 	onRequestAssistance?: () => void;

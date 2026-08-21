@@ -19,8 +19,6 @@ import {
 	profiles,
 	entityTrustapTransactions,
 	orders,
-	chat_rooms,
-	chat_messages,
 	orders_proposals,
 } from '#db-schema';
 import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
@@ -637,7 +635,7 @@ export const itemRoute = createRouter()
 			const { id } = c.req.valid('json');
 
 			const accessToken = getCookie(c, 'access_token');
-			let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+			const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 			const user_id = Number(payload.id);
 
 			if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
@@ -720,7 +718,7 @@ export const itemRoute = createRouter()
 			const { id, published } = c.req.valid('json');
 
 			const accessToken = getCookie(c, 'access_token');
-			let payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
+			const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
 			const user_id = Number(payload.id);
 
 			if (!user_id) return c.json({ message: 'Invalid user id' }, 401);

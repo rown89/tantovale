@@ -55,7 +55,7 @@ export class TransactionSyncService {
 
 						// Update our database if status has changed
 						if (trustapStatus.status !== transaction.status) {
-							const [updatedTransaction] = await tx
+							await tx
 								.update(entityTrustapTransactions)
 								.set({
 									status: trustapStatus.status as EntityTrustapTransactionStatus,

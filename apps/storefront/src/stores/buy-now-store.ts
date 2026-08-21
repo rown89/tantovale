@@ -16,7 +16,7 @@ export type OrderBuyNowStore = {
 
 type BuyNowResponse = {
 	success: boolean;
-	order?: any;
+	order?: unknown;
 	payment_url?: string;
 	message?: string;
 	error?: string;

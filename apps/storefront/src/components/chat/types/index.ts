@@ -7,5 +7,5 @@ export type ChatRoomType = NonNullable<ChatRoomsData>[number];
 type ChatMessagesResponse = Awaited<ReturnType<(typeof client.chat.auth.rooms)[':roomId']['messages']['$get']>>;
 type ChatMessagesUnion = Awaited<ReturnType<ChatMessagesResponse['json']>>;
 // Extract only the 200 response type (array) from the union
-type ChatMessagesData = Extract<NonNullable<ChatMessagesUnion>, readonly any[]>;
+type ChatMessagesData = Extract<NonNullable<ChatMessagesUnion>, readonly unknown[]>;
 export type ChatMessageType = ChatMessagesData[number];
