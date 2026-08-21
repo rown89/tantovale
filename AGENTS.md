@@ -52,7 +52,7 @@ Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery 
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 28 obs (9,604t read) | 529,707t work | 98% savings
+Stats: 31 obs (10,554t read) | 594,441t work | 98% savings
 
 ### Aug 21, 2026
 
@@ -84,6 +84,9 @@ Stats: 28 obs (9,604t read) | 529,707t work | 98% savings
 20862 8:11p 🔴 Enabled strict ESLint rules and corrected all violations source-level
 20863 " 🔴 Fixed TypeScript type errors by removing problematic any types and correcting generics
 20864 " ✅ Configured Turbo global environment variables and declared React peer dependency
+20865 8:30p 🟣 ESLint Configuration and Lint Coverage Complete Across All Packages
+20866 " 🔴 Fixed API Contract Violation in Address Form Submission
+20867 " ⚖️ Drizzle ORM v1 Upgrade Strategy: Staged Approach
 
-Access 530k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 594k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>
