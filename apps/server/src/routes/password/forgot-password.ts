@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
 import { env } from 'hono/adapter';
 import { getNodeEnvMode } from '../../utils/constants';
@@ -26,7 +25,7 @@ export const passwordForgotRoute = createRouter().post('/forgot-password', async
 	const { db } = createClient();
 	// Check if the user exists
 	const user = await db.query.users.findFirst({
-		where: (tbl) => eq(tbl.email, email),
+		where: { email },
 	});
 
 	if (!user) {

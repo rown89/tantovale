@@ -35,7 +35,7 @@ export async function validateRefreshToken(c: Context<AppBindings>, db: DrizzleC
 	}
 
 	const storedRefreshToken = await db.query.refreshTokens.findFirst({
-		where: eq(refreshTokens.token, refresh_token),
+		where: { token: refresh_token },
 	});
 
 	if (!storedRefreshToken) {

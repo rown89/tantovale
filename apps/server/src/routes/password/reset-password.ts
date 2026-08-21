@@ -28,7 +28,7 @@ export const passwordResetRoute = createRouter()
 			const { db } = createClient();
 			// Check if token exists in DB
 			const storedToken = await db.query.password_reset_tokens.findFirst({
-				where: (tbl) => eq(tbl.token, token),
+				where: { token },
 			});
 
 			if (!storedToken) {
