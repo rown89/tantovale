@@ -6,6 +6,9 @@ node_modules
 .pnp.js
 .pnpm-store/
 
+# Local linked worktrees
+.worktrees/
+
 # Local env files
 .env
 .env.local
