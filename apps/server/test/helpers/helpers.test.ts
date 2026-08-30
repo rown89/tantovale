@@ -1,7 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { extractTokenFromLink } from './mailpit';
+import { users } from '../../src/database/schemas/users';
+import { verifyPassword } from '../../src/lib/password';
+import { createUserFixture } from '../fixtures/factories';
+import { getTestDatabase } from './database';
+import { extractTokenFromLink, waitForEmail } from './mailpit';
 import { captureCookies, CookieJar, jsonRequest } from './request';
+
+/* eslint-disable turbo/no-undeclared-env-vars -- Tests exercise the local Mailpit guard provided by the test harness. */
+const initialMailpitApiUrl = process.env.MAILPIT_API_URL;
+
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
+	process.env.MAILPIT_API_URL = initialMailpitApiUrl;
+});
 
 describe('API test helpers', () => {
 	it('updates a cookie jar from multiple Set-Cookie headers', () => {
@@ -16,11 +29,24 @@ describe('API test helpers', () => {
 		expect(jar.header()).toBe('refresh_token=two');
 	});
 
-	it('ignores malformed cookies and removes case-insensitive Max-Age deletions', () => {
+	it('keeps empty values and deletes cookies with expired lifetime attributes', () => {
 		const jar = new CookieJar();
-		jar.capture(['access_token=one', 'not-a-cookie', 'refresh_token=two; MAX-age=0']);
+		jar.capture([
+			'empty=; Path=/',
+			'access_token=one',
+			'access_token=two; MAX-age = -1',
+			'refresh_token=two',
+			'refresh_token=three; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+		]);
 
-		expect(jar.header()).toBe('access_token=one');
+		expect(jar.header()).toBe('empty=');
+	});
+
+	it('ignores invalid cookie names and preserves values containing equals signs', () => {
+		const jar = new CookieJar();
+		jar.capture(['=blank', 'has space=value', 'token=abc=def; Path=/']);
+
+		expect(jar.header()).toBe('token=abc=def');
 	});
 
 	it('builds JSON requests with an optional cookie header and body', () => {
@@ -41,15 +67,13 @@ describe('API test helpers', () => {
 		});
 	});
 
-	it('captures cookies from the response getSetCookie API', () => {
+	it('captures cookies from a real Headers getSetCookie API', () => {
 		const jar = new CookieJar();
-		const response = {
-			headers: {
-				getSetCookie: () => ['access_token=one; Path=/', 'refresh_token=two; Path=/'],
-			},
-		} as Response;
+		const headers = new Headers();
+		headers.append('set-cookie', 'access_token=one; Path=/');
+		headers.append('set-cookie', 'refresh_token=two; Path=/');
 
-		captureCookies(response, jar);
+		captureCookies(new Response(null, { headers }), jar);
 
 		expect(jar.header()).toBe('access_token=one; refresh_token=two');
 	});
@@ -58,10 +82,13 @@ describe('API test helpers', () => {
 		expect(extractTokenFromLink('Visit http://storefront.test/verify?token=abc.def', 'token')).toBe('abc.def');
 	});
 
-	it('extracts parameters from HTML-escaped email links', () => {
-		expect(extractTokenFromLink('https://storefront.test/verify?token=abc.def&amp;source=email', 'token')).toBe(
-			'abc.def',
-		);
+	it('extracts parameters from the first candidate that contains it', () => {
+		const content = [
+			'<a href="https://tracking.test/open?id=one">Open</a>',
+			"<a href='https://storefront.test/verify?token=abc.def&amp;source=email'>Verify</a>",
+		].join(' ');
+
+		expect(extractTokenFromLink(content, 'token')).toBe('abc.def');
 	});
 
 	it('reports missing email links and parameters', () => {
@@ -69,5 +96,114 @@ describe('API test helpers', () => {
 		expect(() => extractTokenFromLink('https://storefront.test/verify', 'token')).toThrow(
 			'Email link has no token parameter',
 		);
+	});
+
+	it('permits loopback Mailpit URLs but rejects credentials and remote services', async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		process.env.MAILPIT_API_URL = 'http://[::1]:8025';
+		fetchMock.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					messages: [{ ID: 'message/id', Subject: 'Subject', To: [{ Address: 'user@tantovale.test' }] }],
+				}),
+			),
+		);
+		fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ HTML: '<p>Hi</p>', Text: 'Hi' })));
+
+		await expect(waitForEmail('user@tantovale.test', 'Subject')).resolves.toEqual({ HTML: '<p>Hi</p>', Text: 'Hi' });
+		expect(fetchMock.mock.calls[0]?.[0]).toBe('http://[::1]:8025/api/v1/search?query=to%3Auser%40tantovale.test');
+		expect(fetchMock.mock.calls[1]?.[0]).toBe('http://[::1]:8025/api/v1/message/message%2Fid');
+
+		process.env.MAILPIT_API_URL = 'http://user:pass@localhost:8025';
+		await expect(waitForEmail('user@tantovale.test', 'Subject')).rejects.toThrow('Unsafe Mailpit API URL');
+		process.env.MAILPIT_API_URL = 'http://mailpit.example.test:8025';
+		await expect(waitForEmail('user@tantovale.test', 'Subject')).rejects.toThrow('Unsafe Mailpit API URL');
+	});
+
+	it('retries transient Mailpit failures before returning a matching email', async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		process.env.MAILPIT_API_URL = 'http://localhost:8025';
+		fetchMock.mockResolvedValueOnce(new Response('unavailable', { status: 503 }));
+		fetchMock.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					messages: [{ ID: 'message-id', Subject: 'Subject', To: [{ Address: 'user@tantovale.test' }] }],
+				}),
+			),
+		);
+		fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ HTML: '<p>Hi</p>', Text: 'Hi' })));
+
+		const email = waitForEmail('user@tantovale.test', 'Subject');
+		await vi.advanceTimersByTimeAsync(50);
+
+		await expect(email).resolves.toEqual({ HTML: '<p>Hi</p>', Text: 'Hi' });
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+	});
+
+	it('fails immediately for terminal Mailpit responses', async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response('bad request', { status: 400, statusText: 'Bad Request' }));
+		vi.stubGlobal('fetch', fetchMock);
+		process.env.MAILPIT_API_URL = 'http://localhost:8025';
+
+		await expect(waitForEmail('user@tantovale.test', 'Subject')).rejects.toThrow(
+			'Mailpit API request failed: 400 Bad Request',
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('includes the final transient failure in its Mailpit timeout', async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi.fn().mockRejectedValue(new Error('connection reset'));
+		vi.stubGlobal('fetch', fetchMock);
+		process.env.MAILPIT_API_URL = 'http://localhost:8025';
+
+		const email = waitForEmail('user@tantovale.test', 'Subject');
+		const timeout = expect(email).rejects.toThrow(
+			/Email not received for user@tantovale\.test with subject Subject.*connection reset/,
+		);
+		await vi.runAllTimersAsync();
+
+		await timeout;
+	});
+});
+
+describe('test fixtures', () => {
+	it('persists a linked profile and hashes the selected plaintext password', async () => {
+		const password = 'DifferentStrongPass123!';
+		const fixture = await createUserFixture({
+			password,
+			emailVerified: false,
+			user: { phone: '123456789', password: 'must-not-be-stored', email_verified: true },
+			profile: { user_id: -1, name: 'Ada', surname: 'Lovelace', gender: 'female', marketing_policy: true },
+		});
+
+		expect(fixture.password).toBe(password);
+		expect(fixture.user.email_verified).toBe(false);
+		expect(fixture.user.phone).toBe('123456789');
+		expect(fixture.user.password).not.toBe('must-not-be-stored');
+		expect(await verifyPassword(fixture.user.password, password)).toBe(true);
+		expect(fixture.profile).toMatchObject({
+			user_id: fixture.user.id,
+			name: 'Ada',
+			surname: 'Lovelace',
+			marketing_policy: true,
+		});
+	});
+
+	it('rolls back the user when its linked profile cannot be inserted', async () => {
+		const { db } = getTestDatabase();
+
+		await expect(
+			createUserFixture({
+				profile: { name: null } as unknown as NonNullable<Parameters<typeof createUserFixture>[0]>['profile'],
+			}),
+		).rejects.toThrow();
+
+		expect(await db.select().from(users)).toEqual([]);
 	});
 });

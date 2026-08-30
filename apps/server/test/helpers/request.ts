@@ -12,7 +12,20 @@ export class CookieJar {
 
 			const name = pair!.slice(0, separator).trim();
 			const value = pair!.slice(separator + 1).trim();
-			const deleted = value === '' || attributes.some((attribute) => /^\s*max-age\s*=\s*0\s*$/i.test(attribute));
+			if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(name)) {
+				continue;
+			}
+
+			const deleted = attributes.some((attribute) => {
+				const maxAge = attribute.match(/^\s*max-age\s*=\s*([-+]?\d+(?:\.\d+)?)\s*$/i);
+				if (maxAge) {
+					return Number(maxAge[1]) <= 0;
+				}
+
+				const expires = attribute.match(/^\s*expires\s*=\s*(.+?)\s*$/i)?.[1];
+				const expiresAt = expires ? Date.parse(expires) : Number.NaN;
+				return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+			});
 
 			if (deleted) {
 				this.cookies.delete(name);

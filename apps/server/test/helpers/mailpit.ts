@@ -21,13 +21,30 @@ const EMAIL_WAIT_TIMEOUT_MS = 5_000;
 const POLL_INTERVAL_MS = 50;
 const REQUEST_TIMEOUT_MS = 1_000;
 
+class MailpitRequestError extends Error {
+	constructor(
+		message: string,
+		readonly transient: boolean,
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+	}
+}
+
 /* eslint-disable turbo/no-undeclared-env-vars -- The isolated Vitest harness supplies the local Mailpit URL. */
 function apiOrigin(): string {
 	try {
 		const value = process.env.MAILPIT_API_URL;
 		const parsed = value ? new URL(value) : undefined;
 
-		if (!parsed || parsed.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+		const hostname = parsed?.hostname.replace(/^\[|\]$/g, '') ?? '';
+		if (
+			!parsed ||
+			parsed.protocol !== 'http:' ||
+			parsed.username ||
+			parsed.password ||
+			!['localhost', '127.0.0.1', '::1'].includes(hostname)
+		) {
 			throw new Error('Unsafe Mailpit API URL');
 		}
 
@@ -41,7 +58,7 @@ async function fetchMailpit(url: string, deadline: number): Promise<Response> {
 	const remaining = deadline - Date.now();
 
 	if (remaining <= 0) {
-		throw new Error('Mailpit API request timed out');
+		throw new MailpitRequestError('Mailpit API request timed out', true);
 	}
 
 	let response: Response;
@@ -49,11 +66,15 @@ async function fetchMailpit(url: string, deadline: number): Promise<Response> {
 		response = await fetch(url, { signal: AbortSignal.timeout(Math.min(REQUEST_TIMEOUT_MS, remaining)) });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Mailpit API request failed: ${message}`, { cause: error });
+		throw new MailpitRequestError(`Mailpit API request failed: ${message}`, true, { cause: error });
 	}
 
 	if (!response.ok) {
-		throw new Error(`Mailpit API request failed: ${response.status} ${response.statusText}`);
+		const transient = response.status >= 500 || response.status === 408 || response.status === 429;
+		throw new MailpitRequestError(
+			`Mailpit API request failed: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
+			transient,
+		);
 	}
 
 	return response;
@@ -65,36 +86,54 @@ export async function waitForEmail(recipient: string, subject: string): Promise<
 	const searchUrl = new URL('/api/v1/search', origin);
 	searchUrl.searchParams.set('query', `to:${recipient}`);
 
+	let lastError: Error | undefined;
 	while (Date.now() < deadline) {
-		const response = await fetchMailpit(searchUrl.toString(), deadline);
-		const search = (await response.json()) as MailpitSearch;
-		const message = search.messages.find(
-			(candidate) => candidate.Subject === subject && candidate.To.some(({ Address }) => Address === recipient),
-		);
+		try {
+			const response = await fetchMailpit(searchUrl.toString(), deadline);
+			const search = (await response.json()) as MailpitSearch;
+			const message = search.messages.find(
+				(candidate) => candidate.Subject === subject && candidate.To.some(({ Address }) => Address === recipient),
+			);
 
-		if (message) {
-			const detailUrl = `${origin}/api/v1/message/${encodeURIComponent(message.ID)}`;
-			const detailResponse = await fetchMailpit(detailUrl, deadline);
-			return (await detailResponse.json()) as MailpitMessageDetail;
+			if (message) {
+				const detailUrl = `${origin}/api/v1/message/${encodeURIComponent(message.ID)}`;
+				const detailResponse = await fetchMailpit(detailUrl, deadline);
+				return (await detailResponse.json()) as MailpitMessageDetail;
+			}
+		} catch (error) {
+			if (!(error instanceof MailpitRequestError) || !error.transient) {
+				throw error;
+			}
+			lastError = error;
 		}
 
-		await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) {
+			break;
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remaining)));
 	}
 
-	throw new Error(`Email not received for ${recipient} with subject ${subject}`);
+	const reason = lastError ? `; last Mailpit error: ${lastError.message}` : '';
+	throw new Error(`Email not received for ${recipient} with subject ${subject}${reason}`, { cause: lastError });
 }
 
 export function extractTokenFromLink(content: string, parameter: string): string {
-	const url = content.match(/https?:\/\/[^\s"<>]+/)?.[0]?.replaceAll('&amp;', '&');
-
-	if (!url) {
+	const candidates = content.match(/https?:\/\/[^\s"'<>]+/gi);
+	if (!candidates) {
 		throw new Error('Email contains no HTTP link');
 	}
 
-	const value = new URL(url).searchParams.get(parameter);
-	if (!value) {
-		throw new Error(`Email link has no ${parameter} parameter`);
+	for (const candidate of candidates) {
+		try {
+			const value = new URL(candidate.replaceAll('&amp;', '&')).searchParams.get(parameter);
+			if (value) {
+				return value;
+			}
+		} catch {
+			// Continue scanning malformed candidates for a usable link.
+		}
 	}
 
-	return value;
+	throw new Error(`Email link has no ${parameter} parameter`);
 }
