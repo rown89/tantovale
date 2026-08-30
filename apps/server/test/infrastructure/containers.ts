@@ -2,6 +2,7 @@ import { GenericContainer, getContainerRuntimeClient, type StartedTestContainer,
 
 const STARTUP_TIMEOUT_MS = 120_000;
 const END_TO_END_STARTUP_TIMEOUT_MS = 240_000;
+const BACKGROUND_CLEANUP_TIMEOUT_MS = 30_000;
 const POSTGRES_IMAGE = 'postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73';
 const MINIO_IMAGE =
 	'minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e';
@@ -13,20 +14,89 @@ export type StartedInfrastructure = {
 	mailpit: StartedTestContainer;
 };
 
+const backgroundCleanupPromises = new Set<Promise<void>>();
+const backgroundCleanupErrors: unknown[] = [];
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+export function registerBackgroundCleanup(cleanup: Promise<void>): void {
+	const handledCleanup = cleanup.catch((error: unknown) => {
+		backgroundCleanupErrors.push(error);
+	});
+
+	backgroundCleanupPromises.add(handledCleanup);
+	void handledCleanup.then(() => {
+		backgroundCleanupPromises.delete(handledCleanup);
+	});
+}
+
+export async function drainBackgroundCleanup(timeoutMs = BACKGROUND_CLEANUP_TIMEOUT_MS): Promise<void> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timeoutHandle = setTimeout(() => {
+			reject(new Error(`Timed out draining background container cleanup after ${timeoutMs}ms`));
+		}, timeoutMs);
+	});
+	let timeoutError: unknown;
+
+	try {
+		while (backgroundCleanupPromises.size > 0) {
+			await Promise.race([Promise.all([...backgroundCleanupPromises]), deadline]);
+		}
+	} catch (error) {
+		timeoutError = error;
+	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
+	}
+
+	const errors = timeoutError
+		? [timeoutError, ...backgroundCleanupErrors.splice(0)]
+		: backgroundCleanupErrors.splice(0);
+	if (errors.length > 0) {
+		throw new AggregateError(errors, `Background container cleanup failed: ${errors.map(errorMessage).join('; ')}`);
+	}
+}
+
+export function createSerializedCleanupOwner(cleanup: () => Promise<void>): () => Promise<void> {
+	let cleanupPromise: Promise<void> | undefined;
+
+	return () => {
+		if (!cleanupPromise) {
+			cleanupPromise = Promise.resolve()
+				.then(cleanup)
+				.catch((error: unknown) => {
+					cleanupPromise = undefined;
+					throw error;
+				});
+		}
+
+		return cleanupPromise;
+	};
+}
+
 class TrackedGenericContainer extends GenericContainer {
 	private createdContainerId: string | undefined;
+	private cleanupOwner: (() => Promise<void>) | undefined;
 
 	protected override async containerCreated(containerId: string): Promise<void> {
 		this.createdContainerId = containerId;
+		this.cleanupOwner = createSerializedCleanupOwner(() => this.cleanupCreatedContainer());
 	}
 
 	async disposeFailedStart(): Promise<void> {
-		if (!this.createdContainerId) {
+		return this.cleanupOwner?.() ?? Promise.resolve();
+	}
+
+	private async cleanupCreatedContainer(): Promise<void> {
+		const containerId = this.createdContainerId;
+		if (!containerId) {
 			return;
 		}
 
-		const containerId = this.createdContainerId;
-		this.createdContainerId = undefined;
 		const client = await getContainerRuntimeClient();
 		const container = client.container.getById(containerId);
 		const cleanupErrors: unknown[] = [];
@@ -49,6 +119,8 @@ class TrackedGenericContainer extends GenericContainer {
 		if (cleanupErrors.length > 0) {
 			throw new AggregateError(cleanupErrors, `Failed to clean up container ${containerId} after startup failure`);
 		}
+
+		this.createdContainerId = undefined;
 	}
 }
 
@@ -63,8 +135,7 @@ function getStartedContainer(result: PromiseSettledResult<StartedTestContainer>)
 export async function startWithDeadline<T>(
 	start: () => Promise<T>,
 	cleanupAfterTimeout: () => Promise<void>,
-	cleanupLateResult: (result: T) => Promise<void>,
-	cleanupLateFailure: () => Promise<void>,
+	cleanupAfterLateSettlement: () => Promise<void>,
 	description: string,
 	timeoutMs = END_TO_END_STARTUP_TIMEOUT_MS,
 ): Promise<T> {
@@ -72,29 +143,26 @@ export async function startWithDeadline<T>(
 	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 	let timeoutCleanup: Promise<void> | undefined;
 	const startPromise = Promise.resolve().then(start);
+	const lateSettlementCleanup = startPromise.then(
+		() => {
+			if (timedOut) {
+				return cleanupAfterLateSettlement();
+			}
+		},
+		() => {
+			if (timedOut) {
+				return cleanupAfterLateSettlement();
+			}
+		},
+	);
 	const deadline = new Promise<never>((_, reject) => {
 		timeoutHandle = setTimeout(() => {
 			timedOut = true;
-			timeoutCleanup = cleanupAfterTimeout();
-			void timeoutCleanup.catch(() => undefined);
+			timeoutCleanup = Promise.resolve().then(cleanupAfterTimeout);
+			registerBackgroundCleanup(lateSettlementCleanup);
 			reject(new Error(`Timed out starting ${description} after ${timeoutMs}ms`));
 		}, timeoutMs);
 	});
-
-	void startPromise
-		.then(
-			async (result) => {
-				if (timedOut) {
-					await cleanupLateResult(result);
-				}
-			},
-			async () => {
-				if (timedOut) {
-					await cleanupLateFailure();
-				}
-			},
-		)
-		.catch(() => undefined);
 
 	try {
 		return await Promise.race([startPromise, deadline]);
@@ -123,7 +191,6 @@ async function startTrackedContainer(
 		return await startWithDeadline(
 			() => container.start(),
 			() => container.disposeFailedStart(),
-			async (startedContainer) => stopContainers([startedContainer]),
 			() => container.disposeFailedStart(),
 			description,
 		);
@@ -150,7 +217,23 @@ async function stopContainers(containers: StartedTestContainer[]): Promise<void>
 }
 
 export async function stopInfrastructure(infrastructure: StartedInfrastructure): Promise<void> {
-	await stopContainers([infrastructure.postgres, infrastructure.minio, infrastructure.mailpit]);
+	const errors: unknown[] = [];
+
+	try {
+		await stopContainers([infrastructure.postgres, infrastructure.minio, infrastructure.mailpit]);
+	} catch (error) {
+		errors.push(error);
+	}
+
+	try {
+		await drainBackgroundCleanup();
+	} catch (error) {
+		errors.push(error);
+	}
+
+	if (errors.length > 0) {
+		throw new AggregateError(errors, 'Failed to stop disposable infrastructure containers and drain cleanup');
+	}
 }
 
 export async function startInfrastructure(): Promise<StartedInfrastructure> {
@@ -198,6 +281,12 @@ export async function startInfrastructure(): Promise<StartedInfrastructure> {
 	if (startupErrors.length > 0) {
 		try {
 			await stopContainers(startedContainers);
+		} catch (cleanupError) {
+			startupErrors.push(cleanupError);
+		}
+
+		try {
+			await drainBackgroundCleanup();
 		} catch (cleanupError) {
 			startupErrors.push(cleanupError);
 		}

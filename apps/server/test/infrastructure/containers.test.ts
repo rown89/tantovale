@@ -1,7 +1,15 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { Client } from 'pg';
 
-import { startInfrastructure, startWithDeadline, stopInfrastructure, type StartedInfrastructure } from './containers';
+import {
+	createSerializedCleanupOwner,
+	drainBackgroundCleanup,
+	registerBackgroundCleanup,
+	startInfrastructure,
+	startWithDeadline,
+	stopInfrastructure,
+	type StartedInfrastructure,
+} from './containers';
 
 async function fetchReadiness(service: string, url: string): Promise<Response> {
 	try {
@@ -36,7 +44,6 @@ describe('local API dependency containers', () => {
 			async () => {
 				resolveLateCleanup?.();
 			},
-			async () => undefined,
 			'delayed test image',
 			1,
 		);
@@ -44,6 +51,43 @@ describe('local API dependency containers', () => {
 		await expect(result).rejects.toThrow('Timed out starting delayed test image after 1ms');
 		resolveStart?.({ id: 'late-container' });
 		await lateCleanup;
+	});
+
+	it('serializes concurrent cleanup requests for the same container', async () => {
+		let resolveCleanup: (() => void) | undefined;
+		let cleanupCalls = 0;
+		const cleanupFinished = new Promise<void>((resolve) => {
+			resolveCleanup = resolve;
+		});
+		const cleanup = createSerializedCleanupOwner(async () => {
+			cleanupCalls += 1;
+			await cleanupFinished;
+		});
+
+		const immediateCleanup = cleanup();
+		const lateCleanup = cleanup();
+
+		await Promise.resolve();
+		expect(cleanupCalls).toBe(1);
+		resolveCleanup?.();
+		await Promise.all([immediateCleanup, lateCleanup]);
+	});
+
+	it('reports failed and stalled background cleanup', async () => {
+		registerBackgroundCleanup(Promise.reject(new Error('late cleanup failed')));
+		await expect(drainBackgroundCleanup(100)).rejects.toThrow('late cleanup failed');
+
+		let resolveStalledCleanup: (() => void) | undefined;
+		registerBackgroundCleanup(
+			new Promise<void>((resolve) => {
+				resolveStalledCleanup = resolve;
+			}),
+		);
+		await expect(drainBackgroundCleanup(1)).rejects.toThrow(
+			'Timed out draining background container cleanup after 1ms',
+		);
+		resolveStalledCleanup?.();
+		await drainBackgroundCleanup(100);
 	});
 
 	it('starts disposable Postgres, MinIO, and Mailpit services', async () => {
