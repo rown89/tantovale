@@ -1,11 +1,33 @@
 export type RouteMethod = 'GET' | 'POST' | 'PUT';
+
+/**
+ * Target authorization contract consumed by later route suites. It is not inferred from Hono metadata.
+ * `cron-secret` and `webhook-basic` are final intended security contracts from Plan 04, not claims that
+ * current legacy middleware already enforces them; dedicated later tests implement and prove those contracts.
+ */
 export type RouteAuth = 'public' | 'cookie' | 'cron-secret' | 'webhook-basic';
+export type RouteSuite =
+	| 'addresses'
+	| 'authentication'
+	| 'catalog'
+	| 'chat'
+	| 'cron'
+	| 'documentation'
+	| 'favorites'
+	| 'items'
+	| 'orders'
+	| 'platform-costs'
+	| 'profiles'
+	| 'proposals'
+	| 'shipping'
+	| 'uploads'
+	| 'webhooks';
 
 export type RouteContract = {
 	method: RouteMethod;
 	path: string;
 	auth: RouteAuth;
-	suite: string;
+	suite: RouteSuite;
 };
 
 export const routeContracts = [
