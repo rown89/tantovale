@@ -1,6 +1,7 @@
 import { GenericContainer, getContainerRuntimeClient, type StartedTestContainer, Wait } from 'testcontainers';
 
 const STARTUP_TIMEOUT_MS = 120_000;
+const END_TO_END_STARTUP_TIMEOUT_MS = 240_000;
 const POSTGRES_IMAGE = 'postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73';
 const MINIO_IMAGE =
 	'minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e';
@@ -59,9 +60,73 @@ function getStartedContainer(result: PromiseSettledResult<StartedTestContainer>)
 	return result.value;
 }
 
-async function startTrackedContainer(container: TrackedGenericContainer): Promise<StartedTestContainer> {
+export async function startWithDeadline<T>(
+	start: () => Promise<T>,
+	cleanupAfterTimeout: () => Promise<void>,
+	cleanupLateResult: (result: T) => Promise<void>,
+	cleanupLateFailure: () => Promise<void>,
+	description: string,
+	timeoutMs = END_TO_END_STARTUP_TIMEOUT_MS,
+): Promise<T> {
+	let timedOut = false;
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	let timeoutCleanup: Promise<void> | undefined;
+	const startPromise = Promise.resolve().then(start);
+	const deadline = new Promise<never>((_, reject) => {
+		timeoutHandle = setTimeout(() => {
+			timedOut = true;
+			timeoutCleanup = cleanupAfterTimeout();
+			void timeoutCleanup.catch(() => undefined);
+			reject(new Error(`Timed out starting ${description} after ${timeoutMs}ms`));
+		}, timeoutMs);
+	});
+
+	void startPromise
+		.then(
+			async (result) => {
+				if (timedOut) {
+					await cleanupLateResult(result);
+				}
+			},
+			async () => {
+				if (timedOut) {
+					await cleanupLateFailure();
+				}
+			},
+		)
+		.catch(() => undefined);
+
 	try {
-		return await container.start();
+		return await Promise.race([startPromise, deadline]);
+	} catch (startupError) {
+		if (timedOut && timeoutCleanup) {
+			try {
+				await timeoutCleanup;
+			} catch (cleanupError) {
+				throw new AggregateError([startupError, cleanupError], 'Container startup deadline and cleanup both failed');
+			}
+		}
+
+		throw startupError;
+	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
+	}
+}
+
+async function startTrackedContainer(
+	container: TrackedGenericContainer,
+	description: string,
+): Promise<StartedTestContainer> {
+	try {
+		return await startWithDeadline(
+			() => container.start(),
+			() => container.disposeFailedStart(),
+			async (startedContainer) => stopContainers([startedContainer]),
+			() => container.disposeFailedStart(),
+			description,
+		);
 	} catch (startupError) {
 		try {
 			await container.disposeFailedStart();
@@ -100,6 +165,7 @@ export async function startInfrastructure(): Promise<StartedInfrastructure> {
 				.withExposedPorts(5432)
 				.withStartupTimeout(STARTUP_TIMEOUT_MS)
 				.withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2)),
+			POSTGRES_IMAGE,
 		),
 		startTrackedContainer(
 			new TrackedGenericContainer(MINIO_IMAGE)
@@ -111,12 +177,14 @@ export async function startInfrastructure(): Promise<StartedInfrastructure> {
 				.withExposedPorts(9000)
 				.withStartupTimeout(STARTUP_TIMEOUT_MS)
 				.withWaitStrategy(Wait.forHttp('/minio/health/ready', 9000)),
+			MINIO_IMAGE,
 		),
 		startTrackedContainer(
 			new TrackedGenericContainer(MAILPIT_IMAGE)
 				.withExposedPorts(1025, 8025)
 				.withStartupTimeout(STARTUP_TIMEOUT_MS)
 				.withWaitStrategy(Wait.forListeningPorts()),
+			MAILPIT_IMAGE,
 		),
 	]);
 	const results = [postgresResult, minioResult, mailpitResult];

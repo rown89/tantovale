@@ -1,7 +1,15 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { Client } from 'pg';
 
-import { startInfrastructure, stopInfrastructure, type StartedInfrastructure } from './containers';
+import { startInfrastructure, startWithDeadline, stopInfrastructure, type StartedInfrastructure } from './containers';
+
+async function fetchReadiness(service: string, url: string): Promise<Response> {
+	try {
+		return await fetch(url, { signal: AbortSignal.timeout(10_000) });
+	} catch (error) {
+		throw new Error(`${service} readiness request timed out or failed`, { cause: error });
+	}
+}
 
 describe('local API dependency containers', () => {
 	let started: StartedInfrastructure | undefined;
@@ -10,6 +18,32 @@ describe('local API dependency containers', () => {
 		if (started) {
 			await stopInfrastructure(started);
 		}
+	});
+
+	it('stops a container that completes after its startup deadline', async () => {
+		let resolveStart: ((container: { id: string }) => void) | undefined;
+		let resolveLateCleanup: (() => void) | undefined;
+		const start = new Promise<{ id: string }>((resolve) => {
+			resolveStart = resolve;
+		});
+		const lateCleanup = new Promise<void>((resolve) => {
+			resolveLateCleanup = resolve;
+		});
+
+		const result = startWithDeadline(
+			() => start,
+			async () => undefined,
+			async () => {
+				resolveLateCleanup?.();
+			},
+			async () => undefined,
+			'delayed test image',
+			1,
+		);
+
+		await expect(result).rejects.toThrow('Timed out starting delayed test image after 1ms');
+		resolveStart?.({ id: 'late-container' });
+		await lateCleanup;
 	});
 
 	it('starts disposable Postgres, MinIO, and Mailpit services', async () => {
@@ -21,14 +55,17 @@ describe('local API dependency containers', () => {
 			user: 'tantovale_test',
 			password: 'tantovale_test',
 			database: 'postgres',
+			connectionTimeoutMillis: 10_000,
+			query_timeout: 10_000,
+			statement_timeout: 10_000,
 		});
 		const mailpitApiUrl = `http://${started.mailpit.getHost()}:${started.mailpit.getMappedPort(8025)}`;
 		const minioUrl = `http://${started.minio.getHost()}:${started.minio.getMappedPort(9000)}`;
 
 		try {
 			const [mailpitResponse, minioResponse] = await Promise.all([
-				fetch(`${mailpitApiUrl}/api/v1/info`),
-				fetch(`${minioUrl}/minio/health/ready`),
+				fetchReadiness('Mailpit', `${mailpitApiUrl}/api/v1/info`),
+				fetchReadiness('MinIO', `${minioUrl}/minio/health/ready`),
 			]);
 			await postgres.connect();
 			const result = await postgres.query('SELECT 1 AS ready');
