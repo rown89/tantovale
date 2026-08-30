@@ -7,7 +7,7 @@ export default defineConfig({
 		setupFiles: ['./test/setup.ts'],
 		pool: 'forks',
 		maxWorkers: 4,
-		minWorkers: 2,
+		minWorkers: 1,
 		fileParallelism: true,
 		sequence: {
 			shuffle: true,

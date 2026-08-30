@@ -27,6 +27,7 @@
 		"test": "vitest run --config vitest.config.ts",
 		"test:api": "vitest run --config vitest.config.ts",
 		"test:api:watch": "vitest --config vitest.config.ts",
+		"test:api:worker-isolation": "vitest run --config ./test/worker-isolation.vitest.config.ts",
 		"test:api:coverage": "vitest run --config vitest.config.ts --coverage"
 	},
 	"engines": {

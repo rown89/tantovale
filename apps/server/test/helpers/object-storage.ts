@@ -67,7 +67,12 @@ export async function resetObjectStorage(expectedBucket: string, expectedEndpoin
 
 			if (errors.length > 0) {
 				throw new AggregateError(
-					errors.map(({ Code }) => new Error(`Object deletion failed with code ${Code ?? 'Unknown'}`)),
+					errors.map(
+						({ Key, Code, Message }) =>
+							new Error(
+								`Object deletion failed for key ${Key ?? '<unknown>'} with code ${Code ?? 'Unknown'}: ${Message ?? '<no message>'}`,
+							),
+					),
 					`Failed to delete ${errors.length} object(s) from the assigned worker bucket`,
 				);
 			}
