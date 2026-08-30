@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { DistanceUnitEnum, WeightUnitEnum } from 'shippo/models/components/index.js';
 
 import {
 	shippoCarrierAccountsFixture,
@@ -79,6 +80,8 @@ type ProviderRoute =
 
 const JSON_BODY_LIMIT_BYTES = 64 * 1024;
 const scenarios: ReadonlySet<StubScenario> = new Set(['success', 'unauthorized', 'invalid-payload', 'provider-error']);
+const shippoDistanceUnits: ReadonlySet<string> = new Set(Object.values(DistanceUnitEnum));
+const shippoMassUnits: ReadonlySet<string> = new Set(Object.values(WeightUnitEnum));
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -291,8 +294,10 @@ function isValidShippoShipment(body: unknown): boolean {
 		body.parcels.every(
 			(parcel) =>
 				isRecord(parcel) &&
-				parcel.distance_unit === 'cm' &&
-				parcel.mass_unit === 'kg' &&
+				isNonemptyString(parcel.distance_unit) &&
+				shippoDistanceUnits.has(parcel.distance_unit) &&
+				isNonemptyString(parcel.mass_unit) &&
+				shippoMassUnits.has(parcel.mass_unit) &&
 				isPositiveFiniteNumericString(parcel.height) &&
 				isPositiveFiniteNumericString(parcel.length) &&
 				isPositiveFiniteNumericString(parcel.weight) &&

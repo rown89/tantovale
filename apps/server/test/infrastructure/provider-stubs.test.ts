@@ -77,7 +77,7 @@ const validShippoShipmentBody = {
 			distance_unit: 'cm',
 			height: '10',
 			length: '20',
-			mass_unit: 'kg',
+			mass_unit: 'g',
 			weight: '1',
 			width: '15',
 		},
@@ -409,6 +409,29 @@ describe('local commerce provider stubs', () => {
 		}
 	});
 
+	it.each([
+		{ distanceUnit: 'cm', massUnit: 'g' },
+		{ distanceUnit: 'in', massUnit: 'lb' },
+	])('accepts Shippo parcels using supported $distanceUnit/$massUnit units', async ({ distanceUnit, massUnit }) => {
+		const stub = await startStub('shippo');
+		const response = await fetch(`${stub.url}/shipments`, {
+			method: 'POST',
+			headers: shippoHeaders(),
+			body: JSON.stringify({
+				...validShippoShipmentBody,
+				parcels: [
+					{
+						...validShippoShipmentBody.parcels[0],
+						distance_unit: distanceUnit,
+						mass_unit: massUnit,
+					},
+				],
+			}),
+		});
+
+		expect(response.status).toBe(201);
+	});
+
 	it('validates Shippo shipment fields and purchases only emitted rates with synchronous shape', async () => {
 		const stub = await startStub('shippo');
 		const headers = shippoHeaders();
@@ -423,7 +446,23 @@ describe('local commerce provider stubs', () => {
 			},
 			{
 				...validShippoShipmentBody,
-				parcels: [{ ...validShippoShipmentBody.parcels[0], distance_unit: 'in' }],
+				parcels: [{ ...validShippoShipmentBody.parcels[0], distance_unit: 'parsec' }],
+			},
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], mass_unit: 'stone' }],
+			},
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], height: '-1' }],
+			},
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], length: 'not-a-number' }],
+			},
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], width: undefined }],
 			},
 		]) {
 			const response = await fetch(`${stub.url}/shipments`, {
