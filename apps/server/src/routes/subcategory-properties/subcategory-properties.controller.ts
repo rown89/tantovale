@@ -12,7 +12,7 @@ export const getFiterSubcategoryByIdController = async (c: Context<AppBindings>)
 	try {
 		const filters = await getSubcategoryPropertiesById(c, id);
 
-		if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 500);
+		if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 404);
 
 		return c.json(filters, 200);
 	} catch (error) {
@@ -27,5 +27,7 @@ export const getFiltersForSubcategoryController = async (c: Context<AppBindings>
 	if (isNaN(id)) return c.json({ message: 'Invalid filter ID' }, 400);
 
 	const filters = await getFiltersForSubcategory(c, id);
+	if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 404);
+
 	return c.json(filters);
 };

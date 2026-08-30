@@ -20,7 +20,7 @@ export const getPropertiesBySubcategoryPropertiesIdController = async (c: Contex
 		const propertiesList = await getPropertiesBySubcategoryPropertiesIdService(c, id);
 
 		if (!propertiesList.length) {
-			return c.json({ message: 'Missing getPropertiesBySubcategoryPropertiesId properties' }, 500);
+			return c.json({ message: 'Missing getPropertiesBySubcategoryPropertiesId properties' }, 404);
 		}
 
 		return c.json(propertiesList, 200);

@@ -76,7 +76,7 @@ export const locationsRoute = createRouter()
 	.get('/search_by_id/:locationType/:locationId', async (c) => {
 		const locationId = Number(c.req.param('locationId'));
 
-		if (!locationId) return c.json({ message: 'Invalid location id provided' }, 401);
+		if (!locationId) return c.json({ message: 'Invalid location id provided' }, 400);
 
 		const { db } = createClient();
 
@@ -94,6 +94,10 @@ export const locationsRoute = createRouter()
 				)
 				.where(eq(cities.id, Number(locationId)))
 				.limit(1);
+
+			if (!locationResponse) {
+				return c.json({ message: 'Missing location' }, 404);
+			}
 
 			return c.json({ locationResponse }, 200);
 		} catch (error) {

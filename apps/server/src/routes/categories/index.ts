@@ -1,6 +1,7 @@
 import { createClient } from '../../database';
 import { categories } from '../../database/schemas/categories';
 import { createRouter } from '../../lib/create-app';
+import { eq } from 'drizzle-orm';
 
 export const categoriesRoute = createRouter().get('/', async (c) => {
 	try {
@@ -12,7 +13,8 @@ export const categoriesRoute = createRouter().get('/', async (c) => {
 				name: categories.name,
 				menu_order: categories.menu_order,
 			})
-			.from(categories);
+			.from(categories)
+			.where(eq(categories.published, true));
 
 		if (!categoryList.length) {
 			return c.json({ message: 'Missing categoryList' }, 404);

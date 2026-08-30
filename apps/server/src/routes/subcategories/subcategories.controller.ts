@@ -26,7 +26,7 @@ export const getSubcategoriesByIdController = async (c: Context<AppBindings>) =>
 	const subcategory = await getSubcategoriesById(c, id);
 
 	if (!subcategory.length) {
-		return c.json({ message: 'Invalid subcategory ID' }, 400);
+		return c.json({ message: 'Invalid subcategory ID' }, 404);
 	}
 
 	return c.json(subcategory);
@@ -39,6 +39,9 @@ export const getSubcategoriesWithoutParentByIdController = async (c: Context<App
 	if (isNaN(id)) return c.json({ message: 'Invalid subcategory ID' }, 400);
 
 	const subcategoriesWithoutParent = await getSubcategoriesWithoutParentById(c, id);
+	if (!subcategoriesWithoutParent.length) {
+		return c.json({ message: 'Invalid subcategory ID' }, 404);
+	}
 
 	return c.json(subcategoriesWithoutParent);
 };
