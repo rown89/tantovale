@@ -5,6 +5,7 @@ export default defineConfig({
 		include: ['test/**/*.test.ts'],
 		pool: 'forks',
 		maxWorkers: 4,
+		minWorkers: 1,
 		fileParallelism: true,
 		sequence: {
 			shuffle: true,
