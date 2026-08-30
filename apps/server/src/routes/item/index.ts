@@ -1,4 +1,4 @@
-import { eq, and, not, desc, inArray, isNull, sql } from 'drizzle-orm';
+import { eq, and, not, desc, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -26,7 +26,7 @@ import { items_properties_values } from '#database/schemas/items_properties_valu
 import { createRouter } from '#lib/create-app';
 import type { User } from '#lib/types';
 import { authPath } from '#utils/constants';
-import { createItemSchema, updateItemSchema, type createItemTypes } from '#extended_schemas';
+import { createItemSchema, updateItemSchema, type createItemTypes, type updateItemTypes } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { itemDetailResponseType } from '#extended_schemas';
 import {
@@ -42,6 +42,7 @@ import { environment } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
 import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
+import { acquirePaymentProviderIdentityLock } from '#lib/payment-provider-identity-lock';
 
 import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
@@ -58,7 +59,6 @@ type PropertyValidationMode = 'create' | 'update';
 
 const postgresIntegerMin = -2_147_483_648;
 const postgresIntegerMax = 2_147_483_647;
-const paymentIdentityLockNamespace = 1_414_283_092;
 const scalarIdPropertyTypes = new Set(['select', 'radio']);
 const multipleIdPropertyTypes = new Set(['select_multi', 'checkbox']);
 
@@ -245,13 +245,116 @@ function validateEasyPayMode(
 	validateShipping(deliveryMethod, shipping);
 }
 
+async function requirePublicSubcategory(tx: ItemTransaction, subcategoryId: number) {
+	const [availableSubcategory] = await tx
+		.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
+		.from(subcategories)
+		.innerJoin(categories, eq(categories.id, subcategories.category_id))
+		.where(and(eq(subcategories.id, subcategoryId), eq(subcategories.published, true), eq(categories.published, true)))
+		.limit(1);
+	if (!availableSubcategory) throw new Error('Subcategory is not publicly available');
+	return availableSubcategory;
+}
+
+async function requireActiveProfileAddress(tx: ItemTransaction, addressId: number, profileId: number): Promise<void> {
+	const [itemAddress] = await tx
+		.select({ id: addresses.id })
+		.from(addresses)
+		.where(
+			and(eq(addresses.id, addressId), eq(addresses.profile_id, profileId), eq(addresses.status, addressStatus.ACTIVE)),
+		)
+		.limit(1);
+	if (!itemAddress) throw new Error('Address must be active and belong to the authenticated profile');
+}
+
+async function validateCreateItemState(
+	tx: ItemTransaction,
+	profileId: number,
+	commons: createItemTypes['commons'],
+	requestedProperties: createItemTypes['properties'],
+	shipping: createItemTypes['shipping'],
+): Promise<ValidatedProperties> {
+	const availableSubcategory = await requirePublicSubcategory(tx, commons.subcategory_id);
+	await requireActiveProfileAddress(tx, commons.address_id, profileId);
+	const validatedProperties = await validatePropertiesForSubcategory(
+		tx,
+		commons.subcategory_id,
+		requestedProperties,
+		'create',
+	);
+	validateEasyPayMode(
+		commons.easy_pay ?? false,
+		availableSubcategory.easy_pay === true,
+		validatedProperties.deliveryMethod,
+		shipping,
+	);
+	return validatedProperties;
+}
+
+async function validateEditItemState(
+	tx: ItemTransaction,
+	itemId: number,
+	profileId: number,
+	commons: updateItemTypes['commons'],
+	requestedProperties: updateItemTypes['properties'],
+	shipping: updateItemTypes['shipping'],
+) {
+	const [existingItem] = await tx
+		.select()
+		.from(items)
+		.where(and(eq(items.id, itemId), eq(items.profile_id, profileId), isNull(items.deleted_at)))
+		.limit(1);
+	if (!existingItem) return undefined;
+
+	await requireActiveProfileAddress(tx, commons?.address_id ?? existingItem.address_id, profileId);
+	const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
+	const targetSubcategory = await requirePublicSubcategory(tx, targetSubcategoryId);
+	if (
+		commons?.subcategory_id !== undefined &&
+		commons.subcategory_id !== existingItem.subcategory_id &&
+		requestedProperties === undefined
+	) {
+		throw new Error('Properties are required when changing subcategory');
+	}
+
+	const validatedProperties =
+		requestedProperties === undefined
+			? undefined
+			: await validatePropertiesForSubcategory(tx, targetSubcategoryId, requestedProperties, 'update');
+	let deliveryMethod = validatedProperties?.deliveryMethod;
+	if (!deliveryMethod) {
+		const [storedDelivery] = await tx
+			.select({ value: property_values.value })
+			.from(items_properties_values)
+			.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
+			.innerJoin(properties, eq(properties.id, property_values.property_id))
+			.where(and(eq(items_properties_values.item_id, itemId), eq(properties.slug, 'delivery_method')))
+			.limit(1);
+		deliveryMethod = storedDelivery?.value ?? undefined;
+	}
+	const effectiveShipping =
+		deliveryMethod === 'pickup'
+			? shipping
+			: {
+					shipping_price: shipping?.shipping_price ?? existingItem.custom_shipping_price ?? undefined,
+					item_weight: shipping?.item_weight ?? existingItem.item_weight ?? undefined,
+					item_length: shipping?.item_length ?? existingItem.item_length ?? undefined,
+					item_width: shipping?.item_width ?? existingItem.item_width ?? undefined,
+					item_height: shipping?.item_height ?? existingItem.item_height ?? undefined,
+				};
+	const effectiveEasyPay = commons?.easy_pay ?? existingItem.easy_pay;
+	validateEasyPayMode(effectiveEasyPay, targetSubcategory.easy_pay === true, deliveryMethod, effectiveShipping);
+
+	return { effectiveEasyPay, validatedProperties };
+}
+
 async function ensurePaymentProviderIdentity(
 	db: DrizzleClient['db'],
 	user: Pick<User, 'profile_id' | 'email'>,
 	requestIp: string,
 ): Promise<void> {
 	await db.transaction(async (identityTx) => {
-		await identityTx.execute(sql`SELECT pg_advisory_xact_lock(${paymentIdentityLockNamespace}, ${user.profile_id})`);
+		await acquirePaymentProviderIdentityLock(identityTx, user.profile_id);
 
 		const [profile] = await identityTx
 			.select({
@@ -473,53 +576,22 @@ export const itemRoute = createRouter()
 			const { commons, properties: requestedProperties, shipping } = c.req.valid('json');
 			const { db } = createClient();
 
+			await db.transaction((tx) =>
+				validateCreateItemState(tx, user.profile_id, commons, requestedProperties, shipping),
+			);
+			if (commons.easy_pay) {
+				// No item transaction is held here: the remote identity and its local ID form an intentional durable boundary.
+				await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
+			}
+
 			return await db.transaction(async (tx) => {
-				const [availableSubcategory] = await tx
-					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
-					.from(subcategories)
-					.innerJoin(categories, eq(categories.id, subcategories.category_id))
-					.where(
-						and(
-							eq(subcategories.id, commons.subcategory_id),
-							eq(subcategories.published, true),
-							eq(categories.published, true),
-						),
-					)
-					.limit(1);
-				if (!availableSubcategory) {
-					throw new Error('Subcategory is not publicly available');
-				}
-
-				const [itemAddress] = await tx
-					.select({ id: addresses.id })
-					.from(addresses)
-					.where(
-						and(
-							eq(addresses.id, commons.address_id),
-							eq(addresses.profile_id, user.profile_id),
-							eq(addresses.status, addressStatus.ACTIVE),
-						),
-					)
-					.limit(1);
-				if (!itemAddress) throw new Error('Address must be active and belong to the authenticated profile');
-
-				const validatedProperties = await validatePropertiesForSubcategory(
+				const validatedProperties = await validateCreateItemState(
 					tx,
-					commons.subcategory_id,
+					user.profile_id,
+					commons,
 					requestedProperties,
-					'create',
-				);
-				validateEasyPayMode(
-					commons.easy_pay ?? false,
-					availableSubcategory.easy_pay === true,
-					validatedProperties.deliveryMethod,
 					shipping,
 				);
-
-				if (commons.easy_pay) {
-					// Intentional durable boundary: the remote identity and its local ID commit even if item creation later rolls back.
-					await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
-				}
 
 				const [newItem] = await tx
 					.insert(items)
@@ -587,80 +659,19 @@ export const itemRoute = createRouter()
 
 		const { db } = createClient();
 		try {
+			const preflight = await db.transaction((tx) =>
+				validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping),
+			);
+			if (!preflight) return c.json({ message: 'Item not found' }, 404);
+			if (preflight.effectiveEasyPay) {
+				// No item transaction is held here: the remote identity and its local ID form an intentional durable boundary.
+				await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
+			}
+
 			const result = await db.transaction(async (tx) => {
-				const [existingItem] = await tx
-					.select()
-					.from(items)
-					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
-					.limit(1);
-				if (!existingItem) return undefined;
-
-				if (commons?.address_id !== undefined) {
-					const [replacementAddress] = await tx
-						.select({ id: addresses.id })
-						.from(addresses)
-						.where(
-							and(
-								eq(addresses.id, commons.address_id),
-								eq(addresses.profile_id, user.profile_id),
-								eq(addresses.status, addressStatus.ACTIVE),
-							),
-						)
-						.limit(1);
-					if (!replacementAddress) {
-						throw new Error('Address must be active and belong to the authenticated profile');
-					}
-				}
-
-				const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
-				const [targetSubcategory] = await tx
-					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
-					.from(subcategories)
-					.innerJoin(categories, eq(categories.id, subcategories.category_id))
-					.where(
-						and(
-							eq(subcategories.id, targetSubcategoryId),
-							eq(subcategories.published, true),
-							eq(categories.published, true),
-						),
-					)
-					.limit(1);
-				if (!targetSubcategory) throw new Error('Subcategory is not publicly available');
-				if (
-					commons?.subcategory_id !== undefined &&
-					commons.subcategory_id !== existingItem.subcategory_id &&
-					requestedProperties === undefined
-				) {
-					throw new Error('Properties are required when changing subcategory');
-				}
-
-				const validatedProperties =
-					requestedProperties === undefined
-						? undefined
-						: await validatePropertiesForSubcategory(tx, targetSubcategoryId, requestedProperties, 'update');
-				let deliveryMethod = validatedProperties?.deliveryMethod;
-				if (!deliveryMethod) {
-					const [storedDelivery] = await tx
-						.select({ value: property_values.value })
-						.from(items_properties_values)
-						.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
-						.innerJoin(properties, eq(properties.id, property_values.property_id))
-						.where(and(eq(items_properties_values.item_id, id), eq(properties.slug, 'delivery_method')))
-						.limit(1);
-					deliveryMethod = storedDelivery?.value ?? undefined;
-				}
-				const effectiveShipping =
-					deliveryMethod === 'pickup'
-						? shipping
-						: {
-								shipping_price: shipping?.shipping_price ?? existingItem.custom_shipping_price ?? undefined,
-								item_weight: shipping?.item_weight ?? existingItem.item_weight ?? undefined,
-								item_length: shipping?.item_length ?? existingItem.item_length ?? undefined,
-								item_width: shipping?.item_width ?? existingItem.item_width ?? undefined,
-								item_height: shipping?.item_height ?? existingItem.item_height ?? undefined,
-							};
-				const effectiveEasyPay = commons?.easy_pay ?? existingItem.easy_pay;
-				validateEasyPayMode(effectiveEasyPay, targetSubcategory.easy_pay === true, deliveryMethod, effectiveShipping);
+				const validation = await validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping);
+				if (!validation) return undefined;
+				const { validatedProperties } = validation;
 
 				const updateValues: Partial<typeof items.$inferInsert> = {
 					...commons,
@@ -692,10 +703,6 @@ export const itemRoute = createRouter()
 					.returning({ id: items.id });
 				if (!updatedItem) return undefined;
 
-				if (effectiveEasyPay) {
-					// Intentional durable boundary: the remote identity and its local ID commit even if the edit later rolls back.
-					await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
-				}
 				if (validatedProperties) {
 					await tx.delete(items_properties_values).where(eq(items_properties_values.item_id, id));
 					if (validatedProperties.propertyValueIds.length > 0) {

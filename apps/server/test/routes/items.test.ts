@@ -17,6 +17,7 @@ import {
 } from '../../src/database/schemas/schema';
 import { itemStatus, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
 import { createItemSchema, updateItemSchema } from '../../src/extended_schemas/item';
+import { paymentProviderIdentityLockScope } from '../../src/lib/payment-provider-identity-lock';
 import { environment } from '../../src/utils/constants';
 import { createAddressFixture } from '../fixtures/addresses';
 import {
@@ -68,6 +69,23 @@ async function waitForPaymentProviderRequests(expectedCount: number): Promise<vo
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
 	throw new Error(`Timed out waiting for ${expectedCount} payment-provider guest request(s)`);
+}
+
+async function waitForPaymentIdentityLockWaiters(expectedCount: number): Promise<void> {
+	const { client } = getTestDatabase();
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const { rows } = await client.query<{ waiting: number }>(`
+			SELECT count(*)::int AS waiting
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+				AND wait_event_type = 'Lock'
+				AND wait_event = 'advisory'
+				AND query ILIKE '%pg_advisory_xact_lock%'
+		`);
+		if ((rows[0]?.waiting ?? 0) >= expectedCount) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${expectedCount} payment-identity advisory-lock waiter(s)`);
 }
 
 async function createOptionalCardinalityProperty(
@@ -302,30 +320,100 @@ describe('item and listing routes', () => {
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
 		});
 
-		it('serializes concurrent payment identity provisioning to one provider request', async () => {
+		it('releases preflight transactions before concurrent requests wait on the payment identity lock', async () => {
 			const actors = await createCommerceActors();
-			const { db } = getTestDatabase();
+			const { client, db } = getTestDatabase();
 			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
 			const firstBody = validItemBody(actors, { commons: { title: 'Concurrent Identity Listing One' } });
 			const secondBody = validItemBody(actors, { commons: { title: 'Concurrent Identity Listing Two' } });
+			const blocker = await client.connect();
+			let transactionOpen = false;
+			let responsesPromise: Promise<Response[]> | undefined;
 
-			const responses = await Promise.all([
-				authJson('/item/auth/new', 'POST', actors.seller.jar, firstBody),
-				authJson('/item/auth/new', 'POST', actors.seller.jar, secondBody),
+			try {
+				await blocker.query('BEGIN');
+				transactionOpen = true;
+				const blockerPid = (await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid;
+				await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+					paymentProviderIdentityLockScope,
+					actors.seller.profile.id,
+				]);
+
+				responsesPromise = Promise.all([
+					authJson('/item/auth/new', 'POST', actors.seller.jar, firstBody),
+					authJson('/item/auth/new', 'POST', actors.seller.jar, secondBody),
+				]);
+				await waitForPaymentIdentityLockWaiters(2);
+				const { rows: idleTransactions } = await client.query<{ count: number }>(
+					`SELECT count(*)::int AS count
+					 FROM pg_stat_activity
+					 WHERE datname = current_database()
+						AND state = 'idle in transaction'
+						AND pid <> $1`,
+					[blockerPid],
+				);
+
+				await blocker.query('COMMIT');
+				transactionOpen = false;
+				const responses = await responsesPromise;
+				const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+				if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+				const guestRequests = (await getProviderRequests(providerUrl)).filter(
+					({ path }) => path === '/api/v1/guest_users',
+				);
+				const storedItems = await db.select().from(items);
+				const [storedProfile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+
+				expect(idleTransactions[0]?.count).toBe(0);
+				expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+				expect(guestRequests).toHaveLength(1);
+				expect(storedItems).toHaveLength(2);
+				expect(storedProfile?.payment_provider_id).toBeTruthy();
+			} finally {
+				if (transactionOpen) await blocker.query('ROLLBACK');
+				blocker.release();
+				await responsesPromise?.catch(() => undefined);
+			}
+		});
+
+		it('does not starve the default pool under twelve concurrent Easy Pay creates', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+			const responsePromise = Promise.all(
+				Array.from({ length: 12 }, (_, index) =>
+					authJson(
+						'/item/auth/new',
+						'POST',
+						actors.seller.jar,
+						validItemBody(actors, { commons: { title: `Pool Capacity Listing ${index + 1}` } }),
+					),
+				),
+			);
+			let timedOut = false;
+			let timeoutId: ReturnType<typeof setTimeout> | undefined;
+			const boundedResult = await Promise.race([
+				responsePromise,
+				new Promise<undefined>((resolve) => {
+					timeoutId = setTimeout(() => {
+						timedOut = true;
+						resolve(undefined);
+					}, 5_000);
+				}),
 			]);
+			if (timeoutId) clearTimeout(timeoutId);
+			const responses = boundedResult ?? (await responsePromise);
 			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
 			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
 			const guestRequests = (await getProviderRequests(providerUrl)).filter(
 				({ path }) => path === '/api/v1/guest_users',
 			);
-			const storedItems = await db.select().from(items);
-			const [storedProfile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
 
-			expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+			expect(timedOut).toBe(false);
+			expect(responses.map(({ status }) => status)).toEqual(Array.from({ length: 12 }, () => 201));
+			expect(await db.select().from(items)).toHaveLength(12);
 			expect(guestRequests).toHaveLength(1);
-			expect(storedItems).toHaveLength(2);
-			expect(storedProfile?.payment_provider_id).toBeTruthy();
-		});
+		}, 15_000);
 
 		it('durably persists a provider identity when the later local item transaction rolls back', async () => {
 			const actors = await createCommerceActors();
