@@ -206,7 +206,11 @@ export const addressesRoute = createRouter()
 					.from(addresses)
 					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
 
-				if (currentAddress?.status === ADDRESS_STATUS.ACTIVE && values.status === ADDRESS_STATUS.INACTIVE) {
+				if (!currentAddress) {
+					return c.json({ message: 'Address not found' }, 404);
+				}
+
+				if (currentAddress.status === ADDRESS_STATUS.ACTIVE && values.status === ADDRESS_STATUS.INACTIVE) {
 					return c.json({ message: 'You can not disable the active address' }, 400);
 				}
 
@@ -253,6 +257,10 @@ export const addressesRoute = createRouter()
 				const { db } = createClient();
 
 				const { address_id } = c.req.valid('json');
+
+				if (!address_id) {
+					return c.json({ message: 'Address ID is required' }, 400);
+				}
 
 				const [profile] = await db
 					.select({ profile_id: profiles.id })
