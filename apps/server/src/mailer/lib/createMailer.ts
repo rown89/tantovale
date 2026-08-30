@@ -1,13 +1,21 @@
 import nodemailer from 'nodemailer';
-import { parseEnv } from 'src/env';
+import { parseEnv } from '../../env';
 
 export function createMailer(process: NodeJS.Process) {
+	const environment = parseEnv(process.env);
+	const auth = environment.SMTP_USER
+		? {
+				auth: {
+					user: environment.SMTP_USER,
+					pass: environment.SMTP_PASS,
+				},
+			}
+		: {};
+
 	return nodemailer.createTransport({
-		host: parseEnv(process.env).SMTP_HOST,
-		port: parseEnv(process.env).SMTP_PORT,
-		auth: {
-			user: parseEnv(process.env).SMTP_USER,
-			pass: parseEnv(process.env).SMTP_PASS,
-		},
+		host: environment.SMTP_HOST,
+		port: environment.SMTP_PORT,
+		secure: environment.SMTP_PORT === 465,
+		...auth,
 	});
 }

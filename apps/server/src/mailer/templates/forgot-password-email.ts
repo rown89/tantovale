@@ -5,7 +5,7 @@ export async function sendForgotPasswordEmail(to: string, verificationLink: stri
 	const transporter = createMailer(process);
 
 	await transporter.sendMail({
-		from: `"Tantovale" <${parseEnv(process.env).SMTP_USER}>`,
+		from: parseEnv(process.env).SMTP_FROM,
 		to,
 		subject: 'Password Reset',
 		html: `

@@ -5,7 +5,7 @@ export async function sendVerifyEmail(to: string, verificationLink: string) {
 	const transporter = createMailer(process);
 
 	await transporter.sendMail({
-		from: `"Tantovale" <${parseEnv(process.env).SMTP_USER}>`,
+		from: parseEnv(process.env).SMTP_FROM,
 		to,
 		subject: 'Attivazione account',
 		html: `

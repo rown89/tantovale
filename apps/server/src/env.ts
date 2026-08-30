@@ -61,11 +61,17 @@ const EnvSchema = z.object({
 	AWS_ACCESS_KEY: z.string(),
 	AWS_BUCKET_NAME: z.string(),
 	AWS_SECRET_ACCESS_KEY: z.string(),
+	AWS_ENDPOINT: z.url().optional(),
+	AWS_FORCE_PATH_STYLE: z
+		.enum(['true', 'false'])
+		.default('false')
+		.transform((value) => value === 'true'),
 	// SMTP
 	SMTP_HOST: z.string(),
 	SMTP_PORT: z.coerce.number().default(465),
 	SMTP_USER: z.string(),
 	SMTP_PASS: z.string(),
+	SMTP_FROM: z.string().default('Tantovale <noreply@tantovale.it>'),
 	// CRON
 	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
 	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),
