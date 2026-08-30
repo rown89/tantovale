@@ -26,6 +26,18 @@ function resetSecret(): string {
 	return secret;
 }
 
+function cookieValue(cookieHeader: string, name: string): string {
+	const value = cookieHeader
+		.split(';')
+		.map((part) => part.trim())
+		.find((part) => part.startsWith(`${name}=`))
+		?.slice(name.length + 1);
+	if (!value) {
+		throw new Error(`Missing ${name} fixture cookie`);
+	}
+	return value;
+}
+
 function mailpitApiUrl(path: string): URL {
 	const value = process.env.MAILPIT_API_URL;
 	if (!value) {
@@ -404,6 +416,87 @@ describe('password lifecycle routes', () => {
 		expect(userResponse.status).toBe(401);
 		expect(verifyResponse.status).toBe(401);
 		expect(await db.select().from(refreshTokens)).toEqual([]);
+	});
+
+	it('serializes an old-password login behind reset so no stale session survives', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const token = await emailedResetToken(fixture.user.email);
+		const newPassword = 'RaceSafeLoginPass456!';
+		const { client, db } = getTestDatabase();
+		const blocker = await client.connect();
+		let released = false;
+		let resetResponse: Response;
+		let loginResponse: Response;
+
+		try {
+			await blocker.query('BEGIN');
+			await blocker.query('LOCK TABLE refresh_tokens IN ACCESS EXCLUSIVE MODE');
+			const pendingReset = app.request('/password/auth/reset', jsonRequest('POST', { token, newPassword }));
+			await waitForDatabaseLockWaiters(1);
+			const pendingLogin = app.request(
+				'/login',
+				jsonRequest('POST', { email: fixture.user.email, password: fixture.password }),
+			);
+			await waitForDatabaseLockWaiters(2);
+			await blocker.query('COMMIT');
+			released = true;
+			[resetResponse, loginResponse] = await Promise.all([pendingReset, pendingLogin]);
+		} finally {
+			if (!released) {
+				await blocker.query('ROLLBACK');
+			}
+			blocker.release();
+		}
+
+		const [storedUser] = await db.select().from(users).where(eq(users.id, fixture.user.id));
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(resetResponse.status).toBe(200);
+		expect(loginResponse.status).toBe(401);
+		expect(await verifyPassword(storedUser!.password, newPassword)).toBe(true);
+		expect(sessions).toEqual([]);
+	});
+
+	it('serializes refresh rotation before reset so its replacement session is revoked', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const originalCookies = jar.header();
+		const refreshToken = cookieValue(originalCookies, 'refresh_token');
+		const token = await emailedResetToken(fixture.user.email);
+		const newPassword = 'RaceSafeRefreshPass456!';
+		const { client, db } = getTestDatabase();
+		const blocker = await client.connect();
+		let released = false;
+		let refreshResponse: Response;
+		let resetResponse: Response;
+
+		try {
+			await blocker.query('BEGIN');
+			await blocker.query('SELECT id FROM refresh_tokens WHERE token = $1 FOR UPDATE', [refreshToken]);
+			const pendingRefresh = app.request('/refresh/auth', {
+				method: 'POST',
+				headers: { cookie: originalCookies },
+			});
+			await waitForDatabaseLockWaiters(1);
+			const pendingReset = app.request('/password/auth/reset', jsonRequest('POST', { token, newPassword }));
+			await waitForDatabaseLockWaiters(2);
+			await blocker.query('COMMIT');
+			released = true;
+			[refreshResponse, resetResponse] = await Promise.all([pendingRefresh, pendingReset]);
+		} finally {
+			if (!released) {
+				await blocker.query('ROLLBACK');
+			}
+			blocker.release();
+		}
+
+		const [storedUser] = await db.select().from(users).where(eq(users.id, fixture.user.id));
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(refreshResponse.status).toBe(200);
+		expect(resetResponse.status).toBe(200);
+		expect(await verifyPassword(storedUser!.password, newPassword)).toBe(true);
+		expect(sessions).toEqual([]);
 	});
 
 	it('authenticates only the new password after a successful emailed reset', async () => {

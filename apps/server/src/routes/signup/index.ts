@@ -18,7 +18,7 @@ import { sendVerifyEmail } from '../../mailer/templates/verify-email';
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 
 import { createRouter } from '../../lib/create-app';
-import { UserProfileSchema } from '../../extended_schemas/users';
+import { SignupUserProfileSchema } from '../../extended_schemas/users';
 import { zValidator } from '@hono/zod-validator';
 
 export const signupRoute = createRouter().post(
@@ -31,7 +31,7 @@ export const signupRoute = createRouter().post(
 			},
 		},
 	}),
-	zValidator('json', UserProfileSchema),
+	zValidator('json', SignupUserProfileSchema),
 	async (c) => {
 		const { NODE_ENV, EMAIL_VERIFY_TOKEN_SECRET } = env<{
 			NODE_ENV: string;

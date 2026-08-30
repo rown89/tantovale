@@ -104,6 +104,8 @@ describe('authentication routes', () => {
 			{ ...signupBody(uniqueValue('e')), email: 'not-an-email' },
 			{ ...signupBody(uniqueValue('p')), privacy_policy: false },
 			{ ...signupBody(uniqueValue('w')), password: 'short' },
+			{ ...signupBody(uniqueValue('b')), password: 'a'.repeat(73) },
+			{ ...signupBody(uniqueValue('mb')), password: 'é'.repeat(37) },
 		];
 
 		for (const body of invalidBodies) {
@@ -114,6 +116,18 @@ describe('authentication routes', () => {
 		const { db } = getTestDatabase();
 		expect(await db.select().from(users)).toEqual([]);
 		expect(await db.select().from(profiles)).toEqual([]);
+	});
+
+	it('POST /login preserves compatibility with a legacy bcrypt hash truncated at 72 bytes', async () => {
+		const legacyPrefix = 'a'.repeat(72);
+		const fixture = await createUserFixture({ password: legacyPrefix, emailVerified: true });
+
+		const response = await app.request(
+			'/login',
+			jsonRequest('POST', { email: fixture.user.email, password: `${legacyPrefix}legacy` }),
+		);
+
+		expect(response.status).toBe(200);
 	});
 
 	it('POST /signup rolls back the user when profile persistence fails', async () => {

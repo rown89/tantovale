@@ -1,11 +1,10 @@
-import { Buffer } from 'node:buffer';
-
 import { env } from 'hono/adapter';
 import { and, eq, gt } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
-import { hashPassword } from '../../lib/password';
+import { hashPassword, passwordSchema } from '../../lib/password';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { createClient } from '../../database';
 import { users, password_reset_tokens, refreshTokens } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
@@ -14,11 +13,7 @@ import { findVerifiedResetToken } from './reset-token.service';
 
 const resetPasswordSchema = z.object({
 	token: z.string().min(1),
-	newPassword: z
-		.string()
-		.min(8)
-		.max(100)
-		.refine((password) => Buffer.byteLength(password, 'utf8') <= 72, 'Password must not exceed 72 UTF-8 bytes'),
+	newPassword: passwordSchema,
 });
 
 export const passwordResetRoute = createRouter()
@@ -44,6 +39,7 @@ export const passwordResetRoute = createRouter()
 			const hashedPassword = await hashPassword(newPassword);
 			const { db } = createClient();
 			const updated = await db.transaction(async (tx) => {
+				await acquireUserTransactionLock(tx, storedToken.user_id);
 				const consumed = await tx
 					.delete(password_reset_tokens)
 					.where(

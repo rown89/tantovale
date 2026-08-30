@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { users } from '../../src/database/schemas/users';
-import { verifyPassword } from '../../src/lib/password';
+import { hashPassword, verifyPassword } from '../../src/lib/password';
 import { createUserFixture } from '../fixtures/factories';
 import { authenticatedRequest, loginAs } from './auth';
 import { getTestDatabase } from './database';
@@ -18,6 +18,11 @@ afterEach(() => {
 });
 
 describe('API test helpers', () => {
+	it("rejects hashing passwords beyond bcrypt's 72 UTF-8 byte boundary", async () => {
+		await expect(hashPassword('a'.repeat(73))).rejects.toThrow('72');
+		await expect(hashPassword('é'.repeat(37))).rejects.toThrow('72');
+	});
+
 	it('updates a cookie jar from multiple Set-Cookie headers', () => {
 		const jar = new CookieJar();
 

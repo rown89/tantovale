@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
 import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
@@ -11,6 +11,7 @@ import { createClient } from '../../database';
 import { password_reset_tokens } from '../../database/schemas/schema';
 
 import { createRouter } from '../../lib/create-app';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { environment } from '../../utils/constants';
 
 const forgotPasswordSchema = z.object({
@@ -51,7 +52,7 @@ export const passwordForgotRoute = createRouter().post(
 		);
 
 		await db.transaction(async (tx) => {
-			await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(current_database()), ${user.id})`);
+			await acquireUserTransactionLock(tx, user.id);
 			await tx.delete(password_reset_tokens).where(eq(password_reset_tokens.user_id, user.id));
 			await tx.insert(password_reset_tokens).values({
 				user_id: user.id,

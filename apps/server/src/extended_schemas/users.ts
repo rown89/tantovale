@@ -1,5 +1,6 @@
 import { selectProfilesSchema } from '#database/schemas/profiles';
 import { selectUsersSchema } from '#database/schemas/users';
+import { passwordSchema } from '#lib/password';
 import { z } from 'zod/v4';
 
 export const UserProfileSchema = selectProfilesSchema
@@ -28,3 +29,7 @@ export const UserProfileSchema = selectProfilesSchema
 		email: z.email("L'email non sembra essere valida").nonempty(),
 		password: z.string().min(8, 'La password deve contenere almeno 8 caratteri').max(100).nonempty(),
 	});
+
+export const SignupUserProfileSchema = UserProfileSchema.extend({
+	password: passwordSchema,
+});

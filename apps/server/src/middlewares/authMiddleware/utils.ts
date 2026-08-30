@@ -11,6 +11,7 @@ import { refreshTokens } from '../../database/schemas/refreshTokens';
 import { users } from '../../database/schemas/users';
 import { getAuthTokenDeleteOptions, getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { tokenPayload } from '../../lib/tokenPayload';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import type { AppBindings, User } from '../../lib/types';
 import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES } from '../../utils/constants';
 
@@ -207,57 +208,33 @@ export async function rotateRefreshSession({
 		throw new InvalidRefreshSessionError();
 	}
 
-	const [existingUser] = await db
-		.select({
-			id: users.id,
-			email: users.email,
-			username: users.username,
-			email_verified: users.email_verified,
-			phone_verified: users.phone_verified,
-			profile_id: profiles.id,
-			is_banned: users.is_banned,
-		})
-		.from(users)
-		.innerJoin(profiles, eq(users.id, profiles.user_id))
-		.where(eq(users.id, claims.id))
-		.limit(1);
+	const rotation = await db.transaction(async (tx) => {
+		await acquireUserTransactionLock(tx, claims.id);
+		const [existingUser] = await tx
+			.select({
+				id: users.id,
+				email: users.email,
+				username: users.username,
+				email_verified: users.email_verified,
+				phone_verified: users.phone_verified,
+				profile_id: profiles.id,
+				is_banned: users.is_banned,
+			})
+			.from(users)
+			.innerJoin(profiles, eq(users.id, profiles.user_id))
+			.where(eq(users.id, claims.id))
+			.limit(1);
 
-	if (
-		!existingUser ||
-		existingUser.is_banned ||
-		existingUser.username !== claims.username ||
-		existingUser.profile_id !== claims.profile_id
-	) {
-		await db.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
-		throw new InvalidRefreshSessionError();
-	}
+		if (
+			!existingUser ||
+			existingUser.is_banned ||
+			existingUser.username !== claims.username ||
+			existingUser.profile_id !== claims.profile_id
+		) {
+			await tx.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+			return undefined;
+		}
 
-	const user: User = {
-		id: existingUser.id,
-		profile_id: existingUser.profile_id,
-		email: existingUser.email,
-		username: existingUser.username,
-		email_verified: existingUser.email_verified,
-		phone_verified: existingUser.phone_verified,
-	};
-	const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
-	const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
-	const accessToken = await sign(
-		{
-			...tokenPayload({ ...user, exp: Math.floor(accessTokenExpires.getTime() / 1_000) }),
-			jti: randomUUID(),
-		},
-		accessTokenSecret,
-	);
-	const replacementRefreshToken = await sign(
-		{
-			...tokenPayload({ ...user, exp: Math.floor(refreshTokenExpires.getTime() / 1_000) }),
-			jti: randomUUID(),
-		},
-		refreshTokenSecret,
-	);
-
-	const rotated = await db.transaction(async (tx) => {
 		const [consumedToken] = await tx
 			.delete(refreshTokens)
 			.where(and(eq(refreshTokens.token, refreshToken), gt(refreshTokens.expires_at, new Date())))
@@ -269,28 +246,54 @@ export async function rotateRefreshSession({
 			consumedToken.username !== existingUser.username
 		) {
 			await tx.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
-			return false;
+			return undefined;
 		}
+
+		const user: User = {
+			id: existingUser.id,
+			profile_id: existingUser.profile_id,
+			email: existingUser.email,
+			username: existingUser.username,
+			email_verified: existingUser.email_verified,
+			phone_verified: existingUser.phone_verified,
+		};
+		const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
+		const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
+		const accessToken = await sign(
+			{
+				...tokenPayload({ ...user, exp: Math.floor(accessTokenExpires.getTime() / 1_000) }),
+				jti: randomUUID(),
+			},
+			accessTokenSecret,
+		);
+		const replacementRefreshToken = await sign(
+			{
+				...tokenPayload({ ...user, exp: Math.floor(refreshTokenExpires.getTime() / 1_000) }),
+				jti: randomUUID(),
+			},
+			refreshTokenSecret,
+		);
 
 		await tx.insert(refreshTokens).values({
 			username: existingUser.username,
 			token: replacementRefreshToken,
 			expires_at: refreshTokenExpires,
 		});
-		return true;
+
+		return { user, accessToken, replacementRefreshToken, accessTokenExpires, refreshTokenExpires };
 	});
 
-	if (!rotated) {
+	if (!rotation) {
 		throw new InvalidRefreshSessionError();
 	}
 
-	setCookie(c, 'access_token', accessToken, {
-		...getAuthTokenOptions({ isProductionMode, expires: accessTokenExpires }),
+	setCookie(c, 'access_token', rotation.accessToken, {
+		...getAuthTokenOptions({ isProductionMode, expires: rotation.accessTokenExpires }),
 	});
-	setCookie(c, 'refresh_token', replacementRefreshToken, {
-		...getAuthTokenOptions({ isProductionMode, expires: refreshTokenExpires }),
+	setCookie(c, 'refresh_token', rotation.replacementRefreshToken, {
+		...getAuthTokenOptions({ isProductionMode, expires: rotation.refreshTokenExpires }),
 	});
-	c.set('user', user);
+	c.set('user', rotation.user);
 
-	return user;
+	return rotation.user;
 }
