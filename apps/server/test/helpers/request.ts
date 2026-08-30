@@ -1,5 +1,5 @@
 export class CookieJar {
-	private readonly cookies = new Map<string, string>();
+	private readonly cookies = new Map<string, { value: string; expiresAt?: number }>();
 
 	capture(setCookieHeaders: string[]): void {
 		for (const header of setCookieHeaders) {
@@ -16,27 +16,47 @@ export class CookieJar {
 				continue;
 			}
 
-			const deleted = attributes.some((attribute) => {
-				const maxAge = attribute.match(/^\s*max-age\s*=\s*([-+]?\d+(?:\.\d+)?)\s*$/i);
-				if (maxAge) {
-					return Number(maxAge[1]) <= 0;
-				}
+			const maxAge = attributes
+				.map((attribute) => attribute.match(/^\s*max-age\s*=\s*([-+]?\d+(?:\.\d+)?)\s*$/i)?.[1])
+				.find((candidate) => candidate !== undefined);
+			const parsedMaxAge = maxAge === undefined ? Number.NaN : Number(maxAge);
+			const maxAgeSeconds = Number.isFinite(parsedMaxAge) ? parsedMaxAge : undefined;
+			const expires = attributes
+				.map((attribute) => attribute.match(/^\s*expires\s*=\s*(.+?)\s*$/i)?.[1])
+				.find((candidate) => candidate !== undefined);
+			const expiresAt = expires ? Date.parse(expires) : Number.NaN;
 
-				const expires = attribute.match(/^\s*expires\s*=\s*(.+?)\s*$/i)?.[1];
-				const expiresAt = expires ? Date.parse(expires) : Number.NaN;
-				return Number.isFinite(expiresAt) && expiresAt <= Date.now();
-			});
-
-			if (deleted) {
+			if (maxAgeSeconds !== undefined && maxAgeSeconds <= 0) {
 				this.cookies.delete(name);
-			} else {
-				this.cookies.set(name, value);
+				continue;
 			}
+
+			if (maxAgeSeconds === undefined && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+				this.cookies.delete(name);
+				continue;
+			}
+
+			this.cookies.set(name, {
+				value,
+				...(maxAgeSeconds === undefined
+					? Number.isFinite(expiresAt) && expiresAt > Date.now()
+						? { expiresAt }
+						: {}
+					: { expiresAt: Date.now() + maxAgeSeconds * 1_000 }),
+			});
 		}
 	}
 
 	header(): string {
-		return [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ');
+		const values: string[] = [];
+		for (const [name, cookie] of this.cookies) {
+			if (cookie.expiresAt !== undefined && cookie.expiresAt <= Date.now()) {
+				this.cookies.delete(name);
+				continue;
+			}
+			values.push(`${name}=${cookie.value}`);
+		}
+		return values.join('; ');
 	}
 }
 

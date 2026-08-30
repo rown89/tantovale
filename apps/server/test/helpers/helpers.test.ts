@@ -42,6 +42,22 @@ describe('API test helpers', () => {
 		expect(jar.header()).toBe('empty=');
 	});
 
+	it('honors Max-Age over Expires and removes expired stored cookies from headers', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2030-01-01T00:00:00.000Z'));
+		const jar = new CookieJar();
+		jar.capture([
+			'access_token=one; Max-Age=1; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+			'refresh_token=two; Expires=Tue, 01 Jan 2030 00:00:02 GMT',
+		]);
+
+		expect(jar.header()).toBe('access_token=one; refresh_token=two');
+		vi.setSystemTime(new Date('2030-01-01T00:00:01.001Z'));
+		expect(jar.header()).toBe('refresh_token=two');
+		vi.setSystemTime(new Date('2030-01-01T00:00:02.001Z'));
+		expect(jar.header()).toBe('');
+	});
+
 	it('ignores invalid cookie names and preserves values containing equals signs', () => {
 		const jar = new CookieJar();
 		jar.capture(['=blank', 'has space=value', 'token=abc=def; Path=/']);
@@ -89,6 +105,12 @@ describe('API test helpers', () => {
 		].join(' ');
 
 		expect(extractTokenFromLink(content, 'token')).toBe('abc.def');
+	});
+
+	it('trims trailing prose punctuation from plaintext links', () => {
+		expect(extractTokenFromLink('Finish signup: https://storefront.test/verify?token=abc.def.', 'token')).toBe(
+			'abc.def',
+		);
 	});
 
 	it('reports missing email links and parameters', () => {
@@ -141,6 +163,31 @@ describe('API test helpers', () => {
 
 		await expect(email).resolves.toEqual({ HTML: '<p>Hi</p>', Text: 'Hi' });
 		expect(fetchMock).toHaveBeenCalledTimes(3);
+	});
+
+	it('retries a transient Mailpit response-body timeout before returning a matching email', async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		process.env.MAILPIT_API_URL = 'http://localhost:8025';
+		fetchMock.mockResolvedValueOnce({
+			ok: true,
+			json: () => Promise.reject(Object.assign(new Error('body timed out'), { name: 'TimeoutError' })),
+		});
+		fetchMock.mockResolvedValueOnce(
+			new Response(
+				JSON.stringify({
+					messages: [{ ID: 'message-id', Subject: 'Subject', To: [{ Address: 'user@tantovale.test' }] }],
+				}),
+			),
+		);
+		fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ HTML: '<p>Hi</p>', Text: 'Hi' })));
+
+		const email = waitForEmail('user@tantovale.test', 'Subject');
+		const result = expect(email).resolves.toEqual({ HTML: '<p>Hi</p>', Text: 'Hi' });
+		await vi.advanceTimersByTimeAsync(50);
+
+		await result;
 	});
 
 	it('fails immediately for terminal Mailpit responses', async () => {

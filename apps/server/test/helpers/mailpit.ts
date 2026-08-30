@@ -54,30 +54,56 @@ function apiOrigin(): string {
 	}
 }
 
-async function fetchMailpit(url: string, deadline: number): Promise<Response> {
+function abortPromise(signal: AbortSignal): Promise<never> {
+	if (signal.aborted) {
+		return Promise.reject(signal.reason);
+	}
+
+	return new Promise<never>((_resolve, reject) => {
+		signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+	});
+}
+
+async function fetchMailpitJson<T>(url: string, deadline: number): Promise<T> {
 	const remaining = deadline - Date.now();
 
 	if (remaining <= 0) {
 		throw new MailpitRequestError('Mailpit API request timed out', true);
 	}
 
-	let response: Response;
+	const controller = new AbortController();
+	const timeout = setTimeout(
+		() => controller.abort(new DOMException('Mailpit API request timed out', 'TimeoutError')),
+		Math.min(REQUEST_TIMEOUT_MS, remaining),
+	);
 	try {
-		response = await fetch(url, { signal: AbortSignal.timeout(Math.min(REQUEST_TIMEOUT_MS, remaining)) });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new MailpitRequestError(`Mailpit API request failed: ${message}`, true, { cause: error });
-	}
+		let response: Response;
+		try {
+			response = await fetch(url, { signal: controller.signal });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new MailpitRequestError(`Mailpit API request failed: ${message}`, true, { cause: error });
+		}
 
-	if (!response.ok) {
-		const transient = response.status >= 500 || response.status === 408 || response.status === 429;
-		throw new MailpitRequestError(
-			`Mailpit API request failed: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
-			transient,
-		);
-	}
+		if (!response.ok) {
+			const transient = response.status >= 500 || response.status === 408 || response.status === 429;
+			throw new MailpitRequestError(
+				`Mailpit API request failed: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
+				transient,
+			);
+		}
 
-	return response;
+		try {
+			return (await Promise.race([response.json() as Promise<T>, abortPromise(controller.signal)])) as T;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new MailpitRequestError(`Mailpit API response body failed: ${message}`, !(error instanceof SyntaxError), {
+				cause: error,
+			});
+		}
+	} finally {
+		clearTimeout(timeout);
+	}
 }
 
 export async function waitForEmail(recipient: string, subject: string): Promise<MailpitMessageDetail> {
@@ -89,16 +115,14 @@ export async function waitForEmail(recipient: string, subject: string): Promise<
 	let lastError: Error | undefined;
 	while (Date.now() < deadline) {
 		try {
-			const response = await fetchMailpit(searchUrl.toString(), deadline);
-			const search = (await response.json()) as MailpitSearch;
+			const search = await fetchMailpitJson<MailpitSearch>(searchUrl.toString(), deadline);
 			const message = search.messages.find(
 				(candidate) => candidate.Subject === subject && candidate.To.some(({ Address }) => Address === recipient),
 			);
 
 			if (message) {
 				const detailUrl = `${origin}/api/v1/message/${encodeURIComponent(message.ID)}`;
-				const detailResponse = await fetchMailpit(detailUrl, deadline);
-				return (await detailResponse.json()) as MailpitMessageDetail;
+				return await fetchMailpitJson<MailpitMessageDetail>(detailUrl, deadline);
 			}
 		} catch (error) {
 			if (!(error instanceof MailpitRequestError) || !error.transient) {
@@ -126,7 +150,8 @@ export function extractTokenFromLink(content: string, parameter: string): string
 
 	for (const candidate of candidates) {
 		try {
-			const value = new URL(candidate.replaceAll('&amp;', '&')).searchParams.get(parameter);
+			const url = candidate.replaceAll('&amp;', '&').replace(/[.,!?;:]+$/, '');
+			const value = new URL(url).searchParams.get(parameter);
 			if (value) {
 				return value;
 			}
