@@ -1,14 +1,20 @@
 import type { z } from 'zod/v4';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 import {
+	categories,
+	cities,
+	countries,
 	items,
 	items_images,
 	items_properties_values,
 	orders,
 	orders_proposals,
+	properties,
+	property_values,
+	states,
 	subcategories,
-	users,
+	subcategory_properties,
 	type InsertOrder,
 	type InsertOrderProposal,
 	type SelectAddress,
@@ -24,7 +30,6 @@ import {
 	type ItemImagesSize,
 } from '../../src/database/schemas/enumerated_values';
 import { createItemSchema, type createItemTypes } from '../../src/extended_schemas/item';
-import { hashPassword } from '../../src/lib/password';
 import { loginAs } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { CookieJar } from '../helpers/request';
@@ -48,6 +53,7 @@ type ItemBodyOverrides = {
 };
 
 let reusableCatalog: CatalogFixture | undefined;
+let graphCreationQueue: Promise<void> = Promise.resolve();
 
 function requireInserted<Row>(row: Row | undefined, label: string): Row {
 	if (!row) {
@@ -57,53 +63,180 @@ function requireInserted<Row>(row: Row | undefined, label: string): Row {
 	return row;
 }
 
-export async function createCommerceActors(): Promise<CommerceActorGraph> {
+function fixtureRowsMatch<Row extends { id: number }>(
+	actualRows: Row[],
+	expectedRows: Row[],
+	immutableFields: readonly (keyof Row)[],
+): boolean {
+	return (
+		actualRows.length === expectedRows.length &&
+		expectedRows.every((expected) => {
+			const actual = actualRows.find(({ id }) => id === expected.id);
+			return actual !== undefined && immutableFields.every((field) => Object.is(actual[field], expected[field]));
+		})
+	);
+}
+
+async function resolveCatalogFixture(): Promise<CatalogFixture> {
 	const { db } = getTestDatabase();
-	let catalog = reusableCatalog;
-	if (catalog) {
-		const [storedCatalog] = await db
-			.select({ id: subcategories.id })
+	const cached = reusableCatalog;
+	if (!cached) {
+		const created = await createCatalogFixture();
+		reusableCatalog = created;
+		return created;
+	}
+
+	const expectedCategories = [cached.publishedCategory, cached.unpublishedCategory];
+	const expectedSubcategories = [cached.parentSubcategory, cached.childSubcategory, cached.unpublishedSubcategory];
+	const expectedProperties = [...Object.values(cached.properties), cached.unpublishedMapping.property];
+	const expectedMappings = [...Object.values(cached.mappings), cached.unpublishedMapping.mapping];
+	const expectedPropertyValues = [...Object.values(cached.propertyValues), cached.unpublishedMapping.propertyValue];
+	const [
+		countryRows,
+		stateRows,
+		cityRows,
+		categoryRows,
+		subcategoryRows,
+		propertyRows,
+		mappingRows,
+		propertyValueRows,
+	] = await Promise.all([
+		db.select().from(countries).where(eq(countries.id, cached.country.id)),
+		db.select().from(states).where(eq(states.id, cached.state.id)),
+		db.select().from(cities).where(eq(cities.id, cached.city.id)),
+		db
+			.select()
+			.from(categories)
+			.where(
+				inArray(
+					categories.id,
+					expectedCategories.map(({ id }) => id),
+				),
+			),
+		db
+			.select()
 			.from(subcategories)
 			.where(
-				and(eq(subcategories.id, catalog.childSubcategory.id), eq(subcategories.slug, catalog.childSubcategory.slug)),
-			)
-			.limit(1);
-
-		if (!storedCatalog) {
-			catalog = undefined;
-		}
-	}
-	if (!catalog) {
-		catalog = await createCatalogFixture();
-		reusableCatalog = catalog;
-	}
-
-	const spacerPassword = await hashPassword('StrongPass123!');
-	await db.transaction(async (tx) => {
-		const spacerUsers = await tx
-			.insert(users)
-			.values(
-				Array.from({ length: 3 }, () => {
-					const spacer = uniqueValue('identity-spacer');
-					return {
-						username: spacer,
-						email: `${spacer}@tantovale.test`,
-						password: spacerPassword,
-						email_verified: true,
-					};
-				}),
-			)
-			.returning();
-		if (spacerUsers.length !== 3) {
-			throw new Error('Identity spacer user fixture insert failed');
-		}
-		await tx.delete(users).where(
-			inArray(
-				users.id,
-				spacerUsers.map(({ id }) => id),
+				inArray(
+					subcategories.id,
+					expectedSubcategories.map(({ id }) => id),
+				),
 			),
-		);
-	});
+		db
+			.select()
+			.from(properties)
+			.where(
+				inArray(
+					properties.id,
+					expectedProperties.map(({ id }) => id),
+				),
+			),
+		db
+			.select()
+			.from(subcategory_properties)
+			.where(
+				inArray(
+					subcategory_properties.id,
+					expectedMappings.map(({ id }) => id),
+				),
+			),
+		db
+			.select()
+			.from(property_values)
+			.where(
+				inArray(
+					property_values.id,
+					expectedPropertyValues.map(({ id }) => id),
+				),
+			),
+	]);
+	const referencedRowCount = [
+		countryRows,
+		stateRows,
+		cityRows,
+		categoryRows,
+		subcategoryRows,
+		propertyRows,
+		mappingRows,
+		propertyValueRows,
+	].reduce((count, rows) => count + rows.length, 0);
+
+	if (referencedRowCount === 0) {
+		const created = await createCatalogFixture();
+		reusableCatalog = created;
+		return created;
+	}
+
+	const catalogIsComplete =
+		fixtureRowsMatch(countryRows, [cached.country], ['id', 'name', 'iso3', 'iso2', 'phonecode']) &&
+		fixtureRowsMatch(stateRows, [cached.state], ['id', 'name', 'country_id', 'country_code', 'state_code']) &&
+		fixtureRowsMatch(
+			cityRows,
+			[cached.city],
+			['id', 'name', 'state_id', 'state_code', 'country_id', 'country_code', 'latitude', 'longitude'],
+		) &&
+		fixtureRowsMatch(categoryRows, expectedCategories, ['id', 'name', 'slug', 'published']) &&
+		fixtureRowsMatch(subcategoryRows, expectedSubcategories, [
+			'id',
+			'name',
+			'slug',
+			'category_id',
+			'parent_id',
+			'easy_pay',
+			'published',
+		]) &&
+		fixtureRowsMatch(propertyRows, expectedProperties, ['id', 'name', 'slug', 'type']) &&
+		fixtureRowsMatch(mappingRows, expectedMappings, [
+			'id',
+			'property_id',
+			'subcategory_id',
+			'position',
+			'on_item_create_required',
+			'on_item_update_editable',
+			'is_searchable',
+		]) &&
+		fixtureRowsMatch(propertyValueRows, expectedPropertyValues, [
+			'id',
+			'property_id',
+			'name',
+			'value',
+			'numeric_value',
+			'boolean_value',
+		]);
+
+	if (!catalogIsComplete) {
+		throw new Error('Cached commerce catalog is incomplete or mutated');
+	}
+
+	return cached;
+}
+
+async function positionActorIdentitySequences(): Promise<void> {
+	const { client } = getTestDatabase();
+	const { rows } = await client.query<{ identity_base: string }>(`
+		SELECT GREATEST(
+			COALESCE((SELECT MAX(id) FROM users), 0),
+			COALESCE((SELECT MAX(id) FROM profiles), 0)
+		)::text AS identity_base
+	`);
+	const identityBase = Number(rows[0]?.identity_base ?? 0);
+
+	if (!Number.isSafeInteger(identityBase) || identityBase < 0) {
+		throw new Error('Unable to determine a safe commerce actor identity base');
+	}
+
+	// Test-only sequence positioning. getTestDatabase() guards this raw SQL by rejecting every non-disposable DB name.
+	await client.query(
+		`SELECT
+			setval(pg_get_serial_sequence('public.profiles', 'id'), $1::bigint, false),
+			setval(pg_get_serial_sequence('public.users', 'id'), $2::bigint, false)`,
+		[identityBase + 1, identityBase + 4],
+	);
+}
+
+async function buildCommerceActors(): Promise<CommerceActorGraph> {
+	const catalog = await resolveCatalogFixture();
+	await positionActorIdentitySequences();
 
 	const sellerFixture = await createUserFixture({
 		profile: {
@@ -144,6 +277,15 @@ export async function createCommerceActors(): Promise<CommerceActorGraph> {
 		buyer: { ...buyerFixture, address: buyerAddress, jar: buyerJar },
 		outsider: { ...outsiderFixture, address: outsiderAddress, jar: outsiderJar },
 	};
+}
+
+export function createCommerceActors(): Promise<CommerceActorGraph> {
+	const graph = graphCreationQueue.then(() => buildCommerceActors());
+	graphCreationQueue = graph.then(
+		() => undefined,
+		() => undefined,
+	);
+	return graph;
 }
 
 export function validItemBody(actorGraph: CommerceActorGraph, overrides: ItemBodyOverrides = {}): createItemTypes {

@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
+import { properties } from '../../src/database/schemas/schema';
 import { createItemSchema, minDescriptionLength } from '../../src/extended_schemas/item';
 import { getTestDatabase } from '../helpers/database';
 import {
@@ -166,8 +168,37 @@ describe('commerce fixtures', () => {
 		const second = await createCommerceActors();
 		const { db } = getTestDatabase();
 		const storedUsers = await db.query.users.findMany();
+		const storedProfiles = await db.query.profiles.findMany();
+		const userIds = new Set(storedUsers.map(({ id }) => id));
+		const profileIds = new Set(storedProfiles.map(({ id }) => id));
 
 		expect(second.catalog.childSubcategory.id).toBe(first.catalog.childSubcategory.id);
 		expect(storedUsers).toHaveLength(6);
+		expect(storedProfiles).toHaveLength(6);
+		expect([...userIds].filter((id) => profileIds.has(id))).toEqual([]);
+	});
+
+	it('serializes concurrent actor graph creation within a worker', async () => {
+		const [first, second] = await Promise.all([createCommerceActors(), createCommerceActors()]);
+		const { db } = getTestDatabase();
+		const storedUsers = await db.query.users.findMany();
+		const storedProfiles = await db.query.profiles.findMany();
+		const profileIds = new Set(storedProfiles.map(({ id }) => id));
+
+		expect(second.catalog.childSubcategory.id).toBe(first.catalog.childSubcategory.id);
+		expect(storedUsers).toHaveLength(6);
+		expect(storedProfiles).toHaveLength(6);
+		expect(storedUsers.map(({ id }) => id).filter((id) => profileIds.has(id))).toEqual([]);
+	});
+
+	it('rejects a cached catalog when any referenced fixture row was mutated', async () => {
+		const actors = await createCommerceActors();
+		const { db } = getTestDatabase();
+		await db
+			.update(properties)
+			.set({ slug: 'mutated-commerce-property' })
+			.where(eq(properties.id, actors.catalog.properties.text.id));
+
+		await expect(createCommerceActors()).rejects.toThrow('Cached commerce catalog is incomplete or mutated');
 	});
 });
