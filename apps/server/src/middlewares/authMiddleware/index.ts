@@ -12,8 +12,9 @@ import type { AppBindings } from '../../lib/types';
 import { profiles } from '#database/schemas/profiles';
 
 export async function authMiddleware(c: Context<AppBindings>, next: Next) {
-	const { ACCESS_TOKEN_SECRET, NODE_ENV } = env<{
+	const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
 		ACCESS_TOKEN_SECRET: string;
+		REFRESH_TOKEN_SECRET: string;
 		NODE_ENV: string;
 	}>(c);
 	const { isProductionMode } = getNodeEnvMode(NODE_ENV);
@@ -26,7 +27,7 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 
 		// Check if both tokens are present
 		if (!access_token || !refresh_token) {
-			await invalidateTokens(c, db);
+			await invalidateTokens(c, db, isProductionMode);
 			return c.json({ message: 'Unauthorized - No Token' }, 401);
 		}
 
@@ -46,22 +47,16 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 		if (tokenExpired) {
 			try {
 				// Validate refresh token
-				const storedRefreshToken = await validateRefreshToken(c, db);
+				const { claims } = await validateRefreshToken(c, db, REFRESH_TOKEN_SECRET);
 
 				// Create new access token
-				const tokenResult = await createNewAccessToken(
-					c,
-					db,
-					storedRefreshToken.username,
-					ACCESS_TOKEN_SECRET,
-					isProductionMode,
-				);
+				const tokenResult = await createNewAccessToken(c, db, claims, ACCESS_TOKEN_SECRET, isProductionMode);
 
 				payload = tokenResult.payload;
 
 				c.set('user', tokenResult.user);
-			} catch (error) {
-				await invalidateTokens(c, db);
+			} catch {
+				await invalidateTokens(c, db, isProductionMode);
 
 				return c.json({ message: `Unauthorized - storedRefreshToken error` }, 401);
 			}
@@ -77,14 +72,15 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 					email_verified: users.email_verified,
 					phone_verified: users.phone_verified,
 					profile_id: profiles.id,
+					is_banned: users.is_banned,
 				})
 				.from(users)
 				.innerJoin(profiles, eq(users.id, profiles.user_id))
 				.where(eq(users.id, user_id))
 				.limit(1);
 
-			if (!existingUser) {
-				await invalidateTokens(c, db);
+			if (!existingUser || existingUser.is_banned) {
+				await invalidateTokens(c, db, isProductionMode);
 				return c.json({ message: 'Unauthorized - User not found' }, 401);
 			}
 
@@ -100,10 +96,8 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 		}
 
 		await next();
-	} catch (error) {
-		console.error('Auth Middleware Error:\n', error, '\n');
-
-		await invalidateTokens(c, db);
+	} catch {
+		await invalidateTokens(c, db, isProductionMode);
 
 		return c.json({ message: 'Authentication failed' }, 401);
 	}

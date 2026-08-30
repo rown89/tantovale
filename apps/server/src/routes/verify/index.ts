@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { sign, verify } from 'hono/jwt';
 import { eq } from 'drizzle-orm';
 import { getCookie } from 'hono/cookie';
@@ -6,13 +8,7 @@ import { env } from 'hono/adapter';
 import { describeRoute } from 'hono-openapi';
 
 import { tokenPayload } from '../../lib/tokenPayload';
-import {
-	DEFAULT_ACCESS_TOKEN_EXPIRES,
-	DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
-	DEFAULT_REFRESH_TOKEN_EXPIRES,
-	DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
-	getNodeEnvMode,
-} from '../../utils/constants';
+import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES, getNodeEnvMode } from '../../utils/constants';
 import { createClient } from '../../database';
 import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
@@ -180,42 +176,43 @@ export const verifyRoute = createRouter()
 				}
 
 				const verifiedUser = { ...user, email_verified: true };
+				const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
+				const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
 				const access_token_payload = tokenPayload({
 					...verifiedUser,
-					exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
+					exp: Math.floor(accessTokenExpires.getTime() / 1_000),
 				});
 				const refresh_token_payload = tokenPayload({
 					...verifiedUser,
-					exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),
+					exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
 				});
-				const new_access_token = await sign(access_token_payload, ACCESS_TOKEN_SECRET);
-				const new_refresh_token = await sign(refresh_token_payload, REFRESH_TOKEN_SECRET);
+				const new_access_token = await sign({ ...access_token_payload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
+				const new_refresh_token = await sign({ ...refresh_token_payload, jti: randomUUID() }, REFRESH_TOKEN_SECRET);
 
 				await db.transaction(async (tx) => {
 					await tx.update(users).set({ email_verified: true }).where(eq(users.id, user.id));
 					await tx.insert(refreshTokens).values({
 						username: user.username,
 						token: new_refresh_token,
-						expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+						expires_at: refreshTokenExpires,
 					});
 				});
 
 				setCookie(c, 'access_token', new_access_token, {
 					...getAuthTokenOptions({
 						isProductionMode,
-						expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
+						expires: accessTokenExpires,
 					}),
 				});
 				setCookie(c, 'refresh_token', new_refresh_token, {
 					...getAuthTokenOptions({
 						isProductionMode,
-						expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+						expires: refreshTokenExpires,
 					}),
 				});
 
 				return c.json({ message: 'Email verified successfully!' }, 200);
-			} catch (error) {
-				console.error('Email verification failed:', error);
+			} catch {
 				return c.json({ message: 'Email verification failed' }, 500);
 			}
 		},

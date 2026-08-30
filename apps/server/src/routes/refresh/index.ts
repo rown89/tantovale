@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { and, eq, gt } from 'drizzle-orm';
 import { getCookie, setCookie } from 'hono/cookie';
-import { sign, verify } from 'hono/jwt';
+import { sign } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
 import { env } from 'hono/adapter';
 
@@ -13,13 +13,12 @@ import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import {
 	DEFAULT_REFRESH_TOKEN_EXPIRES,
 	DEFAULT_ACCESS_TOKEN_EXPIRES,
-	DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
-	DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS,
 	getNodeEnvMode,
 	authPath,
 } from '../../utils/constants';
 import { createRouter } from '../../lib/create-app';
 import { authMiddleware } from '../../middlewares/authMiddleware/index';
+import { verifyRefreshTokenClaims } from '../../middlewares/authMiddleware/utils';
 
 export const refreshRoute = createRouter().post(
 	`/${authPath}`,
@@ -46,59 +45,57 @@ export const refreshRoute = createRouter().post(
 			return c.json({ message: 'No refresh token provided' }, 401);
 		}
 
-		let payload;
+		const { db } = createClient();
+		let claims;
 		try {
-			payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
+			claims = await verifyRefreshTokenClaims(refresh_token, REFRESH_TOKEN_SECRET);
 		} catch {
+			await db.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
 			return c.json({ message: 'Invalid refresh token' }, 401);
 		}
 
 		try {
-			const id = Number(payload.id);
-			const profile_id = Number(payload.profile_id);
-			const username = payload.username as string;
-			const email = payload.email as string;
-			const email_verified = payload.email_verified as boolean;
-			const phone_verified = payload.phone_verified as boolean;
-
-			const user = {
-				id,
-				profile_id,
-				username,
-				email,
-				email_verified,
-				phone_verified,
-			};
+			const user = c.var.user;
+			if (
+				!user ||
+				claims.id !== user.id ||
+				claims.profile_id !== user.profile_id ||
+				claims.username !== user.username
+			) {
+				await db.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
+				return c.json({ message: 'Invalid refresh token' }, 401);
+			}
+			const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
+			const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
 
 			const access_token_payload = tokenPayload({
 				...user,
-				exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
+				exp: Math.floor(accessTokenExpires.getTime() / 1_000),
 			});
 
 			const refresh_token_payload = tokenPayload({
 				...user,
-				exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),
+				exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
 			});
 
 			// Generate and sign tokens
 			const new_access_token = await sign({ ...access_token_payload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
 			const new_refresh_token = await sign({ ...refresh_token_payload, jti: randomUUID() }, REFRESH_TOKEN_SECRET);
-			const { db } = createClient();
 			const rotated = await db.transaction(async (tx) => {
 				const [consumedToken] = await tx
 					.delete(refreshTokens)
 					.where(and(eq(refreshTokens.token, refresh_token), gt(refreshTokens.expires_at, new Date())))
 					.returning();
 
-				if (!consumedToken || consumedToken.username !== username) {
+				if (!consumedToken || consumedToken.username !== user.username) {
 					await tx.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
 					return false;
 				}
 
 				await tx.insert(refreshTokens).values({
-					username,
+					username: user.username,
 					token: new_refresh_token,
-					expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+					expires_at: refreshTokenExpires,
 				});
 				return true;
 			});
@@ -110,24 +107,17 @@ export const refreshRoute = createRouter().post(
 			setCookie(c, 'access_token', new_access_token, {
 				...getAuthTokenOptions({
 					isProductionMode,
-					expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
+					expires: accessTokenExpires,
 				}),
 			});
 			setCookie(c, 'refresh_token', new_refresh_token, {
 				...getAuthTokenOptions({
 					isProductionMode,
-					expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+					expires: refreshTokenExpires,
 				}),
 			});
 
-			return c.json(
-				{
-					message: 'Tokens refreshed successfully',
-					access_token: new_access_token,
-					refresh_token: new_refresh_token,
-				},
-				200,
-			);
+			return c.json({ message: 'Tokens refreshed successfully' }, 200);
 		} catch {
 			return c.json({ message: 'Error refreshing tokens' }, 500);
 		}

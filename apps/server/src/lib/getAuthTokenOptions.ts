@@ -1,21 +1,29 @@
-import type { CookieOptions } from "hono/utils/cookie";
+import type { CookieOptions } from 'hono/utils/cookie';
+
+function getAuthTokenScope(isProductionMode?: boolean): CookieOptions {
+	return {
+		secure: true,
+		httpOnly: true,
+		sameSite: 'None',
+		path: '/',
+		domain: isProductionMode ? 'tantovale.it' : undefined,
+	};
+}
 
 export function getAuthTokenOptions({
-  isProductionMode,
-  expires,
+	isProductionMode,
+	expires,
 }: {
-  isProductionMode?: boolean;
-  expires: Date;
+	isProductionMode?: boolean;
+	expires: Date;
 }): CookieOptions {
-  const cookiesOptions: CookieOptions = {
-    secure: true,
-    httpOnly: true,
-    sameSite: "None", // Ensure this is "None" for cross-site requests
-    maxAge: 24 * 60 * 60, // 24 hours in seconds
-    expires,
-    path: "/",
-    domain: isProductionMode ? "tantovale.it" : undefined, // Ensure domain is correct
-  };
+	return {
+		...getAuthTokenScope(isProductionMode),
+		maxAge: Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 1_000)),
+		expires,
+	};
+}
 
-  return cookiesOptions;
+export function getAuthTokenDeleteOptions({ isProductionMode }: { isProductionMode?: boolean }): CookieOptions {
+	return getAuthTokenScope(isProductionMode);
 }
