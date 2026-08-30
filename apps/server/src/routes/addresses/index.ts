@@ -149,7 +149,14 @@ export const addressesRoute = createRouter()
 					// Check if this is the first address for the profile
 					const [firstAddress] = await tx.select().from(addresses).where(eq(addresses.profile_id, profile.id));
 
-					if (!firstAddress) values.status = ADDRESS_STATUS.ACTIVE;
+					if (!firstAddress) {
+						values.status = ADDRESS_STATUS.ACTIVE;
+					} else if (values.status === ADDRESS_STATUS.ACTIVE) {
+						await tx
+							.update(addresses)
+							.set({ status: ADDRESS_STATUS.INACTIVE })
+							.where(and(eq(addresses.profile_id, profile.id), eq(addresses.status, ADDRESS_STATUS.ACTIVE)));
+					}
 
 					// Insert the new address and save the shipment provider address id
 					const [userAddress] = await tx
@@ -203,17 +210,18 @@ export const addressesRoute = createRouter()
 					return c.json({ message: 'You can not disable the active address' }, 400);
 				}
 
-				// make "inactive" all other addresses that not are in "deleted" status
-				await tx
-					.update(addresses)
-					.set({ status: ADDRESS_STATUS.INACTIVE })
-					.where(
-						and(
-							eq(addresses.profile_id, profile.profile_id),
-							ne(addresses.id, Number(values.address_id)),
-							ne(addresses.status, ADDRESS_STATUS.DELETED),
-						),
-					);
+				if (values.status === ADDRESS_STATUS.ACTIVE) {
+					await tx
+						.update(addresses)
+						.set({ status: ADDRESS_STATUS.INACTIVE })
+						.where(
+							and(
+								eq(addresses.profile_id, profile.profile_id),
+								ne(addresses.id, Number(values.address_id)),
+								eq(addresses.status, ADDRESS_STATUS.ACTIVE),
+							),
+						);
+				}
 
 				const [userAddress] = await tx
 					.update(addresses)
@@ -255,16 +263,32 @@ export const addressesRoute = createRouter()
 					return c.json({ message: 'Profile not found' }, 404);
 				}
 
-				const userAddress = await db
+				const [userAddress] = await db
 					.update(addresses)
 					.set({ status: 'deleted' })
-					.where(and(eq(addresses.id, Number(address_id)), eq(addresses.profile_id, profile.profile_id)))
+					.where(
+						and(
+							eq(addresses.id, Number(address_id)),
+							eq(addresses.profile_id, profile.profile_id),
+							ne(addresses.status, ADDRESS_STATUS.ACTIVE),
+							ne(addresses.status, ADDRESS_STATUS.DELETED),
+						),
+					)
 					.returning({
 						id: addresses.id,
 					});
 
 				if (!userAddress) {
-					throw new Error('Failed to delete address to profile');
+					const [currentAddress] = await db
+						.select({ status: addresses.status })
+						.from(addresses)
+						.where(and(eq(addresses.id, Number(address_id)), eq(addresses.profile_id, profile.profile_id)));
+
+					if (currentAddress?.status === ADDRESS_STATUS.ACTIVE) {
+						return c.json({ message: 'You can not delete the active address' }, 400);
+					}
+
+					return c.json({ message: 'Address not found' }, 404);
 				}
 
 				return c.json(userAddress, 200);

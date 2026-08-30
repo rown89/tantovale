@@ -65,7 +65,8 @@ export default function ItemWDetailWrapper({
 
 	// Effect to check if the UserInfoBox is in view
 	useEffect(() => {
-		if (!infoBoxRef.current) return;
+		const infoBox = infoBoxRef.current;
+		if (!infoBox) return;
 
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -76,12 +77,10 @@ export default function ItemWDetailWrapper({
 			{ threshold: 0.01 }, // Consider visible when 10% is in view
 		);
 
-		observer.observe(infoBoxRef.current);
+		observer.observe(infoBox);
 
 		return () => {
-			if (infoBoxRef.current) {
-				observer.unobserve(infoBoxRef.current);
-			}
+			observer.unobserve(infoBox);
 		};
 	}, []);
 
@@ -94,7 +93,7 @@ export default function ItemWDetailWrapper({
 		return () => {
 			resetAllItemDetail();
 		};
-	}, [item, itemOwnerData, orderProposal]);
+	}, [item, itemOwnerData, orderProposal, resetAllItemDetail, setItem, setItemOwnerData, setOrderProposal]);
 
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {

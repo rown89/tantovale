@@ -34,32 +34,19 @@ export const seedDatabase = async (): Promise<void> => {
 	const { db, client } = createClient();
 
 	try {
-		// Begin transaction
-		await client.query('BEGIN');
+		await db.transaction(async (tx) => {
+			const categoryMap = await seedCategories(tx);
+			const subcategoryMap = await seedSubcategories(tx, categoryMap);
+			const propertyMap = await seedProperties(tx);
 
-		// Seed categories and store result in a map for easier access
-		const categoryMap = await seedCategories(db);
+			await seedPropertyValues(tx, propertyMap);
+			await linkPropertiesToSubcategories(tx, subcategoryMap, propertyMap);
+			await verifySeeding(tx);
+		});
 
-		// Seed subcategories using the category map
-		const subcategoryMap = await seedSubcategories(db, categoryMap);
-
-		// Seed properties
-		const propertyMap = await seedProperties(db);
-
-		await seedPropertyValues(db, propertyMap);
-
-		// Link properties to subcategories
-		await linkPropertiesToSubcategories(db, subcategoryMap, propertyMap);
-
-		// Run a verification query to show the results
-		await verifySeeding(db);
-
-		// Commit the transaction
-		await client.query('COMMIT');
 		console.log('🌱 Seeding completed successfully!');
 	} catch (error) {
 		console.error('❌ Seeding failed:', error);
-		await client.query('ROLLBACK');
 		throw error;
 	} finally {
 		await client.end();
@@ -75,7 +62,9 @@ async function seedCategories(db: DrizzleClient['db']) {
 	console.log(`✅ Categories Inserted: ${insertedCategories.length}`);
 
 	// Create a map for easier lookup by slug
-	return insertedCategories.reduce(
+	const seededCategories = await db.select({ id: categories.id, slug: categories.slug }).from(categories);
+
+	return seededCategories.reduce(
 		(map, category) => {
 			map[category.slug] = category.id;
 			return map;
@@ -132,6 +121,22 @@ function createUniqueSlug<T>(slug: T, parentSlug: string) {
 	return slug;
 }
 
+async function getSubcategoryMap(db: DrizzleClient['db'], categoryId: number) {
+	const seededSubcategories = await db
+		.select({ id: subcategories.id, slug: subcategories.slug })
+		.from(subcategories)
+		.where(eq(subcategories.category_id, categoryId));
+
+	return seededSubcategories.reduce<Record<string, number>>((map, subcategory) => {
+		map[subcategory.slug] = subcategory.id;
+		return map;
+	}, {});
+}
+
+async function getSubcategoriesForCategory(db: DrizzleClient['db'], categoryId: number) {
+	return db.select().from(subcategories).where(eq(subcategories.category_id, categoryId));
+}
+
 async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap: Record<string, number>) {
 	const electronicCategoryId = categoryMap[Categories.ELECTRONICS];
 	if (!electronicCategoryId) {
@@ -161,10 +166,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 	console.log(`✅ Electronic Parent Subcategories Inserted: ${insertedParents.length}`);
 
 	// Create a map of parent slugs to their IDs
-	const parentMap = insertedParents.reduce<Record<string, number>>((map, parent) => {
-		map[parent.slug] = parent.id;
-		return map;
-	}, {});
+	const parentMap = await getSubcategoryMap(db, electronicCategoryId);
 
 	// Then insert children subcategories
 	let childSubcategories: ChildSubcategory[] = [];
@@ -197,7 +199,7 @@ async function seedElectronicSubcategories(db: DrizzleClient['db'], categoryMap:
 		console.log(`✅ Electronic Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
 
-	return [...insertedParents, ...insertedChildren];
+	return getSubcategoriesForCategory(db, electronicCategoryId);
 }
 
 async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: Record<string, number>) {
@@ -229,10 +231,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 	console.log(`✅ Clothing Parent Subcategories Inserted: ${insertedParents.length}`);
 
 	// Create a map of parent slugs to their IDs
-	const parentMap = insertedParents.reduce<Record<string, number>>((map, parent) => {
-		map[parent.slug] = parent.id;
-		return map;
-	}, {});
+	const parentMap = await getSubcategoryMap(db, clothingCategoryId);
 
 	// Then insert children subcategories
 	let childSubcategories: ChildSubcategory[] = [];
@@ -265,10 +264,7 @@ async function seedClothingsSubcategories(db: DrizzleClient['db'], categoryMap: 
 		console.log(`✅ Clothing Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
 
-	return {
-		parents: insertedParents,
-		children: insertedChildren,
-	};
+	return { parents: await getSubcategoriesForCategory(db, clothingCategoryId), children: [] };
 }
 
 async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Record<string, number>) {
@@ -300,10 +296,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 	console.log(`✅ Kids Parent Subcategories Inserted: ${insertedParents.length}`);
 
 	// Create a map of parent slugs to their IDs
-	const parentMap = insertedParents.reduce<Record<string, number>>((map, parent) => {
-		map[parent.slug] = parent.id;
-		return map;
-	}, {});
+	const parentMap = await getSubcategoryMap(db, kidsCategoryId);
 
 	// Then insert children subcategories
 	let childSubcategories: ChildSubcategory[] = [];
@@ -336,7 +329,7 @@ async function seedKidsSubcategories(db: DrizzleClient['db'], categoryMap: Recor
 		console.log(`✅ Kids Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
 
-	return [...insertedParents, ...insertedChildren];
+	return getSubcategoriesForCategory(db, kidsCategoryId);
 }
 
 async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMap: Record<string, number>) {
@@ -374,10 +367,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 	console.log(`✅ Collectables Parent Subcategories Inserted: ${insertedParents.length}`);
 
 	// Create a map of parent slugs to their IDs
-	const parentMap = insertedParents.reduce<Record<string, number>>((map, parent) => {
-		map[parent.slug] = parent.id;
-		return map;
-	}, {});
+	const parentMap = await getSubcategoryMap(db, collectablesCategoryId);
 
 	// Then insert children subcategories
 	let childSubcategories: ChildSubcategory[] = [];
@@ -410,7 +400,7 @@ async function seedCollectablesSubcategories(db: DrizzleClient['db'], categoryMa
 		console.log(`✅ Collectables Child Subcategories Inserted: ${insertedChildren.length}`);
 	}
 
-	return [...insertedParents, ...insertedChildren];
+	return getSubcategoriesForCategory(db, collectablesCategoryId);
 }
 
 /**
@@ -422,7 +412,9 @@ async function seedProperties(db: DrizzleClient['db']) {
 	console.log(`✅ Properties Inserted: ${insertedProperties.length}`);
 
 	// Create a map for easier lookup by slug
-	return insertedProperties.reduce(
+	const seededProperties = await db.select({ id: properties.id, slug: properties.slug }).from(properties);
+
+	return seededProperties.reduce(
 		(map, property) => {
 			map[property.slug] = property.id;
 			return map;
@@ -508,16 +500,13 @@ async function linkPropertiesToSubcategories(
  */
 async function seedPropertyValues(db: DrizzleClient['db'], insertedProperties: Record<string, number>) {
 	// Map over the FILTER_VALUES constant to create the records for insertion
-	const valuesToInsert = PROPERTY_VALUES.map((fv) => {
+	const valuesToInsert = PROPERTY_VALUES.flatMap((fv) => {
 		const propertyId = insertedProperties[fv.slug];
 		if (!propertyId) {
 			console.warn(`Property with slug "${fv.slug}" not found, skipping value "${fv.value}"`);
-			return null;
+			return [];
 		}
-		return {
-			property_id: propertyId,
-			...fv,
-		};
+		return [{ ...fv, property_id: propertyId, meta: fv.meta ? JSON.stringify(fv.meta) : undefined }];
 	});
 
 	if (valuesToInsert.length === 0) {
@@ -527,7 +516,6 @@ async function seedPropertyValues(db: DrizzleClient['db'], insertedProperties: R
 
 	const insertedPropertyValues = await db
 		.insert(property_values)
-		// @ts-expect-error ignore seeder
 		.values(valuesToInsert)
 		.onConflictDoNothing()
 		.returning();

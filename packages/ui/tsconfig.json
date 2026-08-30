@@ -3,8 +3,7 @@
 	"compilerOptions": {
 		"moduleResolution": "bundler",
 		"paths": {
-			"@workspace/ui/*": ["./src/*"],
-			"react": ["./node_modules/@types/react"]
+			"@workspace/ui/*": ["./src/*"]
 		}
 	},
 	"include": ["**/*.ts", "**/*.tsx"],

@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, text, index } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
@@ -39,29 +39,7 @@ export const orders = pgTable(
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
-	(table) => [
-		foreignKey({
-			columns: [table.buyer_id],
-			foreignColumns: [profiles.id],
-			name: 'orders_buyer_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.seller_id],
-			foreignColumns: [profiles.id],
-			name: 'orders_seller_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.buyer_address],
-			foreignColumns: [addresses.id],
-			name: 'orders_buyer_address_fkey',
-		}),
-		foreignKey({
-			columns: [table.seller_address],
-			foreignColumns: [addresses.id],
-			name: 'orders_seller_address_fkey',
-		}),
-		index('orders_status_idx').on(table.status),
-	],
+	(table) => [index('orders_status_idx').on(table.status)],
 );
 
 export type SelectOrder = typeof orders.$inferSelect;

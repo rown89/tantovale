@@ -3,7 +3,7 @@
 import { client } from '@workspace/server/client-rpc';
 import refreshTokens from '../utils/refreshTokens';
 import { useRouter } from 'next/navigation';
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 
 export interface User {
 	id: number;
@@ -29,7 +29,12 @@ export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; childr
 	const [user, setUser] = useState<User | null>(null);
 	const [loadingUser, setLoadingUser] = useState(true);
 
-	async function initializeAuth() {
+	const logout = useCallback(() => {
+		setUser(null);
+		router.push('/api/logout');
+	}, [router]);
+
+	const initializeAuth = useCallback(async () => {
 		try {
 			// Attempt to verify the user with the current token.
 			let res = await client.verify.$get({
@@ -68,12 +73,7 @@ export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; childr
 		} finally {
 			setLoadingUser(false);
 		}
-	}
-
-	function logout() {
-		setUser(null);
-		router.push('/api/logout');
-	}
+	}, [logout]);
 
 	useEffect(() => {
 		if (isLogged) {
@@ -81,7 +81,7 @@ export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; childr
 		} else {
 			setLoadingUser(false);
 		}
-	}, [isLogged]);
+	}, [initializeAuth, isLogged]);
 
 	return <AuthContext.Provider value={{ user, loadingUser, setUser, logout }}>{children}</AuthContext.Provider>;
 };

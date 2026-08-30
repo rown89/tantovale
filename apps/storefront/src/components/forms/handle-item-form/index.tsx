@@ -106,7 +106,7 @@ export default function HandleItemFormComponent({
 		if (subcategory) {
 			handleSubCategorySelect(subcategory);
 		}
-	}, []);
+	}, [form, handleSubCategorySelect, profileAddress.id, subcategory]);
 
 	// Handle part of Item preview
 	useEffect(() => {
@@ -125,7 +125,7 @@ export default function HandleItemFormComponent({
 		if (selectedDeliveryMethods) {
 			setSelectedDeliveryMethod(selectedDeliveryMethods);
 		}
-	}, [properties, subCatProperties]);
+	}, [easyPay, properties, setEasyPay, subCatProperties]);
 
 	// build subcategories Menu Hierarchy:
 	useEffect(() => {

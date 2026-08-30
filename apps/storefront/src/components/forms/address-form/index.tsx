@@ -79,20 +79,20 @@ export default function AddressForm({
 		if (firstAddress) {
 			form.setFieldValue('status', 'active');
 		}
-	}, [values, mode]);
+	}, [firstAddress, form, mode, setSelectedCity, setSelectedProvince, values]);
 
 	// Sync form values with selected province and city
 	useEffect(() => {
 		if (selectedProvince > 0) {
 			form.setFieldValue('province_id', selectedProvince);
 		}
-	}, [selectedProvince]);
+	}, [form, selectedProvince]);
 
 	useEffect(() => {
 		if (selectedCity > 0) {
 			form.setFieldValue('city_id', selectedCity);
 		}
-	}, [selectedCity]);
+	}, [form, selectedCity]);
 
 	useEffect(() => {
 		if (addAddressError) {

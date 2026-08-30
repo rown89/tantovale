@@ -414,7 +414,7 @@ export const relations = defineRelations(schema, (r) => ({
 			from: r.users.id,
 			to: r.password_reset_tokens.user_id,
 		}),
-		profiles: r.many.profiles({
+		profile: r.one.profiles({
 			from: r.users.id,
 			to: r.profiles.user_id,
 		}),
