@@ -21,13 +21,11 @@ export const logoutRoute = createRouter().post(`/${authPath}`, authMiddleware, a
 	}
 
 	try {
-		// Verify the refresh token to get the username
-		const payload = await verify(refreshToken, REFRESH_TOKEN_SECRET);
-		const username = payload.username as string;
+		await verify(refreshToken, REFRESH_TOKEN_SECRET);
 
 		const { db } = createClient();
 		// Remove refresh token
-		await db.delete(refreshTokens).where(eq(refreshTokens.username, username));
+		await db.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
 
 		// Delete cookies
 		deleteCookie(c, 'access_token');

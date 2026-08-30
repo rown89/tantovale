@@ -142,109 +142,81 @@ export const verifyRoute = createRouter()
 			const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 
 			const token = c.req.query('token');
-			if (!token) return c.json({ error: 'Token required' }, 409);
+			if (!token) return c.json({ error: 'Token required' }, 400);
 
-			const { id, type } = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
-
-			const { db } = createClient();
-
-			// Get existing user by id
-			const [user] = await db
-				.select({
-					id: users.id,
-					profile_id: profiles.id,
-					username: users.username,
-					email: users.email,
-					email_verified: users.email_verified,
-					phone_verified: users.phone_verified,
-				})
-				.from(users)
-				.innerJoin(profiles, eq(users.id, profiles.user_id))
-				.where(eq(users.id, Number(id)))
-				.limit(1);
-
-			if (!user) {
-				return c.json({ error: 'User not found' }, 404);
+			let tokenClaims;
+			try {
+				tokenClaims = await verify(token, EMAIL_VERIFY_TOKEN_SECRET);
+			} catch {
+				return c.json({ message: 'Invalid token' }, 400);
 			}
 
-			const { id: userId, username, email_verified, phone_verified, email } = user;
-
-			if (user.email_verified) {
-				return c.json({ message: 'User already verified' });
+			if (tokenClaims.type !== 'email_verification') {
+				return c.json({ message: 'Invalid token type' }, 400);
 			}
 
-			if (type != 'email_verification') {
-				return c.json({ message: 'Invalid token type' });
+			try {
+				const { db } = createClient();
+				const [user] = await db
+					.select({
+						id: users.id,
+						profile_id: profiles.id,
+						username: users.username,
+						email: users.email,
+						email_verified: users.email_verified,
+						phone_verified: users.phone_verified,
+					})
+					.from(users)
+					.innerJoin(profiles, eq(users.id, profiles.user_id))
+					.where(eq(users.id, Number(tokenClaims.id)))
+					.limit(1);
+
+				if (!user) {
+					return c.json({ error: 'User not found' }, 404);
+				}
+
+				if (user.email_verified) {
+					return c.json({ message: 'User already verified' });
+				}
+
+				const verifiedUser = { ...user, email_verified: true };
+				const access_token_payload = tokenPayload({
+					...verifiedUser,
+					exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
+				});
+				const refresh_token_payload = tokenPayload({
+					...verifiedUser,
+					exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),
+				});
+				const new_access_token = await sign(access_token_payload, ACCESS_TOKEN_SECRET);
+				const new_refresh_token = await sign(refresh_token_payload, REFRESH_TOKEN_SECRET);
+
+				await db.transaction(async (tx) => {
+					await tx.update(users).set({ email_verified: true }).where(eq(users.id, user.id));
+					await tx.insert(refreshTokens).values({
+						username: user.username,
+						token: new_refresh_token,
+						expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+					});
+				});
+
+				setCookie(c, 'access_token', new_access_token, {
+					...getAuthTokenOptions({
+						isProductionMode,
+						expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
+					}),
+				});
+				setCookie(c, 'refresh_token', new_refresh_token, {
+					...getAuthTokenOptions({
+						isProductionMode,
+						expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+					}),
+				});
+
+				return c.json({ message: 'Email verified successfully!' }, 200);
+			} catch (error) {
+				console.error('Email verification failed:', error);
+				return c.json({ message: 'Email verification failed' }, 500);
 			}
-
-			await db
-				.update(users)
-				.set({
-					email_verified: true,
-				})
-				.where(eq(users.id, user.id));
-
-			const access_token_payload = tokenPayload({
-				id: userId,
-				profile_id: user.profile_id,
-				username,
-				email,
-				email_verified,
-				phone_verified,
-				exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
-			});
-
-			const refresh_token_payload = tokenPayload({
-				id: userId,
-				profile_id: user.profile_id,
-				username,
-				email,
-				email_verified,
-				phone_verified,
-				exp: DEFAULT_REFRESH_TOKEN_EXPIRES_IN_MS(),
-			});
-
-			// Generate and sign tokens
-			const new_access_token = await sign(access_token_payload, ACCESS_TOKEN_SECRET);
-			const new_refresh_token = await sign(refresh_token_payload, REFRESH_TOKEN_SECRET);
-
-			setCookie(c, 'access_token', new_access_token, {
-				...getAuthTokenOptions({
-					isProductionMode,
-					expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
-				}),
-			});
-			setCookie(c, 'refresh_token', new_refresh_token, {
-				...getAuthTokenOptions({
-					isProductionMode,
-					expires: DEFAULT_REFRESH_TOKEN_EXPIRES(),
-				}),
-			});
-
-			// Store refresh token in DB
-			const updatedUser = await db
-				.insert(refreshTokens)
-				.values({
-					username,
-					token: new_refresh_token,
-					expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
-				})
-				.returning();
-
-			if (!updatedUser || !updatedUser.length) {
-				return c.json(
-					{
-						message: "An error occurred, can't update the refresh token during login",
-					},
-					500,
-				);
-			}
-
-			return c.json(
-				{
-					message: 'Email verified successfully!',
-				},
-				200,
-			);
 		},
 	);

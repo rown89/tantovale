@@ -1,4 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+
+import { and, eq, gt } from 'drizzle-orm';
 import { getCookie, setCookie } from 'hono/cookie';
 import { sign, verify } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
@@ -44,9 +46,14 @@ export const refreshRoute = createRouter().post(
 			return c.json({ message: 'No refresh token provided' }, 401);
 		}
 
+		let payload;
 		try {
-			// Verify the refresh token
-			const payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
+			payload = await verify(refresh_token, REFRESH_TOKEN_SECRET);
+		} catch {
+			return c.json({ message: 'Invalid refresh token' }, 401);
+		}
+
+		try {
 			const id = Number(payload.id);
 			const profile_id = Number(payload.profile_id);
 			const username = payload.username as string;
@@ -63,17 +70,6 @@ export const refreshRoute = createRouter().post(
 				phone_verified,
 			};
 
-			const { db } = createClient();
-			// Check if the refresh token exists in db
-			const storedToken = await db.select().from(refreshTokens).where(eq(refreshTokens.username, username));
-
-			// Token doesn't exist or doesn't match - possible reuse detected
-			if (!storedToken || storedToken?.[0]?.token !== refresh_token) {
-				await db.delete(refreshTokens).where(eq(refreshTokens.username, username));
-
-				return c.json({ message: 'Invalid refresh token' }, 401);
-			}
-
 			const access_token_payload = tokenPayload({
 				...user,
 				exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
@@ -85,8 +81,31 @@ export const refreshRoute = createRouter().post(
 			});
 
 			// Generate and sign tokens
-			const new_access_token = await sign(access_token_payload, ACCESS_TOKEN_SECRET);
-			const new_refresh_token = await sign(refresh_token_payload, REFRESH_TOKEN_SECRET);
+			const new_access_token = await sign({ ...access_token_payload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
+			const new_refresh_token = await sign({ ...refresh_token_payload, jti: randomUUID() }, REFRESH_TOKEN_SECRET);
+			const { db } = createClient();
+			const rotated = await db.transaction(async (tx) => {
+				const [consumedToken] = await tx
+					.delete(refreshTokens)
+					.where(and(eq(refreshTokens.token, refresh_token), gt(refreshTokens.expires_at, new Date())))
+					.returning();
+
+				if (!consumedToken || consumedToken.username !== username) {
+					await tx.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
+					return false;
+				}
+
+				await tx.insert(refreshTokens).values({
+					username,
+					token: new_refresh_token,
+					expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
+				});
+				return true;
+			});
+
+			if (!rotated) {
+				return c.json({ message: 'Invalid refresh token' }, 401);
+			}
 
 			setCookie(c, 'access_token', new_access_token, {
 				...getAuthTokenOptions({
@@ -101,18 +120,6 @@ export const refreshRoute = createRouter().post(
 				}),
 			});
 
-			// Store new refresh token in DB
-			try {
-				await db.insert(refreshTokens).values({
-					username,
-					token: new_refresh_token,
-					expires_at: DEFAULT_REFRESH_TOKEN_EXPIRES(),
-				});
-			} catch (error) {
-				console.error('Error storing refresh token in DB:', error);
-				return c.json({ message: 'An error occurred during login' }, 500);
-			}
-
 			return c.json(
 				{
 					message: 'Tokens refreshed successfully',
@@ -121,8 +128,7 @@ export const refreshRoute = createRouter().post(
 				},
 				200,
 			);
-		} catch (error) {
-			console.error('Error refreshing tokens:', error);
+		} catch {
 			return c.json({ message: 'Error refreshing tokens' }, 500);
 		}
 	},

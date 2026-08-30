@@ -60,21 +60,20 @@ export const loginRoute = createRouter().post(
 
 			// handle email not found
 			if (!user) {
-				return c.json({ message: 'invalid email or password' }, 500);
+				return c.json({ message: 'invalid email or password' }, 401);
 			}
 
 			// handle invalid password
 			const verifyResult = await verifyPassword(user?.password, password);
 
 			if (!verifyResult) {
-				console.log(verifyResult);
-				return c.json({ message: 'invalid email or password' }, 500);
+				return c.json({ message: 'invalid email or password' }, 401);
 			}
 
 			const { id, profile_id, username, email_verified, phone_verified } = user;
 
 			if (!email_verified) {
-				return c.json({ message: 'Please verify your email before logging in' }, 500);
+				return c.json({ message: 'Please verify your email before logging in' }, 403);
 			}
 
 			const access_token_payload = tokenPayload({

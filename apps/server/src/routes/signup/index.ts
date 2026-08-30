@@ -37,7 +37,7 @@ export const signupRoute = createRouter().post(
 			EMAIL_VERIFY_TOKEN_SECRET: string;
 		}>(c);
 
-		const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
+		const { isDevelopmentMode, isProductionMode } = getNodeEnvMode(NODE_ENV);
 
 		try {
 			const values = c.req.valid('json');
@@ -56,27 +56,30 @@ export const signupRoute = createRouter().post(
 			const hashedPassword = await hashPassword(password);
 
 			const { db } = createClient();
-			// Create new user
-			const [results] = await db
-				.insert(users)
-				.values({ ...values, password: hashedPassword })
-				.returning();
+			const results = await db.transaction(async (tx) => {
+				const [createdUser] = await tx
+					.insert(users)
+					.values({ ...values, password: hashedPassword })
+					.returning();
 
-			if (!results) {
-				return c.json({ message: "Signup procedure can't create user" }, 500);
-			}
+				if (!createdUser) {
+					throw new Error("Signup procedure can't create user");
+				}
 
-			const [profile] = await db
-				.insert(profiles)
-				.values({
-					user_id: results.id,
-					...rest,
-				})
-				.returning();
+				const [createdProfile] = await tx
+					.insert(profiles)
+					.values({
+						user_id: createdUser.id,
+						...rest,
+					})
+					.returning();
 
-			if (!profile) {
-				return c.json({ message: "Signup procedure can't create user" }, 500);
-			}
+				if (!createdProfile) {
+					throw new Error("Signup procedure can't create user");
+				}
+
+				return createdUser;
+			});
 
 			// Generate JWT token for email verification
 			const tmp_token_payload = {
@@ -97,11 +100,9 @@ export const signupRoute = createRouter().post(
 
 			const verificationLink = `${environment.STOREFRONT_HOSTNAME}/api/verify/email?token=${email_activation_token}`;
 
-			if (isProductionMode || isStagingMode) {
-				await sendVerifyEmail(email, verificationLink);
-			} else {
+			if (isDevelopmentMode) {
 				console.log('\nverificationLink: ', verificationLink, '\n');
-			}
+			} else await sendVerifyEmail(email, verificationLink);
 
 			return c.json(
 				{
