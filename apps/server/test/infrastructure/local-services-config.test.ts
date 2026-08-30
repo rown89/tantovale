@@ -1,19 +1,42 @@
 import { describe, expect, inject, it, vi } from 'vitest';
 
 import { getProviderRequests } from '../helpers/providers';
-import { buildServerEnvironment } from './runtime';
+import { buildServerEnvironment, getWorkerIndex, type TestRuntime } from './runtime';
+
+function resolveWorkerAssignment(runtime: TestRuntime, workerId: string | undefined) {
+	const workerIndex = getWorkerIndex(workerId, runtime.workerCount);
+	const database = runtime.resourceNames.workerDatabases[workerIndex];
+	const bucket = runtime.resourceNames.workerBuckets[workerIndex];
+	const trustapUrl = runtime.providers.trustapUrls[workerIndex];
+	const shippoUrl = runtime.providers.shippoUrls[workerIndex];
+
+	if (!database || !bucket || !trustapUrl || !shippoUrl) {
+		throw new Error(`The test runtime must provide every resource for worker index ${workerIndex}`);
+	}
+
+	return { workerIndex, database, bucket, trustapUrl, shippoUrl };
+}
 
 describe('local service configuration', () => {
+	it('selects every matching resource for a nonzero synthetic Vitest worker', () => {
+		const runtime = inject('testRuntime');
+		const assignment = resolveWorkerAssignment(runtime, '3');
+
+		expect(assignment).toEqual({
+			workerIndex: 2,
+			database: runtime.resourceNames.workerDatabases[2],
+			bucket: runtime.resourceNames.workerBuckets[2],
+			trustapUrl: runtime.providers.trustapUrls[2],
+			shippoUrl: runtime.providers.shippoUrls[2],
+		});
+	});
+
 	it('configures S3 and SMTP adapters from the disposable test runtime', async () => {
 		const runtime = inject('testRuntime');
-		const database = runtime.resourceNames.workerDatabases.at(0);
-		const bucket = runtime.resourceNames.workerBuckets.at(0);
-
-		if (!database || !bucket) {
-			throw new Error('The test runtime must provide a worker database and bucket');
-		}
-
-		const testEnvironment = buildServerEnvironment(runtime, database, bucket, 0);
+		/* eslint-disable-next-line turbo/no-undeclared-env-vars -- Vitest provides this identifier for each isolated worker process. */
+		const workerId = process.env.VITEST_POOL_ID;
+		const { workerIndex, database, bucket, trustapUrl, shippoUrl } = resolveWorkerAssignment(runtime, workerId);
+		const testEnvironment = buildServerEnvironment(runtime, database, bucket, workerIndex);
 		const originalEnvironment = new Map(Object.keys(testEnvironment).map((key) => [key, process.env[key]]));
 		let transporter: { close: () => void; options: unknown } | undefined;
 		let authenticatedTransporter: { close: () => void; options: unknown } | undefined;
@@ -55,7 +78,9 @@ describe('local service configuration', () => {
 				AWS_ENDPOINT: runtime.minio.endpoint,
 				AWS_FORCE_PATH_STYLE: true,
 				AWS_BUCKET_NAME: bucket,
-				SHIPPING_PROVIDER_API_URL: runtime.providers.shippoUrls[0],
+				POSTGRES_DB: database,
+				PAYMENT_PROVIDER_API_URL: trustapUrl,
+				SHIPPING_PROVIDER_API_URL: shippoUrl,
 				SMTP_FROM: 'Tantovale <noreply@tantovale.test>',
 			});
 			expect(new URL(environment.AWS_ENDPOINT!).hostname).toMatch(/^(localhost|127\.0\.0\.1)$/);
@@ -65,7 +90,7 @@ describe('local service configuration', () => {
 			const { shippoClient } = await import('../../src/lib/shippo-client');
 			const carrierAccounts = await carrierAccountsList(shippoClient, { page: 1, results: 25 });
 			expect(carrierAccounts.ok).toBe(true);
-			const shippoRequests = await getProviderRequests(runtime.providers.shippoUrls[0]!);
+			const shippoRequests = await getProviderRequests(shippoUrl);
 			expect(shippoRequests).toHaveLength(1);
 			expect(shippoRequests[0]).toMatchObject({
 				method: 'GET',
