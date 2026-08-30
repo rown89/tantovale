@@ -1,10 +1,11 @@
 import type { Context } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { createClient } from '../../database';
 import { properties } from '../../database/schemas/properties';
 import { subcategory_properties } from '../../database/schemas/subcategory_properties';
 import { property_values } from '../../database/schemas/properties_values';
+import { subcategories } from '../../database/schemas/subcategories';
 
 import type { AppBindings } from '../../lib/types';
 
@@ -46,7 +47,8 @@ export const getPropertiesBySubcategoryPropertiesIdService = async (c: Context<A
 		.from(subcategory_properties)
 		.innerJoin(properties, eq(subcategory_properties.property_id, properties.id))
 		.innerJoin(property_values, eq(property_values.property_id, properties.id))
-		.where(eq(subcategory_properties.subcategory_id, id));
+		.innerJoin(subcategories, eq(subcategory_properties.subcategory_id, subcategories.id))
+		.where(and(eq(subcategory_properties.subcategory_id, id), eq(subcategories.published, true)));
 
 	type PropertyRow = (typeof propertiesRequest)[number];
 

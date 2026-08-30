@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
 import { createCatalogFixture } from '../fixtures/catalog';
+import { getTestDatabase } from '../helpers/database';
 
 type CatalogFixtureIds = {
 	childId: number;
@@ -91,9 +93,11 @@ describe('catalog and location routes', () => {
 				subcategory_id: fixture.childSubcategory.id,
 			}),
 		]);
-		expect(filters.map(({ id }) => id)).toEqual(
-			expect.arrayContaining(Object.values(fixture.properties).map(({ id }) => id)),
-		);
+		const expectedPropertyIds = Object.values(fixture.properties)
+			.map(({ id }) => id)
+			.sort((left, right) => left - right);
+		expect(properties.map(({ id }) => id).sort((left, right) => left - right)).toEqual(expectedPropertyIds);
+		expect(filters.map(({ id }) => id).sort((left, right) => left - right)).toEqual(expectedPropertyIds);
 		expect(locations).toContainEqual(expect.objectContaining({ id: fixture.city.id, name: fixture.city.name }));
 		expect(location.locationResponse).toMatchObject({
 			id: fixture.city.id,
@@ -110,6 +114,25 @@ describe('catalog and location routes', () => {
 		expect(optionValue(fixture.properties.boolean.id)).toBe(false);
 	});
 
+	it('hides mappings owned by an unpublished subcategory without globally hiding their property', async () => {
+		const fixture = await createCatalogFixture();
+		const decoy = fixture.unpublishedMapping;
+		const propertyResponse = await app.request(`/properties/${decoy.property.id}`);
+
+		expect(propertyResponse.status).toBe(200);
+		expect(await propertyResponse.json()).toEqual([expect.objectContaining({ id: decoy.property.id })]);
+
+		const mappingPaths = [
+			`/properties/subcategory_properties/${fixture.unpublishedSubcategory.id}`,
+			`/subcategory_properties/filter/${fixture.unpublishedSubcategory.id}`,
+			`/subcategory_properties/${decoy.mapping.id}`,
+		];
+		for (const path of mappingPaths) {
+			const response = await app.request(path);
+			expect(response.status, `GET ${path}`).toBe(404);
+		}
+	});
+
 	it('returns the legacy 404 response when no subcategories exist', async () => {
 		const response = await app.request('/subcategories');
 
@@ -118,22 +141,38 @@ describe('catalog and location routes', () => {
 		expect(await response.json()).toEqual({ message: 'Missing subcategories' });
 	});
 
-	it('returns 400 for malformed numeric catalog and location identifiers', async () => {
+	it('returns 400 for every non-positive, non-integer, unsafe, or out-of-range numeric identifier', async () => {
 		await createCatalogFixture();
-		const paths = [
-			'/subcategories/not-a-number',
-			'/subcategories/no_parent/not-a-number',
-			'/properties/not-a-number',
-			'/properties/subcategory_properties/not-a-number',
-			'/subcategory_properties/not-a-number',
-			'/subcategory_properties/filter/not-a-number',
-			'/locations/search_by_id/city/not-a-number',
+		const invalidIds = [
+			'not-a-number',
+			'0',
+			'-1',
+			'1.5',
+			'%31%2E%35',
+			'Infinity',
+			'%49%6E%66%69%6E%69%74%79',
+			'2147483648',
 		];
+		const routePaths = [
+			(id: string) => `/subcategories/${id}`,
+			(id: string) => `/subcategories/no_parent/${id}`,
+			(id: string) => `/properties/${id}`,
+			(id: string) => `/properties/subcategory_properties/${id}`,
+			(id: string) => `/subcategory_properties/${id}`,
+			(id: string) => `/subcategory_properties/filter/${id}`,
+			(id: string) => `/locations/search_by_id/city/${id}`,
+		];
+		const results: Array<{ path: string; status: number }> = [];
 
-		for (const path of paths) {
-			const response = await app.request(path);
-			expect(response.status, `GET ${path}`).toBe(400);
+		for (const routePath of routePaths) {
+			for (const invalidId of invalidIds) {
+				const path = routePath(invalidId);
+				const response = await app.request(path);
+				results.push({ path, status: response.status });
+			}
 		}
+
+		expect(results).toEqual(results.map(({ path }) => ({ path, status: 400 })));
 	});
 
 	it('returns 404 rather than 500 for well-formed absent catalog and location identifiers', async () => {
@@ -171,6 +210,19 @@ describe('catalog and location routes', () => {
 		}
 	});
 
+	it('rejects unsupported location types for lookup by id instead of returning city data', async () => {
+		const fixture = await createCatalogFixture();
+		const paths = [
+			`/locations/search_by_id/province/${fixture.city.id}`,
+			`/locations/search_by_id/arbitrary/${fixture.city.id}`,
+		];
+
+		for (const path of paths) {
+			const response = await app.request(path);
+			expect(response.status, `GET ${path}`).toBe(400);
+		}
+	});
+
 	it('returns an empty successful result when no location name matches', async () => {
 		await createCatalogFixture();
 		const response = await app.request(
@@ -179,5 +231,23 @@ describe('catalog and location routes', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual([]);
+	});
+
+	it('keeps database error details out of location search responses and logs', async () => {
+		const { db } = getTestDatabase();
+		const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		await db.execute(sql`ALTER TABLE cities RENAME TO cities_location_search_error_probe`);
+
+		try {
+			const response = await app.request('/locations/search?locationType=city&locationName=Mil');
+
+			expect(response.status).toBe(500);
+			expect(await response.json()).toEqual({ message: 'Failed to search locations' });
+			expect(errorLog).toHaveBeenCalledOnce();
+			expect(errorLog).toHaveBeenCalledWith('Location search failed');
+		} finally {
+			await db.execute(sql`ALTER TABLE cities_location_search_error_probe RENAME TO cities`);
+			errorLog.mockRestore();
+		}
 	});
 });

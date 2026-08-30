@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 
 import { createClient } from '../../database';
-import { properties, subcategory_properties } from '../../database/schemas/schema';
+import { properties, subcategories, subcategory_properties } from '../../database/schemas/schema';
 import type { AppBindings } from '../../lib/types';
 
 export const getSubcategoryPropertiesById = async (c: Context<AppBindings>, id: number) => {
@@ -14,7 +14,8 @@ export const getSubcategoryPropertiesById = async (c: Context<AppBindings>, id: 
 			subcategory_id: subcategory_properties.subcategory_id,
 		})
 		.from(subcategory_properties)
-		.where(eq(subcategory_properties.id, id));
+		.innerJoin(subcategories, eq(subcategory_properties.subcategory_id, subcategories.id))
+		.where(and(eq(subcategory_properties.id, id), eq(subcategories.published, true)));
 };
 
 export const getFiltersForSubcategory = async (c: Context<AppBindings>, id: number) => {
@@ -27,5 +28,6 @@ export const getFiltersForSubcategory = async (c: Context<AppBindings>, id: numb
 		})
 		.from(subcategory_properties)
 		.innerJoin(properties, eq(subcategory_properties.property_id, properties.id))
-		.where(eq(subcategory_properties.subcategory_id, id));
+		.innerJoin(subcategories, eq(subcategory_properties.subcategory_id, subcategories.id))
+		.where(and(eq(subcategory_properties.subcategory_id, id), eq(subcategories.published, true)));
 };

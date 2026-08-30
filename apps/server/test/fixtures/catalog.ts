@@ -105,12 +105,17 @@ export async function createCatalogFixture() {
 		const childSubcategory = requireInserted(childSubcategoryRow, 'Child subcategory');
 		const unpublishedSubcategory = requireInserted(unpublishedSubcategoryRow, 'Unpublished subcategory');
 
-		const [textPropertyRow, numericPropertyRow, booleanPropertyRow] = await tx
+		const [textPropertyRow, numericPropertyRow, booleanPropertyRow, unpublishedPropertyRow] = await tx
 			.insert(properties)
 			.values([
 				{ name: `Text Property ${suffix}`, slug: `text-property-${suffix}`, type: 'select' },
 				{ name: `Numeric Property ${suffix}`, slug: `numeric-property-${suffix}`, type: 'number' },
 				{ name: `Boolean Property ${suffix}`, slug: `boolean-property-${suffix}`, type: 'boolean' },
+				{
+					name: `Unpublished Mapping Property ${suffix}`,
+					slug: `unpublished-mapping-property-${suffix}`,
+					type: 'select',
+				},
 			])
 			.returning();
 		const fixtureProperties = {
@@ -118,6 +123,7 @@ export async function createCatalogFixture() {
 			numeric: requireInserted(numericPropertyRow, 'Numeric property'),
 			boolean: requireInserted(booleanPropertyRow, 'Boolean property'),
 		};
+		const unpublishedProperty = requireInserted(unpublishedPropertyRow, 'Unpublished mapping property');
 
 		const [textMappingRow, numericMappingRow, booleanMappingRow] = await tx
 			.insert(subcategory_properties)
@@ -135,8 +141,18 @@ export async function createCatalogFixture() {
 			numeric: requireInserted(numericMappingRow, 'Numeric property mapping'),
 			boolean: requireInserted(booleanMappingRow, 'Boolean property mapping'),
 		};
+		const [unpublishedMappingRow] = await tx
+			.insert(subcategory_properties)
+			.values({
+				property_id: unpublishedProperty.id,
+				subcategory_id: unpublishedSubcategory.id,
+				position: 0,
+				on_item_create_required: true,
+			})
+			.returning();
+		const unpublishedMapping = requireInserted(unpublishedMappingRow, 'Unpublished subcategory mapping');
 
-		const [textValueRow, numericValueRow, booleanValueRow] = await tx
+		const [textValueRow, numericValueRow, booleanValueRow, unpublishedValueRow] = await tx
 			.insert(property_values)
 			.values([
 				{ property_id: fixtureProperties.text.id, name: 'Cotton', value: 'cotton' },
@@ -147,6 +163,7 @@ export async function createCatalogFixture() {
 					numeric_value: 0,
 				},
 				{ property_id: fixtureProperties.boolean.id, name: 'False', boolean_value: false },
+				{ property_id: unpublishedProperty.id, name: 'Hidden', value: 'hidden' },
 			])
 			.returning();
 		const propertyValues = {
@@ -154,6 +171,7 @@ export async function createCatalogFixture() {
 			numeric: requireInserted(numericValueRow, 'Numeric property value'),
 			boolean: requireInserted(booleanValueRow, 'Boolean property value'),
 		};
+		const unpublishedPropertyValue = requireInserted(unpublishedValueRow, 'Unpublished property value');
 
 		return {
 			country,
@@ -167,6 +185,11 @@ export async function createCatalogFixture() {
 			properties: fixtureProperties,
 			mappings,
 			propertyValues,
+			unpublishedMapping: {
+				mapping: unpublishedMapping,
+				property: unpublishedProperty,
+				propertyValue: unpublishedPropertyValue,
+			},
 		};
 	});
 }

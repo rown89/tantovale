@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import { getSubcategories, getSubcategoriesById, getSubcategoriesWithoutParentById } from './subcategories.service';
 
+import { parsePositivePostgresInt } from '../../lib/parse-positive-postgres-int';
 import type { AppBindings } from '../../lib/types';
 
 export const getSubcategoriesController = async (c: Context<AppBindings>) => {
@@ -18,10 +19,9 @@ export const getSubcategoriesController = async (c: Context<AppBindings>) => {
 };
 
 export const getSubcategoriesByIdController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (!id) return c.json({ error: 'subcategory id is required' }, 400);
-	if (isNaN(id)) return c.json({ message: 'Invalid ID' }, 400);
+	if (id === null) return c.json({ error: 'subcategory id is required' }, 400);
 
 	const subcategory = await getSubcategoriesById(c, id);
 
@@ -33,10 +33,9 @@ export const getSubcategoriesByIdController = async (c: Context<AppBindings>) =>
 };
 
 export const getSubcategoriesWithoutParentByIdController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (!id) return c.json({ error: 'Invalid id required' }, 400);
-	if (isNaN(id)) return c.json({ message: 'Invalid subcategory ID' }, 400);
+	if (id === null) return c.json({ error: 'Invalid id required' }, 400);
 
 	const subcategoriesWithoutParent = await getSubcategoriesWithoutParentById(c, id);
 	if (!subcategoriesWithoutParent.length) {

@@ -1,20 +1,21 @@
 import type { Context } from 'hono';
 import { getPropertiesByIdService, getPropertiesBySubcategoryPropertiesIdService } from './properties.service';
 
+import { parsePositivePostgresInt } from '../../lib/parse-positive-postgres-int';
 import type { AppBindings } from '../../lib/types';
 
 export const getPropertiesByIdController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (isNaN(id)) return c.json({ message: 'Invalid filter ID' }, 400);
+	if (id === null) return c.json({ message: 'Invalid filter ID' }, 400);
 
 	return getPropertiesByIdService(c, id);
 };
 
 export const getPropertiesBySubcategoryPropertiesIdController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (isNaN(id)) return c.json({ message: 'Invalid filter ID' }, 400);
+	if (id === null) return c.json({ message: 'Invalid filter ID' }, 400);
 
 	try {
 		const propertiesList = await getPropertiesBySubcategoryPropertiesIdService(c, id);
