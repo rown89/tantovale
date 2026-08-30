@@ -128,12 +128,12 @@
 		"@types/node": "^20.11.17",
 		"@types/nodemailer": "^6.4.17",
 		"@types/pg": "^8.11.11",
-		"@vitest/coverage-v8": "^4.1.11",
+		"@vitest/coverage-v8": "^2.1.9",
 		"dotenv-cli": "^8.0.0",
 		"eslint": "^9.15.0",
-		"testcontainers": "^12.1.0",
+		"testcontainers": "^11.14.0",
 		"tsx": "^4.19.2",
 		"typescript": "^5.8.3",
-		"vitest": "^4.1.11"
+		"vitest": "^2.1.9"
 	}
 }

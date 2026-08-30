@@ -14,7 +14,7 @@ export default defineConfig({
 		coverage: {
 			provider: 'v8',
 			include: ['src/**/*.ts'],
-			exclude: ['src/database/migrations/**'],
+			exclude: ['src/database/drizzle/migrations/**'],
 			thresholds: {
 				lines: 90,
 				functions: 90,
