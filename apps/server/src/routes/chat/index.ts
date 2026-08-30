@@ -1,4 +1,4 @@
-import { eq, and, or, isNull, not, desc, max } from 'drizzle-orm';
+import { eq, and, or, isNull, not, desc, max, asc } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -11,8 +11,24 @@ import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
 import { ChatMessageSchema } from 'src/extended_schemas';
-import { createRoom, sendChatRoomMessage } from './utils';
+import { sendChatRoomMessage } from './utils';
 import { ChatMessageMetadata, itemStatus } from '#database/schemas/enumerated_values';
+
+const postgresIntegerIdSchema = z.number().int().positive().max(2_147_483_647);
+const textChatMessageSchema = ChatMessageSchema.refine(({ message }) => message.trim().length > 0, {
+	message: 'Message cannot contain only whitespace',
+	path: ['message'],
+});
+
+function parsePathId(value: string): number | undefined {
+	if (!/^\d+$/.test(value)) return undefined;
+	const parsed = postgresIntegerIdSchema.safeParse(Number(value));
+	return parsed.success ? parsed.data : undefined;
+}
+
+function escapeHtmlText(value: string): string {
+	return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
 
 export const chatRoute = createRouter()
 	// get all user chat rooms
@@ -121,10 +137,15 @@ export const chatRoute = createRouter()
 	// get chat room id by item_id
 	.get(`/${authPath}/rooms/id/:item_id`, authMiddleware, async (c) => {
 		const user = c.var.user;
-		const item_id = Number(c.req.param('item_id'));
+		const rawItemId = c.req.param('item_id');
+		const item_id = parsePathId(rawItemId);
 
-		if (!item_id) return c.json({ error: 'Item id is required' }, 400);
-		if (isNaN(item_id)) return c.json({ message: 'Invalid Item ID' }, 400);
+		if (!item_id) {
+			const numericItemId = Number(rawItemId);
+			return Number.isNaN(numericItemId) || numericItemId === 0
+				? c.json({ error: 'Item id is required' }, 400)
+				: c.json({ message: 'Invalid Item ID' }, 400);
+		}
 
 		const { db } = createClient();
 
@@ -152,10 +173,15 @@ export const chatRoute = createRouter()
 	// Get messages for a specific chat room
 	.get(`/${authPath}/rooms/:roomId/messages`, authMiddleware, async (c) => {
 		const user = c.var.user;
-		const roomId = Number(c.req.param('roomId'));
+		const rawRoomId = c.req.param('roomId');
+		const roomId = parsePathId(rawRoomId);
 
-		if (!roomId) return c.json({ error: 'room id is required' }, 400);
-		if (isNaN(roomId)) return c.json({ message: 'Invalid room ID' }, 400);
+		if (!roomId) {
+			const numericRoomId = Number(rawRoomId);
+			return Number.isNaN(numericRoomId) || numericRoomId === 0
+				? c.json({ error: 'room id is required' }, 400)
+				: c.json({ message: 'Invalid room ID' }, 400);
+		}
 
 		const { db } = createClient();
 
@@ -192,7 +218,8 @@ export const chatRoute = createRouter()
 						order_proposal_id: chat_messages.order_proposal_id,
 						created_at: chat_messages.created_at,
 						read_at: chat_messages.read_at,
-						sender_id: users.id,
+						sender_user_id: users.id,
+						sender_profile_id: profiles.id,
 						sender_username: users.username,
 						metadata: chat_messages.metadata,
 					})
@@ -200,7 +227,7 @@ export const chatRoute = createRouter()
 					.innerJoin(profiles, eq(chat_messages.sender_id, profiles.id))
 					.innerJoin(users, eq(profiles.user_id, users.id))
 					.where(eq(chat_messages.chat_room_id, roomId))
-					.orderBy(chat_messages.created_at);
+					.orderBy(asc(chat_messages.created_at), asc(chat_messages.id));
 
 				const messages = messagesResult.map((msg) => ({
 					id: msg.id,
@@ -210,15 +237,16 @@ export const chatRoute = createRouter()
 					created_at: msg.created_at,
 					read_at: msg.read_at,
 					sender: {
-						id: msg.sender_id,
+						id: msg.sender_user_id,
 						username: msg.sender_username,
 					},
-					sender_id: msg.sender_id, // Keep this for the filter below
 					metadata: msg.metadata as ChatMessageMetadata,
 				}));
 
 				// Mark unread messages as read if the user is not the sender
-				const unreadMessages = messages.filter((msg) => !msg.read_at && msg.sender_id !== user.id);
+				const unreadMessages = messagesResult.filter(
+					(msg) => !msg.read_at && msg.sender_profile_id !== user.profile_id,
+				);
 
 				if (unreadMessages.length > 0) {
 					await tx
@@ -247,7 +275,7 @@ export const chatRoute = createRouter()
 		zValidator(
 			'json',
 			z.object({
-				item_id: z.number(),
+				item_id: postgresIntegerIdSchema,
 			}),
 		),
 		async (c) => {
@@ -256,44 +284,55 @@ export const chatRoute = createRouter()
 
 			const { db } = createClient();
 
-			// Check if the item exists and user is not the owner
-			const itemResult = await db.select().from(items).where(eq(items.id, item_id));
+			const result = await db.transaction(async (tx) => {
+				const [item] = await tx.select().from(items).where(eq(items.id, item_id)).for('update').limit(1);
 
-			const item = itemResult[0];
+				if (!item) return { outcome: 'not-found' } as const;
+				if (item.profile_id === user.profile_id) return { outcome: 'own-item' } as const;
+				if (!item.published || item.status !== itemStatus.AVAILABLE || item.deleted_at) {
+					return { outcome: 'not-found' } as const;
+				}
 
-			if (!item) {
-				return c.json({ error: 'Item not found' }, 404);
-			}
+				const [existingRoom] = await tx
+					.select({ id: chat_rooms.id })
+					.from(chat_rooms)
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
+					.limit(1);
+				if (existingRoom) return { outcome: 'success', id: existingRoom.id } as const;
 
-			if (item.profile_id === user.profile_id) {
-				return c.json({ error: 'You cannot chat about your own item' }, 400);
-			}
+				const [newRoom] = await tx
+					.insert(chat_rooms)
+					.values({ item_id, buyer_id: user.profile_id })
+					.onConflictDoNothing({ target: [chat_rooms.item_id, chat_rooms.buyer_id] })
+					.returning({ id: chat_rooms.id });
+				if (newRoom) return { outcome: 'success', id: newRoom.id } as const;
 
-			// Check if a chat room already exists for this item and buyer
-			const existingRoomResult = await db
-				.select({ id: chat_rooms.id })
-				.from(chat_rooms)
-				.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)));
-
-			const existingRoom = existingRoomResult[0];
-
-			if (existingRoom) {
-				return c.json({ id: existingRoom.id });
-			}
-
-			// Create a new chat room
-			const newRoomResult = await createRoom({
-				item_id,
-				buyer_id: user.profile_id,
+				const [concurrentRoom] = await tx
+					.select({ id: chat_rooms.id })
+					.from(chat_rooms)
+					.where(and(eq(chat_rooms.item_id, item_id), eq(chat_rooms.buyer_id, user.profile_id)))
+					.limit(1);
+				if (!concurrentRoom) throw new Error('Chat room conflict did not resolve to a persisted room');
+				return { outcome: 'success', id: concurrentRoom.id } as const;
 			});
 
-			return c.json({ id: newRoomResult[0]?.id });
+			if (result.outcome === 'not-found') return c.json({ error: 'Item not found' }, 404);
+			if (result.outcome === 'own-item') return c.json({ error: 'You cannot chat about your own item' }, 400);
+			return c.json({ id: result.id });
 		},
 	)
 	// Send a message in a chat room
-	.post(`/${authPath}/rooms/:roomId/messages`, authMiddleware, zValidator('json', ChatMessageSchema), async (c) => {
+	.post(`/${authPath}/rooms/:roomId/messages`, authMiddleware, zValidator('json', textChatMessageSchema), async (c) => {
 		const user = c.var.user;
-		const roomId = Number(c.req.param('roomId'));
+		const rawRoomId = c.req.param('roomId');
+		const roomId = parsePathId(rawRoomId);
+
+		if (!roomId) {
+			const numericRoomId = Number(rawRoomId);
+			return Number.isNaN(numericRoomId) || numericRoomId === 0
+				? c.json({ error: 'room id is required' }, 400)
+				: c.json({ message: 'Invalid room ID' }, 400);
+		}
 
 		const { message } = c.req.valid('json');
 
@@ -367,8 +406,8 @@ export const chatRoute = createRouter()
 						await sendNewMessageWarning({
 							to: recipient.email,
 							roomId,
-							username: user.username,
-							message,
+							username: escapeHtmlText(user.username),
+							message: escapeHtmlText(message),
 						});
 
 						// Log that notification was sent
@@ -402,8 +441,8 @@ export const chatRoute = createRouter()
 					await sendNewMessageWarning({
 						to: recipient.email,
 						roomId,
-						username: user.username,
-						message,
+						username: escapeHtmlText(user.username),
+						message: escapeHtmlText(message),
 					});
 
 					console.log(`Email notification sent to ${recipient.email} for room ${roomId}`);

@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
@@ -17,10 +17,7 @@ export const chat_rooms = pgTable(
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(table) => [
-		// Composite index for chat room lookups: item_id + buyer_id
-		index('chat_rooms_item_buyer_idx').on(table.item_id, table.buyer_id),
-	],
+	(table) => [uniqueIndex('chat_rooms_item_buyer_idx').on(table.item_id, table.buyer_id)],
 );
 
 export type SelectChatRoom = typeof chat_rooms.$inferSelect;
