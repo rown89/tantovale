@@ -39,6 +39,7 @@ import { ORDER_PHASES } from '#utils/order-phases';
 import { environment } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
+import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
 
 import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
@@ -46,8 +47,9 @@ import { PaymentProviderService } from '../payments/payment-provider.service';
 export const itemRoute = createRouter()
 	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
 	.get('/:id', async (c) => {
-		const { ACCESS_TOKEN_SECRET } = env<{
+		const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
 			ACCESS_TOKEN_SECRET: string;
+			REFRESH_TOKEN_SECRET: string;
 		}>(c);
 
 		const id = Number(c.req.param('id'));
@@ -56,15 +58,18 @@ export const itemRoute = createRouter()
 		if (isNaN(id)) return c.json({ message: 'Invalid item ID' }, 400);
 
 		const access_token = getCookie(c, 'access_token');
-
-		let payload;
-
-		if (access_token) payload = await verify(access_token, ACCESS_TOKEN_SECRET);
-
-		// If user is logged in, we can get the user_profile_id from the payload and use it to filter the data for the logged user
-		const user_profile_id = Number(payload?.profile_id);
-
+		const refresh_token = getCookie(c, 'refresh_token');
 		const { db } = createClient();
+		const optionalUser = await resolveOptionalLiveSessionUser({
+			db,
+			accessToken: access_token,
+			refreshToken: refresh_token,
+			accessTokenSecret: ACCESS_TOKEN_SECRET,
+			refreshTokenSecret: REFRESH_TOKEN_SECRET,
+		});
+
+		// A valid optional session can expose only that buyer's private item metadata.
+		const user_profile_id = optionalUser?.profile_id;
 
 		const city = alias(cities, 'city');
 		const province = alias(cities, 'province');

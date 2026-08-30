@@ -107,6 +107,69 @@ export async function hasLiveMatchingRefreshSession({
 	return storedSession?.username === user.username;
 }
 
+type OptionalLiveSessionOptions = {
+	db: DrizzleClient['db'];
+	accessToken?: string;
+	refreshToken?: string;
+	accessTokenSecret: string;
+	refreshTokenSecret: string;
+};
+
+export async function resolveOptionalLiveSessionUser({
+	db,
+	accessToken,
+	refreshToken,
+	accessTokenSecret,
+	refreshTokenSecret,
+}: OptionalLiveSessionOptions): Promise<User | undefined> {
+	if (!accessToken || !refreshToken) {
+		return undefined;
+	}
+
+	try {
+		const accessClaims = await verifyAccessTokenClaims(accessToken, accessTokenSecret);
+		const [existingUser] = await db
+			.select({
+				id: users.id,
+				email: users.email,
+				username: users.username,
+				email_verified: users.email_verified,
+				phone_verified: users.phone_verified,
+				profile_id: profiles.id,
+				is_banned: users.is_banned,
+			})
+			.from(users)
+			.innerJoin(profiles, eq(users.id, profiles.user_id))
+			.where(eq(users.id, accessClaims.id))
+			.limit(1);
+
+		if (
+			!existingUser ||
+			existingUser.is_banned ||
+			!(await hasLiveMatchingRefreshSession({
+				db,
+				refreshToken,
+				refreshTokenSecret,
+				accessClaims,
+				user: existingUser,
+			}))
+		) {
+			return undefined;
+		}
+
+		return {
+			id: existingUser.id,
+			profile_id: existingUser.profile_id,
+			email: existingUser.email,
+			username: existingUser.username,
+			email_verified: existingUser.email_verified,
+			phone_verified: existingUser.phone_verified,
+		};
+	} catch {
+		return undefined;
+	}
+}
+
 export async function invalidateTokens(c: Context<AppBindings>, db: DrizzleClient['db'], isProductionMode?: boolean) {
 	const refreshToken = getCookie(c, 'refresh_token');
 
