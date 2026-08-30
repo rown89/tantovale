@@ -25,7 +25,7 @@ if (initialNodeEnv !== 'test') {
 	}
 }
 
-const EnvSchema = z.object({
+const EnvSchemaObject = z.object({
 	PROJECT_NAME: z.string().default('Tantovale'),
 	NODE_ENV: z.string().default('development'),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
@@ -75,7 +75,7 @@ const EnvSchema = z.object({
 	SMTP_PORT: z.coerce.number().default(465),
 	SMTP_USER: z.string(),
 	SMTP_PASS: z.string(),
-	SMTP_FROM: z.string().default('Tantovale <noreply@tantovale.it>'),
+	SMTP_FROM: z.string().optional(),
 	// CRON
 	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
 	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),
@@ -85,7 +85,12 @@ const EnvSchema = z.object({
 	ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS: z.coerce.number().default(48),
 });
 
-export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
+const EnvSchema = EnvSchemaObject.transform((environment) => ({
+	...environment,
+	SMTP_FROM: environment.SMTP_FROM ?? `"Tantovale" <${environment.SMTP_USER}>`,
+}));
+
+export function parseEnv(data: z.input<typeof EnvSchema> | NodeJS.ProcessEnv) {
 	const { data: env, error } = EnvSchema.safeParse(data);
 
 	if (error) {
@@ -98,4 +103,4 @@ export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
 	return env;
 }
 
-export type Environment = z.infer<typeof EnvSchema>;
+export type Environment = z.output<typeof EnvSchema>;
