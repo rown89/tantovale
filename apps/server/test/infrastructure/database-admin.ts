@@ -7,6 +7,9 @@ import { assertDisposableDatabaseName, buildServerEnvironment, type TestRuntime 
 
 const execFileAsync = promisify(execFile);
 const serverDirectory = fileURLToPath(new URL('../../', import.meta.url));
+const repositoryDirectory = fileURLToPath(new URL('../../../../', import.meta.url));
+const DATABASE_TIMEOUT_MS = 10_000;
+const MIGRATION_TIMEOUT_MS = 180_000;
 
 export function quoteIdentifier(identifier: string): string {
 	return `"${identifier.replaceAll('"', '""')}"`;
@@ -19,6 +22,10 @@ export function createDatabaseConnectionConfig(runtime: TestRuntime, database: s
 		user: runtime.postgres.user,
 		password: runtime.postgres.password,
 		database,
+		ssl: false,
+		connectionTimeoutMillis: DATABASE_TIMEOUT_MS,
+		query_timeout: DATABASE_TIMEOUT_MS,
+		statement_timeout: DATABASE_TIMEOUT_MS,
 	};
 }
 
@@ -44,10 +51,21 @@ async function migrateTemplateDatabase(runtime: TestRuntime): Promise<void> {
 		...buildServerEnvironment(runtime, runtime.resourceNames.templateDatabase, migrationBucket),
 	};
 
-	await execFileAsync('pnpm', ['exec', 'drizzle-kit', 'migrate', '--config', './src/database/drizzle.config.ts'], {
-		cwd: serverDirectory,
-		env: environment,
-	});
+	try {
+		await execFileAsync(
+			'pnpm',
+			['--dir', serverDirectory, 'exec', 'drizzle-kit', 'migrate', '--config', './src/database/drizzle.config.ts'],
+			{
+				cwd: repositoryDirectory,
+				env: environment,
+				timeout: MIGRATION_TIMEOUT_MS,
+				killSignal: 'SIGTERM',
+				maxBuffer: 10 * 1024 * 1024,
+			},
+		);
+	} catch (error) {
+		throw new Error('Drizzle migration for the disposable template database failed or timed out', { cause: error });
+	}
 }
 
 export async function createMigratedDatabases(runtime: TestRuntime): Promise<void> {

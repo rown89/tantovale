@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
+import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { Client } from 'pg';
 import type { GlobalSetupContext } from 'vitest/node';
 
 import { stopInfrastructure, startInfrastructure, type StartedInfrastructure } from './containers';
 import { createDatabaseConnectionConfig, createMigratedDatabases } from './database-admin';
-import { createWorkerBuckets } from './object-storage-admin';
+import { createObjectStorageClient, createWorkerBuckets } from './object-storage-admin';
 import { API_TEST_WORKERS, createResourceNames, type TestRuntime } from './runtime';
 
 function createRuntime(infrastructure: StartedInfrastructure): TestRuntime {
@@ -37,15 +37,7 @@ function createRuntime(infrastructure: StartedInfrastructure): TestRuntime {
 async function assertProvisionedResources(runtime: TestRuntime): Promise<void> {
 	const databaseNames = [runtime.resourceNames.templateDatabase, ...runtime.resourceNames.workerDatabases];
 	const databaseClient = new Client(createDatabaseConnectionConfig(runtime, 'postgres'));
-	const storageClient = new S3Client({
-		endpoint: runtime.minio.endpoint,
-		region: 'eu-west-1',
-		forcePathStyle: true,
-		credentials: {
-			accessKeyId: runtime.minio.accessKey,
-			secretAccessKey: runtime.minio.secretKey,
-		},
-	});
+	const storageClient = createObjectStorageClient(runtime);
 
 	try {
 		await databaseClient.connect();
@@ -53,20 +45,54 @@ async function assertProvisionedResources(runtime: TestRuntime): Promise<void> {
 			'SELECT datname FROM pg_database WHERE datname = ANY($1::text[])',
 			[databaseNames],
 		);
-		const buckets = await storageClient.send(new ListBucketsCommand({}));
 		const foundDatabases = new Set(databases.rows.map((database) => database.datname));
-		const foundBuckets = new Set(buckets.Buckets?.flatMap((bucket) => (bucket.Name ? [bucket.Name] : [])) ?? []);
 
 		if (databaseNames.some((name) => !foundDatabases.has(name))) {
 			throw new Error('Disposable test database provisioning did not create every expected database');
 		}
 
+		await assertWorkerSchemas(runtime);
+
+		const [buckets, mailpitResponse] = await Promise.all([
+			storageClient.send(new ListBucketsCommand({}), { abortSignal: AbortSignal.timeout(10_000) }),
+			fetch(`${runtime.mailpit.apiUrl}/api/v1/info`, { signal: AbortSignal.timeout(10_000) }),
+		]);
+		const foundBuckets = new Set(buckets.Buckets?.flatMap((bucket) => (bucket.Name ? [bucket.Name] : [])) ?? []);
+
 		if (runtime.resourceNames.workerBuckets.some((name) => !foundBuckets.has(name))) {
 			throw new Error('Disposable test object storage provisioning did not create every expected bucket');
+		}
+
+		if (!mailpitResponse.ok) {
+			throw new Error(`Disposable test Mailpit readiness check failed with status ${mailpitResponse.status}`);
 		}
 	} finally {
 		storageClient.destroy();
 		await databaseClient.end();
+	}
+}
+
+async function assertWorkerSchemas(runtime: TestRuntime): Promise<void> {
+	for (const workerDatabase of runtime.resourceNames.workerDatabases) {
+		const workerClient = new Client(createDatabaseConnectionConfig(runtime, workerDatabase));
+
+		try {
+			await workerClient.connect();
+			const migrations = await workerClient.query<{ isMigrated: boolean }>(
+				'SELECT COUNT(*) >= 1 AS "isMigrated" FROM public.__drizzle_migrations__',
+			);
+			const users = await workerClient.query<{ usersTableExists: boolean }>(
+				'SELECT to_regclass(\'public.users\') IS NOT NULL AS "usersTableExists"',
+			);
+
+			if (!migrations.rows[0]?.isMigrated || !users.rows[0]?.usersTableExists) {
+				throw new Error('The migration table or users table is missing');
+			}
+		} catch (error) {
+			throw new Error(`Worker database ${workerDatabase} schema verification failed`, { cause: error });
+		} finally {
+			await workerClient.end();
+		}
 	}
 }
 
