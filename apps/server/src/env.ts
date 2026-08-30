@@ -3,22 +3,26 @@ import { expand } from 'dotenv-expand';
 import path from 'path';
 import { z } from 'zod/v4';
 
-// Load .env first
-expand(
-	config({
-		path: path.resolve(process.cwd(), '.env'),
-	}),
-);
+const initialNodeEnv = process.env.NODE_ENV;
 
-// In development, also load .env.local which will override .env values
-// Check the initial NODE_ENV, not the one potentially set by .env file
-if (process.env.NODE_ENV === 'development') {
+if (initialNodeEnv !== 'test') {
+	// Load .env first
 	expand(
 		config({
-			path: path.resolve(process.cwd(), '.env.local'),
-			override: true,
+			path: path.resolve(process.cwd(), '.env'),
 		}),
 	);
+
+	// In development, also load .env.local which will override .env values.
+	// Check the initial NODE_ENV, not the one potentially set by .env file.
+	if (initialNodeEnv === 'development') {
+		expand(
+			config({
+				path: path.resolve(process.cwd(), '.env.local'),
+				override: true,
+			}),
+		);
+	}
 }
 
 const EnvSchema = z.object({

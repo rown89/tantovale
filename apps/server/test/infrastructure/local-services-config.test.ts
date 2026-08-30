@@ -32,32 +32,38 @@ describe('local service configuration', () => {
 		expect(objectUrl.pathname).toBe(`/${bucket}/uploads/avatar.png`);
 
 		const transporter = createMailer(process);
-		const options = transporter.options;
-		expect(options).toMatchObject({
-			host: runtime.mailpit.smtpHost,
-			port: runtime.mailpit.smtpPort,
-			secure: false,
-		});
-		expect(options).not.toHaveProperty('auth');
-		transporter.close();
+		try {
+			const options = transporter.options;
+			expect(options).toMatchObject({
+				host: runtime.mailpit.smtpHost,
+				port: runtime.mailpit.smtpPort,
+				secure: false,
+			});
+			expect(options).not.toHaveProperty('auth');
 
-		const nodemailer = await import('nodemailer');
-		const sendMail = vi.fn().mockResolvedValue({});
-		const createTransport = vi.spyOn(nodemailer.default, 'createTransport').mockReturnValue({ sendMail } as never);
-		const { sendVerifyEmail } = await import('../../src/mailer/templates/verify-email');
-		const { sendForgotPasswordEmail } = await import('../../src/mailer/templates/forgot-password-email');
+			const nodemailer = await import('nodemailer');
+			const sendMail = vi.fn().mockResolvedValue({});
+			const createTransport = vi.spyOn(nodemailer.default, 'createTransport').mockReturnValue({ sendMail } as never);
+			try {
+				const { sendVerifyEmail } = await import('../../src/mailer/templates/verify-email');
+				const { sendForgotPasswordEmail } = await import('../../src/mailer/templates/forgot-password-email');
 
-		await sendVerifyEmail('verify@example.test', 'http://storefront.test/verify');
-		await sendForgotPasswordEmail('reset@example.test', 'http://storefront.test/reset');
+				await sendVerifyEmail('verify@example.test', 'http://storefront.test/verify');
+				await sendForgotPasswordEmail('reset@example.test', 'http://storefront.test/reset');
 
-		expect(sendMail).toHaveBeenNthCalledWith(
-			1,
-			expect.objectContaining({ from: environment.SMTP_FROM, to: 'verify@example.test' }),
-		);
-		expect(sendMail).toHaveBeenNthCalledWith(
-			2,
-			expect.objectContaining({ from: environment.SMTP_FROM, to: 'reset@example.test' }),
-		);
-		createTransport.mockRestore();
+				expect(sendMail).toHaveBeenNthCalledWith(
+					1,
+					expect.objectContaining({ from: environment.SMTP_FROM, to: 'verify@example.test' }),
+				);
+				expect(sendMail).toHaveBeenNthCalledWith(
+					2,
+					expect.objectContaining({ from: environment.SMTP_FROM, to: 'reset@example.test' }),
+				);
+			} finally {
+				createTransport.mockRestore();
+			}
+		} finally {
+			transporter.close();
+		}
 	});
 });
