@@ -957,6 +957,30 @@ describe('item and listing routes', () => {
 			expect(after).toEqual(before);
 		});
 
+		it('allows an unrelated edit when the unchanged legacy item address is inactive', async () => {
+			const actors = await createCommerceActors();
+			const manualDelivery = withDelivery(actors, actors.catalog.delivery.values.pickup.id);
+			const item = await createItemFixture(actors, {
+				commons: { easy_pay: false },
+				properties: manualDelivery.properties,
+			});
+			const { db } = getTestDatabase();
+			await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, item.address_id));
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				commons: { title: 'Legacy Address Title Update' },
+			});
+			const [storedItem] = await db.select().from(items).where(eq(items.id, item.id));
+			const [storedAddress] = await db.select().from(addresses).where(eq(addresses.id, item.address_id));
+
+			expect(response.status).toBe(200);
+			expect(storedItem).toMatchObject({
+				address_id: item.address_id,
+				title: 'Legacy Address Title Update',
+			});
+			expect(storedAddress?.status).toBe('inactive');
+		});
+
 		it.each(['select', 'radio', 'select_multi', 'checkbox'] as const)(
 			'rejects an invalid %s property cardinality before edit side effects',
 			async (type) => {

@@ -306,7 +306,9 @@ async function validateEditItemState(
 		.limit(1);
 	if (!existingItem) return undefined;
 
-	await requireActiveProfileAddress(tx, commons?.address_id ?? existingItem.address_id, profileId);
+	if (commons?.address_id !== undefined) {
+		await requireActiveProfileAddress(tx, commons.address_id, profileId);
+	}
 	const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
 	const targetSubcategory = await requirePublicSubcategory(tx, targetSubcategoryId);
 	if (
