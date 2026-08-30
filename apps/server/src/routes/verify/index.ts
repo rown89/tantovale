@@ -14,7 +14,7 @@ import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
-import { verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
+import { hasLiveMatchingRefreshSession, verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
 
 export const verifyRoute = createRouter()
 	.get(
@@ -74,12 +74,14 @@ export const verifyRoute = createRouter()
 			},
 		}),
 		async (c) => {
-			const { ACCESS_TOKEN_SECRET } = env<{
+			const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
 				ACCESS_TOKEN_SECRET: string;
+				REFRESH_TOKEN_SECRET: string;
 			}>(c);
 
 			const accessToken = getCookie(c, 'access_token');
-			if (!accessToken) {
+			const refreshToken = getCookie(c, 'refresh_token');
+			if (!accessToken || !refreshToken) {
 				return c.json({ message: 'No token provided' }, 401);
 			}
 
@@ -107,7 +109,17 @@ export const verifyRoute = createRouter()
 					.where(eq(users.id, claims.id))
 					.limit(1);
 
-				if (!user || user.is_banned) {
+				if (
+					!user ||
+					user.is_banned ||
+					!(await hasLiveMatchingRefreshSession({
+						db,
+						refreshToken,
+						refreshTokenSecret: REFRESH_TOKEN_SECRET,
+						accessClaims: claims,
+						user,
+					}))
+				) {
 					return c.json({ message: 'Invalid token' }, 401);
 				}
 

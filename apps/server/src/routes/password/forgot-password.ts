@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
 import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
@@ -11,6 +11,7 @@ import { createClient } from '../../database';
 import { password_reset_tokens } from '../../database/schemas/schema';
 
 import { createRouter } from '../../lib/create-app';
+import { environment } from '../../utils/constants';
 
 const forgotPasswordSchema = z.object({
 	email: z.string().email(),
@@ -20,9 +21,6 @@ export const passwordForgotRoute = createRouter().post(
 	'/forgot-password',
 	zValidator('json', forgotPasswordSchema),
 	async (c) => {
-		// Get the server URL from the environment
-		const { hostname, protocol, port } = new URL(c.req.url);
-
 		const { RESET_TOKEN_SECRET, NODE_ENV } = env<{
 			RESET_TOKEN_SECRET: string;
 			NODE_ENV: string;
@@ -53,6 +51,7 @@ export const passwordForgotRoute = createRouter().post(
 		);
 
 		await db.transaction(async (tx) => {
+			await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(current_database()), ${user.id})`);
 			await tx.delete(password_reset_tokens).where(eq(password_reset_tokens.user_id, user.id));
 			await tx.insert(password_reset_tokens).values({
 				user_id: user.id,
@@ -61,12 +60,14 @@ export const passwordForgotRoute = createRouter().post(
 			});
 		});
 
-		const serverUrl = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
-		const resetLink = `${serverUrl}/password/reset-password?token=${resetToken}`;
+		const storefrontOrigin = environment.STOREFRONT_HOSTNAME.replace(/\/+$/, '');
+		const resetLink = `${storefrontOrigin}/password/reset-password?token=${resetToken}`;
 
 		if (NODE_ENV !== 'development') {
 			await sendForgotPasswordEmail(email, resetLink);
 		}
+		// Deployment residual: enforce rate limiting at the edge; this service has no durable limiter or outbox.
+		// Frontend dependency: the configured storefront must provide /password/reset-password.
 
 		return c.json({ message: 'If the email exists, a reset link was sent.' });
 	},

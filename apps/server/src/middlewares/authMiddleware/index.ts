@@ -5,7 +5,13 @@ import type { Context, Next } from 'hono';
 
 import { users } from '../../database/schemas/users';
 import { createClient } from '../../database';
-import { InvalidRefreshSessionError, invalidateTokens, rotateRefreshSession, verifyAccessTokenClaims } from './utils';
+import {
+	hasLiveMatchingRefreshSession,
+	InvalidRefreshSessionError,
+	invalidateTokens,
+	rotateRefreshSession,
+	verifyAccessTokenClaims,
+} from './utils';
 import { getNodeEnvMode } from '../../utils/constants';
 import type { AppBindings } from '../../lib/types';
 import { profiles } from '#database/schemas/profiles';
@@ -76,7 +82,17 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 			.where(eq(users.id, accessClaims.id))
 			.limit(1);
 
-		if (!existingUser || existingUser.is_banned) {
+		if (
+			!existingUser ||
+			existingUser.is_banned ||
+			!(await hasLiveMatchingRefreshSession({
+				db,
+				refreshToken: refresh_token,
+				refreshTokenSecret: REFRESH_TOKEN_SECRET,
+				accessClaims,
+				user: existingUser,
+			}))
+		) {
 			await invalidateTokens(c, db, isProductionMode);
 			return c.json({ message: 'Unauthorized - User not found' }, 401);
 		}

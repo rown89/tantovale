@@ -65,6 +65,48 @@ export async function verifyRefreshTokenClaims(token: string, secret: string): P
 	return validateAuthTokenClaims(await verify(token, secret));
 }
 
+type LiveRefreshSessionOptions = {
+	db: DrizzleClient['db'];
+	refreshToken: string;
+	refreshTokenSecret: string;
+	accessClaims: AuthTokenClaims;
+	user: Pick<User, 'id' | 'profile_id' | 'username'>;
+};
+
+export async function hasLiveMatchingRefreshSession({
+	db,
+	refreshToken,
+	refreshTokenSecret,
+	accessClaims,
+	user,
+}: LiveRefreshSessionOptions): Promise<boolean> {
+	let refreshClaims: AuthTokenClaims;
+	try {
+		refreshClaims = await verifyRefreshTokenClaims(refreshToken, refreshTokenSecret);
+	} catch {
+		return false;
+	}
+
+	if (
+		accessClaims.id !== user.id ||
+		accessClaims.profile_id !== user.profile_id ||
+		accessClaims.username !== user.username ||
+		refreshClaims.id !== user.id ||
+		refreshClaims.profile_id !== user.profile_id ||
+		refreshClaims.username !== user.username
+	) {
+		return false;
+	}
+
+	const [storedSession] = await db
+		.select({ username: refreshTokens.username })
+		.from(refreshTokens)
+		.where(and(eq(refreshTokens.token, refreshToken), gt(refreshTokens.expires_at, new Date())))
+		.limit(1);
+
+	return storedSession?.username === user.username;
+}
+
 export async function invalidateTokens(c: Context<AppBindings>, db: DrizzleClient['db'], isProductionMode?: boolean) {
 	const refreshToken = getCookie(c, 'refresh_token');
 

@@ -1,13 +1,14 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { sign } from 'hono/jwt';
 import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
-import { password_reset_tokens, users } from '../../src/database/schemas/schema';
+import { password_reset_tokens, refreshTokens, users } from '../../src/database/schemas/schema';
 import { verifyPassword } from '../../src/lib/password';
 import { createUserFixture, uniqueValue } from '../fixtures/factories';
+import { loginAs } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
-import { extractTokenFromLink, waitForEmail } from '../helpers/mailpit';
+import { extractTokenFromLink, type MailpitMessageDetail, waitForEmail } from '../helpers/mailpit';
 import { jsonRequest } from '../helpers/request';
 
 /* eslint-disable turbo/no-undeclared-env-vars -- The isolated Vitest harness supplies local secrets and services. */
@@ -41,15 +42,63 @@ function mailpitApiUrl(path: string): URL {
 async function messagesFor(recipient: string): Promise<MailpitSearch['messages']> {
 	const url = mailpitApiUrl('/api/v1/search');
 	url.searchParams.set('query', `to:${recipient}`);
-	const response = await fetch(url);
+	const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
 	if (!response.ok) {
 		throw new Error(`Mailpit search failed with ${response.status}`);
 	}
 	return ((await response.json()) as MailpitSearch).messages;
 }
 
-async function requestResetEmail(email: string): Promise<Response> {
-	return app.request('/password/forgot-password', jsonRequest('POST', { email }));
+async function waitForMessages(recipient: string, count: number): Promise<MailpitSearch['messages']> {
+	const deadline = Date.now() + 5_000;
+	while (Date.now() < deadline) {
+		const messages = await messagesFor(recipient);
+		if (messages.length >= count) {
+			return messages;
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, 50));
+	}
+	throw new Error(`Expected ${count} Mailpit messages for ${recipient}`);
+}
+
+async function waitForDatabaseLockWaiters(count: number): Promise<void> {
+	const deadline = Date.now() + 5_000;
+	const { client } = getTestDatabase();
+	while (Date.now() < deadline) {
+		const result = await client.query<{ waiting: number }>(`
+			SELECT count(*)::integer AS waiting
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+				AND wait_event_type = 'Lock'
+		`);
+		if ((result.rows[0]?.waiting ?? 0) >= count) {
+			return;
+		}
+		await new Promise<void>((resolve) => setTimeout(resolve, 25));
+	}
+	throw new Error(`Expected ${count} PostgreSQL lock waiters`);
+}
+
+async function messageDetail(messageId: string): Promise<MailpitMessageDetail> {
+	const response = await fetch(mailpitApiUrl(`/api/v1/message/${encodeURIComponent(messageId)}`), {
+		signal: AbortSignal.timeout(1_000),
+	});
+	if (!response.ok) {
+		throw new Error(`Mailpit message lookup failed with ${response.status}`);
+	}
+	return (await response.json()) as MailpitMessageDetail;
+}
+
+function resetLinkFromEmail(email: MailpitMessageDetail): URL {
+	const href = email.HTML.match(/href="([^"]+)"/)?.[1]?.replaceAll('&amp;', '&');
+	if (!href) {
+		throw new Error('Password reset email does not contain a link');
+	}
+	return new URL(href);
+}
+
+async function requestResetEmail(email: string, requestUrl = '/password/forgot-password'): Promise<Response> {
+	return app.request(requestUrl, jsonRequest('POST', { email }));
 }
 
 async function emailedResetToken(email: string): Promise<string> {
@@ -59,8 +108,17 @@ async function emailedResetToken(email: string): Promise<string> {
 	return extractTokenFromLink(`${emailMessage.HTML} ${emailMessage.Text}`, 'token');
 }
 
-async function insertResetToken(userId: number, options: { expiresAt?: Date; payloadId?: number } = {}) {
-	const token = await sign({ id: options.payloadId ?? userId }, resetSecret());
+async function insertResetToken(userId: number, options: { expiresAt?: Date; claims?: Record<string, unknown> } = {}) {
+	const token = await sign(
+		{
+			id: userId,
+			email: `reset-${userId}@tantovale.test`,
+			exp: Math.floor(Date.now() / 1_000) + 15 * 60,
+			jti: uniqueValue('reset-token'),
+			...options.claims,
+		},
+		resetSecret(),
+	);
 	const { db } = getTestDatabase();
 	await db.insert(password_reset_tokens).values({
 		user_id: userId,
@@ -87,16 +145,67 @@ describe('password lifecycle routes', () => {
 		const unknownEmail = `${uniqueValue('unknown-reset')}@tantovale.test`;
 
 		const unknown = await requestResetEmail(unknownEmail);
-		const known = await requestResetEmail(fixture.user.email);
+		const known = await requestResetEmail(fixture.user.email, 'https://attacker.example/password/forgot-password');
 		const delivered = await waitForEmail(fixture.user.email, 'Password Reset');
+		const resetLink = resetLinkFromEmail(delivered);
 
 		expect(unknown.status).toBe(200);
 		expect(known.status).toBe(200);
 		expect(await unknown.json()).toEqual(FORGOT_RESPONSE);
 		expect(await known.json()).toEqual(FORGOT_RESPONSE);
 		expect(await messagesFor(unknownEmail)).toHaveLength(0);
-		expect(delivered.HTML).toContain('token=');
+		expect(resetLink.origin).toBe('http://storefront.test');
+		expect(resetLink.pathname).toBe('/password/reset-password');
+		expect(resetLink.searchParams.get('token')).toEqual(expect.any(String));
 		expect(await messagesFor(fixture.user.email)).toHaveLength(1);
+	});
+
+	it('serializes concurrent issuance so only the latest emailed token remains valid', async () => {
+		const fixture = await createUserFixture();
+		expect((await requestResetEmail(fixture.user.email)).status).toBe(200);
+		const { client, db } = getTestDatabase();
+		const blocker = await client.connect();
+		let released = false;
+		let responses: Response[];
+
+		try {
+			await blocker.query('BEGIN');
+			await blocker.query('SELECT id FROM password_reset_tokens WHERE user_id = $1 FOR UPDATE', [fixture.user.id]);
+			const pendingResponses = Promise.all([
+				requestResetEmail(fixture.user.email),
+				requestResetEmail(fixture.user.email),
+			]);
+			await waitForDatabaseLockWaiters(2);
+			await blocker.query('COMMIT');
+			released = true;
+			responses = await pendingResponses;
+		} finally {
+			if (!released) {
+				await blocker.query('ROLLBACK');
+			}
+			blocker.release();
+		}
+
+		const messages = await waitForMessages(fixture.user.email, 3);
+		const details = await Promise.all(messages.map(({ ID }) => messageDetail(ID)));
+		const emailedTokens = details.map((detail) => extractTokenFromLink(`${detail.HTML} ${detail.Text}`, 'token'));
+		const current = await db
+			.select()
+			.from(password_reset_tokens)
+			.where(eq(password_reset_tokens.user_id, fixture.user.id));
+
+		expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+		expect(new Set(emailedTokens).size).toBe(3);
+		expect(current).toHaveLength(1);
+		expect(emailedTokens).toContain(current[0]!.token);
+
+		const verificationStatuses = await Promise.all(
+			emailedTokens.map(async (token) => {
+				const response = await app.request(`/password/auth/reset-verify-token?token=${encodeURIComponent(token)}`);
+				return response.status;
+			}),
+		);
+		expect(verificationStatuses.sort()).toEqual([200, 400, 400]);
 	});
 
 	it('replaces the current reset token and invalidates the prior link', async () => {
@@ -136,18 +245,52 @@ describe('password lifecycle routes', () => {
 		expect(await response.json()).toEqual({ valid: true, id: fixture.user.id });
 	});
 
-	it('rejects absent, malformed, deleted, expired, and user-mismatched verification tokens', async () => {
+	it('rejects absent and malformed verification tokens', async () => {
+		const responses = [
+			await app.request('/password/auth/reset-verify-token'),
+			await app.request('/password/auth/reset-verify-token?token=malformed'),
+		];
+
+		for (const response of responses) {
+			expect(response.status).toBe(400);
+		}
+	});
+
+	it('rejects a validly signed token after its stored row is deleted', async () => {
 		const fixture = await createUserFixture();
 		const deleted = await insertResetToken(fixture.user.id);
-		const expired = await insertResetToken(fixture.user.id, { expiresAt: new Date(Date.now() - 60_000) });
-		const mismatched = await insertResetToken(fixture.user.id, { payloadId: fixture.user.id + 1 });
 		const { db } = getTestDatabase();
 		await db.delete(password_reset_tokens).where(eq(password_reset_tokens.token, deleted));
 
-		const tokens: Array<string | undefined> = [undefined, 'malformed', deleted, expired, mismatched];
-		for (const token of tokens) {
-			const query = token === undefined ? '' : `?token=${encodeURIComponent(token)}`;
-			const response = await app.request(`/password/auth/reset-verify-token${query}`);
+		const response = await app.request(`/password/auth/reset-verify-token?token=${encodeURIComponent(deleted)}`);
+		expect(response.status).toBe(400);
+	});
+
+	it('rejects a validly signed token whose stored row is expired', async () => {
+		const fixture = await createUserFixture();
+		const expired = await insertResetToken(fixture.user.id, { expiresAt: new Date(Date.now() - 60_000) });
+
+		const response = await app.request(`/password/auth/reset-verify-token?token=${encodeURIComponent(expired)}`);
+		expect(response.status).toBe(400);
+	});
+
+	it('rejects reset JWTs with unsafe identity, missing metadata, stale expiry, or a different user', async () => {
+		const fixture = await createUserFixture();
+		const invalidClaimSets: Array<Record<string, unknown>> = [
+			{ id: '1' },
+			{ id: 1.5 },
+			{ email: '' },
+			{ email: undefined },
+			{ exp: Math.floor(Date.now() / 1_000) - 60 },
+			{ exp: 'future' },
+			{ jti: '' },
+			{ jti: undefined },
+			{ id: fixture.user.id + 1 },
+		];
+
+		for (const claims of invalidClaimSets) {
+			const token = await insertResetToken(fixture.user.id, { claims });
+			const response = await app.request(`/password/auth/reset-verify-token?token=${encodeURIComponent(token)}`);
 			expect(response.status).toBe(400);
 		}
 	});
@@ -173,6 +316,23 @@ describe('password lifecycle routes', () => {
 		expect(rows).toHaveLength(1);
 	});
 
+	it('rejects passwords exceeding 72 UTF-8 bytes without mutation', async () => {
+		const fixture = await createUserFixture();
+		const token = await insertResetToken(fixture.user.id);
+		const invalidPasswords = ['a'.repeat(73), 'é'.repeat(37)];
+
+		for (const newPassword of invalidPasswords) {
+			const response = await app.request('/password/auth/reset', jsonRequest('POST', { token, newPassword }));
+			expect(response.status).toBe(400);
+		}
+
+		const { db } = getTestDatabase();
+		const [storedUser] = await db.select().from(users).where(eq(users.id, fixture.user.id));
+		const rows = await db.select().from(password_reset_tokens).where(eq(password_reset_tokens.token, token));
+		expect(storedUser?.password).toBe(fixture.user.password);
+		expect(rows).toHaveLength(1);
+	});
+
 	it('resets from the emailed token, consumes it, and rejects reuse', async () => {
 		const fixture = await createUserFixture();
 		const token = await emailedResetToken(fixture.user.email);
@@ -193,6 +353,57 @@ describe('password lifecycle routes', () => {
 		expect(await verifyPassword(storedUser!.password, newPassword)).toBe(true);
 		expect(rows).toEqual([]);
 		expect(reused.status).toBe(400);
+	});
+
+	it('rolls back token consumption and returns a redacted 500 when password persistence fails', async () => {
+		const fixture = await createUserFixture();
+		const token = await insertResetToken(fixture.user.id);
+		const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+		if (!bcryptHashPattern.test(fixture.user.password)) {
+			throw new Error('Fixture password is not a safe bcrypt hash');
+		}
+		const { db } = getTestDatabase();
+		await db.execute(
+			sql.raw(
+				`ALTER TABLE users ADD CONSTRAINT password_reset_test_unchanged CHECK (password = '${fixture.user.password}') NOT VALID`,
+			),
+		);
+
+		try {
+			const response = await app.request(
+				'/password/auth/reset',
+				jsonRequest('POST', { token, newPassword: 'DifferentStrongPass456!' }),
+			);
+			const [storedUser] = await db.select().from(users).where(eq(users.id, fixture.user.id));
+			const rows = await db.select().from(password_reset_tokens).where(eq(password_reset_tokens.token, token));
+
+			expect(response.status).toBe(500);
+			expect(await response.json()).toEqual({ error: 'Unable to reset password' });
+			expect(storedUser?.password).toBe(fixture.user.password);
+			expect(rows).toHaveLength(1);
+		} finally {
+			await db.execute(sql`ALTER TABLE users DROP CONSTRAINT password_reset_test_unchanged`);
+		}
+	});
+
+	it('revokes all existing sessions so old cookies cannot authenticate after reset', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const originalCookies = jar.header();
+		const token = await emailedResetToken(fixture.user.email);
+
+		const reset = await app.request(
+			'/password/auth/reset',
+			jsonRequest('POST', { token, newPassword: 'SessionRevokingPass456!' }),
+		);
+		const userResponse = await app.request('/user/auth', { headers: { cookie: originalCookies } });
+		const verifyResponse = await app.request('/verify', { headers: { cookie: originalCookies } });
+		const { db } = getTestDatabase();
+
+		expect(reset.status).toBe(200);
+		expect(userResponse.status).toBe(401);
+		expect(verifyResponse.status).toBe(401);
+		expect(await db.select().from(refreshTokens)).toEqual([]);
 	});
 
 	it('authenticates only the new password after a successful emailed reset', async () => {
