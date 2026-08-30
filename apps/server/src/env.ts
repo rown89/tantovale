@@ -14,8 +14,8 @@ if (initialNodeEnv !== 'test') {
 	);
 
 	// In development, also load .env.local which will override .env values.
-	// Check the initial NODE_ENV, not the one potentially set by .env file.
-	if (initialNodeEnv === 'development') {
+	// Check NODE_ENV after loading .env because it may set development mode.
+	if (process.env.NODE_ENV === 'development') {
 		expand(
 			config({
 				path: path.resolve(process.cwd(), '.env.local'),
