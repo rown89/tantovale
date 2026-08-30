@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
@@ -20,7 +20,7 @@ export const profiles_items_favorites = pgTable(
 	(table) => [
 		index('profiles_favorites_profile_id_idx').on(table.profile_id),
 		index('profiles_favorites_item_id_idx').on(table.item_id),
-		index('profiles_favorites_unique_profile_item_idx').on(table.profile_id, table.item_id),
+		uniqueIndex('profiles_favorites_unique_profile_item_idx').on(table.profile_id, table.item_id),
 	],
 );
 

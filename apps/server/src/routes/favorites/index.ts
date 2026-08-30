@@ -15,7 +15,9 @@ export const favoritesRoute = createRouter()
 	// Check if item is an user favorite
 	.get(`${authPath}/check/:item_id`, authMiddleware, async (c) => {
 		const user = c.var.user;
-		const itemIdResult = z.coerce.number().pipe(postgresIntegerIdSchema).safeParse(c.req.param('item_id'));
+		const rawItemId = Number(c.req.param('item_id'));
+		if (!rawItemId) return c.json({ error: 'Item id is required' }, 400);
+		const itemIdResult = postgresIntegerIdSchema.safeParse(rawItemId);
 		if (!itemIdResult.success) return c.json({ message: 'Invalid Item ID' }, 400);
 		const item_id = itemIdResult.data;
 
@@ -98,10 +100,15 @@ export const favoritesRoute = createRouter()
 						.limit(1);
 
 					if (!existingFavorite) {
-						await tx.insert(profiles_items_favorites).values({
-							profile_id: user.profile_id,
-							item_id,
-						});
+						await tx
+							.insert(profiles_items_favorites)
+							.values({
+								profile_id: user.profile_id,
+								item_id,
+							})
+							.onConflictDoNothing({
+								target: [profiles_items_favorites.profile_id, profiles_items_favorites.item_id],
+							});
 					}
 
 					return { outcome: 'added' } as const;
