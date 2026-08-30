@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	test: {
 		include: ['test/**/*.test.ts'],
+		globalSetup: ['./test/infrastructure/global-setup.ts'],
 		pool: 'forks',
 		maxWorkers: 4,
 		minWorkers: 1,
