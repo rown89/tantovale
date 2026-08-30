@@ -95,7 +95,10 @@ describe('local service configuration', () => {
 			expect(shippoRequests[0]).toMatchObject({
 				method: 'GET',
 				path: '/carrier_accounts?page=1&results=25',
-				headers: { 'shippo-api-version': '2018-02-08' },
+				headers: {
+					authorization: `ShippoToken ${environment.SHIPPING_PROVIDER_API_KEY}`,
+					'shippo-api-version': '2018-02-08',
+				},
 			});
 
 			const objectUrl = new URL(await getObjectUrl('uploads/avatar.png'));

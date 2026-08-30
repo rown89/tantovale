@@ -189,7 +189,7 @@ describe('test runtime resources', () => {
 			SMTP_PORT: '1025',
 			PAYMENT_PROVIDER_API_URL: 'http://127.0.0.1:41001',
 			SHIPPING_PROVIDER_API_URL: 'http://127.0.0.1:42001',
-			SHIPPING_PROVIDER_API_KEY: 'shippo-test-key',
+			SHIPPING_PROVIDER_API_KEY: 'shippo_test_key',
 			ACCESS_TOKEN_SECRET: 'access-test-secret-at-least-32-characters',
 		});
 	});

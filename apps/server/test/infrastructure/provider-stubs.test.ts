@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import {
 	carrierAccountPaginatedListFromJSON,
 	shipmentFromJSON,
@@ -19,35 +19,105 @@ import { getProviderRequests, resetProviderStub, resetProviderStubs, setProvider
 import { startProviderStub, type StartedProviderStub, type StubScenario } from './provider-stubs';
 
 const startedStubs: StartedProviderStub[] = [];
+let cleanupRegistered = false;
+
+function requiredTestEnvironment(name: 'PAYMENT_PROVIDER_API_KEY' | 'SHIPPING_PROVIDER_API_KEY'): string {
+	const value = process.env[name];
+	if (!value) throw new Error(`Missing provider test environment key ${name}`);
+	return value;
+}
+
+function trustapHeaders(trustapUser?: string): {
+	authorization: string;
+	'content-type': string;
+	'trustap-user'?: string;
+} {
+	return {
+		authorization: `Basic ${Buffer.from(`${requiredTestEnvironment('PAYMENT_PROVIDER_API_KEY')}:`).toString('base64')}`,
+		'content-type': 'application/json',
+		...(trustapUser ? { 'trustap-user': trustapUser } : {}),
+	};
+}
+
+function shippoHeaders(): {
+	authorization: string;
+	'content-type': string;
+	'shippo-api-version': string;
+} {
+	return {
+		authorization: `ShippoToken ${requiredTestEnvironment('SHIPPING_PROVIDER_API_KEY')}`,
+		'content-type': 'application/json',
+		'shippo-api-version': '2018-02-08',
+	};
+}
+
+const validGuestBody = {
+	id: 101,
+	email: 'buyer@tantovale.test',
+	first_name: 'Buyer',
+	last_name: 'Test',
+	country_code: 'IT',
+	tos_acceptance: { unix_timestamp: 1_700_000_000, ip: '127.0.0.1' },
+};
+
+const validTrustapTransactionBody = {
+	buyer_id: 'guest-buyer-test',
+	seller_id: 'guest-seller-test',
+	creator_role: 'buyer',
+	currency: 'eur',
+	description: 'Test listing',
+	price: 10_000,
+	postage_fee: 750,
+	charge: 500,
+	charge_calculator_version: 1,
+};
+
+const validShippoShipmentBody = {
+	address_from: { country: 'IT' },
+	address_to: { country: 'IT' },
+	parcels: [
+		{
+			distance_unit: 'cm',
+			height: '10',
+			length: '20',
+			mass_unit: 'kg',
+			weight: '1',
+			width: '15',
+		},
+	],
+};
 
 async function startStub(kind: 'trustap' | 'shippo'): Promise<StartedProviderStub> {
 	const stub = await startProviderStub(kind);
 	startedStubs.push(stub);
+
+	if (!cleanupRegistered) {
+		cleanupRegistered = true;
+		onTestFinished(async (result) => {
+			cleanupRegistered = false;
+			const cleanupResults = await Promise.allSettled(startedStubs.splice(0).map((started) => started.close()));
+			const cleanupErrors = cleanupResults
+				.filter((cleanupResult): cleanupResult is PromiseRejectedResult => cleanupResult.status === 'rejected')
+				.map((cleanupResult) => cleanupResult.reason);
+
+			if (cleanupErrors.length > 0) {
+				throw new AggregateError(
+					cleanupErrors,
+					result.state === 'fail'
+						? 'Provider stub cleanup also failed after the test failure'
+						: 'Provider stub cleanup failed',
+				);
+			}
+		});
+	}
 	return stub;
 }
 
 async function assertTrustapContract(stub: StartedProviderStub): Promise<void> {
-	const authorization = `Basic ${Buffer.from('trustap-test-key:').toString('base64')}`;
-	const headers = { authorization, 'content-type': 'application/json' };
-	const guestBody = {
-		id: 101,
-		email: 'buyer@tantovale.test',
-		first_name: 'Buyer',
-		last_name: 'Test',
-		country_code: 'IT',
-		tos_acceptance: { unix_timestamp: 1_700_000_000, ip: '127.0.0.1' },
-	};
-	const transactionBody = {
-		buyer_id: 'guest-buyer-test',
-		seller_id: 'guest-seller-test',
-		creator_role: 'buyer',
-		currency: 'eur',
-		description: 'Test listing',
-		price: 10_000,
-		postage_fee: 750,
-		charge: 500,
-		charge_calculator_version: 1,
-	};
+	const headers = trustapHeaders();
+	const authorization = headers.authorization;
+	const guestBody = validGuestBody;
+	const transactionBody = validTrustapTransactionBody;
 
 	const responses = [
 		await fetch(`${stub.url}/api/v1/guest_users`, {
@@ -60,7 +130,7 @@ async function assertTrustapContract(stub: StartedProviderStub): Promise<void> {
 		}),
 		await fetch(`${stub.url}/api/v1/me/transactions/create_with_guest_user`, {
 			method: 'POST',
-			headers,
+			headers: trustapHeaders(transactionBody.seller_id),
 			body: JSON.stringify(transactionBody),
 		}),
 		await fetch(`${stub.url}/api/v1/transactions/91001`, { headers: { authorization } }),
@@ -94,20 +164,18 @@ async function assertTrustapContract(stub: StartedProviderStub): Promise<void> {
 }
 
 async function assertShippoContract(stub: StartedProviderStub): Promise<void> {
-	const headers = { 'content-type': 'application/json', 'shippo-api-version': '2018-02-08' };
-	const shipmentBody = { address_from: { country: 'IT' }, address_to: { country: 'IT' }, parcels: [] };
+	const headers = shippoHeaders();
+	const shipmentBody = validShippoShipmentBody;
 	const transactionBody = { rate: 'rate-test', label_file_type: 'PDF', async: false };
 
 	const responses = [
-		await fetch(`${stub.url}/carrier_accounts`, { headers: { 'shippo-api-version': '2018-02-08' } }),
+		await fetch(`${stub.url}/carrier_accounts`, { headers }),
 		await fetch(`${stub.url}/shipments`, {
 			method: 'POST',
 			headers,
 			body: JSON.stringify(shipmentBody),
 		}),
-		await fetch(`${stub.url}/shipments/shipment-test`, {
-			headers: { 'shippo-api-version': '2018-02-08' },
-		}),
+		await fetch(`${stub.url}/shipments/shipment-test`, { headers }),
 		await fetch(`${stub.url}/transactions`, {
 			method: 'POST',
 			headers,
@@ -132,11 +200,10 @@ async function assertShippoContract(stub: StartedProviderStub): Promise<void> {
 		{ method: 'POST', path: '/transactions', body: transactionBody },
 	]);
 	expect(requests.map((request) => request.headers['shippo-api-version'])).toEqual(Array(4).fill('2018-02-08'));
+	expect(requests.map((request) => request.headers.authorization)).toEqual(
+		Array(4).fill(`ShippoToken ${requiredTestEnvironment('SHIPPING_PROVIDER_API_KEY')}`),
+	);
 }
-
-afterEach(async () => {
-	await Promise.allSettled(startedStubs.splice(0).map((stub) => stub.close()));
-});
 
 describe('local commerce provider stubs', () => {
 	it('starts one isolated pair and exercises all Trustap v1 and Shippo 2018-02-08 success endpoints', async () => {
@@ -146,34 +213,310 @@ describe('local commerce provider stubs', () => {
 		await assertShippoContract(shippo);
 	});
 
+	it('requires exact Trustap Basic authentication on every provider route', async () => {
+		const stub = await startStub('trustap');
+		const cases: Array<{ method: string; path: string; body?: unknown }> = [
+			{ method: 'POST', path: '/api/v1/guest_users', body: validGuestBody },
+			{
+				method: 'GET',
+				path: '/api/v1/charge?price=10000&currency=eur&postage_fee=750&use_hr_post=false',
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/me/transactions/create_with_guest_user',
+				body: validTrustapTransactionBody,
+			},
+			{ method: 'GET', path: '/api/v1/transactions/91001' },
+		];
+
+		for (const authorization of [undefined, 'Basic invalid']) {
+			for (const testCase of cases) {
+				const response = await fetch(`${stub.url}${testCase.path}`, {
+					method: testCase.method,
+					headers: {
+						'content-type': 'application/json',
+						...(authorization ? { authorization } : {}),
+					},
+					body: testCase.body === undefined ? undefined : JSON.stringify(testCase.body),
+				});
+				expect(response.status).toBe(401);
+				expect(await response.json()).toEqual({
+					error: 'unauthorized',
+					message: 'Trustap API credentials are invalid',
+				});
+			}
+		}
+	});
+
+	it('validates Trustap request types, numeric transaction IDs, and the charge handshake', async () => {
+		const stub = await startStub('trustap');
+		const authenticated = trustapHeaders();
+
+		expect(
+			(
+				await fetch(`${stub.url}/api/v1/guest_users`, {
+					method: 'POST',
+					headers: authenticated,
+					body: JSON.stringify({ ...validGuestBody, id: '101' }),
+				})
+			).status,
+		).toBe(400);
+		expect(
+			(
+				await fetch(`${stub.url}/api/v1/charge?price=100.5&currency=eur&postage_fee=750&use_hr_post=false`, {
+					headers: authenticated,
+				})
+			).status,
+		).toBe(400);
+		expect(
+			(
+				await fetch(`${stub.url}/api/v1/charge?price=10000&currency=usd&postage_fee=750&use_hr_post=false`, {
+					headers: authenticated,
+				})
+			).status,
+		).toBe(400);
+		expect((await fetch(`${stub.url}/api/v1/transactions/tx_91001`, { headers: authenticated })).status).toBe(404);
+
+		const charge = await fetch(`${stub.url}/api/v1/charge?price=10000&currency=eur&postage_fee=750&use_hr_post=false`, {
+			headers: authenticated,
+		});
+		expect(charge.status).toBe(200);
+
+		const transactionUrl = `${stub.url}/api/v1/me/transactions/create_with_guest_user`;
+		for (const request of [
+			{ headers: authenticated, body: validTrustapTransactionBody },
+			{ headers: trustapHeaders('wrong-seller'), body: validTrustapTransactionBody },
+			{
+				headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+				body: { ...validTrustapTransactionBody, price: '10000' },
+			},
+			{
+				headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+				body: { ...validTrustapTransactionBody, charge: validTrustapTransactionBody.charge + 1 },
+			},
+		]) {
+			const response = await fetch(transactionUrl, {
+				method: 'POST',
+				headers: request.headers,
+				body: JSON.stringify(request.body),
+			});
+			expect(response.status).toBe(400);
+		}
+
+		expect(
+			(
+				await fetch(transactionUrl, {
+					method: 'POST',
+					headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+					body: JSON.stringify(validTrustapTransactionBody),
+				})
+			).status,
+		).toBe(201);
+	});
+
+	it('requires exact Shippo token/version headers on every provider route', async () => {
+		const stub = await startStub('shippo');
+		const cases: Array<{ method: string; path: string; body?: unknown }> = [
+			{ method: 'GET', path: '/carrier_accounts' },
+			{ method: 'POST', path: '/shipments', body: validShippoShipmentBody },
+			{ method: 'GET', path: '/shipments/shipment-test' },
+			{ method: 'POST', path: '/transactions', body: { rate: 'rate-test', label_file_type: 'PDF', async: false } },
+		];
+
+		for (const authorization of [undefined, 'ShippoToken invalid']) {
+			for (const testCase of cases) {
+				const response = await fetch(`${stub.url}${testCase.path}`, {
+					method: testCase.method,
+					headers: {
+						'content-type': 'application/json',
+						'shippo-api-version': '2018-02-08',
+						...(authorization ? { authorization } : {}),
+					},
+					body: testCase.body === undefined ? undefined : JSON.stringify(testCase.body),
+				});
+				expect(response.status).toBe(401);
+				expect(await response.json()).toEqual({ detail: 'Invalid Shippo API token' });
+			}
+		}
+
+		for (const version of [undefined, '2024-01-01']) {
+			const response = await fetch(`${stub.url}/carrier_accounts`, {
+				headers: {
+					authorization: `ShippoToken ${requiredTestEnvironment('SHIPPING_PROVIDER_API_KEY')}`,
+					...(version ? { 'shippo-api-version': version } : {}),
+				},
+			});
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ detail: 'Unsupported Shippo API version' });
+		}
+	});
+
+	it('validates Shippo shipment fields and purchases only emitted rates with synchronous shape', async () => {
+		const stub = await startStub('shippo');
+		const headers = shippoHeaders();
+
+		for (const body of [
+			{ address_from: 'IT', address_to: { country: 'IT' }, parcels: validShippoShipmentBody.parcels },
+			{ address_from: { country: 'IT' }, address_to: { country: 'IT' }, parcels: {} },
+		]) {
+			const response = await fetch(`${stub.url}/shipments`, {
+				method: 'POST',
+				headers,
+				body: JSON.stringify(body),
+			});
+			expect(response.status).toBe(400);
+		}
+
+		expect(
+			(
+				await fetch(`${stub.url}/transactions`, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({ rate: 'unknown-rate', label_file_type: 'PDF', async: false }),
+				})
+			).status,
+		).toBe(400);
+		expect(
+			(
+				await fetch(`${stub.url}/shipments`, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify(validShippoShipmentBody),
+				})
+			).status,
+		).toBe(201);
+		expect(
+			(
+				await fetch(`${stub.url}/transactions`, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({ rate: 'rate-test', label_file_type: 'PDF', async: true }),
+				})
+			).status,
+		).toBe(400);
+		expect(
+			(
+				await fetch(`${stub.url}/transactions`, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify({ rate: 'rate-test', label_file_type: 'PDF', async: false }),
+				})
+			).status,
+		).toBe(201);
+	});
+
+	it('dispatches route and method before authentication, validation, and scenario injection', async () => {
+		const trustap = await startStub('trustap');
+		const shippo = await startStub('shippo');
+		await setProviderScenario(trustap.url, 'provider-error');
+		await setProviderScenario(shippo.url, 'provider-error');
+
+		for (const response of [
+			await fetch(`${trustap.url}/api/v1/not-a-route`),
+			await fetch(`${trustap.url}/api/v1/guest_users`),
+			await fetch(`${shippo.url}/not-a-route`),
+			await fetch(`${shippo.url}/carrier_accounts`, { method: 'POST' }),
+		]) {
+			expect(response.status).toBe(404);
+		}
+
+		const invalidTrustap = await fetch(`${trustap.url}/api/v1/guest_users`, {
+			method: 'POST',
+			headers: trustapHeaders(),
+			body: JSON.stringify({ ...validGuestBody, id: '101' }),
+		});
+		const invalidShippo = await fetch(`${shippo.url}/shipments`, {
+			method: 'POST',
+			headers: shippoHeaders(),
+			body: JSON.stringify({ address_from: 'IT', address_to: {}, parcels: [] }),
+		});
+		expect(invalidTrustap.status).toBe(400);
+		expect(invalidShippo.status).toBe(400);
+	});
+
+	it('uses provider-specific error bodies for injected failures', async () => {
+		const trustap = await startStub('trustap');
+		const shippo = await startStub('shippo');
+		await setProviderScenario(trustap.url, 'provider-error');
+		await setProviderScenario(shippo.url, 'provider-error');
+
+		const trustapResponse = await fetch(`${trustap.url}/api/v1/guest_users`, {
+			method: 'POST',
+			headers: trustapHeaders(),
+			body: JSON.stringify(validGuestBody),
+		});
+		const shippoResponse = await fetch(`${shippo.url}/carrier_accounts`, { headers: shippoHeaders() });
+
+		expect(trustapResponse.status).toBe(500);
+		expect(await trustapResponse.json()).toEqual({
+			error: 'provider_error',
+			message: 'Trustap provider error',
+		});
+		expect(shippoResponse.status).toBe(500);
+		expect(await shippoResponse.json()).toEqual({ detail: 'Shippo provider error' });
+	});
+
 	it.each<[StubScenario, number]>([
 		['unauthorized', 401],
-		['invalid-payload', 422],
+		['invalid-payload', 400],
 		['provider-error', 500],
 	])('serves the %s scenario with status %i', async (scenario, status) => {
 		const stub = await startStub('trustap');
 		await setProviderScenario(stub.url, scenario);
 
-		const response = await fetch(`${stub.url}/api/v1/guest_users`, { method: 'POST' });
+		const response = await fetch(`${stub.url}/api/v1/guest_users`, {
+			method: 'POST',
+			headers: trustapHeaders(),
+			body: JSON.stringify(validGuestBody),
+		});
 
 		expect(response.status).toBe(status);
 		expect(await getProviderRequests(stub.url)).toHaveLength(1);
 	});
 
-	it('resets both stubs to success and clears only provider request history', async () => {
+	it('resets scenarios, request history, Trustap handshakes, and Shippo emitted resources', async () => {
 		const trustap = await startStub('trustap');
 		const shippo = await startStub('shippo');
-		await setProviderScenario(trustap.url, 'provider-error');
-		await setProviderScenario(shippo.url, 'provider-error');
-		await fetch(`${trustap.url}/api/v1/transactions/91001`);
-		await fetch(`${shippo.url}/shipments/shipment-test`);
+		expect(
+			(
+				await fetch(`${trustap.url}/api/v1/charge?price=10000&currency=eur&postage_fee=750&use_hr_post=false`, {
+					headers: trustapHeaders(),
+				})
+			).status,
+		).toBe(200);
+		expect(
+			(
+				await fetch(`${shippo.url}/shipments`, {
+					method: 'POST',
+					headers: shippoHeaders(),
+					body: JSON.stringify(validShippoShipmentBody),
+				})
+			).status,
+		).toBe(201);
 
 		await resetProviderStubs({ trustapUrl: trustap.url, shippoUrl: shippo.url });
 
 		expect(await getProviderRequests(trustap.url)).toEqual([]);
 		expect(await getProviderRequests(shippo.url)).toEqual([]);
-		expect((await fetch(`${trustap.url}/api/v1/transactions/91001`)).status).toBe(200);
-		expect((await fetch(`${shippo.url}/shipments/shipment-test`)).status).toBe(200);
+		expect(
+			(
+				await fetch(`${trustap.url}/api/v1/me/transactions/create_with_guest_user`, {
+					method: 'POST',
+					headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+					body: JSON.stringify(validTrustapTransactionBody),
+				})
+			).status,
+		).toBe(400);
+		expect((await fetch(`${shippo.url}/shipments/shipment-test`, { headers: shippoHeaders() })).status).toBe(404);
+		expect(
+			(
+				await fetch(`${shippo.url}/transactions`, {
+					method: 'POST',
+					headers: shippoHeaders(),
+					body: JSON.stringify({ rate: 'rate-test', label_file_type: 'PDF', async: false }),
+				})
+			).status,
+		).toBe(400);
 		await resetProviderStub(trustap.url);
 		expect(await getProviderRequests(trustap.url)).toEqual([]);
 	});
@@ -182,7 +525,7 @@ describe('local commerce provider stubs', () => {
 		const stub = await startStub('trustap');
 		const response = await fetch(`${stub.url}/api/v1/guest_users`, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json' },
+			headers: trustapHeaders(),
 			body: JSON.stringify({ payload: 'x'.repeat(64 * 1024) }),
 		});
 
@@ -199,7 +542,7 @@ describe('local commerce provider stubs', () => {
 	it('closes its loopback listener completely and idempotently', async () => {
 		const stub = await startStub('trustap');
 		expect(new URL(stub.url).hostname).toBe('127.0.0.1');
-		expect((await fetch(`${stub.url}/api/v1/transactions/91001`)).status).toBe(200);
+		expect((await fetch(`${stub.url}/api/v1/transactions/91001`, { headers: trustapHeaders() })).status).toBe(200);
 
 		await stub.close();
 		await stub.close();
@@ -211,5 +554,11 @@ describe('local commerce provider stubs', () => {
 		expect(carrierAccountPaginatedListFromJSON(JSON.stringify(shippoCarrierAccountsFixture)).ok).toBe(true);
 		expect(shipmentFromJSON(JSON.stringify(shippoShipmentFixture)).ok).toBe(true);
 		expect(transactionFromJSON(JSON.stringify(shippoTransactionFixture)).ok).toBe(true);
+	});
+
+	it('omits absent optional Trustap lifecycle datetimes from a created transaction', () => {
+		for (const field of ['joined', 'paid', 'tracked', 'delivered', 'funds_released']) {
+			expect(trustapTransactionFixture).not.toHaveProperty(field);
+		}
 	});
 });

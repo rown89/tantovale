@@ -1,3 +1,5 @@
+import { PROVIDER_TEST_CREDENTIALS } from './provider-stubs';
+
 export const API_TEST_WORKERS = 4;
 
 export type ResourceNames = {
@@ -109,13 +111,13 @@ export function buildServerEnvironment(
 		POSTGRES_DB: database,
 		PAYMENT_PROVIDER_API_URL: trustapUrl,
 		PAYMENT_PROVIDER_API_VERSION: 'api/v1',
-		PAYMENT_PROVIDER_API_KEY: 'trustap-test-key',
+		PAYMENT_PROVIDER_API_KEY: PROVIDER_TEST_CREDENTIALS.trustapApiKey,
 		PAYMENT_PROVIDER_CLIENT_ID: 'trustap-test-client',
 		PAYMENT_PROVIDER_CLIENT_SECRET: 'trustap-test-client-secret',
 		PAYMENT_PROVIDER_WEBHOOK_SECRET: 'trustap-webhook-test-secret',
 		PAYMENT_PROVIDER_PAY_PAGE_URL: 'http://trustap.test/pay',
 		POST_PAYMENT_REDIRECT_URL: 'http://storefront.test',
-		SHIPPING_PROVIDER_API_KEY: 'shippo-test-key',
+		SHIPPING_PROVIDER_API_KEY: PROVIDER_TEST_CREDENTIALS.shippoApiKey,
 		SHIPPING_PROVIDER_WEBHOOK_SECRET: 'shippo-webhook-test-secret',
 		SHIPPING_PROVIDER_API_URL: shippoUrl,
 		ACCESS_TOKEN_SECRET: 'access-test-secret-at-least-32-characters',
