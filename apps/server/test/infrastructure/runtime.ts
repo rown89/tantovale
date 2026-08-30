@@ -29,21 +29,17 @@ export type TestRuntime = {
 };
 
 const disposableDatabaseName = /^tantovale_test_[a-z0-9]+_(template|worker_[1-9][0-9]*)$/;
-const testRunId = /^[a-f0-9]{8}$/;
-// Test setup provisions a database and bucket per worker; this prevents accidental resource floods.
-const MAX_TEST_WORKERS = 32;
+const testRunId = /^[a-z0-9]+$/;
 
 function assertValidRunId(runId: string): void {
 	if (!testRunId.test(runId)) {
-		throw new Error('Invalid test resource namespace: runId must be exactly 8 lowercase hex characters');
+		throw new Error('Invalid test resource namespace: runId must be nonempty lowercase alphanumeric');
 	}
 }
 
 function assertValidWorkerCount(workerCount: number): void {
-	if (!Number.isSafeInteger(workerCount) || workerCount < 1 || workerCount > MAX_TEST_WORKERS) {
-		throw new Error(
-			`Invalid test resource namespace: workerCount must be a safe integer between 1 and ${MAX_TEST_WORKERS}`,
-		);
+	if (!Number.isSafeInteger(workerCount) || workerCount < 1) {
+		throw new Error('Invalid test resource namespace: workerCount must be a positive safe integer');
 	}
 }
 

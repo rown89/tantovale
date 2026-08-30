@@ -85,18 +85,29 @@ describe('test runtime resources', () => {
 		});
 	});
 
-	it.each(['a1b2c3d', 'a1b2c3d4e', 'A1B2C3D4', 'g1b2c3d4'])('rejects invalid run id %j', (runId) => {
-		expect(() => createResourceNames(runId, 4)).toThrow(/runId must be exactly 8 lowercase hex characters/i);
+	it.each(['a1b2c3d', 'g1b2c3d4', 'abcdefghijklmnopqrstuvwxyz0123456789'])(
+		'accepts lowercase alphanumeric run id %j',
+		(runId) => {
+			expect(() => createResourceNames(runId, 1)).not.toThrow();
+		},
+	);
+
+	it.each(['', 'A1B2C3D4', 'a1b2-c3d4'])('rejects invalid run id %j', (runId) => {
+		expect(() => createResourceNames(runId, 4)).toThrow(/runId must be nonempty lowercase alphanumeric/i);
 	});
 
-	it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 33])(
+	it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
 		'rejects unsafe worker count %s when creating resource names',
 		(workerCount) => {
 			expect(() => createResourceNames('a1b2c3d4', workerCount)).toThrow(
-				/workerCount must be a safe integer between 1 and 32/i,
+				/workerCount must be a positive safe integer/i,
 			);
 		},
 	);
+
+	it('accepts a worker count above the configured suite size', () => {
+		expect(createResourceNames('a1b2c3d4', 33).workerDatabases).toHaveLength(33);
+	});
 
 	it('maps Vitest worker ids to zero-based worker indexes', () => {
 		expect(getWorkerIndex(undefined, 4)).toBe(0);
@@ -108,12 +119,16 @@ describe('test runtime resources', () => {
 		expect(() => getWorkerIndex(workerId, 4)).toThrow(/Invalid Vitest worker id/i);
 	});
 
-	it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 33])(
+	it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
 		'rejects unsafe worker count %s when resolving a worker index',
 		(workerCount) => {
-			expect(() => getWorkerIndex('1', workerCount)).toThrow(/workerCount must be a safe integer between 1 and 32/i);
+			expect(() => getWorkerIndex('1', workerCount)).toThrow(/workerCount must be a positive safe integer/i);
 		},
 	);
+
+	it('resolves an index above the configured suite size', () => {
+		expect(getWorkerIndex('33', 33)).toBe(32);
+	});
 
 	it('refuses an unsafe database when building server environment', () => {
 		expect(() => buildServerEnvironment(runtime, 'tantovale_dev', 'tantovale-test-bucket')).toThrow(
