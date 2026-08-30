@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { users } from '../../src/database/schemas/users';
 import { verifyPassword } from '../../src/lib/password';
 import { createUserFixture } from '../fixtures/factories';
+import { authenticatedRequest, loginAs } from './auth';
 import { getTestDatabase } from './database';
 import { extractTokenFromLink, waitForEmail } from './mailpit';
 import { captureCookies, CookieJar, jsonRequest } from './request';
@@ -220,6 +221,23 @@ describe('API test helpers', () => {
 });
 
 describe('test fixtures', () => {
+	it('authenticates a verified user fixture through the public login route', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+
+		const response = await authenticatedRequest('/user/auth', 'GET', jar);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			id: fixture.user.id,
+			profile_id: fixture.profile.id,
+			username: fixture.user.username,
+			email: fixture.user.email,
+			email_verified: true,
+			phone_verified: fixture.user.phone_verified,
+		});
+	});
+
 	it('persists a linked profile and hashes the selected plaintext password', async () => {
 		const password = 'DifferentStrongPass123!';
 		const fixture = await createUserFixture({
