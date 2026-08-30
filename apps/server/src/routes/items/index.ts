@@ -162,6 +162,8 @@ export const itemsRoute = createRouter()
 					property_slug: properties.slug,
 					property_name: properties.name,
 					property_value: property_values.value,
+					property_boolean_value: property_values.boolean_value,
+					property_numeric_value: property_values.numeric_value,
 					imageUrl: items_images.url,
 				})
 				.from(items)
@@ -218,6 +220,10 @@ export const itemsRoute = createRouter()
 				// Add filter value to the appropriate filter_slug array
 				if (row.property_slug) {
 					const item = itemsMap.get(row.id);
+					const projectedPropertyValue =
+						row.property_value ??
+						(row.property_numeric_value === null ? undefined : String(row.property_numeric_value)) ??
+						(row.property_boolean_value === null ? undefined : String(row.property_boolean_value));
 
 					if (item && item.properties) {
 						// Initialize the array for this property_slug if it doesn't exist
@@ -226,8 +232,11 @@ export const itemsRoute = createRouter()
 						}
 
 						// Add the filter value to the array if it's not already there
-						if (row.property_value && !item.properties[row.property_slug]!.includes(row.property_value)) {
-							item.properties[row.property_slug]!.push(row.property_value);
+						if (
+							projectedPropertyValue !== undefined &&
+							!item.properties[row.property_slug]!.includes(projectedPropertyValue)
+						) {
+							item.properties[row.property_slug]!.push(projectedPropertyValue);
 						}
 					}
 				}

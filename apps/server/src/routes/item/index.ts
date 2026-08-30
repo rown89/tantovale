@@ -23,6 +23,7 @@ import {
 } from '#db-schema';
 import { items_properties_values } from '#database/schemas/items_properties_values';
 import { createRouter } from '#lib/create-app';
+import type { User } from '#lib/types';
 import { authPath } from '#utils/constants';
 import { createItemSchema, updateItemSchema, type createItemTypes } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
@@ -52,16 +53,23 @@ type ValidatedProperties = {
 	propertyValueIds: number[];
 };
 
+type PropertyValidationMode = 'create' | 'update';
+
+const idBackedPropertyTypes = new Set(['select', 'radio', 'select_multi', 'checkbox']);
+
 async function validatePropertiesForSubcategory(
 	tx: ItemTransaction,
 	subcategoryId: number,
 	itemProperties: ItemProperties | undefined,
+	mode: PropertyValidationMode,
 ): Promise<ValidatedProperties> {
 	const mappings = await tx
 		.select({
 			property_id: subcategory_properties.property_id,
 			required: subcategory_properties.on_item_create_required,
+			editable: subcategory_properties.on_item_update_editable,
 			slug: properties.slug,
+			type: properties.type,
 		})
 		.from(subcategory_properties)
 		.innerJoin(properties, eq(properties.id, subcategory_properties.property_id))
@@ -73,49 +81,93 @@ async function validatePropertiesForSubcategory(
 		throw new Error('All required properties must be provided');
 	}
 
-	const flattenedSelections =
-		itemProperties?.flatMap((property) => {
+	const suppliedProperties =
+		itemProperties?.map((property) => {
 			const mapping = mappingByProperty.get(property.id);
 			if (!mapping || mapping.slug !== property.slug) {
 				throw new Error('Some properties are not mapped to this subcategory');
 			}
-
-			const values = Array.isArray(property.value) ? property.value : [property.value];
-			if (values.length === 0) {
-				throw new Error('Property values cannot be empty');
+			if (mode === 'update' && !mapping.editable) {
+				throw new Error(`Property ${mapping.slug} cannot be edited`);
 			}
 
-			return values.map((value) => {
-				const propertyValueId = Number(value);
-				if (!Number.isSafeInteger(propertyValueId) || propertyValueId <= 0) {
-					throw new Error('Property values must be positive integer IDs');
+			if (idBackedPropertyTypes.has(mapping.type)) {
+				const values = Array.isArray(property.value) ? property.value : [property.value];
+				if (values.length === 0) throw new Error('Property values cannot be empty');
+				const ids = values.map((value) => {
+					if (typeof value === 'boolean' || (typeof value === 'string' && !/^[1-9]\d*$/.test(value))) {
+						throw new Error(`Property ${mapping.slug} requires property-value IDs`);
+					}
+					const id = Number(value);
+					if (!Number.isSafeInteger(id) || id <= 0) {
+						throw new Error(`Property ${mapping.slug} requires positive integer property-value IDs`);
+					}
+					return id;
+				});
+				return { mapping, kind: 'id' as const, values: ids };
+			}
+
+			if (mapping.type === 'boolean') {
+				if (typeof property.value !== 'boolean') {
+					throw new Error(`Property ${mapping.slug} requires a raw boolean value`);
 				}
-				return { propertyId: property.id, propertyValueId, slug: property.slug };
-			});
+				return { mapping, kind: 'boolean' as const, value: property.value };
+			}
+
+			if (mapping.type === 'number' || mapping.type === 'range') {
+				if (
+					typeof property.value !== 'number' ||
+					!Number.isSafeInteger(property.value) ||
+					Array.isArray(property.value)
+				) {
+					throw new Error(`Property ${mapping.slug} requires a raw integer numeric value`);
+				}
+				return { mapping, kind: 'number' as const, value: property.value };
+			}
+
+			throw new Error(`Unsupported property type ${mapping.type}`);
 		}) ?? [];
-	const uniqueValueIds = [...new Set(flattenedSelections.map(({ propertyValueId }) => propertyValueId))];
-	const storedValues = uniqueValueIds.length
+	const suppliedPropertyIdList = [...new Set(suppliedProperties.map(({ mapping }) => mapping.property_id))];
+	const storedValues = suppliedPropertyIdList.length
 		? await tx
-				.select({ id: property_values.id, property_id: property_values.property_id, value: property_values.value })
+				.select({
+					id: property_values.id,
+					property_id: property_values.property_id,
+					value: property_values.value,
+					boolean_value: property_values.boolean_value,
+					numeric_value: property_values.numeric_value,
+				})
 				.from(property_values)
-				.where(inArray(property_values.id, uniqueValueIds))
+				.where(inArray(property_values.property_id, suppliedPropertyIdList))
 		: [];
-	const valueById = new Map(storedValues.map((value) => [value.id, value]));
+	const resolvedValues: typeof storedValues = [];
 	let deliveryMethod: string | undefined;
 
-	for (const selection of flattenedSelections) {
-		const storedValue = valueById.get(selection.propertyValueId);
-		if (!storedValue || storedValue.property_id !== selection.propertyId) {
-			throw new Error('Some property values do not belong to the supplied properties');
+	for (const suppliedProperty of suppliedProperties) {
+		const candidates = storedValues.filter(({ property_id }) => property_id === suppliedProperty.mapping.property_id);
+		const matches =
+			suppliedProperty.kind === 'id'
+				? candidates.filter(({ id }) => suppliedProperty.values.includes(id))
+				: suppliedProperty.kind === 'boolean'
+					? candidates.filter(({ boolean_value }) => boolean_value === suppliedProperty.value)
+					: candidates.filter(({ numeric_value }) => numeric_value === suppliedProperty.value);
+		const expectedMatchCount = suppliedProperty.kind === 'id' ? new Set(suppliedProperty.values).size : 1;
+		if (matches.length !== expectedMatchCount) {
+			throw new Error(`Property ${suppliedProperty.mapping.slug} has a missing or ambiguous value`);
 		}
-		if (selection.slug === 'delivery_method') {
-			deliveryMethod = storedValue.value ?? undefined;
+		resolvedValues.push(...matches);
+
+		if (suppliedProperty.mapping.slug === 'delivery_method') {
+			if (matches.length !== 1 || typeof matches[0]?.value !== 'string') {
+				throw new Error('Delivery method requires exactly one stored option');
+			}
+			deliveryMethod = matches[0].value;
 		}
 	}
 
 	return {
 		deliveryMethod,
-		propertyValueIds: uniqueValueIds,
+		propertyValueIds: [...new Set(resolvedValues.map(({ id }) => id))],
 	};
 }
 
@@ -151,6 +203,65 @@ function validateShipping(deliveryMethod: string | undefined, shipping: createIt
 			throw new Error('Shipping dimensions are required');
 		}
 	}
+}
+
+function validateEasyPayMode(
+	easyPay: boolean,
+	subcategorySupportsEasyPay: boolean,
+	deliveryMethod: string | undefined,
+	shipping: createItemTypes['shipping'],
+): void {
+	if (easyPay) {
+		if (!subcategorySupportsEasyPay) throw new Error('This subcategory does not support Easy Pay');
+		if (deliveryMethod !== 'shipping_easy_pay') {
+			throw new Error('Easy Pay requires the Easy Pay shipping method');
+		}
+	} else if (deliveryMethod === 'shipping_easy_pay') {
+		throw new Error('Easy Pay shipping requires Easy Pay to be enabled');
+	}
+
+	validateShipping(deliveryMethod, shipping);
+}
+
+async function ensurePaymentProviderIdentity(
+	tx: ItemTransaction,
+	user: Pick<User, 'profile_id' | 'email'>,
+	requestIp: string,
+): Promise<void> {
+	const [profile] = await tx
+		.select({
+			name: profiles.name,
+			surname: profiles.surname,
+			payment_provider_id: profiles.payment_provider_id,
+		})
+		.from(profiles)
+		.where(eq(profiles.id, user.profile_id))
+		.limit(1);
+	if (!profile) throw new Error('Profile not found');
+	if (profile.payment_provider_id) return;
+
+	const [address] = await tx
+		.select({ country_code: addresses.country_code })
+		.from(addresses)
+		.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
+		.limit(1);
+	if (!address) throw new Error('Active address not found');
+
+	const paymentProviderService = new PaymentProviderService();
+	const paymentProviderId = await paymentProviderService.createGuestUser({
+		id: user.profile_id,
+		email: user.email,
+		first_name: profile.name,
+		last_name: profile.surname,
+		country_code: address.country_code,
+		tos_acceptance: {
+			unix_timestamp: Math.floor(Date.now() / 1_000),
+			ip: requestIp,
+		},
+	});
+	if (!paymentProviderId) throw new Error('Failed to create payment provider guest user');
+
+	await tx.update(profiles).set({ payment_provider_id: paymentProviderId.id }).where(eq(profiles.id, user.profile_id));
 }
 
 export const itemRoute = createRouter()
@@ -322,7 +433,7 @@ export const itemRoute = createRouter()
 
 			return await db.transaction(async (tx) => {
 				const [availableSubcategory] = await tx
-					.select({ id: subcategories.id })
+					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
 					.from(subcategories)
 					.where(eq(subcategories.id, commons.subcategory_id))
 					.limit(1);
@@ -333,58 +444,31 @@ export const itemRoute = createRouter()
 				const [itemAddress] = await tx
 					.select({ id: addresses.id })
 					.from(addresses)
-					.where(and(eq(addresses.id, commons.address_id), eq(addresses.profile_id, user.profile_id)))
+					.where(
+						and(
+							eq(addresses.id, commons.address_id),
+							eq(addresses.profile_id, user.profile_id),
+							eq(addresses.status, addressStatus.ACTIVE),
+						),
+					)
 					.limit(1);
-				if (!itemAddress) throw new Error('Address does not belong to the authenticated profile');
+				if (!itemAddress) throw new Error('Address must be active and belong to the authenticated profile');
 
 				const validatedProperties = await validatePropertiesForSubcategory(
 					tx,
 					commons.subcategory_id,
 					requestedProperties,
+					'create',
 				);
-				validateShipping(validatedProperties.deliveryMethod, shipping);
+				validateEasyPayMode(
+					commons.easy_pay ?? false,
+					availableSubcategory.easy_pay === true,
+					validatedProperties.deliveryMethod,
+					shipping,
+				);
 
-				const [profile] = await tx
-					.select({
-						name: profiles.name,
-						surname: profiles.surname,
-						payment_provider_id: profiles.payment_provider_id,
-					})
-					.from(profiles)
-					.where(eq(profiles.id, user.profile_id))
-					.limit(1);
-
-				if (!profile) return c.json({ message: 'Profile not found' }, 404);
-
-				if (commons.easy_pay && !profile.payment_provider_id) {
-					const [address] = await tx
-						.select({ country_code: addresses.country_code })
-						.from(addresses)
-						.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
-						.limit(1);
-
-					if (!address) return c.json({ message: 'Address not found' }, 404);
-
-					const paymentProviderService = new PaymentProviderService();
-
-					const paymentProviderId = await paymentProviderService.createGuestUser({
-						id: user.profile_id,
-						email: user.email,
-						first_name: profile.name,
-						last_name: profile.surname,
-						country_code: address.country_code,
-						tos_acceptance: {
-							unix_timestamp: Math.floor(new Date().getTime() / 1000),
-							ip: c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1',
-						},
-					});
-
-					if (!paymentProviderId) return c.json({ message: 'Failed to create payment provider guest user' }, 500);
-
-					await tx
-						.update(profiles)
-						.set({ payment_provider_id: paymentProviderId.id })
-						.where(eq(profiles.id, user.profile_id));
+				if (commons.easy_pay) {
+					await ensurePaymentProviderIdentity(tx, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
 				}
 
 				const [newItem] = await tx
@@ -463,52 +547,61 @@ export const itemRoute = createRouter()
 					const [replacementAddress] = await tx
 						.select({ id: addresses.id })
 						.from(addresses)
-						.where(and(eq(addresses.id, commons.address_id), eq(addresses.profile_id, user.profile_id)))
+						.where(
+							and(
+								eq(addresses.id, commons.address_id),
+								eq(addresses.profile_id, user.profile_id),
+								eq(addresses.status, addressStatus.ACTIVE),
+							),
+						)
 						.limit(1);
-					if (!replacementAddress) throw new Error('Address does not belong to the authenticated profile');
+					if (!replacementAddress) {
+						throw new Error('Address must be active and belong to the authenticated profile');
+					}
 				}
 
 				const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
-				if (commons?.subcategory_id !== undefined) {
-					const [subcategory] = await tx
-						.select({ id: subcategories.id })
-						.from(subcategories)
-						.where(eq(subcategories.id, targetSubcategoryId))
-						.limit(1);
-					if (!subcategory) throw new Error('Subcategory does not exist');
-					if (commons.subcategory_id !== existingItem.subcategory_id && requestedProperties === undefined) {
-						throw new Error('Properties are required when changing subcategory');
-					}
+				const [targetSubcategory] = await tx
+					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
+					.from(subcategories)
+					.where(eq(subcategories.id, targetSubcategoryId))
+					.limit(1);
+				if (!targetSubcategory) throw new Error('Subcategory does not exist');
+				if (
+					commons?.subcategory_id !== undefined &&
+					commons.subcategory_id !== existingItem.subcategory_id &&
+					requestedProperties === undefined
+				) {
+					throw new Error('Properties are required when changing subcategory');
 				}
 
 				const validatedProperties =
 					requestedProperties === undefined
 						? undefined
-						: await validatePropertiesForSubcategory(tx, targetSubcategoryId, requestedProperties);
-				if (validatedProperties || shipping !== undefined) {
-					let deliveryMethod = validatedProperties?.deliveryMethod;
-					if (!deliveryMethod) {
-						const [storedDelivery] = await tx
-							.select({ value: property_values.value })
-							.from(items_properties_values)
-							.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
-							.innerJoin(properties, eq(properties.id, property_values.property_id))
-							.where(and(eq(items_properties_values.item_id, id), eq(properties.slug, 'delivery_method')))
-							.limit(1);
-						deliveryMethod = storedDelivery?.value ?? undefined;
-					}
-					const effectiveShipping =
-						deliveryMethod === 'pickup'
-							? shipping
-							: {
-									shipping_price: shipping?.shipping_price ?? existingItem.custom_shipping_price ?? undefined,
-									item_weight: shipping?.item_weight ?? existingItem.item_weight ?? undefined,
-									item_length: shipping?.item_length ?? existingItem.item_length ?? undefined,
-									item_width: shipping?.item_width ?? existingItem.item_width ?? undefined,
-									item_height: shipping?.item_height ?? existingItem.item_height ?? undefined,
-								};
-					validateShipping(deliveryMethod, effectiveShipping);
+						: await validatePropertiesForSubcategory(tx, targetSubcategoryId, requestedProperties, 'update');
+				let deliveryMethod = validatedProperties?.deliveryMethod;
+				if (!deliveryMethod) {
+					const [storedDelivery] = await tx
+						.select({ value: property_values.value })
+						.from(items_properties_values)
+						.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
+						.innerJoin(properties, eq(properties.id, property_values.property_id))
+						.where(and(eq(items_properties_values.item_id, id), eq(properties.slug, 'delivery_method')))
+						.limit(1);
+					deliveryMethod = storedDelivery?.value ?? undefined;
 				}
+				const effectiveShipping =
+					deliveryMethod === 'pickup'
+						? shipping
+						: {
+								shipping_price: shipping?.shipping_price ?? existingItem.custom_shipping_price ?? undefined,
+								item_weight: shipping?.item_weight ?? existingItem.item_weight ?? undefined,
+								item_length: shipping?.item_length ?? existingItem.item_length ?? undefined,
+								item_width: shipping?.item_width ?? existingItem.item_width ?? undefined,
+								item_height: shipping?.item_height ?? existingItem.item_height ?? undefined,
+							};
+				const effectiveEasyPay = commons?.easy_pay ?? existingItem.easy_pay;
+				validateEasyPayMode(effectiveEasyPay, targetSubcategory.easy_pay === true, deliveryMethod, effectiveShipping);
 
 				const updateValues: Partial<typeof items.$inferInsert> = {
 					...commons,
@@ -533,7 +626,16 @@ export const itemRoute = createRouter()
 					});
 				}
 
-				await tx.update(items).set(updateValues).where(eq(items.id, id));
+				const [updatedItem] = await tx
+					.update(items)
+					.set(updateValues)
+					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+					.returning({ id: items.id });
+				if (!updatedItem) return undefined;
+
+				if (effectiveEasyPay) {
+					await ensurePaymentProviderIdentity(tx, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
+				}
 				if (validatedProperties) {
 					await tx.delete(items_properties_values).where(eq(items_properties_values.item_id, id));
 					if (validatedProperties.propertyValueIds.length > 0) {
@@ -546,7 +648,7 @@ export const itemRoute = createRouter()
 					}
 				}
 
-				return id;
+				return updatedItem.id;
 			});
 
 			if (!result) return c.json({ message: 'Item not found' }, 404);

@@ -34,16 +34,59 @@ import { loginAs } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { CookieJar } from '../helpers/request';
 import { createAddressFixture } from './addresses';
-import { createCatalogFixture, type CatalogFixture } from './catalog';
+import { createCatalogFixture } from './catalog';
 import { createUserFixture, type UserFixture, uniqueValue } from './factories';
 
 type CommerceActor = UserFixture & { jar: CookieJar; address: SelectAddress };
+
+async function createCommerceCatalogFixture() {
+	const catalog = await createCatalogFixture();
+	const { db } = getTestDatabase();
+	const [deliveryProperty] = await db
+		.insert(properties)
+		.values({ name: 'Delivery Methods', slug: 'delivery_method', type: 'select' })
+		.returning();
+	if (!deliveryProperty) throw new Error('Commerce delivery property insert failed');
+
+	const [deliveryMapping] = await db
+		.insert(subcategory_properties)
+		.values({
+			property_id: deliveryProperty.id,
+			subcategory_id: catalog.childSubcategory.id,
+			position: 99,
+			on_item_create_required: true,
+			on_item_update_editable: true,
+		})
+		.returning();
+	if (!deliveryMapping) throw new Error('Commerce delivery mapping insert failed');
+
+	const [pickup, shipping, easyPay] = await db
+		.insert(property_values)
+		.values([
+			{ property_id: deliveryProperty.id, name: 'Pickup', value: 'pickup' },
+			{ property_id: deliveryProperty.id, name: 'Shipping', value: 'shipping' },
+			{ property_id: deliveryProperty.id, name: 'Shipping (Easy Pay)', value: 'shipping_easy_pay' },
+		])
+		.returning();
+	if (!pickup || !shipping || !easyPay) throw new Error('Commerce delivery values insert failed');
+
+	return {
+		...catalog,
+		delivery: {
+			property: deliveryProperty,
+			mapping: deliveryMapping,
+			values: { pickup, shipping, easyPay },
+		},
+	};
+}
+
+export type CommerceCatalogFixture = Awaited<ReturnType<typeof createCommerceCatalogFixture>>;
 
 export type CommerceActorGraph = {
 	seller: CommerceActor;
 	buyer: CommerceActor;
 	outsider: CommerceActor;
-	catalog: CatalogFixture;
+	catalog: CommerceCatalogFixture;
 };
 
 type ItemBodyOverrides = {
@@ -52,7 +95,7 @@ type ItemBodyOverrides = {
 	properties?: createItemTypes['properties'];
 };
 
-let reusableCatalog: CatalogFixture | undefined;
+let reusableCatalog: CommerceCatalogFixture | undefined;
 let graphCreationQueue: Promise<void> = Promise.resolve();
 
 function requireInserted<Row>(row: Row | undefined, label: string): Row {
@@ -77,20 +120,32 @@ function fixtureRowsMatch<Row extends { id: number }>(
 	);
 }
 
-async function resolveCatalogFixture(): Promise<CatalogFixture> {
+async function resolveCatalogFixture(): Promise<CommerceCatalogFixture> {
 	const { db } = getTestDatabase();
 	const cached = reusableCatalog;
 	if (!cached) {
-		const created = await createCatalogFixture();
+		const created = await createCommerceCatalogFixture();
 		reusableCatalog = created;
 		return created;
 	}
 
 	const expectedCategories = [cached.publishedCategory, cached.unpublishedCategory];
 	const expectedSubcategories = [cached.parentSubcategory, cached.childSubcategory, cached.unpublishedSubcategory];
-	const expectedProperties = [...Object.values(cached.properties), cached.unpublishedMapping.property];
-	const expectedMappings = [...Object.values(cached.mappings), cached.unpublishedMapping.mapping];
-	const expectedPropertyValues = [...Object.values(cached.propertyValues), cached.unpublishedMapping.propertyValue];
+	const expectedProperties = [
+		...Object.values(cached.properties),
+		cached.delivery.property,
+		cached.unpublishedMapping.property,
+	];
+	const expectedMappings = [
+		...Object.values(cached.mappings),
+		cached.delivery.mapping,
+		cached.unpublishedMapping.mapping,
+	];
+	const expectedPropertyValues = [
+		...Object.values(cached.propertyValues),
+		...Object.values(cached.delivery.values),
+		cached.unpublishedMapping.propertyValue,
+	];
 	const [
 		countryRows,
 		stateRows,
@@ -162,7 +217,7 @@ async function resolveCatalogFixture(): Promise<CatalogFixture> {
 	].reduce((count, rows) => count + rows.length, 0);
 
 	if (referencedRowCount === 0) {
-		const created = await createCatalogFixture();
+		const created = await createCommerceCatalogFixture();
 		reusableCatalog = created;
 		return created;
 	}
@@ -310,12 +365,17 @@ export function validItemBody(actorGraph: CommerceActorGraph, overrides: ItemBod
 			{
 				id: catalog.properties.numeric.id,
 				slug: catalog.properties.numeric.slug,
-				value: catalog.propertyValues.numeric.id,
+				value: catalog.propertyValues.numeric.numeric_value ?? 0,
 			},
 			{
 				id: catalog.properties.boolean.id,
 				slug: catalog.properties.boolean.slug,
-				value: catalog.propertyValues.boolean.id,
+				value: catalog.propertyValues.boolean.boolean_value ?? false,
+			},
+			{
+				id: catalog.delivery.property.id,
+				slug: catalog.delivery.property.slug,
+				value: catalog.delivery.values.easyPay.id,
 			},
 		],
 		shipping: {
@@ -323,12 +383,58 @@ export function validItemBody(actorGraph: CommerceActorGraph, overrides: ItemBod
 			item_length: 20,
 			item_weight: 500,
 			item_width: 15,
-			shipping_price: 1_250,
+			shipping_price: 0,
 			...overrides.shipping,
 		},
 	} satisfies z.input<typeof createItemSchema>;
 
 	return createItemSchema.parse(body);
+}
+
+function fixturePropertyValueIds(
+	actorGraph: CommerceActorGraph,
+	property: NonNullable<createItemTypes['properties']>[number],
+): number[] {
+	if (property.id === actorGraph.catalog.properties.numeric.id) {
+		if (
+			typeof property.value !== 'number' ||
+			property.value !== actorGraph.catalog.propertyValues.numeric.numeric_value
+		) {
+			throw new Error('Commerce numeric property must use its raw numeric value');
+		}
+		return [actorGraph.catalog.propertyValues.numeric.id];
+	}
+
+	if (property.id === actorGraph.catalog.properties.boolean.id) {
+		if (
+			typeof property.value !== 'boolean' ||
+			property.value !== actorGraph.catalog.propertyValues.boolean.boolean_value
+		) {
+			throw new Error('Commerce boolean property must use its raw boolean value');
+		}
+		return [actorGraph.catalog.propertyValues.boolean.id];
+	}
+
+	const values = Array.isArray(property.value) ? property.value : [property.value];
+	const ids = values.map((value) => {
+		if (typeof value === 'boolean' || (typeof value === 'string' && !/^\d+$/.test(value))) {
+			throw new Error('Commerce select properties must use property-value IDs');
+		}
+		const id = Number(value);
+		if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Commerce property-value ID must be positive');
+		return id;
+	});
+	const allowedIds =
+		property.id === actorGraph.catalog.properties.text.id
+			? new Set([actorGraph.catalog.propertyValues.text.id])
+			: property.id === actorGraph.catalog.delivery.property.id
+				? new Set(Object.values(actorGraph.catalog.delivery.values).map(({ id }) => id))
+				: new Set<number>();
+
+	if (ids.some((id) => !allowedIds.has(id))) {
+		throw new Error('Commerce property-value ID does not belong to its property');
+	}
+	return ids;
 }
 
 export async function createItemFixture(
@@ -355,10 +461,10 @@ export async function createItemFixture(
 			.returning();
 		const item = requireInserted(itemRow, 'Item');
 		const propertyRows =
-			body.properties?.flatMap(({ value }) =>
-				(Array.isArray(value) ? value : [value]).map((propertyValueId) => ({
+			body.properties?.flatMap((property) =>
+				fixturePropertyValueIds(actorGraph, property).map((propertyValueId) => ({
 					item_id: item.id,
-					property_value_id: Number(propertyValueId),
+					property_value_id: propertyValueId,
 				})),
 			) ?? [];
 

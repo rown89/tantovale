@@ -46,6 +46,7 @@ describe('commerce fixtures', () => {
 		const actorProfileIds = new Set([actors.seller.profile.id, actors.buyer.profile.id, actors.outsider.profile.id]);
 		const intersectingActorIds = [...actorUserIds].filter((id) => actorProfileIds.has(id));
 		const shipping = body.shipping!;
+		const propertyBodyById = new Map(body.properties?.map((property) => [property.id, property]));
 
 		expect(intersectingActorIds).toEqual([]);
 		expect(storedUsers).toHaveLength(3);
@@ -60,14 +61,17 @@ describe('commerce fixtures', () => {
 		expect(body.commons.address_id).toBe(actors.seller.address.id);
 		expect(body.shipping).toBeDefined();
 		expect(
-			[
-				shipping.item_height,
-				shipping.item_length,
-				shipping.item_weight,
-				shipping.item_width,
-				shipping.shipping_price,
-			].every((value) => typeof value === 'number' && value > 0),
+			[shipping.item_height, shipping.item_length, shipping.item_weight, shipping.item_width].every(
+				(value) => typeof value === 'number' && value > 0,
+			),
 		).toBe(true);
+		expect(shipping.shipping_price).toBe(0);
+		expect(propertyBodyById.get(actors.catalog.properties.text.id)?.value).toBe(actors.catalog.propertyValues.text.id);
+		expect(propertyBodyById.get(actors.catalog.properties.numeric.id)?.value).toBe(0);
+		expect(propertyBodyById.get(actors.catalog.properties.boolean.id)?.value).toBe(false);
+		expect(propertyBodyById.get(actors.catalog.delivery.property.id)?.value).toBe(
+			actors.catalog.delivery.values.easyPay.id,
+		);
 		expect(storedItem).toMatchObject({
 			id: item.id,
 			profile_id: actors.seller.profile.id,
@@ -76,7 +80,7 @@ describe('commerce fixtures', () => {
 			published: true,
 			status: 'available',
 			easy_pay: true,
-			custom_shipping_price: shipping.shipping_price,
+			custom_shipping_price: 0,
 			item_height: shipping.item_height,
 			item_length: shipping.item_length,
 			item_weight: shipping.item_weight,
@@ -100,12 +104,12 @@ describe('commerce fixtures', () => {
 			],
 		});
 		expect(storedItem?.propertyValues.map(({ id }) => id).sort((a, b) => a - b)).toEqual(
-			Object.values(actors.catalog.propertyValues)
+			[...Object.values(actors.catalog.propertyValues), actors.catalog.delivery.values.easyPay]
 				.map(({ id }) => id)
 				.sort((a, b) => a - b),
 		);
 		expect(storedItem?.propertyValues.map(({ property }) => property?.id).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(
-			Object.values(actors.catalog.properties)
+			[...Object.values(actors.catalog.properties), actors.catalog.delivery.property]
 				.map(({ id }) => id)
 				.sort((a, b) => a - b),
 		);

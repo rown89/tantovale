@@ -9,7 +9,6 @@ import {
 	orders,
 	profiles,
 	profiles_items_favorites,
-	properties,
 	property_values,
 	subcategory_properties,
 } from '../../src/database/schemas/schema';
@@ -26,7 +25,6 @@ import {
 	validItemBody,
 	type CommerceActorGraph,
 } from '../fixtures/commerce';
-import { uniqueValue } from '../fixtures/factories';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { getProviderRequests } from '../helpers/providers';
@@ -42,50 +40,38 @@ async function authJson(path: string, method: string, jar: CookieJar, body?: unk
 	return authenticatedRequest(path, method, jar, body);
 }
 
-async function createDeliveryOptions(actors: CommerceActorGraph) {
-	const { db } = getTestDatabase();
-	const suffix = uniqueValue('delivery');
-	const [deliveryProperty] = await db
-		.insert(properties)
-		.values({ name: `Delivery ${suffix}`, slug: 'delivery_method', type: 'select' })
-		.returning();
-
-	if (!deliveryProperty) throw new Error('Delivery property fixture insert failed');
-
-	await db.insert(subcategory_properties).values({
-		property_id: deliveryProperty.id,
-		subcategory_id: actors.catalog.childSubcategory.id,
-		on_item_create_required: true,
-		position: 99,
-	});
-
-	const [pickup, shipping, easyPay] = await db
-		.insert(property_values)
-		.values([
-			{ property_id: deliveryProperty.id, name: 'Pickup', value: 'pickup' },
-			{ property_id: deliveryProperty.id, name: 'Shipping', value: 'shipping' },
-			{ property_id: deliveryProperty.id, name: 'Easy Pay', value: 'shipping_easy_pay' },
-		])
-		.returning();
-
-	if (!pickup || !shipping || !easyPay) throw new Error('Delivery value fixture insert failed');
-
-	return { property: deliveryProperty, pickup, shipping, easyPay };
-}
-
-function withDelivery(
-	actors: CommerceActorGraph,
-	delivery: Awaited<ReturnType<typeof createDeliveryOptions>>,
-	valueId: number,
-) {
-	const body = validItemBody(actors, { commons: { easy_pay: false } });
+function withDelivery(actors: CommerceActorGraph, valueId: number, easyPay = false) {
+	const body = validItemBody(actors, { commons: { easy_pay: easyPay } });
 	return {
 		...body,
-		properties: [
-			...(body.properties ?? []),
-			{ id: delivery.property.id, slug: delivery.property.slug, value: valueId },
-		],
+		properties: body.properties?.map((property) =>
+			property.id === actors.catalog.delivery.property.id ? { ...property, value: valueId } : property,
+		),
 	};
+}
+
+async function expectNoPaymentProviderRequests(): Promise<void> {
+	const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+	if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+	expect(await getProviderRequests(providerUrl)).toEqual([]);
+}
+
+async function waitForBlockedItemUpdate(): Promise<void> {
+	const { client } = getTestDatabase();
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const { rows } = await client.query<{ blocked: boolean }>(`
+			SELECT EXISTS (
+				SELECT 1
+				FROM pg_stat_activity
+				WHERE datname = current_database()
+					AND wait_event_type = 'Lock'
+					AND query ILIKE 'update "items" set%'
+			) AS blocked
+		`);
+		if (rows[0]?.blocked) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error('Timed out waiting for the item edit UPDATE to block on the deterministic row lock');
 }
 
 describe('item and listing routes', () => {
@@ -117,7 +103,7 @@ describe('item and listing routes', () => {
 				orderProposal: { id: null },
 			});
 			expect(body.images).toEqual([original.url]);
-			expect(body.properties).toHaveLength(3);
+			expect(body.properties).toHaveLength(4);
 		});
 
 		it('projects only the authenticated buyer pending proposal and order', async () => {
@@ -198,10 +184,16 @@ describe('item and listing routes', () => {
 				published: true,
 				status: itemStatus.AVAILABLE,
 			});
+			const propertyById = new Map(body.properties?.map((property) => [property.id, property]));
+			expect(propertyById.get(actors.catalog.properties.text.id)?.value).toBe(actors.catalog.propertyValues.text.id);
+			expect(propertyById.get(actors.catalog.properties.numeric.id)?.value).toBe(0);
+			expect(propertyById.get(actors.catalog.properties.boolean.id)?.value).toBe(false);
+			expect(propertyById.get(actors.catalog.delivery.property.id)?.value).toBe(
+				actors.catalog.delivery.values.easyPay.id,
+			);
 			expect(storedProperties.map(({ property_value_id }) => property_value_id).sort((a, b) => a - b)).toEqual(
-				(body.properties ?? [])
-					.flatMap(({ value }) => (Array.isArray(value) ? value : [value]))
-					.map(Number)
+				[...Object.values(actors.catalog.propertyValues), actors.catalog.delivery.values.easyPay]
+					.map(({ id }) => id)
 					.sort((a, b) => a - b),
 			);
 		});
@@ -228,10 +220,83 @@ describe('item and listing routes', () => {
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
 		});
 
+		it('rejects raw item storage shipping fields even when pickup would otherwise be valid', async () => {
+			const actors = await createCommerceActors();
+			const body = withDelivery(actors, actors.catalog.delivery.values.pickup.id) as ReturnType<typeof withDelivery> & {
+				commons: Record<string, unknown>;
+			};
+			body.shipping = {
+				item_height: 0,
+				item_length: 0,
+				item_weight: 0,
+				item_width: 0,
+				shipping_price: 0,
+			};
+			body.commons.custom_shipping_price = 9_999;
+			body.commons.item_weight = 9_999;
+			const { db } = getTestDatabase();
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('rejects an inactive address owned by the authenticated profile without persisting', async () => {
+			const actors = await createCommerceActors();
+			const inactiveAddress = await createAddressFixture(actors.seller.profile.id, {
+				label: 'Inactive listing address',
+				status: 'inactive',
+			});
+			const body = validItemBody(actors, { commons: { address_id: inactiveAddress.id } });
+			const { db } = getTestDatabase();
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('rejects Easy Pay for a subcategory that does not support it', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors, {
+				commons: { subcategory_id: actors.catalog.unpublishedSubcategory.id },
+				properties: [
+					{
+						id: actors.catalog.unpublishedMapping.property.id,
+						slug: actors.catalog.unpublishedMapping.property.slug,
+						value: actors.catalog.unpublishedMapping.propertyValue.id,
+					},
+				],
+			});
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it.each([
+			['Easy Pay with pickup', true, 'pickup', 0],
+			['Easy Pay with manual shipping', true, 'shipping', 1_250],
+			['manual checkout with Easy Pay shipping', false, 'easyPay', 0],
+		] as const)('rejects inconsistent delivery mode: %s', async (_label, easyPay, deliveryKey, shippingPrice) => {
+			const actors = await createCommerceActors();
+			const body = withDelivery(actors, actors.catalog.delivery.values[deliveryKey].id, easyPay);
+			body.shipping = { ...body.shipping, shipping_price: shippingPrice };
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
+		});
+
 		it('rejects pickup when a shipping price is supplied without persisting an item', async () => {
 			const actors = await createCommerceActors();
-			const delivery = await createDeliveryOptions(actors);
-			const body = withDelivery(actors, delivery, delivery.pickup.id);
+			const body = withDelivery(actors, actors.catalog.delivery.values.pickup.id);
+			body.shipping = { ...body.shipping, shipping_price: 1_250 };
 			const { db } = getTestDatabase();
 
 			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
@@ -239,18 +304,19 @@ describe('item and listing routes', () => {
 
 			expect(response.status).toBe(400);
 			expect(stored).toEqual([]);
+			await expectNoPaymentProviderRequests();
 		});
 
 		it.each(['shipping_price', 'item_weight', 'item_length', 'item_width', 'item_height'] as const)(
 			'rejects shipping when %s is missing or zero',
 			async (field) => {
 				const actors = await createCommerceActors();
-				const delivery = await createDeliveryOptions(actors);
-				const body = withDelivery(actors, delivery, delivery.shipping.id);
+				const body = withDelivery(actors, actors.catalog.delivery.values.shipping.id);
 				body.shipping = { ...body.shipping, [field]: 0 };
 
 				const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
 				expect(response.status).toBe(400);
+				await expectNoPaymentProviderRequests();
 			},
 		);
 
@@ -293,6 +359,52 @@ describe('item and listing routes', () => {
 
 			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
 			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it.each([
+			[
+				'boolean option ID instead of raw boolean',
+				'boolean',
+				(actors: CommerceActorGraph) => actors.catalog.propertyValues.boolean.id,
+			],
+			['numeric string instead of raw number', 'numeric', () => '0'],
+			['raw boolean instead of select option ID', 'text', () => false],
+			[
+				'accidental numeric collision with another option ID',
+				'numeric',
+				(actors: CommerceActorGraph) => actors.catalog.propertyValues.text.id,
+			],
+			['missing numeric semantic value', 'numeric', () => 9_999_999],
+		] as const)('rejects %s', async (_label, propertyKey, valueBuilder) => {
+			const actors = await createCommerceActors();
+			const propertyId = actors.catalog.properties[propertyKey].id;
+			const body = validItemBody(actors);
+			body.properties = body.properties?.map((property) =>
+				property.id === propertyId ? { ...property, value: valueBuilder(actors) } : property,
+			);
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('rejects an ambiguous raw numeric value', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			await db.insert(property_values).values({
+				property_id: actors.catalog.properties.numeric.id,
+				name: 'Ambiguous zero',
+				numeric_value: 0,
+				value: 'ambiguous-zero',
+			});
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors));
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
 		});
 
 		it('rejects an address owned by another profile', async () => {
@@ -301,6 +413,7 @@ describe('item and listing routes', () => {
 
 			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
 			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
 		});
 	});
 
@@ -308,11 +421,12 @@ describe('item and listing routes', () => {
 		it('lets the owner update mutable fields, address, and replace property joins transactionally', async () => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
+			const { db } = getTestDatabase();
+			await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, actors.seller.address.id));
 			const replacementAddress = await createAddressFixture(actors.seller.profile.id, {
 				label: 'Warehouse',
-				status: 'inactive',
+				status: 'active',
 			});
-			const { db } = getTestDatabase();
 			const [replacementTextValue] = await db
 				.insert(property_values)
 				.values({ property_id: actors.catalog.properties.text.id, name: 'Wool', value: 'wool' })
@@ -327,12 +441,17 @@ describe('item and listing routes', () => {
 				{
 					id: actors.catalog.properties.numeric.id,
 					slug: actors.catalog.properties.numeric.slug,
-					value: actors.catalog.propertyValues.numeric.id,
+					value: 0,
 				},
 				{
 					id: actors.catalog.properties.boolean.id,
 					slug: actors.catalog.properties.boolean.slug,
-					value: actors.catalog.propertyValues.boolean.id,
+					value: false,
+				},
+				{
+					id: actors.catalog.delivery.property.id,
+					slug: actors.catalog.delivery.property.slug,
+					value: actors.catalog.delivery.values.easyPay.id,
 				},
 			];
 
@@ -354,7 +473,12 @@ describe('item and listing routes', () => {
 				address_id: replacementAddress.id,
 			});
 			expect(joins.map(({ property_value_id }) => property_value_id).sort((a, b) => a - b)).toEqual(
-				propertiesBody.map(({ value }) => value).sort((a, b) => a - b),
+				[
+					replacementTextValue.id,
+					actors.catalog.propertyValues.numeric.id,
+					actors.catalog.propertyValues.boolean.id,
+					actors.catalog.delivery.values.easyPay.id,
+				].sort((a, b) => a - b),
 			);
 		});
 
@@ -383,13 +507,12 @@ describe('item and listing routes', () => {
 
 		it('merges a partial shipping patch with existing dimensions before validating it', async () => {
 			const actors = await createCommerceActors();
-			const item = await createItemFixture(actors);
-			const delivery = await createDeliveryOptions(actors);
-			const { db } = getTestDatabase();
-			await db.insert(items_properties_values).values({
-				item_id: item.id,
-				property_value_id: delivery.shipping.id,
+			const manualBody = withDelivery(actors, actors.catalog.delivery.values.shipping.id);
+			const item = await createItemFixture(actors, {
+				commons: { easy_pay: false },
+				properties: manualBody.properties,
 			});
+			const { db } = getTestDatabase();
 
 			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
 				shipping: { shipping_price: 2_000 },
@@ -462,6 +585,28 @@ describe('item and listing routes', () => {
 			});
 		});
 
+		it('rejects raw storage shipping columns in commons without mutating the item', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const body = {
+				commons: {
+					title: 'Attempted Raw Shipping Bypass',
+					custom_shipping_price: 99_999,
+				},
+			};
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, body);
+			const { db } = getTestDatabase();
+			const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+
+			expect(response.status).toBe(400);
+			expect(stored).toMatchObject({
+				title: item.title,
+				custom_shipping_price: item.custom_shipping_price,
+			});
+			await expectNoPaymentProviderRequests();
+		});
+
 		it('rejects a replacement address owned by another profile', async () => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
@@ -469,6 +614,137 @@ describe('item and listing routes', () => {
 				commons: { address_id: actors.buyer.address.id },
 			});
 			expect(response.status).toBe(400);
+		});
+
+		it('rejects an inactive replacement address owned by the seller without mutation', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const inactiveAddress = await createAddressFixture(actors.seller.profile.id, {
+				label: 'Inactive edit address',
+				status: 'inactive',
+			});
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				commons: { address_id: inactiveAddress.id },
+			});
+			const { db } = getTestDatabase();
+			const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+
+			expect(response.status).toBe(400);
+			expect(stored?.address_id).toBe(item.address_id);
+		});
+
+		it('rejects updates to a property mapping marked non-editable', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const { db } = getTestDatabase();
+			await db
+				.update(subcategory_properties)
+				.set({ on_item_update_editable: false })
+				.where(eq(subcategory_properties.id, actors.catalog.mappings.text.id));
+			const before = await db
+				.select()
+				.from(items_properties_values)
+				.where(eq(items_properties_values.item_id, item.id));
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				properties: validItemBody(actors).properties,
+			});
+			const after = await db.select().from(items_properties_values).where(eq(items_properties_values.item_id, item.id));
+
+			expect(response.status).toBe(400);
+			expect(after).toEqual(before);
+		});
+
+		it('rejects an accidental property-value ID collision during edit', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const body = validItemBody(actors);
+			body.properties = body.properties?.map((property) =>
+				property.id === actors.catalog.properties.numeric.id
+					? { ...property, value: actors.catalog.propertyValues.text.id }
+					: property,
+			);
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				properties: body.properties,
+			});
+
+			expect(response.status).toBe(400);
+		});
+
+		it('provisions the seller payment identity when edit enables Easy Pay', async () => {
+			const actors = await createCommerceActors();
+			const manualBody = withDelivery(actors, actors.catalog.delivery.values.shipping.id);
+			manualBody.shipping = { ...manualBody.shipping, shipping_price: 1_250 };
+			const item = await createItemFixture(actors, {
+				commons: { easy_pay: false },
+				properties: manualBody.properties,
+				shipping: manualBody.shipping,
+			});
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+			const easyPayBody = validItemBody(actors);
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				commons: { easy_pay: true },
+				properties: easyPayBody.properties,
+				shipping: easyPayBody.shipping,
+			});
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			const requests = await getProviderRequests(providerUrl);
+			const [storedProfile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+
+			expect(response.status).toBe(200);
+			expect(requests.filter(({ path }) => path === '/api/v1/guest_users')).toHaveLength(1);
+			expect(storedProfile?.payment_provider_id).toBeTruthy();
+		});
+
+		it('rejects changing an Easy Pay item to a manual delivery mode without disabling Easy Pay', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const manualBody = withDelivery(actors, actors.catalog.delivery.values.shipping.id, true);
+			manualBody.shipping = { ...manualBody.shipping, shipping_price: 1_250 };
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				properties: manualBody.properties,
+				shipping: manualBody.shipping,
+			});
+
+			expect(response.status).toBe(400);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('returns 404 when a concurrent delete wins before the final owner-scoped UPDATE', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const { client, db } = getTestDatabase();
+			const blocker = await client.connect();
+			let transactionOpen = false;
+
+			try {
+				await blocker.query('BEGIN');
+				transactionOpen = true;
+				await blocker.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [item.id]);
+				const editResponsePromise = authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					commons: { title: 'Losing Concurrent Edit' },
+				});
+
+				await waitForBlockedItemUpdate();
+				await blocker.query('UPDATE items SET deleted_at = NOW(), published = FALSE WHERE id = $1', [item.id]);
+				await blocker.query('COMMIT');
+				transactionOpen = false;
+				const response = await editResponsePromise;
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+
+				expect(response.status).toBe(404);
+				expect(stored?.title).toBe(item.title);
+				expect(stored?.deleted_at).toBeInstanceOf(Date);
+			} finally {
+				if (transactionOpen) await blocker.query('ROLLBACK');
+				blocker.release();
+			}
 		});
 
 		it('rolls back common fields when replacement property mappings are invalid', async () => {
@@ -624,7 +900,12 @@ describe('item and listing routes', () => {
 				title: visible.title,
 				subcategory: actors.catalog.childSubcategory.slug,
 			});
-			expect(Object.keys(body[0]?.properties as JsonObject)).toHaveLength(3);
+			expect(body[0]?.properties).toMatchObject({
+				[actors.catalog.properties.text.slug]: ['cotton'],
+				[actors.catalog.properties.numeric.slug]: ['0'],
+				[actors.catalog.properties.boolean.slug]: ['false'],
+				[actors.catalog.delivery.property.slug]: ['shipping_easy_pay'],
+			});
 		});
 
 		it('returns 404 for an unknown username', async () => {
