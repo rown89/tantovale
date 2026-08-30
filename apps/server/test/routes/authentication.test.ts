@@ -554,6 +554,30 @@ describe('authentication routes', () => {
 		expect(sessions[0]?.token).not.toBe(refreshToken);
 	});
 
+	it('GET /user/auth preserves the original session when automatic rotation persistence fails', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const refreshToken = cookieValue(jar.header(), 'refresh_token');
+		const { db } = getTestDatabase();
+		await db.execute(
+			sql`ALTER TABLE refresh_tokens ADD CONSTRAINT middleware_auth_test_reject_insert CHECK (false) NOT VALID`,
+		);
+
+		try {
+			const response = await app.request('/user/auth', {
+				headers: { cookie: `access_token=unusable; refresh_token=${refreshToken}` },
+			});
+			const rows = await db.select().from(refreshTokens).where(eq(refreshTokens.token, refreshToken!));
+
+			expect(response.status).toBe(500);
+			expect(await response.json()).toEqual({ message: 'Authentication failed' });
+			expect(response.headers.getSetCookie()).toEqual([]);
+			expect(rows).toHaveLength(1);
+		} finally {
+			await db.execute(sql`ALTER TABLE refresh_tokens DROP CONSTRAINT middleware_auth_test_reject_insert`);
+		}
+	});
+
 	it('POST /refresh/auth rotates the exact valid session without exposing credentials and preserves another real session', async () => {
 		const fixture = await createUserFixture({ emailVerified: true });
 		const [jar, siblingJar] = await Promise.all([loginAs(fixture), loginAs(fixture)]);
@@ -724,6 +748,31 @@ describe('authentication routes', () => {
 		expect(sessions.map(({ token }) => token)).not.toContain(refreshToken);
 	});
 
+	it('POST /logout/auth revokes without rotating when the access token is unusable', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const refreshToken = cookieValue(jar.header(), 'refresh_token');
+		const { db } = getTestDatabase();
+
+		const response = await app.request('/logout/auth', {
+			method: 'POST',
+			headers: { cookie: `access_token=unusable; refresh_token=${refreshToken}` },
+		});
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+		const setCookies = response.headers.getSetCookie();
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ message: 'Logout successful' });
+		expect(sessions).toEqual([]);
+		expect(setCookies).toHaveLength(2);
+		expect(setCookies).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/^access_token=;.*Max-Age=0/i),
+				expect.stringMatching(/^refresh_token=;.*Max-Age=0/i),
+			]),
+		);
+	});
+
 	it('POST /logout/auth deletes production cookies with the original Domain and Path', async () => {
 		const fixture = await createUserFixture({ emailVerified: true });
 		const jar = await loginAs(fixture);
@@ -743,6 +792,23 @@ describe('authentication routes', () => {
 			expect(header).toContain('Path=/');
 			expect(header).toMatch(/Max-Age=0/i);
 		}
+	});
+
+	it('POST /logout/auth rejects an invalid refresh session and still clears both cookies', async () => {
+		const response = await app.request('/logout/auth', {
+			method: 'POST',
+			headers: { cookie: 'access_token=unusable; refresh_token=malformed' },
+		});
+		const setCookies = response.headers.getSetCookie();
+
+		expect(response.status).toBe(401);
+		expect(setCookies).toHaveLength(2);
+		expect(setCookies).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/^access_token=;.*Max-Age=0/i),
+				expect.stringMatching(/^refresh_token=;.*Max-Age=0/i),
+			]),
+		);
 	});
 
 	it('POST /logout/auth returns 401 when the logged-out cookie jar is reused', async () => {

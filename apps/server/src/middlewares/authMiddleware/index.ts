@@ -5,7 +5,7 @@ import type { Context, Next } from 'hono';
 
 import { users } from '../../database/schemas/users';
 import { createClient } from '../../database';
-import { invalidateTokens, rotateRefreshSession, verifyAccessTokenClaims } from './utils';
+import { InvalidRefreshSessionError, invalidateTokens, rotateRefreshSession, verifyAccessTokenClaims } from './utils';
 import { getNodeEnvMode } from '../../utils/constants';
 import type { AppBindings } from '../../lib/types';
 import { profiles } from '#database/schemas/profiles';
@@ -48,9 +48,13 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 					refreshTokenSecret: REFRESH_TOKEN_SECRET,
 					isProductionMode,
 				});
-			} catch {
-				await invalidateTokens(c, db, isProductionMode);
-				return c.json({ message: `Unauthorized - storedRefreshToken error` }, 401);
+			} catch (error) {
+				if (error instanceof InvalidRefreshSessionError) {
+					await invalidateTokens(c, db, isProductionMode);
+					return c.json({ message: `Unauthorized - storedRefreshToken error` }, 401);
+				}
+
+				return c.json({ message: 'Authentication failed' }, 500);
 			}
 
 			await next();
@@ -88,8 +92,6 @@ export async function authMiddleware(c: Context<AppBindings>, next: Next) {
 
 		await next();
 	} catch {
-		await invalidateTokens(c, db, isProductionMode);
-
-		return c.json({ message: 'Authentication failed' }, 401);
+		return c.json({ message: 'Authentication failed' }, 500);
 	}
 }

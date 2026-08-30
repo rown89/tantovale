@@ -49,10 +49,10 @@ export function createApp() {
 	// paths that require authorization starts with authPath
 	// app.use(`/${authPath}/*`, authMiddleware);
 
-	// The exact refresh endpoint performs the same atomic rotation directly, once per request.
+	// Refresh rotates explicitly and logout revokes explicitly, each exactly once per request.
 	// All other paths containing authPath keep the legacy global protection contract.
 	app.use((c, next) => {
-		if (c.req.path !== '/refresh/auth' && c.req.path.includes(authPath)) {
+		if (c.req.path !== '/refresh/auth' && c.req.path !== '/logout/auth' && c.req.path.includes(authPath)) {
 			return authMiddleware(c, next);
 		}
 		return next();
