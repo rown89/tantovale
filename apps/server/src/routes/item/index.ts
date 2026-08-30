@@ -298,15 +298,15 @@ async function validateEditItemState(
 	commons: updateItemTypes['commons'],
 	requestedProperties: updateItemTypes['properties'],
 	shipping: updateItemTypes['shipping'],
+	lockItemForUpdate = false,
 ) {
-	const [existingItem] = await tx
-		.select()
-		.from(items)
-		.where(and(eq(items.id, itemId), eq(items.profile_id, profileId), isNull(items.deleted_at)))
-		.limit(1);
+	const itemPredicate = and(eq(items.id, itemId), eq(items.profile_id, profileId), isNull(items.deleted_at));
+	const [existingItem] = lockItemForUpdate
+		? await tx.select().from(items).where(itemPredicate).for('update').limit(1)
+		: await tx.select().from(items).where(itemPredicate).limit(1);
 	if (!existingItem) return undefined;
 
-	if (commons?.address_id !== undefined) {
+	if (commons?.address_id !== undefined && commons.address_id !== existingItem.address_id) {
 		await requireActiveProfileAddress(tx, commons.address_id, profileId);
 	}
 	const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
@@ -671,7 +671,15 @@ export const itemRoute = createRouter()
 			}
 
 			const result = await db.transaction(async (tx) => {
-				const validation = await validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping);
+				const validation = await validateEditItemState(
+					tx,
+					id,
+					user.profile_id,
+					commons,
+					requestedProperties,
+					shipping,
+					true,
+				);
 				if (!validation) return undefined;
 				const { validatedProperties } = validation;
 

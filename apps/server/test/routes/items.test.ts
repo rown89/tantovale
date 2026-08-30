@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
@@ -133,22 +133,20 @@ function hiddenTaxonomyItemBody(actors: CommerceActorGraph) {
 	return { ...body, shipping: undefined };
 }
 
-async function waitForBlockedItemUpdate(): Promise<void> {
+async function waitForBlockedItemLockWaiters(expectedCount: number): Promise<void> {
 	const { client } = getTestDatabase();
 	for (let attempt = 0; attempt < 200; attempt += 1) {
-		const { rows } = await client.query<{ blocked: boolean }>(`
-			SELECT EXISTS (
-				SELECT 1
-				FROM pg_stat_activity
-				WHERE datname = current_database()
-					AND wait_event_type = 'Lock'
-					AND query ILIKE 'update "items" set%'
-			) AS blocked
+		const { rows } = await client.query<{ blocked: number }>(`
+			SELECT count(*)::int AS blocked
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+				AND wait_event_type = 'Lock'
+				AND query ILIKE '%items%'
 		`);
-		if (rows[0]?.blocked) return;
+		if ((rows[0]?.blocked ?? 0) >= expectedCount) return;
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
-	throw new Error('Timed out waiting for the item edit UPDATE to block on the deterministic row lock');
+	throw new Error(`Timed out waiting for ${expectedCount} item row-lock waiter(s)`);
 }
 
 describe('item and listing routes', () => {
@@ -981,6 +979,28 @@ describe('item and listing routes', () => {
 			expect(storedAddress?.status).toBe('inactive');
 		});
 
+		it('accepts a full-form edit that repeats the unchanged legacy inactive address ID', async () => {
+			const actors = await createCommerceActors();
+			const manualDelivery = withDelivery(actors, actors.catalog.delivery.values.pickup.id);
+			const item = await createItemFixture(actors, {
+				commons: { easy_pay: false },
+				properties: manualDelivery.properties,
+			});
+			const { db } = getTestDatabase();
+			await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, item.address_id));
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				commons: { address_id: item.address_id, title: 'Repeated Legacy Address Update' },
+			});
+			const [storedItem] = await db.select().from(items).where(eq(items.id, item.id));
+
+			expect(response.status).toBe(200);
+			expect(storedItem).toMatchObject({
+				address_id: item.address_id,
+				title: 'Repeated Legacy Address Update',
+			});
+		});
+
 		it.each(['select', 'radio', 'select_multi', 'checkbox'] as const)(
 			'rejects an invalid %s property cardinality before edit side effects',
 			async (type) => {
@@ -1118,6 +1138,65 @@ describe('item and listing routes', () => {
 			});
 		});
 
+		it('serializes concurrent delivery and shipping edits before validating current state', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const pickupBody = withDelivery(actors, actors.catalog.delivery.values.pickup.id);
+			const { client, db } = getTestDatabase();
+			const blocker = await client.connect();
+			let transactionOpen = false;
+			let pickupResponsePromise: Promise<Response> | undefined;
+			let shippingResponsePromise: Promise<Response> | undefined;
+
+			try {
+				await blocker.query('BEGIN');
+				transactionOpen = true;
+				await blocker.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [item.id]);
+
+				pickupResponsePromise = authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					commons: { easy_pay: false },
+					properties: pickupBody.properties,
+				});
+				await waitForBlockedItemLockWaiters(1);
+
+				shippingResponsePromise = authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					shipping: { shipping_price: 4_321 },
+				});
+				await waitForBlockedItemLockWaiters(2);
+
+				await blocker.query('COMMIT');
+				transactionOpen = false;
+				const [pickupResponse, shippingResponse] = await Promise.all([pickupResponsePromise, shippingResponsePromise]);
+				const [storedItem] = await db.select().from(items).where(eq(items.id, item.id));
+				const [storedDelivery] = await db
+					.select({ value: property_values.value })
+					.from(items_properties_values)
+					.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
+					.innerJoin(properties, eq(properties.id, property_values.property_id))
+					.where(and(eq(items_properties_values.item_id, item.id), eq(properties.slug, 'delivery_method')));
+
+				expect(pickupResponse.status).toBe(200);
+				expect(shippingResponse.status).toBe(400);
+				expect(await responseJson(shippingResponse)).toEqual({ message: 'Shipping price is not allowed' });
+				expect(storedDelivery?.value).toBe('pickup');
+				expect(storedItem).toMatchObject({
+					custom_shipping_price: null,
+					easy_pay: false,
+					item_height: null,
+					item_length: null,
+					item_weight: null,
+					item_width: null,
+				});
+			} finally {
+				if (transactionOpen) await blocker.query('ROLLBACK');
+				blocker.release();
+				await Promise.all([
+					pickupResponsePromise?.catch(() => undefined),
+					shippingResponsePromise?.catch(() => undefined),
+				]);
+			}
+		});
+
 		it.each([
 			['another user', false],
 			['a deleted item', true],
@@ -1208,23 +1287,26 @@ describe('item and listing routes', () => {
 			expect(response.status).toBe(400);
 		});
 
-		it('rejects an inactive replacement address owned by the seller without mutation', async () => {
-			const actors = await createCommerceActors();
-			const item = await createItemFixture(actors);
-			const inactiveAddress = await createAddressFixture(actors.seller.profile.id, {
-				label: 'Inactive edit address',
-				status: 'inactive',
-			});
+		it.each(['inactive', 'deleted'] as const)(
+			'rejects an owned %s replacement address without mutation',
+			async (status) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				const inactiveAddress = await createAddressFixture(actors.seller.profile.id, {
+					label: `${status} edit address`,
+					status,
+				});
 
-			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
-				commons: { address_id: inactiveAddress.id },
-			});
-			const { db } = getTestDatabase();
-			const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+				const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					commons: { address_id: inactiveAddress.id },
+				});
+				const { db } = getTestDatabase();
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
 
-			expect(response.status).toBe(400);
-			expect(stored?.address_id).toBe(item.address_id);
-		});
+				expect(response.status).toBe(400);
+				expect(stored?.address_id).toBe(item.address_id);
+			},
+		);
 
 		it('rejects updates to a property mapping marked non-editable', async () => {
 			const actors = await createCommerceActors();
@@ -1323,7 +1405,7 @@ describe('item and listing routes', () => {
 					commons: { title: 'Losing Concurrent Edit' },
 				});
 
-				await waitForBlockedItemUpdate();
+				await waitForBlockedItemLockWaiters(1);
 				await blocker.query('UPDATE items SET deleted_at = NOW(), published = FALSE WHERE id = $1', [item.id]);
 				await blocker.query('COMMIT');
 				transactionOpen = false;
