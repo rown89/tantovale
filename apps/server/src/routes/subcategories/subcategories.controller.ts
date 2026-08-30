@@ -8,7 +8,7 @@ export const getSubcategoriesController = async (c: Context<AppBindings>) => {
 		const subcategories = await getSubcategories();
 
 		if (!subcategories.length) {
-			return c.json({ message: 'Missing subcategories' }, 500);
+			return c.json({ message: 'Missing subcategories' }, 404);
 		}
 
 		return c.json(subcategories, 200);

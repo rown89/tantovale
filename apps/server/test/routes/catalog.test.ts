@@ -110,6 +110,14 @@ describe('catalog and location routes', () => {
 		expect(optionValue(fixture.properties.boolean.id)).toBe(false);
 	});
 
+	it('returns the legacy 404 response when no subcategories exist', async () => {
+		const response = await app.request('/subcategories');
+
+		expect(response.status).toBe(404);
+		expect(response.status).not.toBe(500);
+		expect(await response.json()).toEqual({ message: 'Missing subcategories' });
+	});
+
 	it('returns 400 for malformed numeric catalog and location identifiers', async () => {
 		await createCatalogFixture();
 		const paths = [
