@@ -3,22 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../../src/app';
 import { routeContracts, type RouteAuth, type RouteSuite } from './route-registry';
 
-function mountedEndpointRegistrations(routes: typeof app.routes): string[] {
-	// Hono records `app.use()` middleware layers as `ALL` and expands route handler stacks into adjacent
-	// concrete-method entries. Each contiguous method/path group is one endpoint registration.
-	const routeHandlerLayers = routes.filter((route) => route.method !== 'ALL');
+const EXPECTED_HANDLER_LAYER_COUNT = 131;
 
-	return routeHandlerLayers
-		.filter((route, index) => {
-			const next = routeHandlerLayers[index + 1];
-
-			return next?.method !== route.method || next.path !== route.path;
-		})
-		.map((route) => `${route.method.toUpperCase()} ${route.path}`);
+function mountedRouteHandlerLayers(routes: typeof app.routes): string[] {
+	// Hono records `app.use()` middleware layers as `ALL`, while concrete methods are handler layers.
+	// This baseline detects added or removed handler layers, including an adjacent duplicate registration,
+	// but `app.routes` does not expose registration boundaries, so it cannot infer endpoint registrations.
+	return routes.filter((route) => route.method !== 'ALL').map((route) => `${route.method.toUpperCase()} ${route.path}`);
 }
 
 function mountedRoutes(routes: typeof app.routes): string[] {
-	return [...new Set(mountedEndpointRegistrations(routes))].sort();
+	return [...new Set(mountedRouteHandlerLayers(routes))].sort();
 }
 
 function registeredRoutes(): string[] {
@@ -26,10 +21,10 @@ function registeredRoutes(): string[] {
 }
 
 describe('mounted API route target contracts for later route suites', () => {
-	it('has no duplicate endpoint registrations before deduplicated target parity', () => {
-		const mounted = mountedEndpointRegistrations(app.routes);
+	it('preserves the raw non-middleware Hono handler-layer baseline', () => {
+		const mounted = mountedRouteHandlerLayers(app.routes);
 
-		expect(new Set(mounted).size).toBe(mounted.length);
+		expect(mounted).toHaveLength(EXPECTED_HANDLER_LAYER_COUNT);
 	});
 
 	it('matches the target registry consumed by later route suites exactly', () => {
