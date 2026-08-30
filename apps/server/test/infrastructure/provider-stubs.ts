@@ -37,6 +37,11 @@ type TrustapChargeRequest = {
 	useHrPost: boolean;
 };
 
+type TrustapGuestRequest = {
+	id: number;
+	email: string;
+};
+
 type TrustapTransactionRequest = {
 	buyer_id: string;
 	seller_id: string;
@@ -47,6 +52,19 @@ type TrustapTransactionRequest = {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
+};
+
+type TrustapTransactionResource = Omit<
+	typeof trustapTransactionFixture,
+	'buyer_id' | 'charge' | 'description' | 'id' | 'postage_fee' | 'price' | 'seller_id'
+> & {
+	buyer_id: string;
+	charge: number;
+	description: string;
+	id: number;
+	postage_fee: number;
+	price: number;
+	seller_id: string;
 };
 
 type ProviderRoute =
@@ -194,19 +212,23 @@ function hasExpectedShippoVersion(headers: Record<string, string>): boolean {
 	return headers['shippo-api-version'] === '2018-02-08';
 }
 
-function isValidTrustapGuest(body: unknown): boolean {
-	if (!isRecord(body) || !isRecord(body.tos_acceptance)) return false;
-	return (
-		isSafeInteger(body.id, 1) &&
-		isNonemptyString(body.email) &&
-		body.email.includes('@') &&
-		isNonemptyString(body.first_name) &&
-		isNonemptyString(body.last_name) &&
-		typeof body.country_code === 'string' &&
-		body.country_code.length === 2 &&
-		isSafeInteger(body.tos_acceptance.unix_timestamp, 0) &&
-		isNonemptyString(body.tos_acceptance.ip)
-	);
+function parseTrustapGuest(body: unknown): TrustapGuestRequest | undefined {
+	if (!isRecord(body) || !isRecord(body.tos_acceptance)) return undefined;
+	if (
+		!isSafeInteger(body.id, 1) ||
+		!isNonemptyString(body.email) ||
+		!body.email.includes('@') ||
+		!isNonemptyString(body.first_name) ||
+		!isNonemptyString(body.last_name) ||
+		typeof body.country_code !== 'string' ||
+		body.country_code.length !== 2 ||
+		!isSafeInteger(body.tos_acceptance.unix_timestamp, 0) ||
+		!isNonemptyString(body.tos_acceptance.ip)
+	) {
+		return undefined;
+	}
+
+	return { id: body.id, email: body.email };
 }
 
 function parseTrustapCharge(url: URL): TrustapChargeRequest | undefined {
@@ -266,8 +288,23 @@ function isValidShippoShipment(body: unknown): boolean {
 		isNonemptyString(body.address_to.country) &&
 		Array.isArray(body.parcels) &&
 		body.parcels.length > 0 &&
-		body.parcels.every(isRecord)
+		body.parcels.every(
+			(parcel) =>
+				isRecord(parcel) &&
+				parcel.distance_unit === 'cm' &&
+				parcel.mass_unit === 'kg' &&
+				isPositiveFiniteNumericString(parcel.height) &&
+				isPositiveFiniteNumericString(parcel.length) &&
+				isPositiveFiniteNumericString(parcel.weight) &&
+				isPositiveFiniteNumericString(parcel.width),
+		)
 	);
+}
+
+function isPositiveFiniteNumericString(value: unknown): value is string {
+	if (typeof value !== 'string' || !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)) return false;
+	const numericValue = Number(value);
+	return Number.isFinite(numericValue) && numericValue > 0;
 }
 
 function parseShippoTransaction(body: unknown): { rate: string } | undefined {
@@ -301,6 +338,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 	let scenario: StubScenario = 'success';
 	let requests: CapturedRequest[] = [];
 	const trustapHandshakes = new Map<string, { charge: number; version: number }>();
+	const trustapTransactions = new Map<number, TrustapTransactionResource>([
+		[trustapTransactionFixture.id, trustapTransactionFixture],
+	]);
+	let nextTrustapTransactionId = trustapTransactionFixture.id + 1;
 	const shippoShipmentIds = new Set<string>();
 	const shippoRateIds = new Set<string>();
 
@@ -308,6 +349,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		requests = [];
 		scenario = 'success';
 		trustapHandshakes.clear();
+		trustapTransactions.clear();
+		trustapTransactions.set(trustapTransactionFixture.id, trustapTransactionFixture);
+		nextTrustapTransactionId = trustapTransactionFixture.id + 1;
 		shippoShipmentIds.clear();
 		shippoRateIds.clear();
 	};
@@ -376,12 +420,14 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 			});
 
 			let trustapCharge: TrustapChargeRequest | undefined;
+			let trustapGuest: TrustapGuestRequest | undefined;
 			let trustapTransaction: TrustapTransactionRequest | undefined;
 			let shippoTransaction: { rate: string } | undefined;
 
 			switch (route.name) {
 				case 'trustap-guest-user':
-					if (!isValidTrustapGuest(body)) {
+					trustapGuest = parseTrustapGuest(body);
+					if (!trustapGuest) {
 						sendValidationError(kind, response);
 						return;
 					}
@@ -395,7 +441,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					break;
 				case 'trustap-create-transaction': {
 					trustapTransaction = parseTrustapTransaction(body);
-					if (!trustapTransaction || headers['trustap-user'] !== trustapTransaction.seller_id) {
+					const actingUser =
+						trustapTransaction?.creator_role === 'buyer' ? trustapTransaction.buyer_id : trustapTransaction?.seller_id;
+					if (!trustapTransaction || headers['trustap-user'] !== actingUser) {
 						sendValidationError(kind, response);
 						return;
 					}
@@ -430,6 +478,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					break;
 				case 'trustap-get-transaction':
+					if (!trustapTransactions.has(route.transactionId)) {
+						sendNotFound(kind, response);
+						return;
+					}
 					break;
 			}
 
@@ -437,7 +489,12 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 
 			switch (route.name) {
 				case 'trustap-guest-user':
-					sendJson(response, 201, trustapGuestUserFixture);
+					if (!trustapGuest) throw new Error('Validated Trustap guest input is missing');
+					sendJson(response, 201, {
+						...trustapGuestUserFixture,
+						email: trustapGuest.email,
+						id: `guest-${trustapGuest.id}`,
+					});
 					return;
 				case 'trustap-charge': {
 					if (!trustapCharge) throw new Error('Validated Trustap charge input is missing');
@@ -459,10 +516,11 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					sendJson(response, 200, chargeResponse);
 					return;
 				}
-				case 'trustap-create-transaction':
+				case 'trustap-create-transaction': {
 					if (!trustapTransaction) throw new Error('Validated Trustap transaction input is missing');
-					sendJson(response, 201, {
+					const transaction = {
 						...trustapTransactionFixture,
+						id: nextTrustapTransactionId,
 						buyer_id: trustapTransaction.buyer_id,
 						seller_id: trustapTransaction.seller_id,
 						currency: trustapTransaction.currency,
@@ -470,11 +528,18 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						price: trustapTransaction.price,
 						postage_fee: trustapTransaction.postage_fee,
 						charge: trustapTransaction.charge,
-					});
+					};
+					nextTrustapTransactionId += 1;
+					trustapTransactions.set(transaction.id, transaction);
+					sendJson(response, 201, transaction);
 					return;
-				case 'trustap-get-transaction':
-					sendJson(response, 200, { ...trustapTransactionFixture, id: route.transactionId });
+				}
+				case 'trustap-get-transaction': {
+					const transaction = trustapTransactions.get(route.transactionId);
+					if (!transaction) throw new Error('Known Trustap transaction is missing');
+					sendJson(response, 200, transaction);
 					return;
+				}
 				case 'shippo-carrier-accounts':
 					sendJson(response, 200, shippoCarrierAccountsFixture);
 					return;

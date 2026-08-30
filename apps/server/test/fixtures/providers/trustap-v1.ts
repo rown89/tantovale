@@ -1,7 +1,7 @@
 export const trustapGuestUserFixture = {
 	created_at: '2026-08-30T12:00:00.000Z',
 	email: 'buyer@tantovale.test',
-	id: 'guest-buyer-test',
+	id: 'guest-101',
 } as const;
 
 export const trustapChargeFixture = {

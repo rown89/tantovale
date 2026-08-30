@@ -18,9 +18,6 @@ import {
 import { getProviderRequests, resetProviderStub, resetProviderStubs, setProviderScenario } from '../helpers/providers';
 import { startProviderStub, type StartedProviderStub, type StubScenario } from './provider-stubs';
 
-const startedStubs: StartedProviderStub[] = [];
-let cleanupRegistered = false;
-
 function requiredTestEnvironment(name: 'PAYMENT_PROVIDER_API_KEY' | 'SHIPPING_PROVIDER_API_KEY'): string {
 	const value = process.env[name];
 	if (!value) throw new Error(`Missing provider test environment key ${name}`);
@@ -89,27 +86,13 @@ const validShippoShipmentBody = {
 
 async function startStub(kind: 'trustap' | 'shippo'): Promise<StartedProviderStub> {
 	const stub = await startProviderStub(kind);
-	startedStubs.push(stub);
-
-	if (!cleanupRegistered) {
-		cleanupRegistered = true;
-		onTestFinished(async (result) => {
-			cleanupRegistered = false;
-			const cleanupResults = await Promise.allSettled(startedStubs.splice(0).map((started) => started.close()));
-			const cleanupErrors = cleanupResults
-				.filter((cleanupResult): cleanupResult is PromiseRejectedResult => cleanupResult.status === 'rejected')
-				.map((cleanupResult) => cleanupResult.reason);
-
-			if (cleanupErrors.length > 0) {
-				throw new AggregateError(
-					cleanupErrors,
-					result.state === 'fail'
-						? 'Provider stub cleanup also failed after the test failure'
-						: 'Provider stub cleanup failed',
-				);
-			}
-		});
-	}
+	onTestFinished(async () => {
+		try {
+			await stub.close();
+		} catch (error) {
+			throw new AggregateError([error], `Failed to close ${kind} provider stub after test`);
+		}
+	});
 	return stub;
 }
 
@@ -130,7 +113,7 @@ async function assertTrustapContract(stub: StartedProviderStub): Promise<void> {
 		}),
 		await fetch(`${stub.url}/api/v1/me/transactions/create_with_guest_user`, {
 			method: 'POST',
-			headers: trustapHeaders(transactionBody.seller_id),
+			headers: trustapHeaders(transactionBody.buyer_id),
 			body: JSON.stringify(transactionBody),
 		}),
 		await fetch(`${stub.url}/api/v1/transactions/91001`, { headers: { authorization } }),
@@ -140,7 +123,7 @@ async function assertTrustapContract(stub: StartedProviderStub): Promise<void> {
 	expect(await Promise.all(responses.map((response) => response.json()))).toEqual([
 		trustapGuestUserFixture,
 		trustapChargeFixture,
-		trustapTransactionFixture,
+		{ ...trustapTransactionFixture, id: trustapTransactionFixture.id + 1 },
 		trustapTransactionFixture,
 	]);
 
@@ -211,6 +194,28 @@ describe('local commerce provider stubs', () => {
 
 		await assertTrustapContract(trustap);
 		await assertShippoContract(shippo);
+	});
+
+	it('derives distinct deterministic Trustap guest identities from each validated request', async () => {
+		const stub = await startStub('trustap');
+		const createGuest = async (id: number, email: string) => {
+			const response = await fetch(`${stub.url}/api/v1/guest_users`, {
+				method: 'POST',
+				headers: trustapHeaders(),
+				body: JSON.stringify({ ...validGuestBody, id, email }),
+			});
+			expect(response.status).toBe(201);
+			return (await response.json()) as { created_at: string; email: string; id: string };
+		};
+
+		const buyer = await createGuest(101, 'buyer@tantovale.test');
+		const seller = await createGuest(202, 'seller@tantovale.test');
+		const repeatedBuyer = await createGuest(101, 'buyer-updated@tantovale.test');
+
+		expect(buyer).toMatchObject({ email: 'buyer@tantovale.test' });
+		expect(seller).toMatchObject({ email: 'seller@tantovale.test' });
+		expect(repeatedBuyer).toMatchObject({ email: 'buyer-updated@tantovale.test', id: buyer.id });
+		expect(seller.id).not.toBe(buyer.id);
 	});
 
 	it('requires exact Trustap Basic authentication on every provider route', async () => {
@@ -285,13 +290,14 @@ describe('local commerce provider stubs', () => {
 		const transactionUrl = `${stub.url}/api/v1/me/transactions/create_with_guest_user`;
 		for (const request of [
 			{ headers: authenticated, body: validTrustapTransactionBody },
-			{ headers: trustapHeaders('wrong-seller'), body: validTrustapTransactionBody },
+			{ headers: trustapHeaders('wrong-actor'), body: validTrustapTransactionBody },
+			{ headers: trustapHeaders(validTrustapTransactionBody.seller_id), body: validTrustapTransactionBody },
 			{
-				headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+				headers: trustapHeaders(validTrustapTransactionBody.buyer_id),
 				body: { ...validTrustapTransactionBody, price: '10000' },
 			},
 			{
-				headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+				headers: trustapHeaders(validTrustapTransactionBody.buyer_id),
 				body: { ...validTrustapTransactionBody, charge: validTrustapTransactionBody.charge + 1 },
 			},
 		]) {
@@ -307,11 +313,63 @@ describe('local commerce provider stubs', () => {
 			(
 				await fetch(transactionUrl, {
 					method: 'POST',
-					headers: trustapHeaders(validTrustapTransactionBody.seller_id),
+					headers: trustapHeaders(validTrustapTransactionBody.buyer_id),
 					body: JSON.stringify(validTrustapTransactionBody),
 				})
 			).status,
 		).toBe(201);
+
+		const sellerCreated = { ...validTrustapTransactionBody, creator_role: 'seller' as const };
+		expect(
+			(
+				await fetch(transactionUrl, {
+					method: 'POST',
+					headers: trustapHeaders(sellerCreated.buyer_id),
+					body: JSON.stringify(sellerCreated),
+				})
+			).status,
+		).toBe(400);
+		expect(
+			(
+				await fetch(transactionUrl, {
+					method: 'POST',
+					headers: trustapHeaders(sellerCreated.seller_id),
+					body: JSON.stringify(sellerCreated),
+				})
+			).status,
+		).toBe(201);
+	});
+
+	it('returns only known Trustap transaction resources before applying scenarios', async () => {
+		const stub = await startStub('trustap');
+		const transactionUrl = `${stub.url}/api/v1/me/transactions/create_with_guest_user`;
+
+		expect((await fetch(`${stub.url}/api/v1/transactions/99999`, { headers: trustapHeaders() })).status).toBe(404);
+		expect((await fetch(`${stub.url}/api/v1/transactions/91001`, { headers: trustapHeaders() })).status).toBe(200);
+
+		await fetch(`${stub.url}/api/v1/charge?price=10000&currency=eur&postage_fee=750&use_hr_post=false`, {
+			headers: trustapHeaders(),
+		});
+		const createdResponse = await fetch(transactionUrl, {
+			method: 'POST',
+			headers: trustapHeaders(validTrustapTransactionBody.buyer_id),
+			body: JSON.stringify(validTrustapTransactionBody),
+		});
+		const created = (await createdResponse.json()) as { id: number };
+		expect(createdResponse.status).toBe(201);
+		expect(created.id).not.toBe(91_001);
+		expect((await fetch(`${stub.url}/api/v1/transactions/${created.id}`, { headers: trustapHeaders() })).status).toBe(
+			200,
+		);
+
+		await setProviderScenario(stub.url, 'provider-error');
+		expect((await fetch(`${stub.url}/api/v1/transactions/99999`, { headers: trustapHeaders() })).status).toBe(404);
+
+		await resetProviderStub(stub.url);
+		expect((await fetch(`${stub.url}/api/v1/transactions/${created.id}`, { headers: trustapHeaders() })).status).toBe(
+			404,
+		);
+		expect((await fetch(`${stub.url}/api/v1/transactions/91001`, { headers: trustapHeaders() })).status).toBe(200);
 	});
 
 	it('requires exact Shippo token/version headers on every provider route', async () => {
@@ -358,6 +416,15 @@ describe('local commerce provider stubs', () => {
 		for (const body of [
 			{ address_from: 'IT', address_to: { country: 'IT' }, parcels: validShippoShipmentBody.parcels },
 			{ address_from: { country: 'IT' }, address_to: { country: 'IT' }, parcels: {} },
+			{ address_from: { country: 'IT' }, address_to: { country: 'IT' }, parcels: [{}] },
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], weight: '0' }],
+			},
+			{
+				...validShippoShipmentBody,
+				parcels: [{ ...validShippoShipmentBody.parcels[0], distance_unit: 'in' }],
+			},
 		]) {
 			const response = await fetch(`${stub.url}/shipments`, {
 				method: 'POST',
