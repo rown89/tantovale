@@ -21,7 +21,7 @@ function registeredRoutes(): string[] {
 }
 
 describe('mounted API route target contracts for later route suites', () => {
-	it('preserves the raw non-middleware Hono handler-layer baseline', () => {
+	it('preserves the raw non-ALL Hono handler-layer baseline', () => {
 		const mounted = mountedRouteHandlerLayers(app.routes);
 
 		expect(mounted).toHaveLength(EXPECTED_HANDLER_LAYER_COUNT);
