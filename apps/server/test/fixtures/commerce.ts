@@ -1,5 +1,5 @@
 import type { z } from 'zod/v4';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import {
 	items,
@@ -7,6 +7,7 @@ import {
 	items_properties_values,
 	orders,
 	orders_proposals,
+	subcategories,
 	users,
 	type InsertOrder,
 	type InsertOrderProposal,
@@ -46,6 +47,8 @@ type ItemBodyOverrides = {
 	properties?: createItemTypes['properties'];
 };
 
+let reusableCatalog: CatalogFixture | undefined;
+
 function requireInserted<Row>(row: Row | undefined, label: string): Row {
 	if (!row) {
 		throw new Error(`${label} fixture insert failed`);
@@ -55,22 +58,51 @@ function requireInserted<Row>(row: Row | undefined, label: string): Row {
 }
 
 export async function createCommerceActors(): Promise<CommerceActorGraph> {
-	const catalog = await createCatalogFixture();
 	const { db } = getTestDatabase();
-	const spacer = uniqueValue('identity-spacer');
+	let catalog = reusableCatalog;
+	if (catalog) {
+		const [storedCatalog] = await db
+			.select({ id: subcategories.id })
+			.from(subcategories)
+			.where(
+				and(eq(subcategories.id, catalog.childSubcategory.id), eq(subcategories.slug, catalog.childSubcategory.slug)),
+			)
+			.limit(1);
+
+		if (!storedCatalog) {
+			catalog = undefined;
+		}
+	}
+	if (!catalog) {
+		catalog = await createCatalogFixture();
+		reusableCatalog = catalog;
+	}
+
 	const spacerPassword = await hashPassword('StrongPass123!');
 	await db.transaction(async (tx) => {
-		const [spacerUserRow] = await tx
+		const spacerUsers = await tx
 			.insert(users)
-			.values({
-				username: spacer,
-				email: `${spacer}@tantovale.test`,
-				password: spacerPassword,
-				email_verified: true,
-			})
+			.values(
+				Array.from({ length: 3 }, () => {
+					const spacer = uniqueValue('identity-spacer');
+					return {
+						username: spacer,
+						email: `${spacer}@tantovale.test`,
+						password: spacerPassword,
+						email_verified: true,
+					};
+				}),
+			)
 			.returning();
-		const spacerUser = requireInserted(spacerUserRow, 'Identity spacer user');
-		await tx.delete(users).where(eq(users.id, spacerUser.id));
+		if (spacerUsers.length !== 3) {
+			throw new Error('Identity spacer user fixture insert failed');
+		}
+		await tx.delete(users).where(
+			inArray(
+				users.id,
+				spacerUsers.map(({ id }) => id),
+			),
+		);
 	});
 
 	const sellerFixture = await createUserFixture({

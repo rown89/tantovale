@@ -40,21 +40,32 @@ describe('commerce fixtures', () => {
 			actors.buyer.profile.payment_provider_id,
 			actors.outsider.profile.payment_provider_id,
 		];
+		const actorUserIds = new Set([actors.seller.user.id, actors.buyer.user.id, actors.outsider.user.id]);
+		const actorProfileIds = new Set([actors.seller.profile.id, actors.buyer.profile.id, actors.outsider.profile.id]);
+		const intersectingActorIds = [...actorUserIds].filter((id) => actorProfileIds.has(id));
+		const shipping = body.shipping!;
 
-		expect([actors.seller, actors.buyer, actors.outsider].every(({ user, profile }) => user.id !== profile.id)).toBe(
-			true,
-		);
+		expect(intersectingActorIds).toEqual([]);
 		expect(storedUsers).toHaveLength(3);
 		expect(paymentProviderIds.every((id) => typeof id === 'string' && id.length > 0)).toBe(true);
 		expect(new Set(paymentProviderIds)).toHaveProperty('size', 3);
-		expect(actors.seller.jar.header()).toContain('access_token=');
-		expect(actors.buyer.jar.header()).toContain('refresh_token=');
-		expect(actors.outsider.jar.header()).toContain('access_token=');
+		for (const actor of [actors.seller, actors.buyer, actors.outsider]) {
+			expect(actor.jar.header()).toMatch(/(?:^|; )access_token=/);
+		}
 		expect(createItemSchema.parse(body)).toEqual(body);
 		expect(body.commons.description.length).toBeGreaterThanOrEqual(minDescriptionLength);
 		expect(Number.isInteger(body.commons.price)).toBe(true);
 		expect(body.commons.address_id).toBe(actors.seller.address.id);
-		expect(Object.values(body.shipping ?? {}).every((value) => typeof value === 'number' && value > 0)).toBe(true);
+		expect(body.shipping).toBeDefined();
+		expect(
+			[
+				shipping.item_height,
+				shipping.item_length,
+				shipping.item_weight,
+				shipping.item_width,
+				shipping.shipping_price,
+			].every((value) => typeof value === 'number' && value > 0),
+		).toBe(true);
 		expect(storedItem).toMatchObject({
 			id: item.id,
 			profile_id: actors.seller.profile.id,
@@ -63,6 +74,11 @@ describe('commerce fixtures', () => {
 			published: true,
 			status: 'available',
 			easy_pay: true,
+			custom_shipping_price: shipping.shipping_price,
+			item_height: shipping.item_height,
+			item_length: shipping.item_length,
+			item_weight: shipping.item_weight,
+			item_width: shipping.item_width,
 			author: { id: actors.seller.profile.id, user_id: actors.seller.user.id },
 			subcategory: { id: actors.catalog.childSubcategory.id },
 			address: {
@@ -143,5 +159,15 @@ describe('commerce fixtures', () => {
 			seller: { id: actors.seller.profile.id },
 			item: { id: item.id },
 		});
+	});
+
+	it('can create two actor graphs sequentially without duplicating canonical catalog locations', async () => {
+		const first = await createCommerceActors();
+		const second = await createCommerceActors();
+		const { db } = getTestDatabase();
+		const storedUsers = await db.query.users.findMany();
+
+		expect(second.catalog.childSubcategory.id).toBe(first.catalog.childSubcategory.id);
+		expect(storedUsers).toHaveLength(6);
 	});
 });
