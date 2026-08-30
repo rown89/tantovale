@@ -3,7 +3,8 @@ import { and, eq, gt } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 
-import { hashPassword, passwordSchema } from '../../lib/password';
+import { passwordSchema } from '../../extended_schemas/password';
+import { hashPassword } from '../../lib/password';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { createClient } from '../../database';
 import { users, password_reset_tokens, refreshTokens } from '../../database/schemas/schema';

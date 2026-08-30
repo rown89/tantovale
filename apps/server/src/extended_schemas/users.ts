@@ -1,7 +1,8 @@
 import { selectProfilesSchema } from '#database/schemas/profiles';
 import { selectUsersSchema } from '#database/schemas/users';
-import { passwordSchema } from '#lib/password';
 import { z } from 'zod/v4';
+
+import { passwordSchema } from './password';
 
 export const UserProfileSchema = selectProfilesSchema
 	.pick({

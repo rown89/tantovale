@@ -1,4 +1,5 @@
 export * from './users';
+export * from './password';
 export * from './verify';
 export * from './item';
 export * from './item/item-detail';

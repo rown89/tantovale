@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { users } from '../../src/database/schemas/users';
+import { isPasswordWithinBcryptByteLimit, passwordSchema } from '../../src/extended_schemas/password';
 import { hashPassword, verifyPassword } from '../../src/lib/password';
 import { createUserFixture } from '../fixtures/factories';
 import { authenticatedRequest, loginAs } from './auth';
@@ -18,6 +19,15 @@ afterEach(() => {
 });
 
 describe('API test helpers', () => {
+	it('validates the bcrypt password boundary with browser-safe UTF-8 semantics', () => {
+		expect(isPasswordWithinBcryptByteLimit('a'.repeat(72))).toBe(true);
+		expect(passwordSchema.safeParse('a'.repeat(72)).success).toBe(true);
+		expect(passwordSchema.safeParse('é'.repeat(36)).success).toBe(true);
+		expect(isPasswordWithinBcryptByteLimit('a'.repeat(73))).toBe(false);
+		expect(passwordSchema.safeParse('a'.repeat(73)).success).toBe(false);
+		expect(passwordSchema.safeParse('é'.repeat(37)).success).toBe(false);
+	});
+
 	it("rejects hashing passwords beyond bcrypt's 72 UTF-8 byte boundary", async () => {
 		await expect(hashPassword('a'.repeat(73))).rejects.toThrow('72');
 		await expect(hashPassword('é'.repeat(37))).rejects.toThrow('72');

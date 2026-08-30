@@ -1,14 +1,6 @@
-import { Buffer } from 'node:buffer';
-
 import bcrypt from 'bcryptjs';
-import { z } from 'zod/v4';
 
-export const passwordSchema = z
-	.string()
-	.min(8, 'La password deve contenere almeno 8 caratteri')
-	.max(100)
-	.nonempty()
-	.refine((password) => Buffer.byteLength(password, 'utf8') <= 72, 'Password must not exceed 72 UTF-8 bytes');
+import { isPasswordWithinBcryptByteLimit } from '../extended_schemas/password';
 
 // Improved defaults for bcrypt
 const SALT_ROUNDS = 10; // Default salt rounds (higher means more secure, but slower)
@@ -24,7 +16,7 @@ interface HashOptions {
  * @returns A promise that resolves to the hashed password
  */
 export async function hashPassword(password: string, options: HashOptions = {}): Promise<string> {
-	if (Buffer.byteLength(password, 'utf8') > 72) {
+	if (!isPasswordWithinBcryptByteLimit(password)) {
 		throw new Error("Password must not exceed bcrypt's 72 UTF-8 byte limit");
 	}
 
