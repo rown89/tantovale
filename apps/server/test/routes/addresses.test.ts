@@ -102,14 +102,172 @@ describe('address routes', () => {
 			label: 'Hijacked',
 			status: 'active',
 		});
+		const ownerListResponse = await authenticatedRequest('/addresses/auth/addresses_profile', 'GET', ownerJar);
+		const ownerDefaultResponse = await authenticatedRequest('/addresses/auth/default_address', 'GET', ownerJar);
+		const otherListResponse = await authenticatedRequest('/addresses/auth/addresses_profile', 'GET', otherJar);
+		const otherDefaultResponse = await authenticatedRequest('/addresses/auth/default_address', 'GET', otherJar);
+		const crossOwnerHideResponse = await authenticatedRequest(
+			'/addresses/auth/hide_address_from_profile',
+			'PUT',
+			otherJar,
+			{ address_id: ownerAddress.id },
+		);
 
 		expect(response.status).toBe(404);
 		expect(await response.json()).toEqual({ message: 'Address not found' });
+		expect(ownerListResponse.status).toBe(200);
+		expect(((await ownerListResponse.json()) as AddressResponse[]).map(({ id }) => id)).toEqual([ownerAddress.id]);
+		expect(ownerDefaultResponse.status).toBe(200);
+		expect(await ownerDefaultResponse.json()).toMatchObject({ id: ownerAddress.id });
+		expect(otherListResponse.status).toBe(200);
+		expect(((await otherListResponse.json()) as AddressResponse[]).map(({ id }) => id)).toEqual([otherAddress.id]);
+		expect(otherDefaultResponse.status).toBe(200);
+		expect(await otherDefaultResponse.json()).toMatchObject({ id: otherAddress.id });
+		expect(crossOwnerHideResponse.status).toBe(404);
+		expect(await crossOwnerHideResponse.json()).toEqual({ message: 'Address not found' });
 		expect(await storedAddresses(owner.profile.id)).toEqual([
 			expect.objectContaining({ id: ownerAddress.id, label: 'Owner address', status: 'active' }),
 		]);
 		expect(await storedAddresses(other.profile.id)).toEqual([
 			expect.objectContaining({ id: otherAddress.id, label: 'Other address', status: 'active' }),
+		]);
+	});
+
+	it('never resurrects a deleted address through either active or inactive updates', async () => {
+		await createCatalogFixture();
+		const owner = await createUserFixture();
+		const jar = await loginAs(owner);
+		const active = await addAddress(jar, { label: 'Active' });
+		const deletedActiveCandidate = await addAddress(jar, { label: 'Deleted active candidate', status: 'inactive' });
+		const deletedInactiveCandidate = await addAddress(jar, {
+			label: 'Deleted inactive candidate',
+			status: 'inactive',
+		});
+
+		for (const addressId of [deletedActiveCandidate.id, deletedInactiveCandidate.id]) {
+			const hideResponse = await authenticatedRequest('/addresses/auth/hide_address_from_profile', 'PUT', jar, {
+				address_id: addressId,
+			});
+			expect(hideResponse.status).toBe(200);
+		}
+
+		const activeUpdate = await authenticatedRequest('/addresses/auth/update_address_to_profile', 'PUT', jar, {
+			...validAddressBody(),
+			address_id: deletedActiveCandidate.id,
+			label: 'Resurrected active',
+			status: 'active',
+		});
+		const inactiveUpdate = await authenticatedRequest('/addresses/auth/update_address_to_profile', 'PUT', jar, {
+			...validAddressBody(),
+			address_id: deletedInactiveCandidate.id,
+			label: 'Resurrected inactive',
+			status: 'inactive',
+		});
+
+		expect(activeUpdate.status).toBe(404);
+		expect(await activeUpdate.json()).toEqual({ message: 'Address not found' });
+		expect(inactiveUpdate.status).toBe(404);
+		expect(await inactiveUpdate.json()).toEqual({ message: 'Address not found' });
+		expect(await storedAddresses(owner.profile.id)).toEqual([
+			expect.objectContaining({ id: active.id, label: 'Active', status: 'active' }),
+			expect.objectContaining({ id: deletedActiveCandidate.id, label: 'Deleted active candidate', status: 'deleted' }),
+			expect.objectContaining({
+				id: deletedInactiveCandidate.id,
+				label: 'Deleted inactive candidate',
+				status: 'deleted',
+			}),
+		]);
+	});
+
+	it('serializes concurrent first-address creation so both requests succeed with exactly one active row', async () => {
+		await createCatalogFixture();
+		const owners = await Promise.all(Array.from({ length: 6 }, () => createUserFixture()));
+		const sessions = await Promise.all(owners.map((owner) => loginAs(owner)));
+
+		const responsePairs = await Promise.all(
+			sessions.map((jar, ownerIndex) =>
+				Promise.all(
+					['A', 'B'].map((suffix) =>
+						authenticatedRequest('/addresses/auth/add_address_to_profile', 'POST', jar, {
+							...validAddressBody(),
+							label: `Concurrent ${ownerIndex}-${suffix}`,
+							status: 'inactive',
+						}),
+					),
+				),
+			),
+		);
+
+		for (const [ownerIndex, responses] of responsePairs.entries()) {
+			expect(
+				responses.map(({ status }) => status),
+				`concurrent first-address responses for owner ${ownerIndex}`,
+			).toEqual([200, 200]);
+			const rows = await storedAddresses(owners[ownerIndex]!.profile.id);
+			expect(rows).toHaveLength(2);
+			expect(rows.filter(({ status }) => status === 'active')).toHaveLength(1);
+		}
+	});
+
+	it('serializes concurrent active switches without errors, deadlocks, or multiple active rows', async () => {
+		await createCatalogFixture();
+		const owner = await createUserFixture();
+		const jar = await loginAs(owner);
+		const first = await addAddress(jar, { label: 'First' });
+		const second = await addAddress(jar, { label: 'Second', status: 'inactive' });
+		const third = await addAddress(jar, { label: 'Third', status: 'inactive' });
+
+		const responses = await Promise.all(
+			[second, third].map((candidate) =>
+				authenticatedRequest('/addresses/auth/update_address_to_profile', 'PUT', jar, {
+					...validAddressBody(),
+					address_id: candidate.id,
+					label: candidate.label,
+					status: 'active',
+				}),
+			),
+		);
+		const rows = await storedAddresses(owner.profile.id);
+
+		expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+		expect(rows).toHaveLength(3);
+		expect(rows.filter(({ status }) => status === 'active')).toHaveLength(1);
+		expect(rows.find(({ id }) => id === first.id)).toMatchObject({ status: 'inactive' });
+	});
+
+	it('rejects absent city and province references without inserting or demoting an address', async () => {
+		await createCatalogFixture();
+		const owner = await createUserFixture();
+		const jar = await loginAs(owner);
+		const missingLocationId = 2_147_483_647;
+
+		for (const overrides of [{ city_id: missingLocationId }, { province_id: missingLocationId }]) {
+			const response = await authenticatedRequest('/addresses/auth/add_address_to_profile', 'POST', jar, {
+				...validAddressBody(),
+				...overrides,
+			});
+			expect(response.status).toBe(404);
+			expect(await response.json()).toEqual({ message: 'Location not found' });
+		}
+		expect(await storedAddresses(owner.profile.id)).toEqual([]);
+
+		const active = await addAddress(jar, { label: 'Active' });
+		const inactive = await addAddress(jar, { label: 'Inactive', status: 'inactive' });
+		for (const overrides of [{ city_id: missingLocationId }, { province_id: missingLocationId }]) {
+			const response = await authenticatedRequest('/addresses/auth/update_address_to_profile', 'PUT', jar, {
+				...validAddressBody(),
+				address_id: inactive.id,
+				label: 'Invalid location update',
+				status: 'active',
+				...overrides,
+			});
+			expect(response.status).toBe(404);
+			expect(await response.json()).toEqual({ message: 'Location not found' });
+		}
+
+		expect(await storedAddresses(owner.profile.id)).toEqual([
+			expect.objectContaining({ id: active.id, label: 'Active', status: 'active' }),
+			expect.objectContaining({ id: inactive.id, label: 'Inactive', status: 'inactive' }),
 		]);
 	});
 

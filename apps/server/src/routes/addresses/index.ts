@@ -1,4 +1,4 @@
-import { and, asc, eq, ne, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { alias } from 'drizzle-orm/pg-core';
 
@@ -11,6 +11,7 @@ import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { cities } from 'src/database/schemas/cities';
 import { addAddressSchema } from 'src/extended_schemas';
 import { addressStatusValues } from 'src/database/schemas/enumerated_values';
+import { acquireAddressTransactionLock } from 'src/lib/address-transaction-lock';
 
 export const ADDRESS_STATUS = {
 	ACTIVE: 'active' as const,
@@ -146,6 +147,17 @@ export const addressesRoute = createRouter()
 						return c.json({ message: 'User profile not found' }, 404);
 					}
 
+					await acquireAddressTransactionLock(tx, profile.id);
+					const locationIds = [...new Set([values.city_id, values.province_id])];
+					const existingLocations = await tx
+						.select({ id: cities.id })
+						.from(cities)
+						.where(inArray(cities.id, locationIds));
+
+					if (existingLocations.length !== locationIds.length) {
+						return c.json({ message: 'Location not found' }, 404);
+					}
+
 					// Check if this is the first address for the profile
 					const [firstAddress] = await tx.select().from(addresses).where(eq(addresses.profile_id, profile.id));
 
@@ -184,9 +196,9 @@ export const addressesRoute = createRouter()
 
 			const { db } = createClient();
 
-			const { ...values } = c.req.valid('json');
+			const { address_id, ...values } = c.req.valid('json');
 
-			if (!values.address_id) {
+			if (!address_id) {
 				return c.json({ message: 'Address ID is required' }, 400);
 			}
 
@@ -200,14 +212,26 @@ export const addressesRoute = createRouter()
 					return c.json({ message: 'Profile not found' }, 404);
 				}
 
+				await acquireAddressTransactionLock(tx, profile.profile_id);
+
 				// check if the current address is the active one and received status is "inactive"
 				const [currentAddress] = await tx
 					.select()
 					.from(addresses)
-					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)));
+					.where(and(eq(addresses.id, address_id), eq(addresses.profile_id, profile.profile_id)));
 
-				if (!currentAddress) {
+				if (!currentAddress || currentAddress.status === ADDRESS_STATUS.DELETED) {
 					return c.json({ message: 'Address not found' }, 404);
+				}
+
+				const locationIds = [...new Set([values.city_id, values.province_id])];
+				const existingLocations = await tx
+					.select({ id: cities.id })
+					.from(cities)
+					.where(inArray(cities.id, locationIds));
+
+				if (existingLocations.length !== locationIds.length) {
+					return c.json({ message: 'Location not found' }, 404);
 				}
 
 				if (currentAddress.status === ADDRESS_STATUS.ACTIVE && values.status === ADDRESS_STATUS.INACTIVE) {
@@ -221,7 +245,7 @@ export const addressesRoute = createRouter()
 						.where(
 							and(
 								eq(addresses.profile_id, profile.profile_id),
-								ne(addresses.id, Number(values.address_id)),
+								ne(addresses.id, address_id),
 								eq(addresses.status, ADDRESS_STATUS.ACTIVE),
 							),
 						);
@@ -232,7 +256,7 @@ export const addressesRoute = createRouter()
 					.set({
 						...values,
 					})
-					.where(and(eq(addresses.id, Number(values.address_id)), eq(addresses.profile_id, profile.profile_id)))
+					.where(and(eq(addresses.id, address_id), eq(addresses.profile_id, profile.profile_id)))
 					.returning();
 
 				if (!userAddress) {
@@ -262,44 +286,47 @@ export const addressesRoute = createRouter()
 					return c.json({ message: 'Address ID is required' }, 400);
 				}
 
-				const [profile] = await db
-					.select({ profile_id: profiles.id })
-					.from(profiles)
-					.where(eq(profiles.user_id, user.id));
+				return await db.transaction(async (tx) => {
+					const [profile] = await tx
+						.select({ profile_id: profiles.id })
+						.from(profiles)
+						.where(eq(profiles.user_id, user.id));
 
-				if (!profile?.profile_id) {
-					return c.json({ message: 'Profile not found' }, 404);
-				}
-
-				const [userAddress] = await db
-					.update(addresses)
-					.set({ status: 'deleted' })
-					.where(
-						and(
-							eq(addresses.id, Number(address_id)),
-							eq(addresses.profile_id, profile.profile_id),
-							ne(addresses.status, ADDRESS_STATUS.ACTIVE),
-							ne(addresses.status, ADDRESS_STATUS.DELETED),
-						),
-					)
-					.returning({
-						id: addresses.id,
-					});
-
-				if (!userAddress) {
-					const [currentAddress] = await db
-						.select({ status: addresses.status })
-						.from(addresses)
-						.where(and(eq(addresses.id, Number(address_id)), eq(addresses.profile_id, profile.profile_id)));
-
-					if (currentAddress?.status === ADDRESS_STATUS.ACTIVE) {
-						return c.json({ message: 'You can not delete the active address' }, 400);
+					if (!profile?.profile_id) {
+						return c.json({ message: 'Profile not found' }, 404);
 					}
 
-					return c.json({ message: 'Address not found' }, 404);
-				}
+					await acquireAddressTransactionLock(tx, profile.profile_id);
+					const [userAddress] = await tx
+						.update(addresses)
+						.set({ status: 'deleted' })
+						.where(
+							and(
+								eq(addresses.id, address_id),
+								eq(addresses.profile_id, profile.profile_id),
+								ne(addresses.status, ADDRESS_STATUS.ACTIVE),
+								ne(addresses.status, ADDRESS_STATUS.DELETED),
+							),
+						)
+						.returning({
+							id: addresses.id,
+						});
 
-				return c.json(userAddress, 200);
+					if (!userAddress) {
+						const [currentAddress] = await tx
+							.select({ status: addresses.status })
+							.from(addresses)
+							.where(and(eq(addresses.id, address_id), eq(addresses.profile_id, profile.profile_id)));
+
+						if (currentAddress?.status === ADDRESS_STATUS.ACTIVE) {
+							return c.json({ message: 'You can not delete the active address' }, 400);
+						}
+
+						return c.json({ message: 'Address not found' }, 404);
+					}
+
+					return c.json(userAddress, 200);
+				});
 			} catch (error) {
 				return c.json({ message: 'addressesRoute error' }, 500);
 			}

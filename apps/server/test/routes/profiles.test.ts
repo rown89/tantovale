@@ -125,7 +125,22 @@ describe('profile routes', () => {
 		const noLocationResponse = await app.request(`/profile/compact/${noLocationFixture.user.username}`);
 
 		expect(compactResponse.status).toBe(200);
-		expect(await compactResponse.json()).toMatchObject({
+		const compact = (await compactResponse.json()) as Record<string, unknown> & {
+			location: { city: Record<string, unknown>; province: Record<string, unknown> };
+		};
+		expect(Object.keys(compact).sort()).toEqual([
+			'created_at',
+			'email_verified',
+			'id',
+			'location',
+			'phone_verified',
+			'profile_id',
+			'selling_items',
+		]);
+		expect(Object.keys(compact.location).sort()).toEqual(['city', 'province']);
+		expect(Object.keys(compact.location.city).sort()).toEqual(['id', 'name']);
+		expect(Object.keys(compact.location.province).sort()).toEqual(['id', 'name']);
+		expect(compact).toMatchObject({
 			id: fixture.user.id,
 			profile_id: fixture.profile.id,
 			selling_items: 1,
@@ -134,6 +149,10 @@ describe('profile routes', () => {
 				province: { id: province.id, name: province.name },
 			},
 		});
+		expect(compact).not.toHaveProperty('email');
+		expect(compact).not.toHaveProperty('phone');
+		expect(compact).not.toHaveProperty('name');
+		expect(compact.location).not.toHaveProperty('street_address');
 		expect(unknownResponse.status).toBe(404);
 		expect(await unknownResponse.json()).toEqual({ message: 'User not found' });
 		expect(noLocationResponse.status).toBe(404);
