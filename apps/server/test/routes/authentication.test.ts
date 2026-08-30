@@ -302,6 +302,7 @@ describe('authentication routes', () => {
 	it('GET /verify/email activates the emailed account with verified claims and one refresh session', async () => {
 		const { token, user } = await signupUnverified('a');
 		const response = await app.request(`/verify/email?token=${encodeURIComponent(token)}`);
+		const activationCookie = responseCookieHeader(response, 'email_activation_token');
 		const accessToken = responseCookie(response, 'access_token');
 		const refreshToken = responseCookie(response, 'refresh_token');
 		const { db } = getTestDatabase();
@@ -311,6 +312,12 @@ describe('authentication routes', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ message: 'Email verified successfully!' });
 		expect(storedUser?.email_verified).toBe(true);
+		expect(activationCookie).toMatch(/^email_activation_token=;.*Max-Age=0/i);
+		expect(activationCookie).toContain('Path=/');
+		expect(activationCookie).toContain('HttpOnly');
+		expect(activationCookie).toContain('Secure');
+		expect(activationCookie).toContain('SameSite=None');
+		expect(activationCookie).not.toContain('Domain=');
 		expect(accessToken).toBeDefined();
 		expect(refreshToken).toBeDefined();
 		expect(await verify(accessToken!, requiredSecret('ACCESS_TOKEN_SECRET'))).toMatchObject({
@@ -322,19 +329,35 @@ describe('authentication routes', () => {
 			email_verified: true,
 		});
 		expect(sessions).toHaveLength(1);
-		expect(sessions[0]?.token).toBe(refreshToken);
+		expect(sessions[0]?.token === refreshToken).toBe(true);
 	});
 
 	it('GET /verify/email is idempotent for an already verified user and does not add a refresh session', async () => {
 		const { token, user } = await signupUnverified('i');
 		const first = await app.request(`/verify/email?token=${encodeURIComponent(token)}`);
-		const second = await app.request(`/verify/email?token=${encodeURIComponent(token)}`);
+		const initialNodeEnv = process.env.NODE_ENV;
+		let second: Response;
+
+		try {
+			process.env.NODE_ENV = 'production';
+			second = await app.request(`/verify/email?token=${encodeURIComponent(token)}`);
+		} finally {
+			process.env.NODE_ENV = initialNodeEnv;
+		}
+
+		const activationCookie = responseCookieHeader(second, 'email_activation_token');
 		const { db } = getTestDatabase();
 		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, user.username));
 
 		expect(first.status).toBe(200);
 		expect(second.status).toBe(200);
 		expect(await second.json()).toEqual({ message: 'User already verified' });
+		expect(activationCookie).toMatch(/^email_activation_token=;.*Max-Age=0/i);
+		expect(activationCookie).toContain('Domain=tantovale.it');
+		expect(activationCookie).toContain('Path=/');
+		expect(activationCookie).toContain('HttpOnly');
+		expect(activationCookie).toContain('Secure');
+		expect(activationCookie).toContain('SameSite=None');
 		expect(sessions).toHaveLength(1);
 	});
 

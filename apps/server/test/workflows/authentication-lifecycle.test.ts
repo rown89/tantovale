@@ -24,13 +24,23 @@ function requiredCookie(jar: CookieJar, name: string): string {
 	return value;
 }
 
+function hasCookie(jar: CookieJar, name: string): boolean {
+	return jar
+		.header()
+		.split(';')
+		.map((part) => part.trim())
+		.some((part) => part.startsWith(`${name}=`));
+}
+
+function expectJsonResponse(response: Response, status: number): void {
+	expect(response.status).toBe(status);
+	expect(response.headers.get('content-type')).toMatch(/^application\/json\b/i);
+}
+
 function expectAuthCookiesCleared(response: Response): void {
-	expect(response.headers.getSetCookie()).toEqual(
-		expect.arrayContaining([
-			expect.stringMatching(/^access_token=;.*Max-Age=0/i),
-			expect.stringMatching(/^refresh_token=;.*Max-Age=0/i),
-		]),
-	);
+	const setCookies = response.headers.getSetCookie();
+	expect(setCookies.some((header) => /^access_token=;.*Max-Age=0/i.test(header))).toBe(true);
+	expect(setCookies.some((header) => /^refresh_token=;.*Max-Age=0/i.test(header))).toBe(true);
 }
 
 it('proves the complete authentication lifecycle through emailed links and real cookies', async () => {
@@ -47,35 +57,38 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	};
 	const replacementPassword = 'ReplacementPass456!';
 	const { db } = getTestDatabase();
+	const session = new CookieJar();
 
 	const signupResponse = await app.request('/signup', jsonRequest('POST', credentials));
-	const signupCookies = new CookieJar();
-	captureCookies(signupResponse, signupCookies);
+	captureCookies(signupResponse, session);
 
-	expect(signupResponse.status).toBe(201);
+	expectJsonResponse(signupResponse, 201);
 	expect(await signupResponse.json()).toEqual({ message: 'Successful Signup' });
 	expect(await db.select({ id: users.id }).from(users)).toHaveLength(1);
 	expect(await db.select({ id: profiles.id }).from(profiles)).toHaveLength(1);
 
 	const verificationEmail = await waitForEmail(credentials.email, 'Attivazione account');
 	const verificationToken = extractTokenFromLink(`${verificationEmail.HTML} ${verificationEmail.Text}`, 'token');
-	expect(requiredCookie(signupCookies, 'email_activation_token')).toBe(verificationToken);
+	expect(requiredCookie(session, 'email_activation_token') === verificationToken).toBe(true);
 
-	const verificationResponse = await app.request(`/verify/email?token=${encodeURIComponent(verificationToken)}`);
-	const session = new CookieJar();
-	captureCookies(verificationResponse, session);
+	const verificationResponse = await authenticatedRequest(
+		`/verify/email?token=${encodeURIComponent(verificationToken)}`,
+		'GET',
+		session,
+	);
 
-	expect(verificationResponse.status).toBe(200);
+	expectJsonResponse(verificationResponse, 200);
 	expect(await verificationResponse.json()).toEqual({ message: 'Email verified successfully!' });
+	expect(hasCookie(session, 'email_activation_token')).toBe(false);
 	const initialAccessCookie = requiredCookie(session, 'access_token');
 	const initialRefreshCookie = requiredCookie(session, 'refresh_token');
 
 	const accessVerification = await authenticatedRequest('/verify', 'GET', session);
+	expectJsonResponse(accessVerification, 200);
 	const accessVerificationBody = (await accessVerification.json()) as {
 		message: string;
 		user: { email: string; email_verified: boolean; username: string };
 	};
-	expect(accessVerification.status).toBe(200);
 	expect(accessVerificationBody).toMatchObject({
 		message: 'Token verified successfully',
 		user: {
@@ -86,6 +99,7 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	});
 
 	const userResponse = await authenticatedRequest('/user/auth', 'GET', session);
+	expectJsonResponse(userResponse, 200);
 	const authenticatedUser = (await userResponse.json()) as {
 		id: number;
 		profile_id: number;
@@ -94,7 +108,6 @@ it('proves the complete authentication lifecycle through emailed links and real 
 		email_verified: boolean;
 		phone_verified: boolean;
 	};
-	expect(userResponse.status).toBe(200);
 	expect(authenticatedUser).toMatchObject({
 		username: credentials.username,
 		email: credentials.email,
@@ -110,10 +123,26 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	expect(initialSessions[0]!.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
 	const refreshResponse = await authenticatedRequest('/refresh/auth', 'POST', session);
-	expect(refreshResponse.status).toBe(200);
+	expectJsonResponse(refreshResponse, 200);
 	expect(await refreshResponse.json()).toEqual({ message: 'Tokens refreshed successfully' });
-	expect(requiredCookie(session, 'access_token')).not.toBe(initialAccessCookie);
-	expect(requiredCookie(session, 'refresh_token')).not.toBe(initialRefreshCookie);
+	expect(requiredCookie(session, 'access_token') !== initialAccessCookie).toBe(true);
+	expect(requiredCookie(session, 'refresh_token') !== initialRefreshCookie).toBe(true);
+
+	const rotatedAccessVerification = await authenticatedRequest('/verify', 'GET', session);
+	expectJsonResponse(rotatedAccessVerification, 200);
+	expect(await rotatedAccessVerification.json()).toMatchObject({
+		message: 'Token verified successfully',
+		user: {
+			id: authenticatedUser.id,
+			profile_id: authenticatedUser.profile_id,
+			username: authenticatedUser.username,
+			email: authenticatedUser.email,
+		},
+	});
+
+	const rotatedUserResponse = await authenticatedRequest('/user/auth', 'GET', session);
+	expectJsonResponse(rotatedUserResponse, 200);
+	expect(await rotatedUserResponse.json()).toMatchObject(authenticatedUser);
 
 	const rotatedSessions = await db
 		.select({ id: refreshTokens.id, expiresAt: refreshTokens.expires_at })
@@ -124,23 +153,24 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	expect(rotatedSessions[0]!.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
 	const firstLogout = await authenticatedRequest('/logout/auth', 'POST', session);
-	expect(firstLogout.status).toBe(200);
+	expectJsonResponse(firstLogout, 200);
 	expect(await firstLogout.json()).toEqual({ message: 'Logout successful' });
 	expectAuthCookiesCleared(firstLogout);
-	expect(session.header()).toBe('');
+	expect(session.header().length).toBe(0);
 	expect(
 		await db
 			.select({ id: refreshTokens.id })
 			.from(refreshTokens)
 			.where(eq(refreshTokens.username, authenticatedUser.username)),
 	).toHaveLength(0);
-	expect((await authenticatedRequest('/user/auth', 'GET', session)).status).toBe(401);
+	const loggedOutUserResponse = await authenticatedRequest('/user/auth', 'GET', session);
+	expectJsonResponse(loggedOutUserResponse, 401);
 
 	const forgotPasswordResponse = await app.request(
 		'/password/forgot-password',
 		jsonRequest('POST', { email: credentials.email }),
 	);
-	expect(forgotPasswordResponse.status).toBe(200);
+	expectJsonResponse(forgotPasswordResponse, 200);
 	expect(await forgotPasswordResponse.json()).toEqual({
 		message: 'If the email exists, a reset link was sent.',
 	});
@@ -157,14 +187,14 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	const resetVerification = await app.request(
 		`/password/auth/reset-verify-token?token=${encodeURIComponent(resetToken)}`,
 	);
-	expect(resetVerification.status).toBe(200);
+	expectJsonResponse(resetVerification, 200);
 	expect(await resetVerification.json()).toEqual({ valid: true, id: authenticatedUser.id });
 
 	const resetResponse = await app.request(
 		'/password/auth/reset',
 		jsonRequest('POST', { token: resetToken, newPassword: replacementPassword }),
 	);
-	expect(resetResponse.status).toBe(200);
+	expectJsonResponse(resetResponse, 200);
 	expect(await resetResponse.json()).toEqual({ message: 'Password updated successfully!' });
 	expect(
 		await db
@@ -177,17 +207,16 @@ it('proves the complete authentication lifecycle through emailed links and real 
 		'/login',
 		jsonRequest('POST', { email: credentials.email, password: credentials.password }),
 	);
-	expect(oldLogin.status).toBe(401);
+	expectJsonResponse(oldLogin, 401);
 	expect(await oldLogin.json()).toEqual({ message: 'invalid email or password' });
-	expect(oldLogin.headers.getSetCookie()).toEqual([]);
+	expect(oldLogin.headers.getSetCookie().length).toBe(0);
 
 	const newLogin = await app.request(
 		'/login',
 		jsonRequest('POST', { email: credentials.email, password: replacementPassword }),
 	);
-	const replacementSession = new CookieJar();
-	captureCookies(newLogin, replacementSession);
-	expect(newLogin.status).toBe(200);
+	captureCookies(newLogin, session);
+	expectJsonResponse(newLogin, 200);
 	expect(await newLogin.json()).toMatchObject({
 		message: 'login successful',
 		user: {
@@ -196,8 +225,24 @@ it('proves the complete authentication lifecycle through emailed links and real 
 			username: credentials.username,
 		},
 	});
-	expect(requiredCookie(replacementSession, 'access_token')).not.toBe('');
-	expect(requiredCookie(replacementSession, 'refresh_token')).not.toBe('');
+	expect(Boolean(requiredCookie(session, 'access_token'))).toBe(true);
+	expect(Boolean(requiredCookie(session, 'refresh_token'))).toBe(true);
+
+	const replacementAccessVerification = await authenticatedRequest('/verify', 'GET', session);
+	expectJsonResponse(replacementAccessVerification, 200);
+	expect(await replacementAccessVerification.json()).toMatchObject({
+		message: 'Token verified successfully',
+		user: {
+			id: authenticatedUser.id,
+			profile_id: authenticatedUser.profile_id,
+			username: authenticatedUser.username,
+			email: authenticatedUser.email,
+		},
+	});
+
+	const replacementUserResponse = await authenticatedRequest('/user/auth', 'GET', session);
+	expectJsonResponse(replacementUserResponse, 200);
+	expect(await replacementUserResponse.json()).toMatchObject(authenticatedUser);
 
 	const replacementSessions = await db
 		.select({ id: refreshTokens.id, expiresAt: refreshTokens.expires_at })
@@ -206,11 +251,11 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	expect(replacementSessions).toHaveLength(1);
 	expect(replacementSessions[0]!.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
-	const finalLogout = await authenticatedRequest('/logout/auth', 'POST', replacementSession);
-	expect(finalLogout.status).toBe(200);
+	const finalLogout = await authenticatedRequest('/logout/auth', 'POST', session);
+	expectJsonResponse(finalLogout, 200);
 	expect(await finalLogout.json()).toEqual({ message: 'Logout successful' });
 	expectAuthCookiesCleared(finalLogout);
-	expect(replacementSession.header()).toBe('');
+	expect(session.header().length).toBe(0);
 	expect(
 		await db
 			.select({ id: refreshTokens.id })

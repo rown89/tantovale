@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { sign, verify } from 'hono/jwt';
 import { eq } from 'drizzle-orm';
-import { getCookie } from 'hono/cookie';
-import { setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { describeRoute } from 'hono-openapi';
 
@@ -12,7 +11,7 @@ import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES, getNodeEnv
 import { createClient } from '../../database';
 import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
-import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
+import { getAuthTokenDeleteOptions, getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { hasLiveMatchingRefreshSession, verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
 
@@ -209,6 +208,7 @@ export const verifyRoute = createRouter()
 				}
 
 				if (user.email_verified) {
+					deleteCookie(c, 'email_activation_token', getAuthTokenDeleteOptions({ isProductionMode }));
 					return c.json({ message: 'User already verified' });
 				}
 
@@ -235,6 +235,7 @@ export const verifyRoute = createRouter()
 					});
 				});
 
+				deleteCookie(c, 'email_activation_token', getAuthTokenDeleteOptions({ isProductionMode }));
 				setCookie(c, 'access_token', new_access_token, {
 					...getAuthTokenOptions({
 						isProductionMode,
