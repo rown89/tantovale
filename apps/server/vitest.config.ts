@@ -4,6 +4,7 @@ export default defineConfig({
 	test: {
 		include: ['test/**/*.test.ts'],
 		globalSetup: ['./test/infrastructure/global-setup.ts'],
+		setupFiles: ['./test/setup.ts'],
 		pool: 'forks',
 		maxWorkers: 4,
 		minWorkers: 1,
