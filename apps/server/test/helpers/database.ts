@@ -3,6 +3,7 @@ import { assertDisposableDatabaseName } from '../infrastructure/runtime';
 
 /* eslint-disable turbo/no-undeclared-env-vars -- This guard intentionally reads the worker's assigned test database. */
 const DATABASE_TIMEOUT_MS = 10_000;
+let testDatabase: ReturnType<typeof createClient> | undefined;
 
 function quoteIdentifier(identifier: string): string {
 	return `"${identifier.replaceAll('"', '""')}"`;
@@ -10,7 +11,28 @@ function quoteIdentifier(identifier: string): string {
 
 export function getTestDatabase() {
 	assertDisposableDatabaseName(process.env.POSTGRES_DB ?? '');
-	return createClient();
+
+	if (!testDatabase) {
+		testDatabase = createClient();
+		Object.assign(testDatabase.client.options, {
+			ssl: false,
+			connectionTimeoutMillis: DATABASE_TIMEOUT_MS,
+			query_timeout: DATABASE_TIMEOUT_MS,
+			statement_timeout: DATABASE_TIMEOUT_MS,
+		});
+	}
+
+	return testDatabase;
+}
+
+export async function closeTestDatabase(): Promise<void> {
+	if (!testDatabase) {
+		return;
+	}
+
+	const { client } = testDatabase;
+	testDatabase = undefined;
+	await client.end();
 }
 
 export async function resetDatabase(): Promise<void> {
@@ -19,7 +41,6 @@ export async function resetDatabase(): Promise<void> {
 
 	try {
 		await connection.query('BEGIN');
-		await connection.query(`SET LOCAL statement_timeout = '${DATABASE_TIMEOUT_MS}'`);
 		const { rows } = await connection.query<{ tablename: string }>(`
 			SELECT tablename
 			FROM pg_tables
@@ -30,7 +51,9 @@ export async function resetDatabase(): Promise<void> {
 		const tableNames = rows.map(({ tablename }) => quoteIdentifier(tablename));
 
 		if (tableNames.length > 0) {
-			await connection.query(`TRUNCATE TABLE ${tableNames.join(', ')} RESTART IDENTITY CASCADE`);
+			await connection.query(
+				`TRUNCATE TABLE ${tableNames.map((table) => `"public".${table}`).join(', ')} RESTART IDENTITY CASCADE`,
+			);
 		}
 
 		await connection.query('COMMIT');

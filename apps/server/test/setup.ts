@@ -1,4 +1,4 @@
-import { beforeEach, inject } from 'vitest';
+import { afterAll, beforeEach, inject } from 'vitest';
 
 import { buildServerEnvironment, getWorkerIndex } from './infrastructure/runtime';
 
@@ -17,11 +17,15 @@ Object.assign(process.env, buildServerEnvironment(runtime, database, bucket), {
 	PGSSLMODE: 'disable',
 });
 
-const { resetDatabase } = await import('./helpers/database');
+const { closeTestDatabase, resetDatabase } = await import('./helpers/database');
 const { resetObjectStorage } = await import('./helpers/object-storage');
 
+afterAll(async () => {
+	await closeTestDatabase();
+});
+
 beforeEach(async () => {
-	const results = await Promise.allSettled([resetDatabase(), resetObjectStorage()]);
+	const results = await Promise.allSettled([resetDatabase(), resetObjectStorage(bucket, runtime.minio.endpoint)]);
 	const errors = results
 		.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
 		.map((result) => result.reason);
