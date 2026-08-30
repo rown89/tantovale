@@ -54,21 +54,19 @@ export const createItemSchema = z.object({
 			schema
 				.min(priceMin, `Price must be greater than ${priceMin}`)
 				.max(priceMax, `Price must be less or equal to ${priceMax / 100} €`),
-	})
-		.omit({
-			profile_id: true,
-			published: true,
-			status: true,
-			custom_shipping_price: true,
-			item_weight: true,
-			item_length: true,
-			item_width: true,
-			item_height: true,
-			created_at: true,
-			updated_at: true,
-			deleted_at: true,
-		})
-		.strict(),
+	}).omit({
+		profile_id: true,
+		published: true,
+		status: true,
+		custom_shipping_price: true,
+		item_weight: true,
+		item_length: true,
+		item_width: true,
+		item_height: true,
+		created_at: true,
+		updated_at: true,
+		deleted_at: true,
+	}),
 	shipping: shippingSchema.optional(),
 	properties: propertySchema.optional(),
 });

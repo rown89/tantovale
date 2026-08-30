@@ -13,7 +13,7 @@ import {
 	subcategory_properties,
 } from '../../src/database/schemas/schema';
 import { itemStatus, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
-import { updateItemSchema } from '../../src/extended_schemas/item';
+import { createItemSchema, updateItemSchema } from '../../src/extended_schemas/item';
 import { environment } from '../../src/utils/constants';
 import { createAddressFixture } from '../fixtures/addresses';
 import {
@@ -162,6 +162,29 @@ describe('item and listing routes', () => {
 	});
 
 	describe('POST /item/auth/new', () => {
+		it('accepts the real storefront shape and strips its UI-only commons.city field', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors) as ReturnType<typeof validItemBody> & {
+				commons: Record<string, unknown>;
+			};
+			body.commons.city = 0;
+
+			const parsed = createItemSchema.safeParse(body);
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+			const responseBody = await responseJson(response);
+
+			expect(parsed.success).toBe(true);
+			if (!parsed.success) throw new Error('Storefront-shaped item payload should parse');
+			expect(parsed.data.commons).not.toHaveProperty('city');
+			expect(response.status).toBe(201);
+			const { db } = getTestDatabase();
+			const [stored] = await db
+				.select()
+				.from(items)
+				.where(eq(items.id, Number(responseBody.item_id)));
+			expect(stored?.id).toBe(Number(responseBody.item_id));
+		});
+
 		it('creates the item and all property joins atomically', async () => {
 			const actors = await createCommerceActors();
 			const body = validItemBody(actors);
@@ -220,7 +243,7 @@ describe('item and listing routes', () => {
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
 		});
 
-		it('rejects raw item storage shipping fields even when pickup would otherwise be valid', async () => {
+		it('strips raw item storage shipping fields so pickup cannot be bypassed', async () => {
 			const actors = await createCommerceActors();
 			const body = withDelivery(actors, actors.catalog.delivery.values.pickup.id) as ReturnType<typeof withDelivery> & {
 				commons: Record<string, unknown>;
@@ -234,12 +257,32 @@ describe('item and listing routes', () => {
 			};
 			body.commons.custom_shipping_price = 9_999;
 			body.commons.item_weight = 9_999;
+			body.commons.item_length = 9_999;
+			body.commons.item_width = 9_999;
+			body.commons.item_height = 9_999;
 			const { db } = getTestDatabase();
+			const parsed = createItemSchema.parse(body);
 
 			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+			const responseBody = await responseJson(response);
+			const [stored] = await db
+				.select()
+				.from(items)
+				.where(eq(items.id, Number(responseBody.item_id)));
 
-			expect(response.status).toBe(400);
-			expect(await db.select().from(items)).toEqual([]);
+			expect(parsed.commons).not.toHaveProperty('custom_shipping_price');
+			expect(parsed.commons).not.toHaveProperty('item_weight');
+			expect(parsed.commons).not.toHaveProperty('item_length');
+			expect(parsed.commons).not.toHaveProperty('item_width');
+			expect(parsed.commons).not.toHaveProperty('item_height');
+			expect(response.status).toBe(201);
+			expect(stored).toMatchObject({
+				custom_shipping_price: null,
+				item_weight: null,
+				item_length: null,
+				item_width: null,
+				item_height: null,
+			});
 			await expectNoPaymentProviderRequests();
 		});
 
@@ -320,8 +363,23 @@ describe('item and listing routes', () => {
 			},
 		);
 
+		it('rejects an unknown property after all required properties pass validation', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors);
+			body.properties = [...(body.properties ?? []), { id: 2_147_483_647, slug: 'unknown', value: 2_147_483_647 }];
+			const { db } = getTestDatabase();
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await responseJson(response)).toEqual({
+				message: 'Some properties are not mapped to this subcategory',
+			});
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
 		it.each([
-			['unknown property', () => [{ id: 2147483647, slug: 'unknown', value: 2147483647 }]],
 			[
 				'mismapped property value',
 				(actors: CommerceActorGraph) => [
@@ -585,13 +643,16 @@ describe('item and listing routes', () => {
 			});
 		});
 
-		it('rejects raw storage shipping columns in commons without mutating the item', async () => {
+		it('rejects a raw-storage-only edit after stripping it without mutating the item', async () => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
 			const body = {
 				commons: {
-					title: 'Attempted Raw Shipping Bypass',
 					custom_shipping_price: 99_999,
+					item_weight: 99_999,
+					item_length: 99_999,
+					item_width: 99_999,
+					item_height: 99_999,
 				},
 			};
 
