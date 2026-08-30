@@ -1,205 +1,213 @@
-import { env } from 'hono/adapter';
-import { getCookie } from 'hono/cookie';
-import { verify } from 'hono/jwt';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { and, eq } from 'drizzle-orm';
 import sharp from 'sharp';
 
+import { createClient } from '../../database';
+import { items, items_images, type InsertItemImage } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { s3Client } from '../../lib/s3client';
-import { createClient } from '../../database';
-import { items_images, type InsertItemImage } from '../../database/schemas/schema';
-import { authPath, environment } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
+import { authPath, environment } from '../../utils/constants';
+
+const MAX_IMAGE_SIZE = 3 * 1024 * 1024;
+const MAX_POSTGRES_INTEGER = 2_147_483_647;
+
+type ProcessedImage = {
+	originalBuffer: Buffer;
+	mediumBuffer: Buffer;
+	smallBuffer: Buffer;
+	thumbnailBuffer: Buffer;
+	originalKey: string;
+	mediumKey: string;
+	smallKey: string;
+	thumbKey: string;
+	contentType: string;
+	orderPosition: number;
+};
 
 export const uploadsRoute = createRouter().post(`/${authPath}/images-item`, authMiddleware, async (c) => {
-	const { ACCESS_TOKEN_SECRET } = env<{
-		ACCESS_TOKEN_SECRET: string;
-	}>(c);
-
-	const accessToken = getCookie(c, 'access_token');
-	const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-	const user_id = Number(payload.id);
-
-	const formData = await c.req.parseBody({ all: true, dot: true });
-	const { images, item_id } = formData;
-
-	const receivedImages = Array.isArray(images) ? images : [images];
-
-	if (!accessToken || !images || !item_id || !user_id || !receivedImages.length) {
+	let formData: Awaited<ReturnType<typeof c.req.parseBody>>;
+	try {
+		formData = await c.req.parseBody({ all: true, dot: true });
+	} catch {
 		return c.json({ message: 'Upload images-item error' }, 400);
 	}
 
-	// Validate files are images and do not exceed 5MB
+	const { images, item_id: itemIdField } = formData;
+	if (images === undefined || typeof itemIdField !== 'string') {
+		return c.json({ message: 'Upload images-item error' }, 400);
+	}
+
+	const receivedImages = Array.isArray(images) ? images : [images];
+	const itemId = Number(itemIdField);
+	if (
+		!/^[1-9]\d*$/.test(itemIdField) ||
+		!Number.isSafeInteger(itemId) ||
+		itemId > MAX_POSTGRES_INTEGER ||
+		receivedImages.length === 0
+	) {
+		return c.json({ message: 'Upload images-item error' }, 400);
+	}
+
+	const refinedImages: File[] = [];
 	for (const file of receivedImages) {
 		if (!(file instanceof File) || !file.type.startsWith('image/')) {
 			return c.json({ error: 'Invalid file type' }, 400);
 		}
 
-		if (file.size > 3 * 1024 * 1024) {
+		if (file.size > MAX_IMAGE_SIZE) {
 			return c.json({ error: `File ${file.name} exceeds the 3MB limit` }, 400);
 		}
+		refinedImages.push(file);
 	}
 
-	const refinedImages = receivedImages;
+	const { db } = createClient();
+	const [ownedItem] = await db
+		.select({ id: items.id })
+		.from(items)
+		.where(and(eq(items.id, itemId), eq(items.profile_id, c.var.user.profile_id)))
+		.limit(1);
+	if (!ownedItem) {
+		return c.json({ message: 'Item not found' }, 404);
+	}
 
+	const s3BasePath = `images/items/${itemId}`;
+	const s3BucketName = environment.AWS_BUCKET_NAME;
+	let processedImages: ProcessedImage[];
 	try {
-		// Define S3 paths
-		const s3BasePath = `images/items/${item_id}`;
-		const s3BucketName = environment.AWS_BUCKET_NAME;
-
-		// Upload images in parallel
-		const uploadPromises = refinedImages
-			?.filter((file): file is File => file instanceof File)
-			.map(async (file: File, index: number) => {
+		processedImages = await Promise.all(
+			refinedImages.map(async (file, index) => {
 				const timestamp = Date.now();
 				const fileName = file.name.split('.')?.[0];
 				const extension = file.name.split('.').pop();
+				const originalBuffer = Buffer.from(await file.arrayBuffer());
+				const metadata = await sharp(originalBuffer).metadata();
+				const { width, height } = metadata;
 
-				// Read file buffer
-				const buffer = await file.arrayBuffer();
-				const originalBuffer = Buffer.from(buffer);
-
-				let metadata;
-				try {
-					metadata = await sharp(originalBuffer).metadata();
-				} catch (error) {
-					throw new Error(`Error processing file: ${file.name}`);
+				if (!width || !height || !metadata.format) {
+					throw new Error('Invalid image metadata');
 				}
 
-				const { width, height } = metadata;
-				const mediumMaxSize = 800;
-				const smallMaxSize = 500;
-
-				// Resize logic medium
 				const mediumBuffer = await sharp(originalBuffer)
 					.resize({
-						width: width && width > mediumMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
-						height: height && height > mediumMaxSize ? mediumMaxSize : height, // Max height mediumMaxSize
-						fit: 'inside', // Maintain aspect ratio
+						width: width > 800 ? undefined : width,
+						height: height > 800 ? 800 : height,
+						fit: 'inside',
 					})
 					.toBuffer();
-
-				// Resize logic small
 				const smallBuffer = await sharp(originalBuffer)
 					.resize({
-						width: width && width > smallMaxSize ? undefined : width, // Keep original width if <= mediumMaxSize
-						height: height && height > smallMaxSize ? smallMaxSize : height, // Max height mediumMaxSize
-						fit: 'inside', // Maintain aspect ratio
+						width: width > 500 ? undefined : width,
+						height: height > 500 ? 500 : height,
+						fit: 'inside',
 					})
 					.toBuffer();
-
-				const thumbnailBuffer = await sharp(originalBuffer)
-					.resize(200, 200, { fit: 'cover' }) // Force 200x200 crop
-					.toBuffer();
-
-				// Define S3 keys for each image variant
-				const originalKey = `${s3BasePath}/full/${fileName}_original_${timestamp}.${extension}`;
-				const mediumKey = `${s3BasePath}/full/${fileName}_medium_${timestamp}.${extension}`;
-				const smallKey = `${s3BasePath}/full/${fileName}_small_${timestamp}.${extension}`;
-				const thumbKey = `${s3BasePath}/thumbs/${fileName}_${timestamp}_thumb.${extension}`;
-
-				// Upload original image to S3
-				await s3Client.send(
-					new PutObjectCommand({
-						Bucket: s3BucketName,
-						Key: originalKey,
-						Body: originalBuffer,
-						ContentType: file.type,
-					}),
-				);
-
-				// Upload medium image to S3
-				await s3Client.send(
-					new PutObjectCommand({
-						Bucket: s3BucketName,
-						Key: mediumKey,
-						Body: mediumBuffer,
-						ContentType: file.type,
-					}),
-				);
-
-				// Upload small image to S3
-				await s3Client.send(
-					new PutObjectCommand({
-						Bucket: s3BucketName,
-						Key: smallKey,
-						Body: smallBuffer,
-						ContentType: file.type,
-					}),
-				);
-
-				// Upload thumbnail to S3
-				await s3Client.send(
-					new PutObjectCommand({
-						Bucket: s3BucketName,
-						Key: thumbKey,
-						Body: thumbnailBuffer,
-						ContentType: file.type,
-					}),
-				);
+				const thumbnailBuffer = await sharp(originalBuffer).resize(200, 200, { fit: 'cover' }).toBuffer();
 
 				return {
-					originalKey,
-					smallKey,
-					mediumKey,
-					thumbKey,
-					orderPosition: index, // Store the original array position
+					originalBuffer,
+					mediumBuffer,
+					smallBuffer,
+					thumbnailBuffer,
+					originalKey: `${s3BasePath}/full/${fileName}_original_${timestamp}.${extension}`,
+					mediumKey: `${s3BasePath}/full/${fileName}_medium_${timestamp}.${extension}`,
+					smallKey: `${s3BasePath}/full/${fileName}_small_${timestamp}.${extension}`,
+					thumbKey: `${s3BasePath}/thumbs/${fileName}_${timestamp}_thumb.${extension}`,
+					contentType: file.type,
+					orderPosition: index,
 				};
-			});
+			}),
+		);
+	} catch {
+		return c.json({ error: 'Invalid image file' }, 400);
+	}
 
-		const uploadedFiles = await Promise.all(uploadPromises);
+	const uploadedKeys: string[] = [];
+	const uploadedFiles = processedImages.map(({ originalKey, smallKey, mediumKey, thumbKey, orderPosition }) => ({
+		originalKey,
+		smallKey,
+		mediumKey,
+		thumbKey,
+		orderPosition,
+	}));
 
-		// Save image URLs to database
-		const { db } = createClient();
+	try {
+		for (const file of processedImages) {
+			const variants = [
+				[file.originalKey, file.originalBuffer],
+				[file.mediumKey, file.mediumBuffer],
+				[file.smallKey, file.smallBuffer],
+				[file.thumbKey, file.thumbnailBuffer],
+			] as const;
 
-		// Prepare data for database insertion - one row for each size
+			for (const [key, body] of variants) {
+				await s3Client.send(
+					new PutObjectCommand({
+						Bucket: s3BucketName,
+						Key: key,
+						Body: body,
+						ContentType: file.contentType,
+					}),
+				);
+				uploadedKeys.push(key);
+			}
+		}
+
 		const imageRecords: InsertItemImage[] = uploadedFiles.flatMap((file) => [
-			// Original image
 			{
-				item_id: Number(item_id),
+				item_id: itemId,
 				url: `https://${s3BucketName}.s3.amazonaws.com/${file.originalKey}`,
 				order_position: file.orderPosition,
-				created_by: user_id,
 				size: 'original',
 			},
-			// Medium image
 			{
-				item_id: Number(item_id),
+				item_id: itemId,
 				url: `https://${s3BucketName}.s3.amazonaws.com/${file.mediumKey}`,
 				order_position: file.orderPosition,
-				created_by: user_id,
 				size: 'medium',
 			},
-			// Small image
 			{
-				item_id: Number(item_id),
+				item_id: itemId,
 				url: `https://${s3BucketName}.s3.amazonaws.com/${file.smallKey}`,
 				order_position: file.orderPosition,
-				created_by: user_id,
 				size: 'small',
 			},
-			// Thumbnail image
 			{
-				item_id: Number(item_id),
+				item_id: itemId,
 				url: `https://${s3BucketName}.s3.amazonaws.com/${file.thumbKey}`,
 				order_position: file.orderPosition,
-				created_by: user_id,
 				size: 'thumbnail',
 			},
 		]);
 
-		// Insert records into the database
 		await db.insert(items_images).values(imageRecords);
 
 		return c.json(
 			{
-				message: `Images for item ${item_id} uploaded successfully!`,
-				item_id,
+				message: `Images for item ${itemIdField} uploaded successfully!`,
+				item_id: itemIdField,
 				files: uploadedFiles,
 			},
 			201,
 		);
 	} catch (error) {
+		if (uploadedKeys.length > 0) {
+			try {
+				const deleted = await s3Client.send(
+					new DeleteObjectsCommand({
+						Bucket: s3BucketName,
+						Delete: { Objects: uploadedKeys.map((Key) => ({ Key })) },
+					}),
+				);
+
+				if (deleted.Errors?.length) {
+					throw new Error(`Failed to delete ${deleted.Errors.length} uploaded object(s)`);
+				}
+			} catch (cleanupError) {
+				console.error('Error cleaning up uploaded images:', cleanupError);
+			}
+		}
+
 		console.error('Error uploading images to S3:', error);
 		return c.json({ error: 'Failed to upload images' }, 500);
 	}
