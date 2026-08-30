@@ -159,7 +159,7 @@ describe('authentication routes', () => {
 		expect(await db.select().from(profiles)).toHaveLength(1);
 	});
 
-	it('POST /signup rolls back an SMTP failure so the same account can be retried', async () => {
+	it('POST /signup compensates an SMTP failure so the same account can be retried', async () => {
 		const body = signupBody(uniqueValue('smtp'));
 		const sendEmail = vi
 			.spyOn(verifyEmailMailer, 'sendVerifyEmail')
@@ -171,6 +171,7 @@ describe('authentication routes', () => {
 			const failed = await app.request('/signup', jsonRequest('POST', body));
 			expect(failed.status).toBe(500);
 			expect(await failed.json()).toEqual({ message: 'Internal server error' });
+			expect(responseCookieHeader(failed, 'email_activation_token')).toBeUndefined();
 			expect(await db.select().from(users)).toEqual([]);
 			expect(await db.select().from(profiles)).toEqual([]);
 
@@ -187,17 +188,59 @@ describe('authentication routes', () => {
 		}
 	});
 
-	it('GET /verify returns 401 for absent and malformed access tokens', async () => {
+	it('GET /verify returns 401 without logging for absent, malformed, and signed access tokens without exp', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const noExpirationToken = await sign(
+			{
+				id: fixture.user.id,
+				profile_id: fixture.profile.id,
+				username: fixture.user.username,
+				email: fixture.user.email,
+				email_verified: true,
+				phone_verified: false,
+			},
+			requiredSecret('ACCESS_TOKEN_SECRET'),
+		);
 		const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		try {
 			const absent = await app.request('/verify');
 			const malformed = await app.request('/verify', { headers: { cookie: 'access_token=malformed' } });
+			const noExpiration = await app.request('/verify', {
+				headers: { cookie: `access_token=${noExpirationToken}` },
+			});
 
 			expect(absent.status).toBe(401);
 			expect(malformed.status).toBe(401);
+			expect(noExpiration.status).toBe(401);
+			expect(errorLog).not.toHaveBeenCalled();
 		} finally {
 			errorLog.mockRestore();
 		}
+	});
+
+	it('GET /verify resolves and returns the current database identity', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const currentEmail = `${uniqueValue('verify-current')}@tantovale.test`;
+		const { db } = getTestDatabase();
+		await db.update(users).set({ email: currentEmail }).where(eq(users.id, fixture.user.id));
+
+		const response = await app.request('/verify', { headers: { cookie: jar.header() } });
+		const body = (await response.json()) as { user: { email: string; username: string } };
+
+		expect(response.status).toBe(200);
+		expect(body.user).toMatchObject({ email: currentEmail, username: fixture.user.username });
+	});
+
+	it('GET /verify rejects an otherwise valid access token after the account is banned', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const jar = await loginAs(fixture);
+		const { db } = getTestDatabase();
+		await db.update(users).set({ is_banned: true }).where(eq(users.id, fixture.user.id));
+
+		const response = await app.request('/verify', { headers: { cookie: jar.header() } });
+
+		expect(response.status).toBe(401);
 	});
 
 	it('GET /verify/email rejects absent, malformed, wrong-type, and expired tokens without verifying the user', async () => {
@@ -215,11 +258,21 @@ describe('authentication routes', () => {
 			},
 			requiredSecret('EMAIL_VERIFY_TOKEN_SECRET'),
 		);
+		const noExpiration = await sign(
+			{
+				id: fixture.user.id,
+				username: fixture.user.username,
+				type: 'email_verification',
+				expiresIn: Math.floor(Date.now() / 1_000) + 60 * 60,
+			},
+			requiredSecret('EMAIL_VERIFY_TOKEN_SECRET'),
+		);
 		const responses = [
 			await app.request('/verify/email'),
 			await app.request('/verify/email?token=malformed'),
 			await app.request(`/verify/email?token=${encodeURIComponent(wrongType)}`),
 			await app.request(`/verify/email?token=${encodeURIComponent(expired)}`),
+			await app.request(`/verify/email?token=${encodeURIComponent(noExpiration)}`),
 		];
 
 		for (const response of responses) {
@@ -472,6 +525,33 @@ describe('authentication routes', () => {
 		expect(response.status).toBe(401);
 		expect(jar.header()).toBe('');
 		expect(sessions).toEqual([]);
+	});
+
+	it('GET /user/auth permits exactly one concurrent automatic rotation for an unusable access token', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const originalJar = await loginAs(fixture);
+		const refreshToken = cookieValue(originalJar.header(), 'refresh_token');
+		const firstJar = new CookieJar();
+		const secondJar = new CookieJar();
+		firstJar.capture([`access_token=unusable`, `refresh_token=${refreshToken}`]);
+		secondJar.capture([`access_token=unusable`, `refresh_token=${refreshToken}`]);
+
+		const responses = await Promise.all([
+			authenticatedRequest('/user/auth', 'GET', firstJar),
+			authenticatedRequest('/user/auth', 'GET', secondJar),
+		]);
+		const winner = responses.find(({ status }) => status === 200);
+		const loser = responses.find(({ status }) => status === 401);
+		const { db } = getTestDatabase();
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(responses.map(({ status }) => status).sort()).toEqual([200, 401]);
+		expect(responseCookie(winner!, 'access_token')).toEqual(expect.any(String));
+		expect(responseCookie(winner!, 'refresh_token')).toEqual(expect.any(String));
+		expect(responseCookie(loser!, 'access_token')).toBe('');
+		expect(responseCookie(loser!, 'refresh_token')).toBe('');
+		expect(sessions).toHaveLength(1);
+		expect(sessions[0]?.token).not.toBe(refreshToken);
 	});
 
 	it('POST /refresh/auth rotates the exact valid session without exposing credentials and preserves another real session', async () => {

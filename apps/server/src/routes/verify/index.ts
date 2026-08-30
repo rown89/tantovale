@@ -14,6 +14,7 @@ import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
+import { verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
 
 export const verifyRoute = createRouter()
 	.get(
@@ -77,42 +78,55 @@ export const verifyRoute = createRouter()
 				ACCESS_TOKEN_SECRET: string;
 			}>(c);
 
+			const accessToken = getCookie(c, 'access_token');
+			if (!accessToken) {
+				return c.json({ message: 'No token provided' }, 401);
+			}
+
+			let claims;
 			try {
-				// Get the signed access token from cookies
-				const accessToken = getCookie(c, 'access_token');
+				claims = await verifyAccessTokenClaims(accessToken, ACCESS_TOKEN_SECRET);
+			} catch {
+				return c.json({ message: 'Invalid token' }, 401);
+			}
 
-				if (!accessToken) {
-					return c.json({ message: 'No token provided' }, 401);
-				}
+			try {
+				const { db } = createClient();
+				const [user] = await db
+					.select({
+						id: users.id,
+						profile_id: profiles.id,
+						username: users.username,
+						email: users.email,
+						email_verified: users.email_verified,
+						phone_verified: users.phone_verified,
+						is_banned: users.is_banned,
+					})
+					.from(users)
+					.innerJoin(profiles, eq(users.id, profiles.user_id))
+					.where(eq(users.id, claims.id))
+					.limit(1);
 
-				// Verify and decode the token
-				try {
-					const payload = await verify(accessToken, ACCESS_TOKEN_SECRET);
-
-					if (!payload) return c.json({ message: 'Invalid token' }, 401);
-
-					return c.json(
-						{
-							message: 'Token verified successfully',
-							user: {
-								id: payload.id as number,
-								profile_id: payload.profile_id as number,
-								username: payload.username as string,
-								email: payload.email as string,
-								email_verified: payload.email_verified as boolean,
-								phone_verified: payload.phone_verified as boolean,
-								exp: payload.exp as number,
-							},
-						},
-						200,
-					);
-				} catch (tokenError) {
-					// Specific handling for token verification errors
-					console.error('Token verification failed:', tokenError);
+				if (!user || user.is_banned) {
 					return c.json({ message: 'Invalid token' }, 401);
 				}
-			} catch (err) {
-				console.error('Error processing verify token request: ', err);
+
+				return c.json(
+					{
+						message: 'Token verified successfully',
+						user: {
+							id: user.id,
+							profile_id: user.profile_id,
+							username: user.username,
+							email: user.email,
+							email_verified: user.email_verified,
+							phone_verified: user.phone_verified,
+							exp: claims.exp,
+						},
+					},
+					200,
+				);
+			} catch {
 				return c.json({ message: 'Error processing verify token request' }, 500);
 			}
 		},
@@ -147,8 +161,16 @@ export const verifyRoute = createRouter()
 				return c.json({ message: 'Invalid token' }, 400);
 			}
 
-			if (tokenClaims.type !== 'email_verification') {
-				return c.json({ message: 'Invalid token type' }, 400);
+			if (
+				!Number.isSafeInteger(tokenClaims.id) ||
+				typeof tokenClaims.username !== 'string' ||
+				tokenClaims.username.length === 0 ||
+				tokenClaims.type !== 'email_verification' ||
+				typeof tokenClaims.exp !== 'number' ||
+				!Number.isFinite(tokenClaims.exp) ||
+				tokenClaims.exp * 1_000 <= Date.now()
+			) {
+				return c.json({ message: 'Invalid token' }, 400);
 			}
 
 			try {
@@ -164,11 +186,14 @@ export const verifyRoute = createRouter()
 					})
 					.from(users)
 					.innerJoin(profiles, eq(users.id, profiles.user_id))
-					.where(eq(users.id, Number(tokenClaims.id)))
+					.where(eq(users.id, tokenClaims.id as number))
 					.limit(1);
 
 				if (!user) {
 					return c.json({ error: 'User not found' }, 404);
+				}
+				if (user.username !== tokenClaims.username) {
+					return c.json({ message: 'Invalid token' }, 400);
 				}
 
 				if (user.email_verified) {
