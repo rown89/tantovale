@@ -1,4 +1,4 @@
-import { eq, and, not, desc, inArray, isNull } from 'drizzle-orm';
+import { eq, and, not, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -7,6 +7,7 @@ import { getCookie } from 'hono/cookie';
 
 import { createClient, type DrizzleClient } from '#database/index';
 import {
+	categories,
 	subcategories,
 	subcategory_properties,
 	items,
@@ -55,7 +56,11 @@ type ValidatedProperties = {
 
 type PropertyValidationMode = 'create' | 'update';
 
-const idBackedPropertyTypes = new Set(['select', 'radio', 'select_multi', 'checkbox']);
+const postgresIntegerMin = -2_147_483_648;
+const postgresIntegerMax = 2_147_483_647;
+const paymentIdentityLockNamespace = 1_414_283_092;
+const scalarIdPropertyTypes = new Set(['select', 'radio']);
+const multipleIdPropertyTypes = new Set(['select_multi', 'checkbox']);
 
 async function validatePropertiesForSubcategory(
 	tx: ItemTransaction,
@@ -75,7 +80,12 @@ async function validatePropertiesForSubcategory(
 		.innerJoin(properties, eq(properties.id, subcategory_properties.property_id))
 		.where(eq(subcategory_properties.subcategory_id, subcategoryId));
 	const mappingByProperty = new Map(mappings.map((mapping) => [mapping.property_id, mapping]));
-	const suppliedPropertyIds = new Set(itemProperties?.map(({ id }) => id) ?? []);
+	const requestedPropertyIds = itemProperties?.map(({ id }) => id) ?? [];
+	const suppliedPropertyIds = new Set(requestedPropertyIds);
+
+	if (suppliedPropertyIds.size !== requestedPropertyIds.length) {
+		throw new Error('Each property can be supplied only once');
+	}
 
 	if (mappings.some((mapping) => mapping.required && !suppliedPropertyIds.has(mapping.property_id))) {
 		throw new Error('All required properties must be provided');
@@ -91,9 +101,15 @@ async function validatePropertiesForSubcategory(
 				throw new Error(`Property ${mapping.slug} cannot be edited`);
 			}
 
-			if (idBackedPropertyTypes.has(mapping.type)) {
+			if (scalarIdPropertyTypes.has(mapping.type) || multipleIdPropertyTypes.has(mapping.type)) {
+				const expectsMultiple = multipleIdPropertyTypes.has(mapping.type);
+				if (!expectsMultiple && Array.isArray(property.value)) {
+					throw new Error(`Property ${mapping.slug} requires exactly one scalar property-value ID`);
+				}
+				if (expectsMultiple && (!Array.isArray(property.value) || property.value.length === 0)) {
+					throw new Error(`Property ${mapping.slug} requires a nonempty array of property-value IDs`);
+				}
 				const values = Array.isArray(property.value) ? property.value : [property.value];
-				if (values.length === 0) throw new Error('Property values cannot be empty');
 				const ids = values.map((value) => {
 					if (typeof value === 'boolean' || (typeof value === 'string' && !/^[1-9]\d*$/.test(value))) {
 						throw new Error(`Property ${mapping.slug} requires property-value IDs`);
@@ -101,6 +117,9 @@ async function validatePropertiesForSubcategory(
 					const id = Number(value);
 					if (!Number.isSafeInteger(id) || id <= 0) {
 						throw new Error(`Property ${mapping.slug} requires positive integer property-value IDs`);
+					}
+					if (id > postgresIntegerMax) {
+						throw new Error(`Property ${mapping.slug} requires 32-bit property-value IDs`);
 					}
 					return id;
 				});
@@ -121,6 +140,9 @@ async function validatePropertiesForSubcategory(
 					Array.isArray(property.value)
 				) {
 					throw new Error(`Property ${mapping.slug} requires a raw integer numeric value`);
+				}
+				if (property.value < postgresIntegerMin || property.value > postgresIntegerMax) {
+					throw new Error(`Property ${mapping.slug} requires a 32-bit integer numeric value`);
 				}
 				return { mapping, kind: 'number' as const, value: property.value };
 			}
@@ -224,44 +246,53 @@ function validateEasyPayMode(
 }
 
 async function ensurePaymentProviderIdentity(
-	tx: ItemTransaction,
+	db: DrizzleClient['db'],
 	user: Pick<User, 'profile_id' | 'email'>,
 	requestIp: string,
 ): Promise<void> {
-	const [profile] = await tx
-		.select({
-			name: profiles.name,
-			surname: profiles.surname,
-			payment_provider_id: profiles.payment_provider_id,
-		})
-		.from(profiles)
-		.where(eq(profiles.id, user.profile_id))
-		.limit(1);
-	if (!profile) throw new Error('Profile not found');
-	if (profile.payment_provider_id) return;
+	await db.transaction(async (identityTx) => {
+		await identityTx.execute(sql`SELECT pg_advisory_xact_lock(${paymentIdentityLockNamespace}, ${user.profile_id})`);
 
-	const [address] = await tx
-		.select({ country_code: addresses.country_code })
-		.from(addresses)
-		.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
-		.limit(1);
-	if (!address) throw new Error('Active address not found');
+		const [profile] = await identityTx
+			.select({
+				name: profiles.name,
+				surname: profiles.surname,
+				payment_provider_id: profiles.payment_provider_id,
+			})
+			.from(profiles)
+			.where(eq(profiles.id, user.profile_id))
+			.limit(1);
+		if (!profile) throw new Error('Profile not found');
+		if (profile.payment_provider_id) return;
 
-	const paymentProviderService = new PaymentProviderService();
-	const paymentProviderId = await paymentProviderService.createGuestUser({
-		id: user.profile_id,
-		email: user.email,
-		first_name: profile.name,
-		last_name: profile.surname,
-		country_code: address.country_code,
-		tos_acceptance: {
-			unix_timestamp: Math.floor(Date.now() / 1_000),
-			ip: requestIp,
-		},
+		const [address] = await identityTx
+			.select({ country_code: addresses.country_code })
+			.from(addresses)
+			.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
+			.limit(1);
+		if (!address) throw new Error('Active address not found');
+
+		const paymentProviderService = new PaymentProviderService();
+		const paymentProviderId = await paymentProviderService.createGuestUser({
+			id: user.profile_id,
+			email: user.email,
+			first_name: profile.name,
+			last_name: profile.surname,
+			country_code: address.country_code,
+			tos_acceptance: {
+				unix_timestamp: Math.floor(Date.now() / 1_000),
+				ip: requestIp,
+			},
+		});
+		if (!paymentProviderId) throw new Error('Failed to create payment provider guest user');
+
+		const [updatedProfile] = await identityTx
+			.update(profiles)
+			.set({ payment_provider_id: paymentProviderId.id })
+			.where(and(eq(profiles.id, user.profile_id), isNull(profiles.payment_provider_id)))
+			.returning({ id: profiles.id });
+		if (!updatedProfile) throw new Error('Failed to persist payment provider guest user');
 	});
-	if (!paymentProviderId) throw new Error('Failed to create payment provider guest user');
-
-	await tx.update(profiles).set({ payment_provider_id: paymentProviderId.id }).where(eq(profiles.id, user.profile_id));
 }
 
 export const itemRoute = createRouter()
@@ -274,7 +305,9 @@ export const itemRoute = createRouter()
 
 		const id = Number(c.req.param('id'));
 
-		if (!Number.isSafeInteger(id) || id <= 0) return c.json({ message: 'Invalid item ID' }, 400);
+		if (!Number.isSafeInteger(id) || id <= 0 || id > postgresIntegerMax) {
+			return c.json({ message: 'Invalid item ID' }, 400);
+		}
 
 		const access_token = getCookie(c, 'access_token');
 		const refresh_token = getCookie(c, 'refresh_token');
@@ -313,12 +346,21 @@ export const itemRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(categories, eq(categories.id, subcategories.category_id))
 				.innerJoin(addresses, eq(addresses.id, items.address_id))
 				.innerJoin(city, eq(city.id, addresses.city_id))
 				.innerJoin(province, eq(province.id, addresses.province_id))
 				.innerJoin(profiles, eq(profiles.id, items.profile_id))
 				.innerJoin(users, eq(users.id, profiles.user_id))
-				.where(and(eq(items.id, id), eq(items.published, true), isNull(items.deleted_at)))
+				.where(
+					and(
+						eq(items.id, id),
+						eq(items.published, true),
+						eq(subcategories.published, true),
+						eq(categories.published, true),
+						isNull(items.deleted_at),
+					),
+				)
 				.limit(1);
 
 			if (!item) return c.json({ message: 'Item not found' }, 404);
@@ -435,10 +477,17 @@ export const itemRoute = createRouter()
 				const [availableSubcategory] = await tx
 					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
 					.from(subcategories)
-					.where(eq(subcategories.id, commons.subcategory_id))
+					.innerJoin(categories, eq(categories.id, subcategories.category_id))
+					.where(
+						and(
+							eq(subcategories.id, commons.subcategory_id),
+							eq(subcategories.published, true),
+							eq(categories.published, true),
+						),
+					)
 					.limit(1);
 				if (!availableSubcategory) {
-					throw new Error(`Subcategory with ID ${commons.subcategory_id} doesn't exist`);
+					throw new Error('Subcategory is not publicly available');
 				}
 
 				const [itemAddress] = await tx
@@ -468,7 +517,8 @@ export const itemRoute = createRouter()
 				);
 
 				if (commons.easy_pay) {
-					await ensurePaymentProviderIdentity(tx, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
+					// Intentional durable boundary: the remote identity and its local ID commit even if item creation later rolls back.
+					await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
 				}
 
 				const [newItem] = await tx
@@ -523,7 +573,9 @@ export const itemRoute = createRouter()
 	})
 	.put(`/${authPath}/edit/:id`, authMiddleware, zValidator('json', updateItemSchema), async (c) => {
 		const id = Number(c.req.param('id'));
-		if (!Number.isSafeInteger(id) || id <= 0) return c.json({ message: 'Invalid item ID' }, 400);
+		if (!Number.isSafeInteger(id) || id <= 0 || id > postgresIntegerMax) {
+			return c.json({ message: 'Invalid item ID' }, 400);
+		}
 
 		const user = c.var.user;
 		const { commons, properties: requestedProperties, shipping } = c.req.valid('json');
@@ -564,9 +616,16 @@ export const itemRoute = createRouter()
 				const [targetSubcategory] = await tx
 					.select({ id: subcategories.id, easy_pay: subcategories.easy_pay })
 					.from(subcategories)
-					.where(eq(subcategories.id, targetSubcategoryId))
+					.innerJoin(categories, eq(categories.id, subcategories.category_id))
+					.where(
+						and(
+							eq(subcategories.id, targetSubcategoryId),
+							eq(subcategories.published, true),
+							eq(categories.published, true),
+						),
+					)
 					.limit(1);
-				if (!targetSubcategory) throw new Error('Subcategory does not exist');
+				if (!targetSubcategory) throw new Error('Subcategory is not publicly available');
 				if (
 					commons?.subcategory_id !== undefined &&
 					commons.subcategory_id !== existingItem.subcategory_id &&
@@ -634,7 +693,8 @@ export const itemRoute = createRouter()
 				if (!updatedItem) return undefined;
 
 				if (effectiveEasyPay) {
-					await ensurePaymentProviderIdentity(tx, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
+					// Intentional durable boundary: the remote identity and its local ID commit even if the edit later rolls back.
+					await ensurePaymentProviderIdentity(db, user, c.req.raw.headers.get('x-forwarded-for') || '127.0.0.1');
 				}
 				if (validatedProperties) {
 					await tx.delete(items_properties_values).where(eq(items_properties_values.item_id, id));
@@ -663,7 +723,7 @@ export const itemRoute = createRouter()
 		zValidator(
 			'json',
 			z.object({
-				item_id: z.number(),
+				item_id: z.number().int().positive().max(postgresIntegerMax),
 			}),
 		),
 		async (c) => {
@@ -935,7 +995,7 @@ export const itemRoute = createRouter()
 		zValidator(
 			'json',
 			z.object({
-				id: z.number(),
+				id: z.number().int().positive().max(postgresIntegerMax),
 				published: z.boolean(),
 			}),
 		),
@@ -944,6 +1004,27 @@ export const itemRoute = createRouter()
 			const user = c.var.user;
 			const { db } = createClient();
 			try {
+				if (published) {
+					const [publishableItem] = await db
+						.select({ id: items.id })
+						.from(items)
+						.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+						.innerJoin(categories, eq(categories.id, subcategories.category_id))
+						.where(
+							and(
+								eq(items.id, id),
+								eq(items.profile_id, user.profile_id),
+								eq(subcategories.published, true),
+								eq(categories.published, true),
+								isNull(items.deleted_at),
+							),
+						)
+						.limit(1);
+					if (!publishableItem) {
+						return c.json({ message: "Item not found or you don't have permission to update it" }, 404);
+					}
+				}
+
 				const [updatedItem] = await db
 					.update(items)
 					.set({ published, updated_at: new Date() })

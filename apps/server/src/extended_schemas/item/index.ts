@@ -3,6 +3,12 @@ import { boolean, array, number, string, z } from 'zod/v4';
 
 import { items } from '@workspace/server/database';
 
+const postgresIntegerMin = -2_147_483_648;
+const postgresIntegerMax = 2_147_483_647;
+const postgresIntegerSchema = number().int().min(postgresIntegerMin).max(postgresIntegerMax);
+const nonnegativePostgresIntegerSchema = postgresIntegerSchema.min(0);
+const postgresIdSchema = postgresIntegerSchema.positive();
+
 const imageFileSchema = z.instanceof(File).refine((file) => file.type.startsWith('image/'), {
 	message: 'Only image files are allowed',
 });
@@ -14,18 +20,18 @@ export const multipleImagesSchema = z
 	.max(5, { message: 'You can upload up to 6 images at once' });
 
 export const shippingSchema = z.object({
-	item_weight: number().optional(),
-	item_length: number().optional(),
-	item_width: number().optional(),
-	item_height: number().optional(),
-	shipping_price: z.number().optional(),
+	item_weight: nonnegativePostgresIntegerSchema.optional(),
+	item_length: nonnegativePostgresIntegerSchema.optional(),
+	item_width: nonnegativePostgresIntegerSchema.optional(),
+	item_height: nonnegativePostgresIntegerSchema.optional(),
+	shipping_price: nonnegativePostgresIntegerSchema.optional(),
 });
 
 export const propertySchema = z.array(
 	z.object({
-		id: number(),
+		id: postgresIdSchema,
 		slug: string(),
-		value: z.union([string(), number(), array(string()), array(number()), boolean()]),
+		value: z.union([string(), postgresIntegerSchema, array(string()), array(postgresIntegerSchema), boolean()]),
 	}),
 );
 
@@ -40,6 +46,7 @@ export const priceMax = 1000000;
 
 export const createItemSchema = z.object({
 	commons: createInsertSchema(items, {
+		address_id: () => postgresIdSchema,
 		title: (schema) =>
 			schema
 				.min(titleMinLength, 'Title must be at least 5 characters')
@@ -50,10 +57,11 @@ export const createItemSchema = z.object({
 				.min(minDescriptionLength, `Description must be at least ${minDescriptionLength} characters`)
 				.max(maxDescriptionLength, `Description must be less than ${maxDescriptionLength} characters`),
 		easy_pay: (schema) => schema.optional(),
-		price: (schema) =>
-			schema
+		price: () =>
+			postgresIntegerSchema
 				.min(priceMin, `Price must be greater than ${priceMin}`)
 				.max(priceMax, `Price must be less or equal to ${priceMax / 100} €`),
+		subcategory_id: () => postgresIdSchema,
 	}).omit({
 		profile_id: true,
 		published: true,

@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 
 import {
+	categories,
 	items,
 	users,
 	cities,
@@ -99,6 +100,8 @@ export const itemsRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(items_images, eq(items_images.item_id, items.id))
+				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(categories, eq(categories.id, subcategories.category_id))
 				.where(
 					and(
 						inArray(
@@ -109,6 +112,8 @@ export const itemsRoute = createRouter()
 						eq(items_images.order_position, 0),
 						eq(items.status, itemStatus.AVAILABLE),
 						eq(items.published, true),
+						eq(subcategories.published, true),
+						eq(categories.published, true),
 						isNull(items.deleted_at),
 					),
 				);
@@ -168,6 +173,7 @@ export const itemsRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(categories, eq(categories.id, subcategories.category_id))
 				.innerJoin(addresses, eq(addresses.id, items.address_id))
 				.innerJoin(city, eq(city.id, addresses.city_id))
 				.innerJoin(province, eq(province.id, addresses.province_id))
@@ -184,6 +190,8 @@ export const itemsRoute = createRouter()
 						eq(items.profile_id, profile.id),
 						eq(items.published, true),
 						eq(items.status, itemStatus.AVAILABLE),
+						eq(subcategories.published, true),
+						eq(categories.published, true),
 						isNull(items.deleted_at),
 					),
 				)

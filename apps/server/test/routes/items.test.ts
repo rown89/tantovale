@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../../src/app';
 import {
 	addresses,
+	categories,
 	items,
 	items_properties_values,
 	orders,
 	profiles,
 	profiles_items_favorites,
+	properties,
 	property_values,
+	subcategories,
 	subcategory_properties,
 } from '../../src/database/schemas/schema';
 import { itemStatus, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
@@ -54,6 +57,62 @@ async function expectNoPaymentProviderRequests(): Promise<void> {
 	const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
 	if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
 	expect(await getProviderRequests(providerUrl)).toEqual([]);
+}
+
+async function waitForPaymentProviderRequests(expectedCount: number): Promise<void> {
+	const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+	if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const requests = await getProviderRequests(providerUrl);
+		if (requests.filter(({ path }) => path === '/api/v1/guest_users').length >= expectedCount) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${expectedCount} payment-provider guest request(s)`);
+}
+
+async function createOptionalCardinalityProperty(
+	actors: CommerceActorGraph,
+	type: 'select' | 'radio' | 'select_multi' | 'checkbox',
+) {
+	const { db } = getTestDatabase();
+	const [property] = await db
+		.insert(properties)
+		.values({
+			name: `Cardinality ${type}`,
+			slug: `cardinality-${type}-${actors.seller.user.id}`,
+			type,
+		})
+		.returning();
+	if (!property) throw new Error('Cardinality property insert failed');
+	await db.insert(subcategory_properties).values({
+		property_id: property.id,
+		subcategory_id: actors.catalog.childSubcategory.id,
+		on_item_create_required: false,
+		on_item_update_editable: true,
+	});
+	const [value] = await db
+		.insert(property_values)
+		.values({ property_id: property.id, name: 'Cardinality value', value: 'cardinality-value' })
+		.returning();
+	if (!value) throw new Error('Cardinality property value insert failed');
+	return { property, value };
+}
+
+function hiddenTaxonomyItemBody(actors: CommerceActorGraph) {
+	const body = validItemBody(actors, {
+		commons: {
+			easy_pay: false,
+			subcategory_id: actors.catalog.unpublishedSubcategory.id,
+		},
+		properties: [
+			{
+				id: actors.catalog.unpublishedMapping.property.id,
+				slug: actors.catalog.unpublishedMapping.property.slug,
+				value: actors.catalog.unpublishedMapping.propertyValue.id,
+			},
+		],
+	});
+	return { ...body, shipping: undefined };
 }
 
 async function waitForBlockedItemUpdate(): Promise<void> {
@@ -243,6 +302,79 @@ describe('item and listing routes', () => {
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
 		});
 
+		it('serializes concurrent payment identity provisioning to one provider request', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+			const firstBody = validItemBody(actors, { commons: { title: 'Concurrent Identity Listing One' } });
+			const secondBody = validItemBody(actors, { commons: { title: 'Concurrent Identity Listing Two' } });
+
+			const responses = await Promise.all([
+				authJson('/item/auth/new', 'POST', actors.seller.jar, firstBody),
+				authJson('/item/auth/new', 'POST', actors.seller.jar, secondBody),
+			]);
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			const guestRequests = (await getProviderRequests(providerUrl)).filter(
+				({ path }) => path === '/api/v1/guest_users',
+			);
+			const storedItems = await db.select().from(items);
+			const [storedProfile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+
+			expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+			expect(guestRequests).toHaveLength(1);
+			expect(storedItems).toHaveLength(2);
+			expect(storedProfile?.payment_provider_id).toBeTruthy();
+		});
+
+		it('durably persists a provider identity when the later local item transaction rolls back', async () => {
+			const actors = await createCommerceActors();
+			const { client, db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+			const blocker = await client.connect();
+			let transactionOpen = false;
+
+			try {
+				await blocker.query('BEGIN');
+				transactionOpen = true;
+				await blocker.query('SELECT id FROM addresses WHERE id = $1 FOR UPDATE', [actors.seller.address.id]);
+				const createResponsePromise = authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors));
+
+				await waitForPaymentProviderRequests(1);
+				await blocker.query('DELETE FROM addresses WHERE id = $1', [actors.seller.address.id]);
+				await blocker.query('COMMIT');
+				transactionOpen = false;
+				const failedResponse = await createResponsePromise;
+				const [durableProfile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+
+				expect(failedResponse.status).toBe(400);
+				expect(await db.select().from(items)).toEqual([]);
+				expect(durableProfile?.payment_provider_id).toBeTruthy();
+
+				const replacementAddress = await createAddressFixture(actors.seller.profile.id, {
+					label: 'Durable identity retry address',
+					status: 'active',
+				});
+				const retryResponse = await authJson(
+					'/item/auth/new',
+					'POST',
+					actors.seller.jar,
+					validItemBody(actors, { commons: { address_id: replacementAddress.id } }),
+				);
+				const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+				if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+				const guestRequests = (await getProviderRequests(providerUrl)).filter(
+					({ path }) => path === '/api/v1/guest_users',
+				);
+
+				expect(retryResponse.status).toBe(201);
+				expect(guestRequests).toHaveLength(1);
+			} finally {
+				if (transactionOpen) await blocker.query('ROLLBACK');
+				blocker.release();
+			}
+		});
+
 		it('strips raw item storage shipping fields so pickup cannot be bypassed', async () => {
 			const actors = await createCommerceActors();
 			const body = withDelivery(actors, actors.catalog.delivery.values.pickup.id) as ReturnType<typeof withDelivery> & {
@@ -285,6 +417,180 @@ describe('item and listing routes', () => {
 			});
 			await expectNoPaymentProviderRequests();
 		});
+
+		it.each(['select', 'radio', 'select_multi', 'checkbox'] as const)(
+			'rejects an invalid %s property cardinality before creating side effects',
+			async (type) => {
+				const actors = await createCommerceActors();
+				const optional = await createOptionalCardinalityProperty(actors, type);
+				const body = validItemBody(actors);
+				const requiresArray = type === 'select_multi' || type === 'checkbox';
+				body.properties = [
+					...(body.properties ?? []),
+					{
+						id: optional.property.id,
+						slug: optional.property.slug,
+						value: requiresArray ? optional.value.id : [optional.value.id],
+					},
+				];
+				const { db } = getTestDatabase();
+				await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+
+				const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+				expect(response.status).toBe(400);
+				expect(await responseJson(response)).toEqual({
+					message: requiresArray
+						? `Property ${optional.property.slug} requires a nonempty array of property-value IDs`
+						: `Property ${optional.property.slug} requires exactly one scalar property-value ID`,
+				});
+				expect(await db.select().from(items)).toEqual([]);
+				expect(await db.select().from(items_properties_values)).toEqual([]);
+				await expectNoPaymentProviderRequests();
+			},
+		);
+
+		it('rejects duplicate property IDs before contradictory delivery methods can create side effects', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors);
+			body.properties = [
+				...(body.properties ?? []),
+				{
+					id: actors.catalog.delivery.property.id,
+					slug: actors.catalog.delivery.property.slug,
+					value: [actors.catalog.delivery.values.pickup.id],
+				},
+			];
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await responseJson(response)).toEqual({ message: 'Each property can be supplied only once' });
+			expect(await db.select().from(items)).toEqual([]);
+			expect(await db.select().from(items_properties_values)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it.each(['subcategory', 'category'] as const)(
+			'rejects create when the target %s is hidden using an otherwise valid non-Easy-Pay payload',
+			async (hiddenNode) => {
+				const actors = await createCommerceActors();
+				const { db } = getTestDatabase();
+				if (hiddenNode === 'subcategory') {
+					await db
+						.update(categories)
+						.set({ published: true })
+						.where(eq(categories.id, actors.catalog.unpublishedCategory.id));
+				} else {
+					await db
+						.update(subcategories)
+						.set({ published: true })
+						.where(eq(subcategories.id, actors.catalog.unpublishedSubcategory.id));
+				}
+
+				const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, hiddenTaxonomyItemBody(actors));
+
+				expect(response.status).toBe(400);
+				expect(await responseJson(response)).toEqual({ message: 'Subcategory is not publicly available' });
+				expect(await db.select().from(items)).toEqual([]);
+				await expectNoPaymentProviderRequests();
+			},
+		);
+
+		it.each([
+			[
+				'fractional price',
+				(body: ReturnType<typeof validItemBody>): void => {
+					body.commons.price = 12_000.5;
+				},
+			],
+			[
+				'negative shipping price',
+				(body: ReturnType<typeof validItemBody>): void => {
+					body.shipping!.shipping_price = -1;
+				},
+			],
+			[
+				'out-of-int4 shipping weight',
+				(body: ReturnType<typeof validItemBody>): void => {
+					body.shipping!.item_weight = 2_147_483_648;
+				},
+			],
+			[
+				'fractional shipping height',
+				(body: ReturnType<typeof validItemBody>): void => {
+					body.shipping!.item_height = 1.5;
+				},
+			],
+		] as const)('rejects %s before contacting the payment provider', async (_label, mutateBody) => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors);
+			mutateBody(body);
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('rejects an out-of-int4 raw numeric property before contacting the payment provider', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors);
+			body.properties = body.properties?.map((property) =>
+				property.id === actors.catalog.properties.numeric.id ? { ...property, value: 2_147_483_648 } : property,
+			);
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(items)).toEqual([]);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it('rejects an out-of-int4 select ID before contacting the payment provider', async () => {
+			const actors = await createCommerceActors();
+			const body = validItemBody(actors);
+			body.properties = body.properties?.map((property) =>
+				property.id === actors.catalog.properties.text.id ? { ...property, value: '2147483648' } : property,
+			);
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+
+			const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+
+			expect(response.status).toBe(400);
+			expect(await responseJson(response)).toEqual({
+				message: `Property ${actors.catalog.properties.text.slug} requires 32-bit property-value IDs`,
+			});
+			await expectNoPaymentProviderRequests();
+		});
+
+		it.each(['address_id', 'subcategory_id', 'property_id'] as const)(
+			'rejects an out-of-int4 %s in the public create schema',
+			async (field) => {
+				const actors = await createCommerceActors();
+				const body = validItemBody(actors);
+				if (field === 'property_id') {
+					body.properties = body.properties?.map((property, index) =>
+						index === 0 ? { ...property, id: 2_147_483_648 } : property,
+					);
+				} else {
+					body.commons[field] = 2_147_483_648;
+				}
+
+				expect(createItemSchema.safeParse(body).success).toBe(false);
+				const response = await authJson('/item/auth/new', 'POST', actors.seller.jar, body);
+				expect(response.status).toBe(400);
+				await expectNoPaymentProviderRequests();
+			},
+		);
 
 		it('rejects an inactive address owned by the authenticated profile without persisting', async () => {
 			const actors = await createCommerceActors();
@@ -562,6 +868,119 @@ describe('item and listing routes', () => {
 			expect(response.status).toBe(200);
 			expect(after).toEqual(before);
 		});
+
+		it.each(['select', 'radio', 'select_multi', 'checkbox'] as const)(
+			'rejects an invalid %s property cardinality before edit side effects',
+			async (type) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				const optional = await createOptionalCardinalityProperty(actors, type);
+				const body = validItemBody(actors);
+				const requiresArray = type === 'select_multi' || type === 'checkbox';
+				body.properties = [
+					...(body.properties ?? []),
+					{
+						id: optional.property.id,
+						slug: optional.property.slug,
+						value: requiresArray ? optional.value.id : [optional.value.id],
+					},
+				];
+				const { db } = getTestDatabase();
+				await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+				const beforeJoins = await db
+					.select()
+					.from(items_properties_values)
+					.where(eq(items_properties_values.item_id, item.id));
+
+				const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					commons: { title: 'Cardinality Must Not Update' },
+					properties: body.properties,
+				});
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+				const afterJoins = await db
+					.select()
+					.from(items_properties_values)
+					.where(eq(items_properties_values.item_id, item.id));
+
+				expect(response.status).toBe(400);
+				expect(await responseJson(response)).toEqual({
+					message: requiresArray
+						? `Property ${optional.property.slug} requires a nonempty array of property-value IDs`
+						: `Property ${optional.property.slug} requires exactly one scalar property-value ID`,
+				});
+				expect(stored?.title).toBe(item.title);
+				expect(afterJoins).toEqual(beforeJoins);
+				await expectNoPaymentProviderRequests();
+			},
+		);
+
+		it('rejects duplicate property IDs before a contradictory delivery edit can mutate anything', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const body = validItemBody(actors);
+			body.properties = [
+				...(body.properties ?? []),
+				{
+					id: actors.catalog.delivery.property.id,
+					slug: actors.catalog.delivery.property.slug,
+					value: [actors.catalog.delivery.values.pickup.id],
+				},
+			];
+			const { db } = getTestDatabase();
+			await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+			const beforeJoins = await db
+				.select()
+				.from(items_properties_values)
+				.where(eq(items_properties_values.item_id, item.id));
+
+			const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+				commons: { title: 'Duplicate Delivery Must Not Update' },
+				properties: body.properties,
+			});
+			const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+			const afterJoins = await db
+				.select()
+				.from(items_properties_values)
+				.where(eq(items_properties_values.item_id, item.id));
+
+			expect(response.status).toBe(400);
+			expect(await responseJson(response)).toEqual({ message: 'Each property can be supplied only once' });
+			expect(stored?.title).toBe(item.title);
+			expect(afterJoins).toEqual(beforeJoins);
+			await expectNoPaymentProviderRequests();
+		});
+
+		it.each(['subcategory', 'category'] as const)(
+			'rejects edit when the target %s is hidden using an otherwise valid non-Easy-Pay payload',
+			async (hiddenNode) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				const { db } = getTestDatabase();
+				if (hiddenNode === 'subcategory') {
+					await db
+						.update(categories)
+						.set({ published: true })
+						.where(eq(categories.id, actors.catalog.unpublishedCategory.id));
+				} else {
+					await db
+						.update(subcategories)
+						.set({ published: true })
+						.where(eq(subcategories.id, actors.catalog.unpublishedSubcategory.id));
+				}
+				const hiddenBody = hiddenTaxonomyItemBody(actors);
+
+				const response = await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+					commons: hiddenBody.commons,
+					properties: hiddenBody.properties,
+				});
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+
+				expect(response.status).toBe(400);
+				expect(await responseJson(response)).toEqual({ message: 'Subcategory is not publicly available' });
+				expect(stored?.subcategory_id).toBe(item.subcategory_id);
+				await expectNoPaymentProviderRequests();
+			},
+		);
 
 		it('merges a partial shipping patch with existing dimensions before validating it', async () => {
 			const actors = await createCommerceActors();
@@ -868,6 +1287,40 @@ describe('item and listing routes', () => {
 			});
 			expect(response.status).toBe(404);
 		});
+
+		it.each(['subcategory', 'category'] as const)(
+			'allows unpublishing but refuses publishing when the item %s is hidden',
+			async (hiddenNode) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				const { db } = getTestDatabase();
+				if (hiddenNode === 'subcategory') {
+					await db
+						.update(subcategories)
+						.set({ published: false })
+						.where(eq(subcategories.id, actors.catalog.childSubcategory.id));
+				} else {
+					await db
+						.update(categories)
+						.set({ published: false })
+						.where(eq(categories.id, actors.catalog.publishedCategory.id));
+				}
+
+				const unpublishResponse = await authJson('/item/auth/publish_state', 'POST', actors.seller.jar, {
+					id: item.id,
+					published: false,
+				});
+				const republishResponse = await authJson('/item/auth/publish_state', 'POST', actors.seller.jar, {
+					id: item.id,
+					published: true,
+				});
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+
+				expect(unpublishResponse.status).toBe(200);
+				expect(republishResponse.status).toBe(404);
+				expect(stored?.published).toBe(false);
+			},
+		);
 	});
 
 	describe('POST /item/auth/user_delete_item', () => {
@@ -932,6 +1385,43 @@ describe('item and listing routes', () => {
 	});
 
 	describe('GET /items/:username', () => {
+		it.each(['subcategory', 'category'] as const)(
+			'hides a manually published item everywhere public when its %s is hidden',
+			async (hiddenNode) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors, { commons: { title: 'Hidden Taxonomy Public Item' } });
+				await Promise.all([createImageFixture(item.id, 'medium'), createImageFixture(item.id, 'thumbnail')]);
+				const { db } = getTestDatabase();
+				await db.insert(profiles_items_favorites).values({
+					profile_id: actors.buyer.profile.id,
+					item_id: item.id,
+				});
+				if (hiddenNode === 'subcategory') {
+					await db
+						.update(subcategories)
+						.set({ published: false })
+						.where(eq(subcategories.id, actors.catalog.childSubcategory.id));
+				} else {
+					await db
+						.update(categories)
+						.set({ published: false })
+						.where(eq(categories.id, actors.catalog.publishedCategory.id));
+				}
+
+				const [detailResponse, listingResponse, favoritesResponse] = await Promise.all([
+					app.request(`/item/${item.id}`),
+					app.request(`/items/${actors.seller.user.username}`),
+					authJson('/items/auth/user/favorites', 'GET', actors.buyer.jar),
+				]);
+
+				expect(detailResponse.status).toBe(404);
+				expect(listingResponse.status).toBe(200);
+				expect(await listingResponse.json()).toEqual([]);
+				expect(favoritesResponse.status).toBe(200);
+				expect(await favoritesResponse.json()).toEqual([]);
+			},
+		);
+
 		it('returns only public available non-deleted items and groups property joins without duplicates', async () => {
 			const actors = await createCommerceActors();
 			const visible = await createItemFixture(actors, { commons: { title: 'Visible Public Listing' } });
