@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "NODE_ENV=development tsx watch src/index.ts",
-		"build": "tsc && tsc-alias",
+		"build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
 		"start": "node ./dist/src/index.js",
 		"db": "npx drizzle-kit",
 		"db:build": "tsx ./src/database/index.ts",
@@ -23,7 +23,11 @@
 		"seed:countries": "npx tsx ./src/database/scripts/seeders/countries/index.ts",
 		"seed:users": "npx tsx ./src/database/scripts/seeders/users/index.ts",
 		"lint": "eslint . --max-warnings 0",
-		"typecheck": "npx tsc --noEmit"
+		"typecheck": "npx tsc --noEmit",
+		"test": "vitest run --config vitest.config.ts",
+		"test:api": "vitest run --config vitest.config.ts",
+		"test:api:watch": "vitest --config vitest.config.ts",
+		"test:api:coverage": "vitest run --config vitest.config.ts --coverage"
 	},
 	"engines": {
 		"node": ">=22.0.0",
@@ -124,9 +128,12 @@
 		"@types/node": "^20.11.17",
 		"@types/nodemailer": "^6.4.17",
 		"@types/pg": "^8.11.11",
+		"@vitest/coverage-v8": "^4.1.11",
 		"dotenv-cli": "^8.0.0",
 		"eslint": "^9.15.0",
+		"testcontainers": "^12.1.0",
 		"tsx": "^4.19.2",
-		"typescript": "^5.8.3"
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.11"
 	}
 }
