@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull, max } from 'drizzle-orm';
 import { bodyLimit } from 'hono/body-limit';
 import sharp from 'sharp';
 
@@ -19,6 +19,8 @@ const MAX_MULTIPART_OVERHEAD = 64 * 1024;
 const MAX_UPLOAD_BODY_SIZE = MAX_TOTAL_IMAGE_SIZE + MAX_MULTIPART_OVERHEAD;
 const MAX_POSTGRES_INTEGER = 2_147_483_647;
 const CLEANUP_ATTEMPTS = 2;
+const MAX_INPUT_DIMENSION = 2_000;
+const MAX_INPUT_PIXELS = MAX_INPUT_DIMENSION * MAX_INPUT_DIMENSION;
 
 type RasterFormat = 'jpeg' | 'png';
 
@@ -32,7 +34,18 @@ type ProcessedImage = {
 	smallKey: string;
 	thumbKey: string;
 	contentType: 'image/jpeg' | 'image/png';
-	orderPosition: number;
+};
+
+type RasterAttributes = {
+	format: RasterFormat;
+	contentType: 'image/jpeg' | 'image/png';
+	extension: 'jpg' | 'png';
+};
+
+type ValidatedImage = {
+	originalBuffer: Buffer;
+	attributes: RasterAttributes;
+	index: number;
 };
 
 class UploadItemUnavailableError extends Error {
@@ -42,16 +55,21 @@ class UploadItemUnavailableError extends Error {
 	}
 }
 
-function rasterAttributes(format: string | undefined):
-	| {
-			format: RasterFormat;
-			contentType: 'image/jpeg' | 'image/png';
-			extension: 'jpg' | 'png';
-	  }
-	| undefined {
+class UploadCapacityExceededError extends Error {
+	constructor() {
+		super('Item image capacity exceeded');
+		this.name = 'UploadCapacityExceededError';
+	}
+}
+
+function rasterAttributes(format: string | undefined): RasterAttributes | undefined {
 	if (format === 'jpeg') return { format, contentType: 'image/jpeg', extension: 'jpg' };
 	if (format === 'png') return { format, contentType: 'image/png', extension: 'png' };
 	return undefined;
+}
+
+function decodeImage(buffer: Buffer) {
+	return sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS });
 }
 
 function errorName(error: unknown): string {
@@ -179,55 +197,65 @@ export const uploadsRoute = createRouter().post(
 		const batchId = randomUUID();
 		let processedImages: ProcessedImage[];
 		try {
-			processedImages = await Promise.all(
-				refinedImages.map(async (file, index) => {
-					const originalBuffer = Buffer.from(await file.arrayBuffer());
-					const metadata = await sharp(originalBuffer).metadata();
-					const attributes = rasterAttributes(metadata.format);
+			const validatedImages: ValidatedImage[] = [];
+			for (const [index, file] of refinedImages.entries()) {
+				const originalBuffer = Buffer.from(await file.arrayBuffer());
+				const metadata = await decodeImage(originalBuffer).metadata();
+				const attributes = rasterAttributes(metadata.format);
 
-					if (!metadata.width || !metadata.height || !attributes || file.type !== attributes.contentType) {
-						throw new Error('Invalid image content');
-					}
+				if (
+					!metadata.width ||
+					!metadata.height ||
+					metadata.width > MAX_INPUT_DIMENSION ||
+					metadata.height > MAX_INPUT_DIMENSION ||
+					metadata.width * metadata.height > MAX_INPUT_PIXELS ||
+					!attributes ||
+					file.type !== attributes.contentType
+				) {
+					throw new Error('Invalid image content');
+				}
 
-					const mediumBuffer = await sharp(originalBuffer)
-						.resize({ width: 800, height: 800, fit: 'inside', withoutEnlargement: true })
-						.toFormat(attributes.format)
-						.toBuffer();
-					const smallBuffer = await sharp(originalBuffer)
-						.resize({ width: 500, height: 500, fit: 'inside', withoutEnlargement: true })
-						.toFormat(attributes.format)
-						.toBuffer();
-					const thumbnailBuffer = await sharp(originalBuffer)
-						.resize(200, 200, { fit: 'cover' })
-						.toFormat(attributes.format)
-						.toBuffer();
-					const sourceId = `${batchId}-${index}`;
+				validatedImages.push({ originalBuffer, attributes, index });
+			}
 
-					return {
-						originalBuffer,
-						mediumBuffer,
-						smallBuffer,
-						thumbnailBuffer,
-						originalKey: `${s3BasePath}/full/${sourceId}_original.${attributes.extension}`,
-						mediumKey: `${s3BasePath}/full/${sourceId}_medium.${attributes.extension}`,
-						smallKey: `${s3BasePath}/full/${sourceId}_small.${attributes.extension}`,
-						thumbKey: `${s3BasePath}/thumbs/${sourceId}_thumbnail.${attributes.extension}`,
-						contentType: attributes.contentType,
-						orderPosition: index,
-					};
-				}),
-			);
+			processedImages = [];
+			for (const { originalBuffer, attributes, index } of validatedImages) {
+				const mediumBuffer = await decodeImage(originalBuffer)
+					.resize({ width: 800, height: 800, fit: 'inside', withoutEnlargement: true })
+					.toFormat(attributes.format)
+					.toBuffer();
+				const smallBuffer = await decodeImage(originalBuffer)
+					.resize({ width: 500, height: 500, fit: 'inside', withoutEnlargement: true })
+					.toFormat(attributes.format)
+					.toBuffer();
+				const thumbnailBuffer = await decodeImage(originalBuffer)
+					.resize(200, 200, { fit: 'cover' })
+					.toFormat(attributes.format)
+					.toBuffer();
+				const sourceId = `${batchId}-${index}`;
+
+				processedImages.push({
+					originalBuffer,
+					mediumBuffer,
+					smallBuffer,
+					thumbnailBuffer,
+					originalKey: `${s3BasePath}/full/${sourceId}_original.${attributes.extension}`,
+					mediumKey: `${s3BasePath}/full/${sourceId}_medium.${attributes.extension}`,
+					smallKey: `${s3BasePath}/full/${sourceId}_small.${attributes.extension}`,
+					thumbKey: `${s3BasePath}/thumbs/${sourceId}_thumbnail.${attributes.extension}`,
+					contentType: attributes.contentType,
+				});
+			}
 		} catch {
 			return c.json({ error: 'Invalid image file' }, 400);
 		}
 
 		const uploadedKeys: string[] = [];
-		const uploadedFiles = processedImages.map(({ originalKey, smallKey, mediumKey, thumbKey, orderPosition }) => ({
+		const uploadedFileKeys = processedImages.map(({ originalKey, smallKey, mediumKey, thumbKey }) => ({
 			originalKey,
 			smallKey,
 			mediumKey,
 			thumbKey,
-			orderPosition,
 		}));
 
 		try {
@@ -252,47 +280,62 @@ export const uploadsRoute = createRouter().post(
 				}
 			}
 
-			const imageRecords: InsertItemImage[] = uploadedFiles.flatMap((file) => [
-				{
-					item_id: itemId,
-					url: `https://${s3BucketName}.s3.amazonaws.com/${file.originalKey}`,
-					order_position: file.orderPosition,
-					size: 'original',
-				},
-				{
-					item_id: itemId,
-					url: `https://${s3BucketName}.s3.amazonaws.com/${file.mediumKey}`,
-					order_position: file.orderPosition,
-					size: 'medium',
-				},
-				{
-					item_id: itemId,
-					url: `https://${s3BucketName}.s3.amazonaws.com/${file.smallKey}`,
-					order_position: file.orderPosition,
-					size: 'small',
-				},
-				{
-					item_id: itemId,
-					url: `https://${s3BucketName}.s3.amazonaws.com/${file.thumbKey}`,
-					order_position: file.orderPosition,
-					size: 'thumbnail',
-				},
-			]);
-
-			const persisted = await db.transaction(async (tx) => {
+			const uploadedFiles = await db.transaction(async (tx) => {
 				const [stillOwnedItem] = await tx
 					.select({ id: items.id })
 					.from(items)
 					.where(itemPredicate)
 					.for('update')
 					.limit(1);
-				if (!stillOwnedItem) return false;
+				if (!stillOwnedItem) throw new UploadItemUnavailableError();
+
+				const [imageState] = await tx
+					.select({
+						sourceCount: count(items_images.id),
+						maxPosition: max(items_images.order_position),
+					})
+					.from(items_images)
+					.where(and(eq(items_images.item_id, itemId), eq(items_images.size, 'original')));
+				const sourceCount = Number(imageState?.sourceCount ?? 0);
+				if (sourceCount + uploadedFileKeys.length > MAX_IMAGE_COUNT) {
+					throw new UploadCapacityExceededError();
+				}
+
+				const firstOrderPosition = (imageState?.maxPosition ?? -1) + 1;
+				const positionedFiles = uploadedFileKeys.map((file, index) => ({
+					...file,
+					orderPosition: firstOrderPosition + index,
+				}));
+				const imageRecords: InsertItemImage[] = positionedFiles.flatMap((file) => [
+					{
+						item_id: itemId,
+						url: `https://${s3BucketName}.s3.amazonaws.com/${file.originalKey}`,
+						order_position: file.orderPosition,
+						size: 'original',
+					},
+					{
+						item_id: itemId,
+						url: `https://${s3BucketName}.s3.amazonaws.com/${file.mediumKey}`,
+						order_position: file.orderPosition,
+						size: 'medium',
+					},
+					{
+						item_id: itemId,
+						url: `https://${s3BucketName}.s3.amazonaws.com/${file.smallKey}`,
+						order_position: file.orderPosition,
+						size: 'small',
+					},
+					{
+						item_id: itemId,
+						url: `https://${s3BucketName}.s3.amazonaws.com/${file.thumbKey}`,
+						order_position: file.orderPosition,
+						size: 'thumbnail',
+					},
+				]);
 
 				await tx.insert(items_images).values(imageRecords);
-				return true;
+				return positionedFiles;
 			});
-
-			if (!persisted) throw new UploadItemUnavailableError();
 
 			return c.json(
 				{
@@ -311,6 +354,9 @@ export const uploadsRoute = createRouter().post(
 
 			if (error instanceof UploadItemUnavailableError) {
 				return c.json({ message: 'Item not found' }, 404);
+			}
+			if (error instanceof UploadCapacityExceededError) {
+				return c.json({ error: 'Item image limit exceeded' }, 400);
 			}
 
 			console.error(`Image upload failed (${errorName(error)})`);

@@ -4,10 +4,11 @@ import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
-import { items, items_images } from '../../src/database/schemas/schema';
+import { items, items_images, profiles_items_favorites } from '../../src/database/schemas/schema';
 import { s3Client } from '../../src/lib/s3client';
 import { environment } from '../../src/utils/constants';
 import { createCommerceActors, createItemFixture } from '../fixtures/commerce';
+import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { createTestObjectStorageClient } from '../helpers/object-storage';
 import type { CookieJar } from '../helpers/request';
@@ -204,6 +205,30 @@ describe('POST /uploads/auth/images-item', () => {
 		await expectNoUploadResidue(item.id);
 	});
 
+	it('rejects compressed rasters exceeding the decoded dimension or pixel ceilings before writing', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const [tooWide, tooManyPixels] = await Promise.all([
+			sharp({ create: { width: 2001, height: 10, channels: 3, background: '#0ea5e9' } })
+				.png()
+				.toBuffer(),
+			sharp({ create: { width: 2001, height: 2001, channels: 3, background: '#a855f7' } })
+				.jpeg({ quality: 50 })
+				.toBuffer(),
+		]);
+		expect(tooWide.byteLength).toBeLessThan(3 * 1024 * 1024);
+		expect(tooManyPixels.byteLength).toBeLessThan(3 * 1024 * 1024);
+
+		for (const file of [
+			rasterFile(tooWide, 'too-wide.png', 'image/png'),
+			rasterFile(tooManyPixels, 'too-many-pixels.jpg', 'image/jpeg'),
+		]) {
+			const response = await uploadRequest(actors.seller.jar, uploadForm(String(item.id), [file]));
+			expect(response.status).toBe(400);
+			await expectNoUploadResidue(item.id);
+		}
+	});
+
 	it('fits landscape and portrait medium/small variants within both bounds without enlargement', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -237,6 +262,97 @@ describe('POST /uploads/auth/images-item', () => {
 		await expect(objectDimensions(keyFor(1, 'original'))).resolves.toEqual({ width: 400, height: 1600 });
 		await expect(objectDimensions(keyFor(1, 'medium'))).resolves.toEqual({ width: 200, height: 800 });
 		await expect(objectDimensions(keyFor(1, 'small'))).resolves.toEqual({ width: 125, height: 500 });
+	});
+
+	it('keeps five source positions unique across sequential uploads and cleans an over-capacity request', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const first = await uploadRequest(
+			actors.seller.jar,
+			uploadForm(String(item.id), [imageFile('first-a.png'), imageFile('first-b.png')]),
+		);
+		const second = await uploadRequest(
+			actors.seller.jar,
+			uploadForm(String(item.id), [imageFile('second-a.png'), imageFile('second-b.png'), imageFile('second-c.png')]),
+		);
+		const overCapacity = await uploadRequest(actors.seller.jar, uploadForm(String(item.id), [imageFile('sixth.png')]));
+
+		expect(first.status).toBe(201);
+		expect(second.status).toBe(201);
+		expect(overCapacity.status).toBe(400);
+		expect((await first.json()) as { files: Array<{ orderPosition: number }> }).toMatchObject({
+			files: [{ orderPosition: 0 }, { orderPosition: 1 }],
+		});
+		expect((await second.json()) as { files: Array<{ orderPosition: number }> }).toMatchObject({
+			files: [{ orderPosition: 2 }, { orderPosition: 3 }, { orderPosition: 4 }],
+		});
+
+		const rows = await imageRows(item.id);
+		expect(rows).toHaveLength(20);
+		expect(rows.filter(({ size }) => size === 'original').map(({ order_position }) => order_position)).toEqual([
+			0, 1, 2, 3, 4,
+		]);
+		for (const position of [0, 1, 2, 3, 4]) {
+			expect(
+				rows
+					.filter(({ order_position }) => order_position === position)
+					.map(({ size }) => size)
+					.sort(),
+			).toEqual(['medium', 'original', 'small', 'thumbnail']);
+		}
+		expect(await objectKeys()).toHaveLength(20);
+
+		const positionZeroThumbnail = rows.find(({ order_position, size }) => order_position === 0 && size === 'thumbnail');
+		if (!positionZeroThumbnail) throw new Error('Missing position-zero thumbnail');
+		const sellingResponse = await authenticatedRequest('/items/auth/user/selling_items', 'POST', actors.seller.jar, {
+			published: true,
+		});
+		await getTestDatabase().db.insert(profiles_items_favorites).values({
+			profile_id: actors.buyer.profile.id,
+			item_id: item.id,
+		});
+		const favoritesResponse = await authenticatedRequest('/items/auth/user/favorites', 'GET', actors.buyer.jar);
+		const selling = (await sellingResponse.json()) as Array<{ id: number; image: string }>;
+		const favorites = (await favoritesResponse.json()) as Array<{ id: number; image: string }>;
+		expect(sellingResponse.status).toBe(200);
+		expect(favoritesResponse.status).toBe(200);
+		expect(selling).toEqual([expect.objectContaining({ id: item.id, image: positionZeroThumbnail.url })]);
+		expect(favorites).toEqual([expect.objectContaining({ id: item.id, image: positionZeroThumbnail.url })]);
+	});
+
+	it('serializes concurrent uploads against the per-item source capacity', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const { db } = getTestDatabase();
+		const sizes = ['original', 'medium', 'small', 'thumbnail'] as const;
+		await db.insert(items_images).values(
+			[0, 1, 2, 3].flatMap((position) =>
+				sizes.map((size) => ({
+					item_id: item.id,
+					order_position: position,
+					size,
+					url: `https://fixtures.tantovale.test/${item.id}/${position}/${size}.png`,
+				})),
+			),
+		);
+
+		const responses = await Promise.all([
+			uploadRequest(actors.seller.jar, uploadForm(String(item.id), [imageFile('concurrent-a.png')])),
+			uploadRequest(actors.seller.jar, uploadForm(String(item.id), [imageFile('concurrent-b.png')])),
+		]);
+
+		expect(responses.map(({ status }) => status).sort()).toEqual([201, 400]);
+		const rows = await imageRows(item.id);
+		expect(rows).toHaveLength(20);
+		expect(rows.filter(({ size }) => size === 'original')).toHaveLength(5);
+		expect(
+			rows
+				.filter(({ order_position }) => order_position === 4)
+				.map(({ size }) => size)
+				.sort(),
+		).toEqual(['medium', 'original', 'small', 'thumbnail']);
+		expect(rows.filter(({ order_position, size }) => order_position === 0 && size === 'thumbnail')).toHaveLength(1);
+		expect(await objectKeys()).toHaveLength(4);
 	});
 
 	it.each([
