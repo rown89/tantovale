@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../../src/app';
 import { routeContracts, type RouteAuth, type RouteSuite } from './route-registry';
 
-const EXPECTED_HANDLER_LAYER_COUNT = 130;
+const EXPECTED_HANDLER_LAYER_COUNT = 131;
 
 function mountedRouteHandlerLayers(routes: typeof app.routes): string[] {
 	// Hono records `app.use()` middleware layers as `ALL`, while concrete methods are handler layers.
