@@ -35,8 +35,9 @@ describe('local service configuration', () => {
 			delete fallbackEnvironment.AWS_ENDPOINT;
 			delete fallbackEnvironment.AWS_FORCE_PATH_STYLE;
 			delete fallbackEnvironment.SMTP_FROM;
-			expect(parseEnv(fallbackEnvironment)).toMatchObject({
-				AWS_ENDPOINT: undefined,
+			const parsedFallbackEnvironment = parseEnv(fallbackEnvironment);
+			expect(parsedFallbackEnvironment.AWS_ENDPOINT).toBeUndefined();
+			expect(parsedFallbackEnvironment).toMatchObject({
 				AWS_FORCE_PATH_STYLE: false,
 				SMTP_FROM: '"Tantovale" <legacy-sender@example.test>',
 			});
