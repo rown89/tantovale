@@ -8,19 +8,22 @@ describe('documentation routes', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get('content-type')).toContain('text/html');
-		expect(html).toContain('/openapi');
+		expect(html).toContain("Scalar.createApiReference('#app'");
+		expect(html).toContain('"url": "/openapi"');
 	});
 
 	it('serves a parseable OpenAPI document', async () => {
 		const response = await app.request('http://localhost/openapi');
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toContain('application/json');
+
 		const document = (await response.json()) as {
 			openapi: string;
 			info: { title: string };
 		};
 
-		expect(response.status).toBe(200);
-		expect(response.headers.get('content-type')).toContain('application/json');
-		expect(document.openapi).toMatch(/^3\./);
+		expect(document.openapi).toBe('3.1.0');
 		expect(document.info.title).toBe('Tantovale Honojs');
 	});
 });
