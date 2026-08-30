@@ -29,14 +29,42 @@ async function favoriteRows(profileId: number, itemId: number) {
 		.where(and(eq(profiles_items_favorites.profile_id, profileId), eq(profiles_items_favorites.item_id, itemId)));
 }
 
-function favoriteUniqueMigration(): string {
+function favoriteUniqueMigration(): string[] {
 	const migration = readdirSync(migrationsDirectory, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
 		.map((entry) => readFileSync(`${migrationsDirectory}/${entry.name}/migration.sql`, 'utf8'))
 		.find((sql) => sql.includes(`CREATE UNIQUE INDEX "${FAVORITE_UNIQUE_INDEX}"`));
 
 	if (!migration) throw new Error(`Missing migration that creates ${FAVORITE_UNIQUE_INDEX} as UNIQUE`);
-	return migration.replaceAll('--> statement-breakpoint', '');
+	return migration
+		.split('--> statement-breakpoint')
+		.map((statement) => statement.trim())
+		.filter(Boolean);
+}
+
+async function waitForBlockedFavoriteInsert(
+	connection: PoolClient,
+	blockerPid: number,
+	writerPid: number,
+): Promise<void> {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const { rows } = await connection.query<{ waiting: number }>(
+			`
+			SELECT count(*)::int AS waiting
+			FROM pg_locks AS waiting_lock
+			WHERE waiting_lock.locktype = 'relation'
+				AND waiting_lock.relation = 'user_items_favorites'::regclass
+				AND waiting_lock.mode = 'RowExclusiveLock'
+				AND waiting_lock.granted = false
+				AND waiting_lock.pid = $1
+				AND $2::integer = ANY(pg_blocking_pids(waiting_lock.pid))
+		`,
+			[writerPid, blockerPid],
+		);
+		if ((rows[0]?.waiting ?? 0) === 1) return;
+		await connection.query('SELECT pg_sleep(0.01)');
+	}
+	throw new Error('Timed out waiting for the migration table lock to block a favorite insert');
 }
 
 async function waitForExactAdvisoryLockWaiter(
@@ -233,20 +261,24 @@ describe('favorite routes', () => {
 			expect(rows).toEqual([{ indisunique: true }]);
 		});
 
-		it('reconciles duplicate legacy rows before replacing the old index with a unique index', async () => {
-			const migrationSql = favoriteUniqueMigration();
+		it('locks out writers before reconciling duplicate legacy rows and creating the unique index', async () => {
+			const migrationStatements = favoriteUniqueMigration();
+			expect(migrationStatements[0]?.replaceAll(/\s+/g, ' ')).toBe(
+				'LOCK TABLE "user_items_favorites" IN ACCESS EXCLUSIVE MODE;',
+			);
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
 			const { client } = getTestDatabase();
-			const connection = await client.connect();
+			const migrationConnection = await client.connect();
+			const writerConnection = await client.connect();
 
 			try {
-				await connection.query(`DROP INDEX "${FAVORITE_UNIQUE_INDEX}"`);
-				await connection.query(
+				await migrationConnection.query(`DROP INDEX "${FAVORITE_UNIQUE_INDEX}"`);
+				await migrationConnection.query(
 					`CREATE INDEX "${FAVORITE_UNIQUE_INDEX}"
 					 ON user_items_favorites (profile_id, item_id)`,
 				);
-				const inserted = await connection.query<{ id: number }>(
+				const inserted = await migrationConnection.query<{ id: number }>(
 					`INSERT INTO user_items_favorites (profile_id, item_id)
 					 VALUES ($1, $2), ($1, $2), ($1, $2)
 					 RETURNING id`,
@@ -254,15 +286,39 @@ describe('favorite routes', () => {
 				);
 				const canonicalId = Math.min(...inserted.rows.map(({ id }) => id));
 
-				await connection.query(migrationSql);
+				await migrationConnection.query('BEGIN');
+				const migrationBackend = await migrationConnection.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+				const migrationPid = migrationBackend.rows[0]?.pid;
+				if (!migrationPid) throw new Error('Missing migration backend PID');
+				const firstStatement = migrationStatements[0];
+				if (!firstStatement) throw new Error('Favorite migration has no statements');
+				await migrationConnection.query(firstStatement);
 
-				const reconciled = await connection.query<{ id: number }>(
+				const writerBackend = await writerConnection.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+				const writerPid = writerBackend.rows[0]?.pid;
+				if (!writerPid) throw new Error('Missing concurrent favorite writer PID');
+				const writerOutcomePromise = writerConnection
+					.query(`INSERT INTO user_items_favorites (profile_id, item_id) VALUES ($1, $2)`, [
+						actors.buyer.profile.id,
+						item.id,
+					])
+					.then(
+						() => ({ outcome: 'inserted' as const }),
+						(error: unknown) => ({ outcome: 'rejected' as const, error }),
+					);
+				await waitForBlockedFavoriteInsert(migrationConnection, migrationPid, writerPid);
+
+				for (const statement of migrationStatements.slice(1)) {
+					await migrationConnection.query(statement);
+				}
+
+				const reconciled = await migrationConnection.query<{ id: number }>(
 					`SELECT id FROM user_items_favorites
 					 WHERE profile_id = $1 AND item_id = $2`,
 					[actors.buyer.profile.id, item.id],
 				);
 				expect(reconciled.rows).toEqual([{ id: canonicalId }]);
-				const index = await connection.query<{ indisunique: boolean }>(
+				const index = await migrationConnection.query<{ indisunique: boolean }>(
 					`SELECT index_relation.indisunique
 					 FROM pg_index AS index_relation
 					 INNER JOIN pg_class AS index_class ON index_class.oid = index_relation.indexrelid
@@ -270,20 +326,30 @@ describe('favorite routes', () => {
 					[FAVORITE_UNIQUE_INDEX],
 				);
 				expect(index.rows).toEqual([{ indisunique: true }]);
+
+				await migrationConnection.query('COMMIT');
+				const writerOutcome = await writerOutcomePromise;
+				expect(writerOutcome.outcome).toBe('rejected');
+				if (writerOutcome.outcome !== 'rejected') throw new Error('Concurrent favorite writer unexpectedly succeeded');
+				expect((writerOutcome.error as { code?: string }).code).toBe('23505');
+				expect(await favoriteRows(actors.buyer.profile.id, item.id)).toEqual([{ id: canonicalId }]);
 			} finally {
-				await connection.query(`
+				await migrationConnection.query('ROLLBACK');
+				await writerConnection.query('ROLLBACK');
+				await migrationConnection.query(`
 					DELETE FROM user_items_favorites AS duplicate
 					USING user_items_favorites AS canonical
 					WHERE duplicate.profile_id = canonical.profile_id
 						AND duplicate.item_id = canonical.item_id
 						AND duplicate.id > canonical.id
 				`);
-				await connection.query(`DROP INDEX IF EXISTS "${FAVORITE_UNIQUE_INDEX}"`);
-				await connection.query(
+				await migrationConnection.query(`DROP INDEX IF EXISTS "${FAVORITE_UNIQUE_INDEX}"`);
+				await migrationConnection.query(
 					`CREATE UNIQUE INDEX "${FAVORITE_UNIQUE_INDEX}"
 					 ON user_items_favorites (profile_id, item_id)`,
 				);
-				connection.release();
+				writerConnection.release();
+				migrationConnection.release();
 			}
 		});
 

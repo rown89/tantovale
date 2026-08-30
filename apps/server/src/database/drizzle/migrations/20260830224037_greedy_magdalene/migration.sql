@@ -1,3 +1,4 @@
+LOCK TABLE "user_items_favorites" IN ACCESS EXCLUSIVE MODE;--> statement-breakpoint
 DELETE FROM "user_items_favorites" AS "duplicate"
 USING "user_items_favorites" AS "canonical"
 WHERE "duplicate"."profile_id" = "canonical"."profile_id"
