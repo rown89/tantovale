@@ -62,3 +62,5 @@ export async function createUserFixture(options: CreateUserFixtureOptions = {}) 
 		return { user, profile, password };
 	});
 }
+
+export type UserFixture = Awaited<ReturnType<typeof createUserFixture>>;
