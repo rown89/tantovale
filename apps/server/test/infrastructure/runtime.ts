@@ -29,6 +29,23 @@ export type TestRuntime = {
 };
 
 const disposableDatabaseName = /^tantovale_test_[a-z0-9]+_(template|worker_[1-9][0-9]*)$/;
+const testRunId = /^[a-f0-9]{8}$/;
+// Test setup provisions a database and bucket per worker; this prevents accidental resource floods.
+const MAX_TEST_WORKERS = 32;
+
+function assertValidRunId(runId: string): void {
+	if (!testRunId.test(runId)) {
+		throw new Error('Invalid test resource namespace: runId must be exactly 8 lowercase hex characters');
+	}
+}
+
+function assertValidWorkerCount(workerCount: number): void {
+	if (!Number.isSafeInteger(workerCount) || workerCount < 1 || workerCount > MAX_TEST_WORKERS) {
+		throw new Error(
+			`Invalid test resource namespace: workerCount must be a safe integer between 1 and ${MAX_TEST_WORKERS}`,
+		);
+	}
+}
 
 export function assertDisposableDatabaseName(name: string): void {
 	if (!disposableDatabaseName.test(name)) {
@@ -37,9 +54,8 @@ export function assertDisposableDatabaseName(name: string): void {
 }
 
 export function createResourceNames(runId: string, workerCount: number): ResourceNames {
-	if (!/^[a-z0-9]+$/.test(runId) || workerCount < 1) {
-		throw new Error('Invalid test resource namespace');
-	}
+	assertValidRunId(runId);
+	assertValidWorkerCount(workerCount);
 
 	const workers = Array.from({ length: workerCount }, (_, index) => index + 1);
 
@@ -51,6 +67,8 @@ export function createResourceNames(runId: string, workerCount: number): Resourc
 }
 
 export function getWorkerIndex(workerId: string | undefined, workerCount: number): number {
+	assertValidWorkerCount(workerCount);
+
 	const value = workerId ?? '1';
 	const worker = Number(value);
 
