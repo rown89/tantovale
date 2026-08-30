@@ -1,12 +1,11 @@
-import { eq, and, not, desc, inArray } from 'drizzle-orm';
+import { eq, and, not, desc, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { env } from 'hono/adapter';
-import { verify } from 'hono/jwt';
 import { getCookie } from 'hono/cookie';
 
-import { createClient } from '#database/index';
+import { createClient, type DrizzleClient } from '#database/index';
 import {
 	subcategories,
 	subcategory_properties,
@@ -15,16 +14,17 @@ import {
 	users,
 	addresses,
 	items_images,
+	properties,
 	property_values,
 	profiles,
 	entityTrustapTransactions,
 	orders,
 	orders_proposals,
 } from '#db-schema';
-import { items_properties_values, InsertItemPropertyValue } from '#database/schemas/items_properties_values';
+import { items_properties_values } from '#database/schemas/items_properties_values';
 import { createRouter } from '#lib/create-app';
 import { authPath } from '#utils/constants';
-import { createItemSchema } from '#extended_schemas';
+import { createItemSchema, updateItemSchema, type createItemTypes } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { itemDetailResponseType } from '#extended_schemas';
 import {
@@ -44,6 +44,115 @@ import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/util
 import { ShipmentService } from '../shipment-provider/shipment.service';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 
+type ItemTransaction = Parameters<Parameters<DrizzleClient['db']['transaction']>[0]>[0];
+type ItemProperties = NonNullable<createItemTypes['properties']>;
+
+type ValidatedProperties = {
+	deliveryMethod?: string;
+	propertyValueIds: number[];
+};
+
+async function validatePropertiesForSubcategory(
+	tx: ItemTransaction,
+	subcategoryId: number,
+	itemProperties: ItemProperties | undefined,
+): Promise<ValidatedProperties> {
+	const mappings = await tx
+		.select({
+			property_id: subcategory_properties.property_id,
+			required: subcategory_properties.on_item_create_required,
+			slug: properties.slug,
+		})
+		.from(subcategory_properties)
+		.innerJoin(properties, eq(properties.id, subcategory_properties.property_id))
+		.where(eq(subcategory_properties.subcategory_id, subcategoryId));
+	const mappingByProperty = new Map(mappings.map((mapping) => [mapping.property_id, mapping]));
+	const suppliedPropertyIds = new Set(itemProperties?.map(({ id }) => id) ?? []);
+
+	if (mappings.some((mapping) => mapping.required && !suppliedPropertyIds.has(mapping.property_id))) {
+		throw new Error('All required properties must be provided');
+	}
+
+	const flattenedSelections =
+		itemProperties?.flatMap((property) => {
+			const mapping = mappingByProperty.get(property.id);
+			if (!mapping || mapping.slug !== property.slug) {
+				throw new Error('Some properties are not mapped to this subcategory');
+			}
+
+			const values = Array.isArray(property.value) ? property.value : [property.value];
+			if (values.length === 0) {
+				throw new Error('Property values cannot be empty');
+			}
+
+			return values.map((value) => {
+				const propertyValueId = Number(value);
+				if (!Number.isSafeInteger(propertyValueId) || propertyValueId <= 0) {
+					throw new Error('Property values must be positive integer IDs');
+				}
+				return { propertyId: property.id, propertyValueId, slug: property.slug };
+			});
+		}) ?? [];
+	const uniqueValueIds = [...new Set(flattenedSelections.map(({ propertyValueId }) => propertyValueId))];
+	const storedValues = uniqueValueIds.length
+		? await tx
+				.select({ id: property_values.id, property_id: property_values.property_id, value: property_values.value })
+				.from(property_values)
+				.where(inArray(property_values.id, uniqueValueIds))
+		: [];
+	const valueById = new Map(storedValues.map((value) => [value.id, value]));
+	let deliveryMethod: string | undefined;
+
+	for (const selection of flattenedSelections) {
+		const storedValue = valueById.get(selection.propertyValueId);
+		if (!storedValue || storedValue.property_id !== selection.propertyId) {
+			throw new Error('Some property values do not belong to the supplied properties');
+		}
+		if (selection.slug === 'delivery_method') {
+			deliveryMethod = storedValue.value ?? undefined;
+		}
+	}
+
+	return {
+		deliveryMethod,
+		propertyValueIds: uniqueValueIds,
+	};
+}
+
+function validateShipping(deliveryMethod: string | undefined, shipping: createItemTypes['shipping']): void {
+	if (deliveryMethod === 'pickup') {
+		if ((shipping?.shipping_price ?? 0) > 0) {
+			throw new Error('Shipping price is not allowed');
+		}
+		return;
+	}
+
+	if (deliveryMethod === 'shipping') {
+		const requiredValues = [
+			shipping?.shipping_price,
+			shipping?.item_weight,
+			shipping?.item_length,
+			shipping?.item_width,
+			shipping?.item_height,
+		];
+		if (requiredValues.some((value) => typeof value !== 'number' || value <= 0)) {
+			throw new Error('Shipping price and dimensions are required');
+		}
+	}
+
+	if (deliveryMethod === 'shipping_easy_pay') {
+		const requiredDimensions = [
+			shipping?.item_weight,
+			shipping?.item_length,
+			shipping?.item_width,
+			shipping?.item_height,
+		];
+		if (requiredDimensions.some((value) => typeof value !== 'number' || value <= 0)) {
+			throw new Error('Shipping dimensions are required');
+		}
+	}
+}
+
 export const itemRoute = createRouter()
 	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
 	.get('/:id', async (c) => {
@@ -54,8 +163,7 @@ export const itemRoute = createRouter()
 
 		const id = Number(c.req.param('id'));
 
-		if (!id) return c.json({ error: 'item id is required' }, 400);
-		if (isNaN(id)) return c.json({ message: 'Invalid item ID' }, 400);
+		if (!Number.isSafeInteger(id) || id <= 0) return c.json({ message: 'Invalid item ID' }, 400);
 
 		const access_token = getCookie(c, 'access_token');
 		const refresh_token = getCookie(c, 'refresh_token');
@@ -99,10 +207,10 @@ export const itemRoute = createRouter()
 				.innerJoin(province, eq(province.id, addresses.province_id))
 				.innerJoin(profiles, eq(profiles.id, items.profile_id))
 				.innerJoin(users, eq(users.id, profiles.user_id))
-				.where(and(eq(items.id, id), eq(items.published, true)))
+				.where(and(eq(items.id, id), eq(items.published, true), isNull(items.deleted_at)))
 				.limit(1);
 
-			if (!item) throw new Error('No item found');
+			if (!item) return c.json({ message: 'Item not found' }, 404);
 
 			// Get all properties for this item
 			const itemProperties = await db
@@ -202,52 +310,40 @@ export const itemRoute = createRouter()
 			};
 
 			return c.json(mergedItem, 200);
-		} catch (error) {
-			console.log(error);
+		} catch {
 			return c.json({ message: 'Get item error' }, 500);
 		}
 	})
 	.post(`/${authPath}/new`, authMiddleware, zValidator('json', createItemSchema), async (c) => {
 		try {
 			const user = c.var.user;
-
-			const { commons, properties, shipping } = c.req.valid('json');
-
-			const hasDeliveryMethod = properties?.find((p) => p.slug === 'delivery_method');
-
-			// if property value delivery_method is "shipping" and shipping_price is not provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'shipping' && !shipping?.shipping_price) {
-				return c.json({ message: 'Shipping price is required' }, 400);
-			}
-
-			// if property value delivery_method is "pickup" and shipping_price is provided, return error
-			if (hasDeliveryMethod && hasDeliveryMethod.value === 'pickup' && shipping?.shipping_price) {
-				return c.json({ message: 'Shipping price is not allowed' }, 400);
-			}
-
+			const { commons, properties: requestedProperties, shipping } = c.req.valid('json');
 			const { db } = createClient();
 
-			// Check if the subcategory exists
-			const availableSubcategory = await db
-				.select()
-				.from(subcategories)
-				.where(eq(subcategories.id, commons.subcategory_id))
-				.limit(1)
-				.then((results) => results[0]);
-
-			if (!availableSubcategory) {
-				return c.json(
-					{
-						message: `Subcategory with ID ${commons.subcategory_id} doesn't exist`,
-					},
-					400,
-				);
-			}
-
-			/* TODO: CHECK WITH AI IF COMMONS VALUES CONTAINS MATURE OR POTENTIAL INAPPROPRIATE CONTENT */
-
 			return await db.transaction(async (tx) => {
-				// get the profile id of the logged user
+				const [availableSubcategory] = await tx
+					.select({ id: subcategories.id })
+					.from(subcategories)
+					.where(eq(subcategories.id, commons.subcategory_id))
+					.limit(1);
+				if (!availableSubcategory) {
+					throw new Error(`Subcategory with ID ${commons.subcategory_id} doesn't exist`);
+				}
+
+				const [itemAddress] = await tx
+					.select({ id: addresses.id })
+					.from(addresses)
+					.where(and(eq(addresses.id, commons.address_id), eq(addresses.profile_id, user.profile_id)))
+					.limit(1);
+				if (!itemAddress) throw new Error('Address does not belong to the authenticated profile');
+
+				const validatedProperties = await validatePropertiesForSubcategory(
+					tx,
+					commons.subcategory_id,
+					requestedProperties,
+				);
+				validateShipping(validatedProperties.deliveryMethod, shipping);
+
 				const [profile] = await tx
 					.select({
 						name: profiles.name,
@@ -260,18 +356,15 @@ export const itemRoute = createRouter()
 
 				if (!profile) return c.json({ message: 'Profile not found' }, 404);
 
-				// If item has easyPay, we need to check if the user has a payment_provider_id
 				if (commons.easy_pay && !profile.payment_provider_id) {
-					// get the active address from the user
 					const [address] = await tx
 						.select({ country_code: addresses.country_code })
 						.from(addresses)
-						.where(eq(addresses.status, 'active'))
+						.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
 						.limit(1);
 
 					if (!address) return c.json({ message: 'Address not found' }, 404);
 
-					// create a new payment provider guest user
 					const paymentProviderService = new PaymentProviderService();
 
 					const paymentProviderId = await paymentProviderService.createGuestUser({
@@ -294,23 +387,19 @@ export const itemRoute = createRouter()
 						.where(eq(profiles.id, user.profile_id));
 				}
 
-				// Check if delivery_method is "pickup"
-				const isPickup = properties?.some((p) => p.slug === 'delivery_method' && p.value === 'pickup');
-
-				// Create the new item
 				const [newItem] = await tx
 					.insert(items)
 					.values({
 						...commons,
 						profile_id: user.profile_id,
 						status: itemStatus.AVAILABLE,
-						...(hasDeliveryMethod && !isPickup && shipping
+						...(validatedProperties.deliveryMethod !== 'pickup' && shipping
 							? {
-									custom_shipping_price: shipping?.shipping_price,
-									item_weight: shipping?.item_weight,
-									item_length: shipping?.item_length,
-									item_width: shipping?.item_width,
-									item_height: shipping?.item_height,
+									custom_shipping_price: shipping.shipping_price,
+									item_weight: shipping.item_weight,
+									item_length: shipping.item_length,
+									item_width: shipping.item_width,
+									item_height: shipping.item_height,
 								}
 							: {}),
 						published: true,
@@ -321,64 +410,13 @@ export const itemRoute = createRouter()
 					throw new Error('Failed to create item');
 				}
 
-				// TODO: CONVERT PROPERTY VALUES TO NUMBERS
-
-				// Handle item properties(properties) if provided
-				if (properties?.length) {
-					// Get valid properties for this subcategory
-					const subcategoryProperties = await tx
-						.select()
-						.from(subcategory_properties)
-						.where(eq(subcategory_properties.subcategory_id, commons.subcategory_id));
-
-					const validPropertyIds = new Set(subcategoryProperties.map((p) => p.property_id));
-
-					// Validate all properties exist
-					const invalidProperties = properties.filter((p) => !validPropertyIds.has(p.id));
-
-					if (invalidProperties.length) {
-						throw new Error('Some properties have invalid property IDs');
-					}
-
-					const reshapedProperties: InsertItemPropertyValue[] = [];
-
-					// Reshape properties to match the database schema
-					properties.map((p) => {
-						// Check if the property contains an array of values
-						// If so, map through the values and create an object for each
-						// Otherwise, create a single object
-						if (Array.isArray(p.value)) {
-							p.value.map((v) => {
-								reshapedProperties.push({
-									item_id: newItem.id,
-									property_value_id: Number(v),
-								});
-							});
-						} else {
-							reshapedProperties.push({
-								item_id: newItem.id,
-								property_value_id: Number(p.value),
-							});
-						}
-					});
-
-					// Insert property values
-					await tx.insert(items_properties_values).values(reshapedProperties);
-				} else {
-					// Check if the selected subcategory has mandatory properties
-					const mandatoryProperties = await tx
-						.select()
-						.from(subcategory_properties)
-						.where(
-							and(
-								eq(subcategory_properties.subcategory_id, commons.subcategory_id),
-								eq(subcategory_properties.on_item_create_required, true),
-							),
-						);
-
-					if (mandatoryProperties.length > 0) {
-						throw new Error(`This subcategory requires ${mandatoryProperties.length} mandatory properties`);
-					}
+				if (validatedProperties.propertyValueIds.length > 0) {
+					await tx.insert(items_properties_values).values(
+						validatedProperties.propertyValueIds.map((propertyValueId) => ({
+							item_id: newItem.id,
+							property_value_id: propertyValueId,
+						})),
+					);
 				}
 
 				// Return the created item
@@ -391,7 +429,6 @@ export const itemRoute = createRouter()
 				);
 			});
 		} catch (error) {
-			console.error('Error creating item:', error);
 			return c.json(
 				{
 					message: error instanceof Error ? error.message : 'Failed to create item',
@@ -400,8 +437,123 @@ export const itemRoute = createRouter()
 			);
 		}
 	})
-	.put(`/${authPath}/edit/:id`, authMiddleware, async (c) => {
-		return c.json({});
+	.put(`/${authPath}/edit/:id`, authMiddleware, zValidator('json', updateItemSchema), async (c) => {
+		const id = Number(c.req.param('id'));
+		if (!Number.isSafeInteger(id) || id <= 0) return c.json({ message: 'Invalid item ID' }, 400);
+
+		const user = c.var.user;
+		const { commons, properties: requestedProperties, shipping } = c.req.valid('json');
+		const hasMutableFields =
+			(commons !== undefined && Object.keys(commons).length > 0) ||
+			requestedProperties !== undefined ||
+			(shipping !== undefined && Object.keys(shipping).length > 0);
+		if (!hasMutableFields) return c.json({ message: 'At least one item field is required' }, 400);
+
+		const { db } = createClient();
+		try {
+			const result = await db.transaction(async (tx) => {
+				const [existingItem] = await tx
+					.select()
+					.from(items)
+					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+					.limit(1);
+				if (!existingItem) return undefined;
+
+				if (commons?.address_id !== undefined) {
+					const [replacementAddress] = await tx
+						.select({ id: addresses.id })
+						.from(addresses)
+						.where(and(eq(addresses.id, commons.address_id), eq(addresses.profile_id, user.profile_id)))
+						.limit(1);
+					if (!replacementAddress) throw new Error('Address does not belong to the authenticated profile');
+				}
+
+				const targetSubcategoryId = commons?.subcategory_id ?? existingItem.subcategory_id;
+				if (commons?.subcategory_id !== undefined) {
+					const [subcategory] = await tx
+						.select({ id: subcategories.id })
+						.from(subcategories)
+						.where(eq(subcategories.id, targetSubcategoryId))
+						.limit(1);
+					if (!subcategory) throw new Error('Subcategory does not exist');
+					if (commons.subcategory_id !== existingItem.subcategory_id && requestedProperties === undefined) {
+						throw new Error('Properties are required when changing subcategory');
+					}
+				}
+
+				const validatedProperties =
+					requestedProperties === undefined
+						? undefined
+						: await validatePropertiesForSubcategory(tx, targetSubcategoryId, requestedProperties);
+				if (validatedProperties || shipping !== undefined) {
+					let deliveryMethod = validatedProperties?.deliveryMethod;
+					if (!deliveryMethod) {
+						const [storedDelivery] = await tx
+							.select({ value: property_values.value })
+							.from(items_properties_values)
+							.innerJoin(property_values, eq(property_values.id, items_properties_values.property_value_id))
+							.innerJoin(properties, eq(properties.id, property_values.property_id))
+							.where(and(eq(items_properties_values.item_id, id), eq(properties.slug, 'delivery_method')))
+							.limit(1);
+						deliveryMethod = storedDelivery?.value ?? undefined;
+					}
+					const effectiveShipping =
+						deliveryMethod === 'pickup'
+							? shipping
+							: {
+									shipping_price: shipping?.shipping_price ?? existingItem.custom_shipping_price ?? undefined,
+									item_weight: shipping?.item_weight ?? existingItem.item_weight ?? undefined,
+									item_length: shipping?.item_length ?? existingItem.item_length ?? undefined,
+									item_width: shipping?.item_width ?? existingItem.item_width ?? undefined,
+									item_height: shipping?.item_height ?? existingItem.item_height ?? undefined,
+								};
+					validateShipping(deliveryMethod, effectiveShipping);
+				}
+
+				const updateValues: Partial<typeof items.$inferInsert> = {
+					...commons,
+					updated_at: new Date(),
+					...(shipping === undefined
+						? {}
+						: {
+								custom_shipping_price: shipping.shipping_price,
+								item_weight: shipping.item_weight,
+								item_length: shipping.item_length,
+								item_width: shipping.item_width,
+								item_height: shipping.item_height,
+							}),
+				};
+				if (validatedProperties?.deliveryMethod === 'pickup') {
+					Object.assign(updateValues, {
+						custom_shipping_price: null,
+						item_weight: null,
+						item_length: null,
+						item_width: null,
+						item_height: null,
+					});
+				}
+
+				await tx.update(items).set(updateValues).where(eq(items.id, id));
+				if (validatedProperties) {
+					await tx.delete(items_properties_values).where(eq(items_properties_values.item_id, id));
+					if (validatedProperties.propertyValueIds.length > 0) {
+						await tx.insert(items_properties_values).values(
+							validatedProperties.propertyValueIds.map((propertyValueId) => ({
+								item_id: id,
+								property_value_id: propertyValueId,
+							})),
+						);
+					}
+				}
+
+				return id;
+			});
+
+			if (!result) return c.json({ message: 'Item not found' }, 404);
+			return c.json({ message: 'Item updated successfully', item_id: result }, 200);
+		} catch (error) {
+			return c.json({ message: error instanceof Error ? error.message : 'Failed to update item' }, 400);
+		}
 	})
 	.post(
 		`/${authPath}/buy_now`,
@@ -437,11 +589,21 @@ export const itemRoute = createRouter()
 						.from(items)
 						.innerJoin(profiles, eq(profiles.id, items.profile_id))
 						.innerJoin(users, eq(users.id, profiles.user_id))
-						.where(and(eq(items.id, item_id), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)))
+						.where(
+							and(
+								eq(items.id, item_id),
+								eq(items.status, itemStatus.AVAILABLE),
+								eq(items.published, true),
+								isNull(items.deleted_at),
+							),
+						)
 						.limit(1);
 
 					if (!item || !item.payment_provider_id) {
 						return c.json({ error: 'Item not available' }, 400);
+					}
+					if (item.profile_id === user.profile_id) {
+						return c.json({ error: 'You cannot buy your own item' }, 400);
 					}
 
 					/* Protection against multiple orders for the same item in specific states.
@@ -633,60 +795,20 @@ export const itemRoute = createRouter()
 			}),
 		),
 		async (c) => {
-			const { ACCESS_TOKEN_SECRET } = env<{
-				ACCESS_TOKEN_SECRET: string;
-			}>(c);
-
 			const { id } = c.req.valid('json');
-
-			const accessToken = getCookie(c, 'access_token');
-			const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-			const user_id = Number(payload.id);
-
-			if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
-
+			const user = c.var.user;
 			const { db } = createClient();
 
 			try {
-				await db.transaction(async (tx) => {
-					// First check if the item exists and belongs to the user
-					const itemExists = await tx
-						.select({ id: items.id })
-						.from(items)
-						.innerJoin(profiles, eq(profiles.id, items.profile_id))
-						.where(and(eq(items.id, id), eq(profiles.user_id, user_id)))
-						.limit(1)
-						.then((results) => results[0]);
+				const [updatedItem] = await db
+					.update(items)
+					.set({ published: false, deleted_at: new Date(), updated_at: new Date() })
+					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+					.returning({ id: items.id });
 
-					if (!itemExists) {
-						return c.json(
-							{
-								message: "Item not found or you don't have permission to delete it",
-							},
-							404,
-						);
-					}
-
-					// unpublish and set user_deleted:true item
-					const [updatedItem] = await db
-						.update(items)
-						.set({
-							published: false,
-							deleted_at: new Date(),
-						})
-						.where(eq(items.id, id))
-						.returning();
-
-					if (!updatedItem?.id) {
-						return c.json(
-							{
-								message: `Item ${id} cant be deleted because doesn't exist.`,
-								id,
-							},
-							401,
-						);
-					}
-				});
+				if (!updatedItem) {
+					return c.json({ message: "Item not found or you don't have permission to delete it" }, 404);
+				}
 
 				return c.json(
 					{
@@ -716,62 +838,23 @@ export const itemRoute = createRouter()
 			}),
 		),
 		async (c) => {
-			const { ACCESS_TOKEN_SECRET } = env<{
-				ACCESS_TOKEN_SECRET: string;
-			}>(c);
-
 			const { id, published } = c.req.valid('json');
-
-			const accessToken = getCookie(c, 'access_token');
-			const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-			const user_id = Number(payload.id);
-
-			if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
-
+			const user = c.var.user;
 			const { db } = createClient();
 			try {
-				await db.transaction(async (tx) => {
-					// First check if the item exists and belongs to the user
-					const itemExists = await tx
-						.select({ id: items.id })
-						.from(items)
-						.innerJoin(profiles, eq(profiles.id, items.profile_id))
-						.where(and(eq(items.id, id), eq(profiles.user_id, user_id)))
-						.limit(1)
-						.then((results) => results[0]);
+				const [updatedItem] = await db
+					.update(items)
+					.set({ published, updated_at: new Date() })
+					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+					.returning({ id: items.id });
 
-					if (!itemExists) {
-						return c.json(
-							{
-								message: "Item not found or you don't have permission to delete it",
-							},
-							404,
-						);
-					}
-
-					// unpublish item
-					const [updatedItem] = await db
-						.update(items)
-						.set({
-							published,
-						})
-						.where(eq(items.id, id))
-						.returning();
-
-					if (!updatedItem?.id) {
-						return c.json(
-							{
-								message: `Item ${id} cant be deleted because doesn't exist.`,
-								id,
-							},
-							401,
-						);
-					}
-				});
+				if (!updatedItem) {
+					return c.json({ message: "Item not found or you don't have permission to update it" }, 404);
+				}
 
 				return c.json(
 					{
-						message: 'Item deleted successfully',
+						message: 'Item publication state updated successfully',
 						id,
 					},
 					200,

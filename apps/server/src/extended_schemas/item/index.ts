@@ -66,4 +66,10 @@ export const createItemSchema = z.object({
 	properties: propertySchema.optional(),
 });
 
+export const updateItemSchema = createItemSchema
+	.extend({ commons: createItemSchema.shape.commons.partial() })
+	.partial()
+	.refine((value) => Object.keys(value).length > 0, 'At least one item field is required');
+
 export type createItemTypes = z.infer<typeof createItemSchema>;
+export type updateItemTypes = z.infer<typeof updateItemSchema>;

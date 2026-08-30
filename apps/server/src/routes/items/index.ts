@@ -1,9 +1,6 @@
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
-import { getCookie } from 'hono/cookie';
-import { env } from 'hono/adapter';
-import { verify } from 'hono/jwt';
 import { z } from 'zod/v4';
 
 import {
@@ -35,24 +32,9 @@ export const itemTypeSchema = z.object({
 export const itemsRoute = createRouter()
 	// get logged user selling items
 	.post(`${authPath}/user/selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
-		const { ACCESS_TOKEN_SECRET } = env<{
-			ACCESS_TOKEN_SECRET: string;
-		}>(c);
-
-		const params = await c.req.json();
-
-		const accessToken = getCookie(c, 'access_token');
-		const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-		const user_id = Number(payload.id);
-
-		if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
-
+		const params = c.req.valid('json');
+		const user = c.var.user;
 		const { db } = createClient();
-
-		// get profile id from user id
-		const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user_id)).limit(1);
-
-		if (!profile) return c.json({ message: 'Profile not found' }, 404);
 
 		try {
 			const profileItems = await db
@@ -73,7 +55,7 @@ export const itemsRoute = createRouter()
 						isNull(items.deleted_at),
 						eq(items.published, params.published),
 						eq(items.status, itemStatus.AVAILABLE),
-						eq(items.profile_id, profile.id),
+						eq(items.profile_id, user.profile_id),
 						eq(items_images.size, 'thumbnail'),
 						eq(items_images.order_position, 0),
 					),
@@ -99,18 +81,12 @@ export const itemsRoute = createRouter()
 		const { db } = createClient();
 
 		try {
-			const [profile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!profile) return c.json({ message: 'Profile not found' }, 404);
-
 			const userFavorites = await db
 				.select()
 				.from(profiles_items_favorites)
-				.where(eq(profiles_items_favorites.profile_id, profile.id));
+				.where(eq(profiles_items_favorites.profile_id, user.profile_id));
+
+			if (userFavorites.length === 0) return c.json([], 200);
 
 			const userFavoritesItems = await db
 				.select({
@@ -133,6 +109,7 @@ export const itemsRoute = createRouter()
 						eq(items_images.order_position, 0),
 						eq(items.status, itemStatus.AVAILABLE),
 						eq(items.published, true),
+						isNull(items.deleted_at),
 					),
 				);
 
@@ -156,7 +133,7 @@ export const itemsRoute = createRouter()
 				.where(eq(users.username, username))
 				.limit(1);
 
-			if (!existingUsername.length) return c.json({ message: 'No user found' }, 400);
+			if (!existingUsername.length) return c.json({ message: 'No user found' }, 404);
 
 			const userId = Number(existingUsername?.[0]?.id);
 
@@ -200,7 +177,14 @@ export const itemsRoute = createRouter()
 					items_images,
 					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
-				.where(and(eq(items.profile_id, profile.id), eq(items.published, true), eq(items.status, itemStatus.AVAILABLE)))
+				.where(
+					and(
+						eq(items.profile_id, profile.id),
+						eq(items.published, true),
+						eq(items.status, itemStatus.AVAILABLE),
+						isNull(items.deleted_at),
+					),
+				)
 				.orderBy(items.created_at);
 
 			// Group properties by item and organize by filter_slug
