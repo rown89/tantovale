@@ -93,6 +93,47 @@ async function expectNoUploadResidue(itemId?: number): Promise<void> {
 	expect(await imageRows(itemId)).toEqual([]);
 }
 
+async function waitForItemLockWaiters(blockerPid: number, blockerApplicationName: string, expectedCount: number) {
+	const deadline = Date.now() + 5_000;
+	const { client } = getTestDatabase();
+
+	while (Date.now() < deadline) {
+		const { rows } = await client.query<{ pid: number }>(
+			`
+				WITH RECURSIVE lock_descendants(pid) AS (
+					SELECT waiter.pid
+					FROM pg_stat_activity AS waiter
+					WHERE $1::integer = ANY(pg_blocking_pids(waiter.pid))
+					UNION
+					SELECT waiter.pid
+					FROM pg_stat_activity AS waiter
+					INNER JOIN lock_descendants AS blocker
+						ON blocker.pid = ANY(pg_blocking_pids(waiter.pid))
+				)
+				SELECT waiter.pid
+				FROM lock_descendants
+				INNER JOIN pg_stat_activity AS waiter USING (pid)
+				WHERE waiter.datname = current_database()
+					AND waiter.wait_event_type = 'Lock'
+					AND waiter.query ILIKE '%FROM "items"%FOR UPDATE%'
+					AND EXISTS (
+						SELECT 1
+						FROM pg_stat_activity AS root_blocker
+						WHERE root_blocker.pid = $1
+							AND root_blocker.datname = current_database()
+							AND root_blocker.application_name = $2
+					)
+				ORDER BY waiter.pid
+			`,
+			[blockerPid, blockerApplicationName],
+		);
+		if (rows.length >= expectedCount) return rows.map(({ pid }) => pid);
+		await new Promise<void>((resolve) => setTimeout(resolve, 25));
+	}
+
+	throw new Error(`Expected ${expectedCount} item upload waiter(s) behind blocker ${blockerPid}`);
+}
+
 describe('POST /uploads/auth/images-item', () => {
 	it('stores four correctly associated variants in MinIO and the database for each source image', async () => {
 		const actors = await createCommerceActors();
@@ -323,7 +364,7 @@ describe('POST /uploads/auth/images-item', () => {
 	it('serializes concurrent uploads against the per-item source capacity', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
-		const { db } = getTestDatabase();
+		const { client, db } = getTestDatabase();
 		const sizes = ['original', 'medium', 'small', 'thumbnail'] as const;
 		await db.insert(items_images).values(
 			[0, 1, 2, 3].flatMap((position) =>
@@ -336,10 +377,47 @@ describe('POST /uploads/auth/images-item', () => {
 			),
 		);
 
-		const responses = await Promise.all([
-			uploadRequest(actors.seller.jar, uploadForm(String(item.id), [imageFile('concurrent-a.png')])),
-			uploadRequest(actors.seller.jar, uploadForm(String(item.id), [imageFile('concurrent-b.png')])),
-		]);
+		const blocker = await client.connect();
+		const blockerApplicationName = `uploads-capacity-${process.pid}-${item.id}`;
+		let transactionOpen = false;
+		let firstResponsePromise: Promise<Response> | undefined;
+		let secondResponsePromise: Promise<Response> | undefined;
+		let responses: Response[] | undefined;
+
+		try {
+			await blocker.query('BEGIN');
+			transactionOpen = true;
+			await blocker.query("SELECT set_config('application_name', $1, true)", [blockerApplicationName]);
+			const { rows: blockerRows } = await blocker.query<{ pid: number }>('SELECT pg_backend_pid()::integer AS pid');
+			const blockerPid = blockerRows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing item row-lock blocker PID');
+			await blocker.query('SELECT id FROM items WHERE id = $1 FOR UPDATE', [item.id]);
+
+			firstResponsePromise = uploadRequest(
+				actors.seller.jar,
+				uploadForm(String(item.id), [imageFile('concurrent-a.png')]),
+			);
+			const firstWaiters = await waitForItemLockWaiters(blockerPid, blockerApplicationName, 1);
+
+			secondResponsePromise = uploadRequest(
+				actors.seller.jar,
+				uploadForm(String(item.id), [imageFile('concurrent-b.png')]),
+			);
+			const bothWaiters = await waitForItemLockWaiters(blockerPid, blockerApplicationName, 2);
+			expect(bothWaiters).toHaveLength(2);
+			expect(bothWaiters).toEqual(expect.arrayContaining(firstWaiters));
+			expect(await objectKeys()).toHaveLength(8);
+
+			await blocker.query('COMMIT');
+			transactionOpen = false;
+			responses = await Promise.all([firstResponsePromise, secondResponsePromise]);
+		} finally {
+			if (transactionOpen) await blocker.query('ROLLBACK');
+			blocker.release();
+			await Promise.all([firstResponsePromise?.catch(() => undefined), secondResponsePromise?.catch(() => undefined)]);
+		}
+
+		if (!responses) throw new Error('Concurrent upload requests did not complete');
 
 		expect(responses.map(({ status }) => status).sort()).toEqual([201, 400]);
 		const rows = await imageRows(item.id);
