@@ -1,5 +1,6 @@
 import { describe, expect, inject, it, vi } from 'vitest';
 
+import { getProviderRequests } from '../helpers/providers';
 import { buildServerEnvironment } from './runtime';
 
 describe('local service configuration', () => {
@@ -12,7 +13,7 @@ describe('local service configuration', () => {
 			throw new Error('The test runtime must provide a worker database and bucket');
 		}
 
-		const testEnvironment = buildServerEnvironment(runtime, database, bucket);
+		const testEnvironment = buildServerEnvironment(runtime, database, bucket, 0);
 		const originalEnvironment = new Map(Object.keys(testEnvironment).map((key) => [key, process.env[key]]));
 		let transporter: { close: () => void; options: unknown } | undefined;
 		let authenticatedTransporter: { close: () => void; options: unknown } | undefined;
@@ -34,9 +35,11 @@ describe('local service configuration', () => {
 			};
 			delete fallbackEnvironment.AWS_ENDPOINT;
 			delete fallbackEnvironment.AWS_FORCE_PATH_STYLE;
+			delete fallbackEnvironment.SHIPPING_PROVIDER_API_URL;
 			delete fallbackEnvironment.SMTP_FROM;
 			const parsedFallbackEnvironment = parseEnv(fallbackEnvironment);
 			expect(parsedFallbackEnvironment.AWS_ENDPOINT).toBeUndefined();
+			expect(parsedFallbackEnvironment.SHIPPING_PROVIDER_API_URL).toBeUndefined();
 			expect(parsedFallbackEnvironment).toMatchObject({
 				AWS_FORCE_PATH_STYLE: false,
 				SMTP_FROM: '"Tantovale" <legacy-sender@example.test>',
@@ -52,10 +55,23 @@ describe('local service configuration', () => {
 				AWS_ENDPOINT: runtime.minio.endpoint,
 				AWS_FORCE_PATH_STYLE: true,
 				AWS_BUCKET_NAME: bucket,
+				SHIPPING_PROVIDER_API_URL: runtime.providers.shippoUrls[0],
 				SMTP_FROM: 'Tantovale <noreply@tantovale.test>',
 			});
 			expect(new URL(environment.AWS_ENDPOINT!).hostname).toMatch(/^(localhost|127\.0\.0\.1)$/);
 			expect(environment.AWS_BUCKET_NAME).toMatch(/^tantovale-test-/);
+
+			const { carrierAccountsList } = await import('shippo/funcs/carrierAccountsList.js');
+			const { shippoClient } = await import('../../src/lib/shippo-client');
+			const carrierAccounts = await carrierAccountsList(shippoClient, { page: 1, results: 25 });
+			expect(carrierAccounts.ok).toBe(true);
+			const shippoRequests = await getProviderRequests(runtime.providers.shippoUrls[0]!);
+			expect(shippoRequests).toHaveLength(1);
+			expect(shippoRequests[0]).toMatchObject({
+				method: 'GET',
+				path: '/carrier_accounts?page=1&results=25',
+				headers: { 'shippo-api-version': '2018-02-08' },
+			});
 
 			const objectUrl = new URL(await getObjectUrl('uploads/avatar.png'));
 			expect(objectUrl.origin).toBe(runtime.minio.endpoint);

@@ -54,6 +54,7 @@ const EnvSchemaObject = z.object({
 	// SHIPPPING
 	SHIPPING_PROVIDER_API_KEY: z.string(),
 	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),
+	SHIPPING_PROVIDER_API_URL: z.url().optional(),
 	// AUTH
 	ACCESS_TOKEN_SECRET: z.string(),
 	REFRESH_TOKEN_SECRET: z.string(),

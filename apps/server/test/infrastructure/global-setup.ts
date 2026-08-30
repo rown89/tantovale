@@ -6,9 +6,10 @@ import type { GlobalSetupContext } from 'vitest/node';
 import { stopInfrastructure, startInfrastructure, type StartedInfrastructure } from './containers';
 import { createDatabaseConnectionConfig, createMigratedDatabases } from './database-admin';
 import { createObjectStorageClient, createWorkerBuckets } from './object-storage-admin';
+import { startProviderStub, type StartedProviderStub } from './provider-stubs';
 import { API_TEST_WORKERS, createResourceNames, type TestRuntime } from './runtime';
 
-function createRuntime(infrastructure: StartedInfrastructure): TestRuntime {
+function createRuntime(infrastructure: StartedInfrastructure, providerUrls: TestRuntime['providers']): TestRuntime {
 	const runId = randomUUID().replaceAll('-', '').slice(0, 8);
 
 	return {
@@ -31,7 +32,64 @@ function createRuntime(infrastructure: StartedInfrastructure): TestRuntime {
 			smtpPort: infrastructure.mailpit.getMappedPort(1025),
 			apiUrl: `http://${infrastructure.mailpit.getHost()}:${infrastructure.mailpit.getMappedPort(8025)}`,
 		},
+		providers: providerUrls,
 	};
+}
+
+async function startWorkerProviderStubs(): Promise<{
+	started: StartedProviderStub[];
+	urls: TestRuntime['providers'];
+}> {
+	const started: StartedProviderStub[] = [];
+	const trustapUrls: string[] = [];
+	const shippoUrls: string[] = [];
+
+	try {
+		for (let workerIndex = 0; workerIndex < API_TEST_WORKERS; workerIndex += 1) {
+			const trustap = await startProviderStub('trustap');
+			started.push(trustap);
+			trustapUrls.push(trustap.url);
+
+			const shippo = await startProviderStub('shippo');
+			started.push(shippo);
+			shippoUrls.push(shippo.url);
+		}
+	} catch (setupError) {
+		const cleanupErrors = await closeProviderStubs(started);
+		if (cleanupErrors.length > 0) {
+			throw new AggregateError(
+				[setupError, ...cleanupErrors],
+				'Disposable provider stub setup and partial-start cleanup both failed',
+			);
+		}
+		throw setupError;
+	}
+
+	return { started, urls: { trustapUrls, shippoUrls } };
+}
+
+async function closeProviderStubs(stubs: StartedProviderStub[]): Promise<unknown[]> {
+	const results = await Promise.allSettled(stubs.map((stub) => stub.close()));
+	return results
+		.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+		.map((result) => result.reason);
+}
+
+async function stopDisposableRuntime(
+	providerStubs: StartedProviderStub[],
+	infrastructure: StartedInfrastructure | undefined,
+): Promise<unknown[]> {
+	const errors = await closeProviderStubs(providerStubs);
+
+	if (infrastructure) {
+		try {
+			await stopInfrastructure(infrastructure);
+		} catch (error) {
+			errors.push(error);
+		}
+	}
+
+	return errors;
 }
 
 async function assertProvisionedResources(runtime: TestRuntime): Promise<void> {
@@ -98,29 +156,31 @@ async function assertWorkerSchemas(runtime: TestRuntime): Promise<void> {
 
 export default async function globalSetup({ provide }: GlobalSetupContext): Promise<() => Promise<void>> {
 	let infrastructure: StartedInfrastructure | undefined;
+	let providerStubs: StartedProviderStub[] = [];
 
 	try {
 		infrastructure = await startInfrastructure();
-		const runtime = createRuntime(infrastructure);
+		const providers = await startWorkerProviderStubs();
+		providerStubs = providers.started;
+		const runtime = createRuntime(infrastructure, providers.urls);
 
 		await createMigratedDatabases(runtime);
 		await createWorkerBuckets(runtime);
 		await assertProvisionedResources(runtime);
 		provide('testRuntime', runtime);
 		const startedInfrastructure = infrastructure;
+		const startedProviderStubs = providerStubs;
 
 		return async () => {
-			await stopInfrastructure(startedInfrastructure);
+			const cleanupErrors = await stopDisposableRuntime(startedProviderStubs, startedInfrastructure);
+			if (cleanupErrors.length > 0) {
+				throw new AggregateError(cleanupErrors, 'Failed to stop disposable API test infrastructure');
+			}
 		};
 	} catch (setupError) {
-		if (!infrastructure) {
-			throw setupError;
-		}
-
-		try {
-			await stopInfrastructure(infrastructure);
-		} catch (cleanupError) {
-			throw new AggregateError([setupError, cleanupError], 'API test infrastructure setup and cleanup both failed');
+		const cleanupErrors = await stopDisposableRuntime(providerStubs, infrastructure);
+		if (cleanupErrors.length > 0) {
+			throw new AggregateError([setupError, ...cleanupErrors], 'API test infrastructure setup and cleanup both failed');
 		}
 
 		throw setupError;

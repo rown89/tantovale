@@ -5,4 +5,5 @@ import { environment } from '#utils/constants';
 export const shippoClient = new ShippoCore({
 	apiKeyHeader: environment.SHIPPING_PROVIDER_API_KEY,
 	shippoApiVersion: '2018-02-08',
+	serverURL: environment.SHIPPING_PROVIDER_API_URL,
 });

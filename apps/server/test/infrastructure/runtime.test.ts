@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, inject, it } from 'vitest';
 
 import {
 	assertDisposableDatabaseName,
+	API_TEST_WORKERS,
 	buildServerEnvironment,
 	createResourceNames,
 	getWorkerIndex,
@@ -42,9 +43,39 @@ const runtime: TestRuntime = {
 		smtpPort: 1025,
 		apiUrl: 'http://127.0.0.1:8025',
 	},
+	providers: {
+		trustapUrls: [
+			'http://127.0.0.1:41001',
+			'http://127.0.0.1:41002',
+			'http://127.0.0.1:41003',
+			'http://127.0.0.1:41004',
+		],
+		shippoUrls: [
+			'http://127.0.0.1:42001',
+			'http://127.0.0.1:42002',
+			'http://127.0.0.1:42003',
+			'http://127.0.0.1:42004',
+		],
+	},
 };
 
 describe('test runtime resources', () => {
+	it('provisions exactly four isolated local provider pairs without serializing close functions', () => {
+		const providedRuntime = inject('testRuntime');
+		const urls = [...providedRuntime.providers.trustapUrls, ...providedRuntime.providers.shippoUrls];
+
+		expect(providedRuntime.providers.trustapUrls).toHaveLength(API_TEST_WORKERS);
+		expect(providedRuntime.providers.shippoUrls).toHaveLength(API_TEST_WORKERS);
+		expect(new Set(urls).size).toBe(API_TEST_WORKERS * 2);
+		expect(
+			urls.every((url) => {
+				const parsed = new URL(url);
+				return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && Boolean(parsed.port);
+			}),
+		).toBe(true);
+		expect(JSON.parse(JSON.stringify(providedRuntime.providers))).toEqual(providedRuntime.providers);
+		expect(providedRuntime.providers).not.toHaveProperty('close');
+	});
 	it.each(['tantovale_dev', 'tantovale', 'postgres', 'template1', ''])('refuses non-disposable database %j', (name) => {
 		expect(() => assertDisposableDatabaseName(name)).toThrow(/disposable test database/i);
 	});
@@ -131,7 +162,7 @@ describe('test runtime resources', () => {
 	});
 
 	it('refuses an unsafe database when building server environment', () => {
-		expect(() => buildServerEnvironment(runtime, 'tantovale_dev', 'tantovale-test-bucket')).toThrow(
+		expect(() => buildServerEnvironment(runtime, 'tantovale_dev', 'tantovale-test-bucket', 0)).toThrow(
 			/disposable test database/i,
 		);
 	});
@@ -141,6 +172,7 @@ describe('test runtime resources', () => {
 			runtime,
 			'tantovale_test_a1b2c3d4_worker_1',
 			'tantovale-test-a1b2c3d4-worker-1',
+			0,
 		);
 
 		expect(environment).toMatchObject({
@@ -155,7 +187,8 @@ describe('test runtime resources', () => {
 			AWS_BUCKET_NAME: 'tantovale-test-a1b2c3d4-worker-1',
 			SMTP_HOST: '127.0.0.1',
 			SMTP_PORT: '1025',
-			PAYMENT_PROVIDER_API_URL: 'http://127.0.0.1:9',
+			PAYMENT_PROVIDER_API_URL: 'http://127.0.0.1:41001',
+			SHIPPING_PROVIDER_API_URL: 'http://127.0.0.1:42001',
 			SHIPPING_PROVIDER_API_KEY: 'shippo-test-key',
 			ACCESS_TOKEN_SECRET: 'access-test-secret-at-least-32-characters',
 		});

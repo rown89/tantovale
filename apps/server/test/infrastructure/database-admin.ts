@@ -48,7 +48,7 @@ async function migrateTemplateDatabase(runtime: TestRuntime): Promise<void> {
 
 	const environment = {
 		...process.env,
-		...buildServerEnvironment(runtime, runtime.resourceNames.templateDatabase, migrationBucket),
+		...buildServerEnvironment(runtime, runtime.resourceNames.templateDatabase, migrationBucket, 0),
 	};
 
 	try {

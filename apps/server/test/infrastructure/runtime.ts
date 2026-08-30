@@ -26,6 +26,10 @@ export type TestRuntime = {
 		smtpPort: number;
 		apiUrl: string;
 	};
+	providers: {
+		trustapUrls: string[];
+		shippoUrls: string[];
+	};
 };
 
 const disposableDatabaseName = /^tantovale_test_[a-z0-9]+_(template|worker_[1-9][0-9]*)$/;
@@ -75,8 +79,19 @@ export function getWorkerIndex(workerId: string | undefined, workerCount: number
 	return worker - 1;
 }
 
-export function buildServerEnvironment(runtime: TestRuntime, database: string, bucket: string): NodeJS.ProcessEnv {
+export function buildServerEnvironment(
+	runtime: TestRuntime,
+	database: string,
+	bucket: string,
+	workerIndex: number,
+): NodeJS.ProcessEnv {
 	assertDisposableDatabaseName(database);
+	const trustapUrl = runtime.providers.trustapUrls[workerIndex];
+	const shippoUrl = runtime.providers.shippoUrls[workerIndex];
+
+	if (!trustapUrl || !shippoUrl) {
+		throw new Error(`No commerce provider stub pair was assigned to worker index ${workerIndex}`);
+	}
 
 	return {
 		NODE_ENV: 'test',
@@ -92,7 +107,7 @@ export function buildServerEnvironment(runtime: TestRuntime, database: string, b
 		DATABASE_HOST: runtime.postgres.host,
 		DATABASE_PORT: String(runtime.postgres.port),
 		POSTGRES_DB: database,
-		PAYMENT_PROVIDER_API_URL: 'http://127.0.0.1:9',
+		PAYMENT_PROVIDER_API_URL: trustapUrl,
 		PAYMENT_PROVIDER_API_VERSION: 'api/v1',
 		PAYMENT_PROVIDER_API_KEY: 'trustap-test-key',
 		PAYMENT_PROVIDER_CLIENT_ID: 'trustap-test-client',
@@ -102,6 +117,7 @@ export function buildServerEnvironment(runtime: TestRuntime, database: string, b
 		POST_PAYMENT_REDIRECT_URL: 'http://storefront.test',
 		SHIPPING_PROVIDER_API_KEY: 'shippo-test-key',
 		SHIPPING_PROVIDER_WEBHOOK_SECRET: 'shippo-webhook-test-secret',
+		SHIPPING_PROVIDER_API_URL: shippoUrl,
 		ACCESS_TOKEN_SECRET: 'access-test-secret-at-least-32-characters',
 		REFRESH_TOKEN_SECRET: 'refresh-test-secret-at-least-32-characters',
 		EMAIL_VERIFY_TOKEN_SECRET: 'verify-test-secret-at-least-32-characters',
