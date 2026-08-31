@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { app } from '../../src/app';
 import { routeContracts, type RouteAuth, type RouteSuite } from './route-registry';
 
-const EXPECTED_HANDLER_LAYER_COUNT = 132;
+const EXPECTED_OPERATION_PAIR_COUNT = 63;
+const EXPECTED_HANDLER_LAYER_COUNT = 133;
 
 function mountedRouteHandlerLayers(routes: typeof app.routes): string[] {
 	// Hono records `app.use()` middleware layers as `ALL`, while concrete methods are handler layers.
-	// This baseline detects added or removed handler layers, including an adjacent duplicate registration,
-	// but `app.routes` does not expose registration boundaries, so it cannot infer endpoint registrations.
+	// One operation pair can have several same-method/path layers (for example auth, bodyLimit, and handler),
+	// so this raw 133-layer baseline is intentionally distinct from the 63 unique operation pairs below.
 	return routes.filter((route) => route.method !== 'ALL').map((route) => `${route.method.toUpperCase()} ${route.path}`);
 }
 
@@ -25,13 +26,14 @@ describe('mounted API route target contracts for later route suites', () => {
 		const mounted = mountedRouteHandlerLayers(app.routes);
 
 		expect(mounted).toHaveLength(EXPECTED_HANDLER_LAYER_COUNT);
+		expect(new Set(mounted)).toHaveLength(EXPECTED_OPERATION_PAIR_COUNT);
 	});
 
 	it('matches the target registry consumed by later route suites exactly', () => {
 		const mounted = mountedRoutes(app.routes);
 		const registered = registeredRoutes();
 
-		expect(routeContracts).toHaveLength(63);
+		expect(routeContracts).toHaveLength(EXPECTED_OPERATION_PAIR_COUNT);
 		expect(mounted).toEqual(registered);
 	});
 

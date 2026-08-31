@@ -282,6 +282,33 @@ describe('Trustap transaction webhook state mapping', () => {
 				target_preview: { id: 1, status: 'paid' },
 			}),
 		],
+		[
+			'v2 code grafted onto an otherwise valid v1 payload',
+			JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: '1900001',
+				status: 'paid',
+				code: 'tx.paid',
+			}),
+		],
+		[
+			'v2 target id grafted onto an otherwise valid v1 payload',
+			JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: '1900001',
+				status: 'paid',
+				target_id: 'transaction:1900001',
+			}),
+		],
+		[
+			'v2 target preview grafted onto an otherwise valid v1 payload',
+			JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: '1900001',
+				status: 'paid',
+				target_preview: { id: 1, status: 'paid' },
+			}),
+		],
 	] as const)('rejects %s as a non-v1 payload', async (_case, body) => {
 		expect((await postWebhookBody(body)).status).toBe(400);
 	});
