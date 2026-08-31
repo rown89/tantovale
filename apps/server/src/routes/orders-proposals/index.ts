@@ -48,6 +48,7 @@ import {
 	PaymentProviderHttpError,
 	PaymentProviderService,
 } from '../payments/payment-provider.service';
+import { publicTrustapId } from '../payments/trustap-int64';
 import { parseProviderDecimalToCents, ShipmentService } from '../shipment-provider/shipment.service';
 import { shipmentMatchesShippingState, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
 
@@ -885,7 +886,7 @@ export const ordersProposalsRoute = createRouter()
 						message: 'Proposal updated successfully',
 						proposal: accepted.updatedProposal,
 						order: { id: accepted.updatedOrder.id },
-						transaction: { id: transaction.id, status: transaction.status },
+						transaction: { id: publicTrustapId(transaction.id), status: transaction.status },
 					},
 					200,
 				);

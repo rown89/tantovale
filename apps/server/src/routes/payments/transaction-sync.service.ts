@@ -280,6 +280,7 @@ export class TransactionSyncService {
 				);
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
 				const shouldSendPaymentInvitation =
+					(remoteStatus === 'created' || remoteStatus === 'joined') &&
 					recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted &&
 					recoveredTransition.orderStatus === ORDER_PHASES.PAYMENT_PENDING;
 
@@ -394,7 +395,10 @@ export class TransactionSyncService {
 						.set({
 							payment_transaction_id: transactionId,
 							legacy_payment_transaction_id: null,
-							payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+							payment_creation_state:
+								remoteStatus === 'complained'
+									? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
+									: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredTransition.orderStatus,
 							...(reservation.proposalId !== null &&
 							shouldSendPaymentInvitation &&
@@ -518,6 +522,8 @@ export class TransactionSyncService {
 			const recoveryResults = await this.recoverKnownTransactions();
 			await this.dispatchPendingRecoveryNotifications();
 			const staleReservationResults = await this.recoverStalePaymentReservations();
+			const pollBuyerProfiles = alias(profiles, 'poll_buyer_profiles');
+			const pollSellerProfiles = alias(profiles, 'poll_seller_profiles');
 			const staleTransactions = await db
 				.select({
 					id: entityTrustapTransactions.id,
@@ -539,9 +545,13 @@ export class TransactionSyncService {
 					orderProviderCharge: orders.payment_provider_charge,
 					orderShippingPrice: orders.shipping_price,
 					orderAttemptId: orders.payment_attempt_id,
+					buyerProviderId: pollBuyerProfiles.payment_provider_id,
+					sellerProviderId: pollSellerProfiles.payment_provider_id,
 				})
 				.from(entityTrustapTransactions)
 				.leftJoin(orders, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
+				.leftJoin(pollBuyerProfiles, eq(orders.buyer_id, pollBuyerProfiles.id))
+				.leftJoin(pollSellerProfiles, eq(orders.seller_id, pollSellerProfiles.id))
 				.where(lt(entityTrustapTransactions.updated_at, subHours(new Date(), 1)));
 			const syncResults: TransactionSyncResult[] = [...recoveryResults, ...staleReservationResults];
 
@@ -568,12 +578,16 @@ export class TransactionSyncService {
 						transaction.orderShippingPrice === null ||
 						transaction.providerBuyerId === null ||
 						transaction.providerSellerId === null ||
+						!transaction.buyerProviderId ||
+						!transaction.sellerProviderId ||
 						transaction.providerCurrency !== 'eur' ||
 						transaction.providerPrice !== transaction.orderItemPrice + transaction.orderPlatformCharge ||
 						transaction.providerCharge !== transaction.orderProviderCharge ||
 						transaction.providerChargeSeller !== 0 ||
 						trustapStatus.buyer_id !== transaction.providerBuyerId ||
 						trustapStatus.seller_id !== transaction.providerSellerId ||
+						trustapStatus.buyer_id !== transaction.buyerProviderId ||
+						trustapStatus.seller_id !== transaction.sellerProviderId ||
 						trustapStatus.currency !== transaction.providerCurrency ||
 						trustapStatus.price !== transaction.providerPrice ||
 						trustapStatus.postage_fee !== transaction.orderShippingPrice ||

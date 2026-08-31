@@ -36,7 +36,7 @@ export function BuyNowDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_quote', 'buy_now', itemId],
+		queryKey: ['shipping_quote', 'buy_now', itemId, user?.profile_id],
 		queryFn: async () => {
 			if (!itemId) return null;
 
@@ -54,7 +54,15 @@ export function BuyNowDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', 'buy_now', shippingCost?.shipping_quote_id, shippingCost?.amount, itemId, itemPrice],
+		queryKey: [
+			'platforms_costs',
+			'buy_now',
+			shippingCost?.shipping_quote_id,
+			shippingCost?.amount,
+			itemId,
+			itemPrice,
+			user?.profile_id,
+		],
 		queryFn: async () => {
 			if (!itemPrice) return null;
 

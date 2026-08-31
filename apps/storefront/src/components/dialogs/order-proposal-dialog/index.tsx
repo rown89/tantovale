@@ -104,7 +104,7 @@ export function ProposalDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_quote', 'proposal', itemId],
+		queryKey: ['shipping_quote', 'proposal', itemId, user?.profile_id],
 		queryFn: async () => {
 			if (!itemId) return null;
 			return getShippingCost(itemId);
@@ -115,10 +115,10 @@ export function ProposalDialog() {
 	});
 
 	useEffect(() => {
-		if (!shippingCost) return;
+		if (!isProposalModalOpen || !shippingCost) return;
 		form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
 		form.setFieldValue('shipping_quote_id', shippingCost.shipping_quote_id);
-	}, [form, shippingCost]);
+	}, [form, isProposalModalOpen, shippingCost]);
 
 	const {
 		data: platformsCosts,
@@ -132,6 +132,7 @@ export function ProposalDialog() {
 			shippingCost?.shipping_quote_id,
 			shippingCost?.amount,
 			item?.id,
+			user?.profile_id,
 		],
 		queryFn: async () => {
 			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;

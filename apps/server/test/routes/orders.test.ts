@@ -99,7 +99,7 @@ describe('order routes', () => {
 		expect(buyerOrder).toMatchObject({
 			id: order.id,
 			original_price: 9_000,
-			payment_transaction_id: '91337',
+			payment_transaction_id: 91_337,
 			payment_url:
 				'http://trustap.test/online/transactions/91337/guest_pay?redirect_uri=http%3A%2F%2Fstorefront.test%2Fauth%2Fprofile%2Forders%3Fhighlight%3D1',
 		});

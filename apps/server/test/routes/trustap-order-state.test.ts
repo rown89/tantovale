@@ -61,4 +61,26 @@ describe('Trustap order transition policy', () => {
 			providerStatus: TRUSTAP.PAID,
 		});
 	});
+
+	it.each([
+		[TRUSTAP.CANCELLED, ORDER_PHASES.EXPIRED],
+		[TRUSTAP.PAID, ORDER_PHASES.SHIPPING_CONFIRMED],
+		[TRUSTAP.COMPLAINED, ORDER_PHASES.COMPLETED],
+	] as const)('does not regress a valid order on duplicate %s', (providerStatus, orderStatus) => {
+		expect(resolveTrustapOrderTransition(providerStatus, orderStatus, providerStatus)).toEqual({
+			apply: false,
+			orderStatus,
+			providerStatus,
+		});
+	});
+
+	it('permits the documented complained to payment_refunded transition', () => {
+		expect(
+			resolveTrustapOrderTransition(TRUSTAP.COMPLAINED, ORDER_PHASES.SHIPPING_CONFIRMED, TRUSTAP.PAYMENT_REFUNDED),
+		).toEqual({
+			apply: true,
+			orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+			providerStatus: TRUSTAP.PAYMENT_REFUNDED,
+		});
+	});
 });

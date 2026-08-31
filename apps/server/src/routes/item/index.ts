@@ -70,8 +70,20 @@ const postgresIntegerMax = 2_147_483_647;
 const scalarIdPropertyTypes = new Set(['select', 'radio']);
 const multipleIdPropertyTypes = new Set(['select_multi', 'checkbox']);
 
-async function assertItemCommerceMutationAllowed(tx: ItemTransaction, itemId: number): Promise<void> {
+class ItemMutationNotFoundError extends Error {}
+
+async function assertItemCommerceMutationAllowed(
+	tx: ItemTransaction,
+	itemId: number,
+	profileId: number,
+): Promise<void> {
 	await acquireItemCommerceLock(tx, itemId);
+	const [ownedItem] = await tx
+		.select({ id: items.id })
+		.from(items)
+		.where(and(eq(items.id, itemId), eq(items.profile_id, profileId), isNull(items.deleted_at)))
+		.limit(1);
+	if (!ownedItem) throw new ItemMutationNotFoundError('Item not found');
 	const [activeOrder] = await tx
 		.select({ id: orders.id })
 		.from(orders)
@@ -630,7 +642,7 @@ export const itemRoute = createRouter()
 		const { db } = createClient();
 		try {
 			const preflight = await db.transaction(async (tx) => {
-				await assertItemCommerceMutationAllowed(tx, id);
+				await assertItemCommerceMutationAllowed(tx, id, user.profile_id);
 				return validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping);
 			});
 			if (!preflight) return c.json({ message: 'Item not found' }, 404);
@@ -640,7 +652,7 @@ export const itemRoute = createRouter()
 			}
 
 			const result = await db.transaction(async (tx) => {
-				await assertItemCommerceMutationAllowed(tx, id);
+				await assertItemCommerceMutationAllowed(tx, id, user.profile_id);
 				const validation = await validateEditItemState(
 					tx,
 					id,
@@ -701,6 +713,7 @@ export const itemRoute = createRouter()
 			if (!result) return c.json({ message: 'Item not found' }, 404);
 			return c.json({ message: 'Item updated successfully', item_id: result }, 200);
 		} catch (error) {
+			if (error instanceof ItemMutationNotFoundError) return c.json({ message: 'Item not found' }, 404);
 			return c.json({ message: error instanceof Error ? error.message : 'Failed to update item' }, 400);
 		}
 	})
@@ -1100,7 +1113,7 @@ export const itemRoute = createRouter()
 
 			try {
 				const [updatedItem] = await db.transaction(async (tx) => {
-					await assertItemCommerceMutationAllowed(tx, id);
+					await assertItemCommerceMutationAllowed(tx, id, user.profile_id);
 					return tx
 						.update(items)
 						.set({ published: false, deleted_at: new Date(), updated_at: new Date() })
@@ -1120,6 +1133,9 @@ export const itemRoute = createRouter()
 					200,
 				);
 			} catch (error) {
+				if (error instanceof ItemMutationNotFoundError) {
+					return c.json({ message: "Item not found or you don't have permission to delete it" }, 404);
+				}
 				if (error instanceof Error && error.message === 'Item has an active order and cannot be changed') {
 					return c.json({ message: error.message }, 400);
 				}
@@ -1169,7 +1185,7 @@ export const itemRoute = createRouter()
 				}
 
 				const [updatedItem] = await db.transaction(async (tx) => {
-					await assertItemCommerceMutationAllowed(tx, id);
+					await assertItemCommerceMutationAllowed(tx, id, user.profile_id);
 					return tx
 						.update(items)
 						.set({ published, updated_at: new Date() })
@@ -1189,6 +1205,9 @@ export const itemRoute = createRouter()
 					200,
 				);
 			} catch (error) {
+				if (error instanceof ItemMutationNotFoundError) {
+					return c.json({ message: "Item not found or you don't have permission to update it" }, 404);
+				}
 				if (error instanceof Error && error.message === 'Item has an active order and cannot be changed') {
 					return c.json({ message: error.message }, 400);
 				}

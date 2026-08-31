@@ -10,6 +10,7 @@ import { authPath } from '#utils/constants';
 import { PAYMENT_CANCELLATION_STATES, PAYMENT_CREATION_STATES } from '#database/schemas/enumerated_values';
 
 import { buildGuestPaymentUrl } from '../payments/payment-provider.service';
+import { publicTrustapId } from '../payments/trustap-int64';
 
 const postgresIntegerMax = 2_147_483_647;
 const orderStatuses = new Set<string>(Object.values(ORDER_PHASES));
@@ -73,7 +74,7 @@ export const ordersRoute = createRouter()
 					order.orders.status === ORDER_PHASES.PAYMENT_PENDING &&
 					paymentTransactionId
 						? {
-								payment_transaction_id: paymentTransactionId,
+								payment_transaction_id: publicTrustapId(paymentTransactionId),
 								payment_url: buildGuestPaymentUrl(paymentTransactionId, order.orders.id),
 							}
 						: {}),
@@ -120,7 +121,7 @@ export const ordersRoute = createRouter()
 				order.status === ORDER_PHASES.PAYMENT_PENDING &&
 				paymentTransactionId
 					? {
-							payment_transaction_id: paymentTransactionId,
+							payment_transaction_id: publicTrustapId(paymentTransactionId),
 							payment_url: buildGuestPaymentUrl(paymentTransactionId, order.id),
 						}
 					: {}),

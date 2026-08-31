@@ -8,7 +8,7 @@ import {
 	ORDER_PHASES,
 	PAYMENT_CREATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
-import { entityTrustapTransactions, orders, shipping_quotes } from '../../src/database/schemas/schema';
+import { entityTrustapTransactions, orders, profiles, shipping_quotes } from '../../src/database/schemas/schema';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
 import {
 	createCommerceActors,
@@ -54,6 +54,14 @@ async function createStaleProviderBackedOrder(
 		payment_creation_state: 'created',
 	});
 	const { db } = getTestDatabase();
+	await db
+		.update(profiles)
+		.set({ payment_provider_id: trustapTransactionFixture.buyer_id })
+		.where(eq(profiles.id, actors.buyer.profile.id));
+	await db
+		.update(profiles)
+		.set({ payment_provider_id: trustapTransactionFixture.seller_id })
+		.where(eq(profiles.id, actors.seller.profile.id));
 	await db.insert(entityTrustapTransactions).values({
 		entityId: item.id,
 		sellerId: trustapTransactionFixture.seller_id,

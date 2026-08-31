@@ -6,7 +6,7 @@ import type { MiddlewareHandler } from 'hono';
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders } from '#db-schema';
-import { entityTrustapTransactionStatusValues } from '#database/schemas/enumerated_values';
+import { entityTrustapTransactionStatusValues, PAYMENT_CANCELLATION_STATES } from '#database/schemas/enumerated_values';
 import { resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { environment } from '#utils/constants';
@@ -78,6 +78,7 @@ export const webhooksRoute = createRouter().post(
 					.select()
 					.from(entityTrustapTransactions)
 					.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))
+					.for('update')
 					.limit(1);
 
 				if (!trustapTransaction) {
@@ -124,6 +125,9 @@ export const webhooksRoute = createRouter().post(
 					.update(orders)
 					.set({
 						status: transition.orderStatus,
+						...(['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(payload.status)
+							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+							: {}),
 						updated_at: new Date(),
 					})
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))

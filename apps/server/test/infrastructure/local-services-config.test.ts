@@ -73,6 +73,9 @@ describe('local service configuration', () => {
 					SMTP_FROM: 'Custom sender <custom@example.test>',
 				}),
 			).toMatchObject({ SMTP_FROM: 'Custom sender <custom@example.test>' });
+			for (const field of ['PAYMENT_PROVIDER_WEBHOOK_USERNAME', 'PAYMENT_PROVIDER_WEBHOOK_SECRET'] as const) {
+				expect(() => parseEnv({ ...testEnvironment, [field]: '' })).toThrow(/Invalid env/);
+			}
 
 			expect(environment).toMatchObject({
 				AWS_ENDPOINT: runtime.minio.endpoint,

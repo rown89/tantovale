@@ -21,6 +21,29 @@ export const trustapToOrderPhase = {
 } as const satisfies Partial<Record<EntityTrustapTransactionStatus, OrderPhase>>;
 
 const validOrderPhases = new Set<string>(Object.values(ORDER_PHASES));
+const terminalOrderPhases = new Set<string>([
+	ORDER_PHASES.PAYMENT_FAILED,
+	ORDER_PHASES.PAYMENT_REFUNDED,
+	ORDER_PHASES.COMPLETED,
+	ORDER_PHASES.CANCELLED,
+	ORDER_PHASES.EXPIRED,
+]);
+const activeOrderPhaseRank: Partial<Record<OrderPhase, number>> = {
+	[ORDER_PHASES.PAYMENT_PENDING]: 1,
+	[ORDER_PHASES.PAYMENT_CONFIRMED]: 2,
+	[ORDER_PHASES.SHIPPING_PENDING]: 3,
+	[ORDER_PHASES.SHIPPING_CONFIRMED]: 4,
+};
+
+function shouldRepairOrderStatus(current: string, expected: OrderPhase): boolean {
+	if (!validOrderPhases.has(current)) return true;
+	if (current === expected || terminalOrderPhases.has(current)) return false;
+	if (terminalOrderPhases.has(expected)) return true;
+	return (
+		(activeOrderPhaseRank[current as OrderPhase] ?? Number.POSITIVE_INFINITY) <
+		(activeOrderPhaseRank[expected] ?? Number.POSITIVE_INFINITY)
+	);
+}
 
 // Direct provider lifecycle edges. We accept a reachable later state because polling can
 // legitimately miss intermediate webhooks, but never infer an edge between terminal branches.
@@ -30,7 +53,12 @@ const directSuccessors: Record<EntityTrustapTransactionStatus, readonly EntityTr
 	[TRUSTAP.PAID]: [TRUSTAP.TRACKED, TRUSTAP.CANCELLED_WITH_PAYMENT, TRUSTAP.PAYMENT_REFUNDED],
 	[TRUSTAP.TRACKED]: [TRUSTAP.DELIVERED, TRUSTAP.COMPLAINED, TRUSTAP.CANCELLED_WITH_PAYMENT, TRUSTAP.PAYMENT_REFUNDED],
 	[TRUSTAP.DELIVERED]: [TRUSTAP.COMPLAINED, TRUSTAP.COMPLAINT_PERIOD_ENDED, TRUSTAP.FUNDS_RELEASED],
-	[TRUSTAP.COMPLAINED]: [TRUSTAP.DELIVERED, TRUSTAP.COMPLAINT_PERIOD_ENDED, TRUSTAP.FUNDS_RELEASED],
+	[TRUSTAP.COMPLAINED]: [
+		TRUSTAP.DELIVERED,
+		TRUSTAP.COMPLAINT_PERIOD_ENDED,
+		TRUSTAP.FUNDS_RELEASED,
+		TRUSTAP.PAYMENT_REFUNDED,
+	],
 	[TRUSTAP.COMPLAINT_PERIOD_ENDED]: [TRUSTAP.FUNDS_RELEASED],
 	[TRUSTAP.CANCELLED_WITH_PAYMENT]: [TRUSTAP.PAYMENT_REFUNDED],
 	[TRUSTAP.REJECTED]: [],
@@ -48,6 +76,9 @@ function isReachable(current: EntityTrustapTransactionStatus, incoming: EntityTr
 		if (!candidate || visited.has(candidate)) continue;
 		if (candidate === incoming) return true;
 		visited.add(candidate);
+		// A refund after a complaint is documented, but it must be observed from
+		// the complained state itself rather than inferred from an earlier event.
+		if (candidate === TRUSTAP.COMPLAINED && current !== TRUSTAP.COMPLAINED) continue;
 		queue.push(...directSuccessors[candidate]);
 	}
 	return false;
@@ -85,12 +116,10 @@ export function resolveTrustapOrderTransition(
 	if (!nextOrderStatus) {
 		return { apply: false, orderStatus: currentOrderStatus, providerStatus: currentProviderStatus };
 	}
+	const repairOrder = shouldRepairOrderStatus(currentOrderStatus, nextOrderStatus);
 	return {
-		apply:
-			currentProviderStatus !== incomingProviderStatus ||
-			!currentOrderIsValid ||
-			currentOrderStatus !== nextOrderStatus,
-		orderStatus: nextOrderStatus,
+		apply: currentProviderStatus !== incomingProviderStatus || repairOrder,
+		orderStatus: repairOrder ? nextOrderStatus : currentOrderStatus,
 		providerStatus: incomingProviderStatus,
 	};
 }
