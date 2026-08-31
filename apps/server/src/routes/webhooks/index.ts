@@ -1,7 +1,5 @@
 import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
-import { timingSafeEqual } from 'node:crypto';
-import type { MiddlewareHandler } from 'hono';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
@@ -18,56 +16,29 @@ import {
 	resolveTrustapOrderTransition,
 } from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
-import { environment } from '#utils/constants';
 import { canonicalTrustapId, parseJsonWithTopLevelTrustapId } from '../payments/trustap-int64';
 import {
 	SHIPPING_LABEL_TRANSITION_DEFERRED,
 	shippingLabelPurchaseDefersOrderTransition,
 } from '#lib/shipping-label-transition-guard';
+import { authenticateTrustapWebhook } from './basic-auth';
 
-// Trustap webhook payload schema
-const trustapWebhookSchema = z.object({
-	event: z.string(),
-	transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
-		const id = canonicalTrustapId(value);
-		if (!id) context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
-		return id as string;
-	}),
-	status: z.enum(entityTrustapTransactionStatusValues),
-	paid: z.string().optional(),
-	funds_released: z.string().optional(),
-	complaint_period_deadline: z.string().optional(),
-	// Add other fields as needed based on Trustap webhook documentation
-});
-
-function secureEqual(left: string, right: string): boolean {
-	const leftBuffer = Buffer.from(left);
-	const rightBuffer = Buffer.from(right);
-	return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function hasValidTrustapBasicAuth(authorization: string | undefined): boolean {
-	if (!authorization?.startsWith('Basic ')) return false;
-	let decoded: string;
-	try {
-		decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
-	} catch {
-		return false;
-	}
-	const separator = decoded.indexOf(':');
-	if (separator < 0) return false;
-	return (
-		secureEqual(decoded.slice(0, separator), environment.PAYMENT_PROVIDER_WEBHOOK_USERNAME) &&
-		secureEqual(decoded.slice(separator + 1), environment.PAYMENT_PROVIDER_WEBHOOK_SECRET)
-	);
-}
-
-const authenticateTrustapWebhook: MiddlewareHandler = async (c, next) => {
-	if (!hasValidTrustapBasicAuth(c.req.header('authorization'))) {
-		return c.json({ error: 'Unauthorized' }, 401);
-	}
-	await next();
-};
+const trustapTimestamp = z.string().datetime({ offset: true });
+const trustapWebhookSchema = z
+	.object({
+		event: z.literal('transaction_updated'),
+		transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
+			const id = canonicalTrustapId(value);
+			if (id) return id;
+			context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
+			return z.NEVER;
+		}),
+		status: z.enum(entityTrustapTransactionStatusValues),
+		paid: trustapTimestamp.optional(),
+		funds_released: trustapTimestamp.optional(),
+		complaint_period_deadline: trustapTimestamp.optional(),
+	})
+	.strict();
 
 export const webhooksRoute = createRouter().post(
 	'/trustap/transaction-update',

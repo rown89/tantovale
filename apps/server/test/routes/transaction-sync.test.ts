@@ -95,7 +95,7 @@ async function postTrustapStatus(transactionId: string, status: EntityTrustapTra
 			'content-type': 'application/json',
 			authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 		},
-		body: JSON.stringify({ event: 'transaction_status_updated', transaction_id: transactionId, status }),
+		body: JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }),
 	});
 }
 
