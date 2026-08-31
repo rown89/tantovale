@@ -1,7 +1,12 @@
 import { StateCreator } from 'zustand';
 import { client } from '@workspace/server/client-rpc';
 import { SelectOrderProposal } from '@workspace/server/database';
-import { commerceOwnerMatches, CommerceOwnershipState } from './commerce-ownership';
+import {
+	captureCommerceOwner,
+	captureCommerceRequest,
+	commerceRequestMatches,
+	CommerceOwnershipState,
+} from './commerce-ownership';
 
 type OrderProposalProps = Omit<
 	SelectOrderProposal,
@@ -32,6 +37,7 @@ export type OrderProposalStore = {
 	clientProposalCreatedAt?: string;
 	isProposalModalOpen: boolean;
 	isCreatingProposal: boolean;
+	proposalRequestToken: number;
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => void;
 	setIsCreatingProposal: (isCreatingProposal: boolean) => void;
 	handleBuyerAbortedProposal: (proposal_id: number) => Promise<boolean>;
@@ -54,37 +60,38 @@ export const createProposalSlice: StateCreator<
 	clientProposalCreatedAt: undefined,
 	isProposalModalOpen: false,
 	isCreatingProposal: false,
+	proposalRequestToken: 0,
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
 	setIsCreatingProposal: (isCreatingProposal: boolean) => set({ isCreatingProposal }),
 	handleBuyerAbortedProposal: async (proposal_id: number) => {
-		const requestOwner = {
-			commerceOwnerProfileId: get().commerceOwnerProfileId,
-			commerceOwnerItemId: get().commerceOwnerItemId,
-		};
+		const requestOwner = captureCommerceOwner(get());
+		const requestToken = get().proposalRequestToken + 1;
+		const requestSnapshot = captureCommerceRequest(requestOwner, requestToken);
 		set({
 			isCreatingProposal: true,
+			proposalRequestToken: requestToken,
 		});
 
 		try {
-			await client.orders_proposals.auth.buyer_aborted_proposal.$post({
+			const response = await client.orders_proposals.auth.buyer_aborted_proposal.$post({
 				json: {
 					proposal_id,
 				},
 			});
+			if (!response.ok) return false;
+			if (!commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) return false;
 
-			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
-				set({
-					clientProposalId: undefined,
-					clientProposalCreatedAt: undefined,
-				});
-			}
+			set({
+				clientProposalId: undefined,
+				clientProposalCreatedAt: undefined,
+			});
 
 			return true;
 		} catch (error) {
 			console.error('Failed to abort proposal:', error);
 			return false;
 		} finally {
-			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+			if (commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) {
 				set({ isCreatingProposal: false });
 			}
 		}
@@ -96,13 +103,13 @@ export const createProposalSlice: StateCreator<
 		shipping_quote_id,
 		message,
 	}: handleProposalProps) => {
-		const requestOwner = {
-			commerceOwnerProfileId: get().commerceOwnerProfileId,
-			commerceOwnerItemId: get().commerceOwnerItemId,
-		};
+		const requestOwner = captureCommerceOwner(get());
 		if (requestOwner.commerceOwnerItemId !== item_id) return undefined;
+		const requestToken = get().proposalRequestToken + 1;
+		const requestSnapshot = captureCommerceRequest(requestOwner, requestToken);
 		set({
 			isCreatingProposal: true,
+			proposalRequestToken: requestToken,
 		});
 
 		try {
@@ -119,7 +126,7 @@ export const createProposalSlice: StateCreator<
 			if (!response.ok) return undefined;
 
 			const data = await response.json();
-			if (!commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+			if (!commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) {
 				return undefined;
 			}
 
@@ -146,7 +153,7 @@ export const createProposalSlice: StateCreator<
 			console.error('Failed to create proposal:', error);
 			return undefined;
 		} finally {
-			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+			if (commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) {
 				set({ isCreatingProposal: false });
 			}
 		}
@@ -157,5 +164,6 @@ export const createProposalSlice: StateCreator<
 			clientProposalCreatedAt: undefined,
 			isProposalModalOpen: false,
 			isCreatingProposal: false,
+			proposalRequestToken: get().proposalRequestToken + 1,
 		}),
 });

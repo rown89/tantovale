@@ -5,6 +5,8 @@ const buyNowStoreModulePath = '../../../storefront/src/stores/buy-now-store';
 type BuyNowState = {
 	commerceOwnerProfileId: number;
 	commerceOwnerItemId: number;
+	commerceOwnerEpoch: number;
+	buyNowRequestToken: number;
 	isCreatingOrder: boolean;
 	clientBuyNowOrderId: number;
 	clientBuyNowOrderStatus: string;
@@ -29,6 +31,7 @@ async function createStore(post: () => Promise<unknown>, itemId: number) {
 		),
 		commerceOwnerProfileId: 17,
 		commerceOwnerItemId: itemId,
+		commerceOwnerEpoch: 1,
 	};
 	return () => state;
 }

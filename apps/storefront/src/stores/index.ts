@@ -5,7 +5,7 @@ import { createProposalSlice, OrderProposalStore } from './proposal-store';
 import { createNewItemSlice, NewItemStore } from './item-new';
 import { createAddressSlice, AddressStore } from './address';
 import { createBuyNowSlice, OrderBuyNowStore } from './buy-now-store';
-import { commerceOwnerMatches, CommerceOwnershipState } from './commerce-ownership';
+import { CommerceOwnershipState } from './commerce-ownership';
 
 export type CommerceOwnershipStore = CommerceOwnershipState & {
 	setCommerceContext: (profileId: number | null, itemId: number) => void;
@@ -28,10 +28,12 @@ const privateCommerceResetState = {
 	clientBuyNowOrderStatus: '',
 	isBuyNowModalOpen: false,
 	isCreatingOrder: false,
+	buyNowRequestToken: 0,
 	clientProposalId: undefined,
 	clientProposalCreatedAt: undefined,
 	isProposalModalOpen: false,
 	isCreatingProposal: false,
+	proposalRequestToken: 0,
 	address_id: undefined,
 	isAddressLoading: false,
 } as const;
@@ -45,12 +47,22 @@ const useTantovaleStore = create<TantovaleStoreProps>()(
 		...createAddressSlice(set, get, ...a),
 		commerceOwnerProfileId: null,
 		commerceOwnerItemId: null,
+		commerceOwnerEpoch: 0,
 		setCommerceContext: (profileId, itemId) => {
-			if (commerceOwnerMatches(get(), profileId, itemId)) return;
-			set({ ...privateCommerceResetState, commerceOwnerProfileId: profileId, commerceOwnerItemId: itemId });
+			set({
+				...privateCommerceResetState,
+				commerceOwnerProfileId: profileId,
+				commerceOwnerItemId: itemId,
+				commerceOwnerEpoch: get().commerceOwnerEpoch + 1,
+			});
 		},
 		resetPrivateCommerceState: () => {
-			set({ ...privateCommerceResetState, commerceOwnerProfileId: null, commerceOwnerItemId: null });
+			set({
+				...privateCommerceResetState,
+				commerceOwnerProfileId: null,
+				commerceOwnerItemId: null,
+				commerceOwnerEpoch: get().commerceOwnerEpoch + 1,
+			});
 		},
 	})),
 );

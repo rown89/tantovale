@@ -5,6 +5,7 @@ import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { getShippingCost } from '#queries/get-shipping-cost';
 import useTantovaleStore from '#stores';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
 
@@ -22,10 +23,24 @@ import { Label } from '@workspace/ui/components/label';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { toast } from 'sonner';
 import { isCommerceActionReady, platformCostsQueryKey, shippingQuoteQueryKey } from '#utils/commerce-query-state';
+import { buyNowRequestMatches, captureBuyNowRequest } from '#stores/buy-now-store';
+import {
+	BuyNowPaymentActionHandle,
+	finishBuyNowAction,
+	scheduleBuyNowPaymentAction,
+} from '#utils/buy-now-payment-action';
 
 export function BuyNowDialog() {
 	const { user } = useAuth();
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
+	const pendingPaymentAction = useRef<BuyNowPaymentActionHandle | null>(null);
+	useEffect(
+		() => () => {
+			pendingPaymentAction.current?.cancel();
+			pendingPaymentAction.current = null;
+		},
+		[],
+	);
 	const { userAddress, isUserAddressLoading, isUserAddressError, isUserAddressFetching } = useAddressesRetrieval({
 		profileId: user?.profile_id,
 		status: 'active',
@@ -193,33 +208,35 @@ export function BuyNowDialog() {
 					<Button
 						disabled={!canCreateOrder}
 						onClick={async () => {
-							try {
-								const response = await handleBuyNow(item.id);
-								const { payment_url } = response;
-
-								if (payment_url) {
-									toast.success('Order created successfully!', {
-										description: 'Please wait while we redirect you to the payment page.',
-										duration: 8000,
+							pendingPaymentAction.current?.cancel();
+							const requestPromise = handleBuyNow(item.id);
+							const requestSnapshot = captureBuyNowRequest(useTantovaleStore.getState());
+							const requestIsCurrent = () => buyNowRequestMatches(useTantovaleStore.getState(), requestSnapshot);
+							await finishBuyNowAction({
+								request: requestPromise,
+								isCurrent: requestIsCurrent,
+								onPaymentUrl: (paymentUrl) => {
+									pendingPaymentAction.current = scheduleBuyNowPaymentAction({
+										paymentUrl,
+										isCurrent: requestIsCurrent,
+										subscribe: (listener) => useTantovaleStore.subscribe(listener),
+										onPending: () =>
+											toast.success('Order created successfully!', {
+												description: 'Please wait while we redirect you to the payment page.',
+												duration: 8000,
+											}),
+										onCancel: (notificationId) => toast.dismiss(notificationId),
+										open: (url) => window.open(url, '_blank', 'noopener,noreferrer'),
 									});
-
-									setTimeout(() => {
-										window.open(payment_url, '_blank');
-									}, 3000);
-								} else {
+								},
+								onError: () => {
 									toast.error('Oops!', {
 										description: 'Error creating order, please try again later.',
 										duration: 8000,
 									});
-								}
-							} catch {
-								toast.error('Oops!', {
-									description: 'Error creating order, please try again later.',
-									duration: 8000,
-								});
-							} finally {
-								setIsBuyNowModalOpen(false);
-							}
+								},
+								close: () => setIsBuyNowModalOpen(false),
+							});
 						}}>
 						{!isCreatingOrder ? 'Add to Orders' : <Spinner size='small' className='text-white' />}
 					</Button>

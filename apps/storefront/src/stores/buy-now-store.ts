@@ -1,7 +1,13 @@
 import { StateCreator } from 'zustand';
 
 import { client } from '@workspace/server/client-rpc';
-import { commerceOwnerMatches, CommerceOwnershipState } from './commerce-ownership';
+import {
+	captureCommerceOwner,
+	captureCommerceRequest,
+	commerceRequestMatches,
+	CommerceOwnershipState,
+	CommerceRequestSnapshot,
+} from './commerce-ownership';
 
 export type OrderBuyNowStore = {
 	clientBuyNowOrderId: number;
@@ -9,6 +15,7 @@ export type OrderBuyNowStore = {
 	setClientBuyNowOrderId: (id: number) => void;
 	isBuyNowModalOpen: boolean;
 	isCreatingOrder: boolean;
+	buyNowRequestToken: number;
 	setIsBuyNowModalOpen: (isBuyNowModalOpen: boolean) => void;
 	setIsCreatingOrder: (isCreatingOrder: boolean) => void;
 	handleBuyNow: (item_id: number) => Promise<BuyNowResponse>;
@@ -23,6 +30,19 @@ type BuyNowResponse = {
 	error?: string;
 };
 
+export function captureBuyNowRequest(
+	state: CommerceOwnershipState & Pick<OrderBuyNowStore, 'buyNowRequestToken'>,
+): CommerceRequestSnapshot {
+	return captureCommerceRequest(state, state.buyNowRequestToken);
+}
+
+export function buyNowRequestMatches(
+	state: Partial<CommerceOwnershipState> & Pick<OrderBuyNowStore, 'buyNowRequestToken'>,
+	snapshot: CommerceRequestSnapshot,
+): boolean {
+	return commerceRequestMatches(state, snapshot, state.buyNowRequestToken);
+}
+
 export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershipState, [], [], OrderBuyNowStore> = (
 	set,
 	get,
@@ -31,19 +51,20 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershi
 	clientBuyNowOrderStatus: '',
 	isBuyNowModalOpen: false,
 	isCreatingOrder: false,
+	buyNowRequestToken: 0,
 	setClientBuyNowOrderId: (id) => set({ clientBuyNowOrderId: id }),
 	setIsBuyNowModalOpen: (isBuyNowModalOpen) => set({ isBuyNowModalOpen }),
 	setIsCreatingOrder: (isCreatingOrder) => set({ isCreatingOrder }),
 	handleBuyNow: async (item_id: number): Promise<BuyNowResponse> => {
-		const requestOwner = {
-			commerceOwnerProfileId: get().commerceOwnerProfileId,
-			commerceOwnerItemId: get().commerceOwnerItemId,
-		};
+		const requestOwner = captureCommerceOwner(get());
 		if (requestOwner.commerceOwnerItemId !== item_id) {
 			return { success: false, error: 'Commerce context changed' };
 		}
+		const requestToken = get().buyNowRequestToken + 1;
+		const requestSnapshot = captureCommerceRequest(requestOwner, requestToken);
 		set({
 			isCreatingOrder: true,
+			buyNowRequestToken: requestToken,
 		});
 
 		try {
@@ -61,7 +82,7 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershi
 			}
 
 			const { success, order, payment_url, message } = await responseCreateOrder.json();
-			if (!commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+			if (!buyNowRequestMatches(get(), requestSnapshot)) {
 				return { success: false, error: 'Commerce context changed' };
 			}
 
@@ -81,7 +102,7 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershi
 				message,
 			};
 		} finally {
-			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+			if (buyNowRequestMatches(get(), requestSnapshot)) {
 				set({ isCreatingOrder: false });
 			}
 		}
@@ -92,5 +113,6 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershi
 			clientBuyNowOrderStatus: '',
 			isBuyNowModalOpen: false,
 			isCreatingOrder: false,
+			buyNowRequestToken: get().buyNowRequestToken + 1,
 		}),
 });

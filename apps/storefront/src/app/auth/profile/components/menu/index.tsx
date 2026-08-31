@@ -7,9 +7,10 @@ import { useIsMobile } from '@workspace/ui/hooks/use-mobile';
 
 import { useAuth } from '#providers/auth-providers';
 import { profileOptions } from '#shared/profile-options';
+import { createProfileLogoutHandler } from './profile-logout';
 
 export default function ProfileMenu() {
-	const { setUser } = useAuth();
+	const { logout } = useAuth();
 	const router = useRouter();
 	const pathname = usePathname();
 	const isMobile = useIsMobile();
@@ -39,12 +40,7 @@ export default function ProfileMenu() {
 										</CommandItem>
 									))}
 
-									<CommandItem
-										className='bg-background my-4'
-										onClickCapture={() => {
-											setUser(null);
-											router.push('/api/logout');
-										}}>
+									<CommandItem className='bg-background my-4' onClickCapture={createProfileLogoutHandler(logout)}>
 										<LogOut className='hover:text-white' />
 										<span>Logout</span>
 									</CommandItem>
