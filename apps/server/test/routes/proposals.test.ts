@@ -924,7 +924,7 @@ describe('proposal routes', () => {
 		};
 		expect(body.proposal).toMatchObject({ id: proposal.id, status: ORDER_PROPOSAL_PHASES.accepted });
 		expect(body.order.id).toEqual(expect.any(Number));
-		expect(body.transaction).toMatchObject({ id: expect.any(String), status: 'created' });
+		expect(body.transaction).toMatchObject({ id: expect.any(Number), status: 'created' });
 		expect(body).not.toHaveProperty('payment_url');
 
 		const { db } = getTestDatabase();

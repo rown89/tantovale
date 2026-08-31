@@ -36,19 +36,15 @@ import { acquireItemCommerceLock, itemCommerceOrderBlockingPredicate } from '#li
 import { ensurePaymentProviderIdentity } from '#lib/payment-provider-identity';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { sendProposalAcceptedMessage } from '#mailer/templates/proposals/buyer/proposal-accepted';
 import { sendProposalRejectedMessage } from '#mailer/templates/proposals/buyer/proposal-rejected';
 import { sendProposalCancelledMessage } from '#mailer/templates/proposals/seller/proposal-buyer-cancelled';
 import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
 import { authPath, environment } from '#utils/constants';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 
-import {
-	buildGuestPaymentUrl,
-	PaymentProviderHttpError,
-	PaymentProviderService,
-} from '../payments/payment-provider.service';
+import { PaymentProviderHttpError, PaymentProviderService } from '../payments/payment-provider.service';
 import { publicTrustapId } from '../payments/trustap-int64';
+import { TransactionSyncService } from '../payments/transaction-sync.service';
 import { parseProviderDecimalToCents, ShipmentService } from '../shipment-provider/shipment.service';
 import { shipmentMatchesShippingState, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
 
@@ -872,15 +868,7 @@ export const ordersProposalsRoute = createRouter()
 					throw finalizationError;
 				}
 
-				await bestEffortEmail(() =>
-					sendProposalAcceptedMessage({
-						to: result.mail.to,
-						merchant_username: user.username,
-						itemName: result.mail.itemName,
-						orderId: accepted.updatedOrder.id,
-						paymentUrl: buildGuestPaymentUrl(transaction.id, accepted.updatedOrder.id),
-					}),
-				);
+				await new TransactionSyncService().dispatchPendingRecoveryNotifications();
 				return c.json(
 					{
 						message: 'Proposal updated successfully',

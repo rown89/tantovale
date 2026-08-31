@@ -190,9 +190,6 @@ export class TransactionSyncService {
 				sellerProfileId: orders.seller_id,
 				buyerProviderId: buyerProfiles.payment_provider_id,
 				sellerProviderId: sellerProfiles.payment_provider_id,
-				buyerEmail: buyerUsers.email,
-				sellerUsername: sellerUsers.username,
-				notificationClaimedAt: orders.payment_recovery_notification_claimed_at,
 			})
 			.from(orders)
 			.innerJoin(items, eq(orders.item_id, items.id))
@@ -279,12 +276,7 @@ export class TransactionSyncService {
 					remoteStatus,
 				);
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
-				const shouldSendPaymentInvitation =
-					(remoteStatus === 'created' || remoteStatus === 'joined') &&
-					recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted &&
-					recoveredTransition.orderStatus === ORDER_PHASES.PAYMENT_PENDING;
-
-				const recovery = await db.transaction(async (tx) => {
+				await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, itemId);
 					const [reservation] = await tx
 						.select({
@@ -292,7 +284,6 @@ export class TransactionSyncService {
 							paymentTransactionId: orders.payment_transaction_id,
 							legacyTransactionId: orders.legacy_payment_transaction_id,
 							proposalId: orders.order_proposal_id,
-							notificationClaimedAt: orders.payment_recovery_notification_claimed_at,
 							buyerProfileId: orders.buyer_id,
 							sellerProfileId: orders.seller_id,
 						})
@@ -400,11 +391,6 @@ export class TransactionSyncService {
 									? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 									: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredTransition.orderStatus,
-							...(reservation.proposalId !== null &&
-							shouldSendPaymentInvitation &&
-							reservation.notificationClaimedAt === null
-								? { payment_recovery_notification_claimed_at: new Date() }
-								: {}),
 							updated_at: new Date(),
 						})
 						.where(
@@ -415,30 +401,8 @@ export class TransactionSyncService {
 						)
 						.returning({ id: orders.id });
 					if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
-					return {
-						shouldNotify:
-							reservation.proposalId !== null &&
-							shouldSendPaymentInvitation &&
-							reservation.notificationClaimedAt === null,
-					};
+					return undefined;
 				});
-				if (recovery.shouldNotify) {
-					try {
-						await sendProposalAcceptedMessage({
-							to: candidate.buyerEmail,
-							merchant_username: candidate.sellerUsername,
-							itemName: candidate.itemTitle,
-							orderId: candidate.orderId,
-							paymentUrl: buildGuestPaymentUrl(transactionId, candidate.orderId),
-						});
-					} catch (error) {
-						console.error('Failed to send recovered proposal notification:', error);
-						await db
-							.update(orders)
-							.set({ payment_recovery_notification_claimed_at: null, updated_at: new Date() })
-							.where(eq(orders.id, candidate.orderId));
-					}
-				}
 				results.push({ transactionId, orderId: candidate.orderId, recovered: true, success: true });
 			} catch (error) {
 				results.push({
@@ -455,7 +419,7 @@ export class TransactionSyncService {
 	}
 
 	/** Retry mail delivery only for a successfully recovered, still-payable proposal. */
-	private async dispatchPendingRecoveryNotifications(): Promise<void> {
+	async dispatchPendingRecoveryNotifications(): Promise<void> {
 		const { db } = this.db;
 		const buyerProfiles = alias(profiles, 'recovery_mail_buyer_profiles');
 		const sellerProfiles = alias(profiles, 'recovery_mail_seller_profiles');
