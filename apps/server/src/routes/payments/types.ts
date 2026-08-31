@@ -26,8 +26,9 @@ export interface CalculateTransactionFeeProps {
 export interface CalculateTransactionFeeResponse {
 	charge: number;
 	charge_calculator_version: number;
-	charge_seller: string;
+	charge_seller: number;
 	currency: string;
+	postage_fee: number;
 	price: number;
 }
 
@@ -57,36 +58,22 @@ export interface CreateTransactionResponse {
 	is_payment_in_progress: boolean;
 	joined: string;
 	paid: string;
+	postage_fee: number;
 	price: number;
 	quantity: number;
 	seller_id: string;
 	status: string;
 }
 
-export interface GetTransactionStatusResponse {
-	buyer_id: string;
-	charge: number;
-	charge_seller: number;
-	client_id: string;
-	created: string;
-	currency: string;
-	delivered: string;
-	description: string;
-	fund_released: string;
-	id: number;
-	is_payment_in_progress: boolean;
-	joined: string;
-	paid: string;
-	posta_hr_tracking: {
+export interface GetTransactionStatusResponse extends CreateTransactionResponse {
+	delivered?: string;
+	fund_released?: string;
+	posta_hr_tracking?: {
 		barcode: string;
 		barcode_generated: string;
 	};
-	price: number;
-	quantity: number;
-	seller_id: string;
-	status: string;
-	tracked: string;
-	tracking: {
+	tracked?: string;
+	tracking?: {
 		carrier: string;
 		tracking_code: string;
 	};

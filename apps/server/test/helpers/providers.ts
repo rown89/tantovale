@@ -62,3 +62,24 @@ export async function getProviderRequests(url: string): Promise<CapturedRequest[
 	await expectControlResponse(response, 'Provider stub request read');
 	return (await response.json()) as CapturedRequest[];
 }
+
+export async function getTrustapGuestIdentities(
+	url: string,
+): Promise<Array<{ client_id: number; created_at: string; email: string; id: string }>> {
+	const origin = assertLocalStubUrl(url).origin;
+	const response = await fetch(`${origin}/__test/guest-identities`, { signal: AbortSignal.timeout(5_000) });
+	await expectControlResponse(response, 'Trustap guest identities read');
+	return (await response.json()) as Array<{ client_id: number; created_at: string; email: string; id: string }>;
+}
+
+export async function setTrustapTransactionStatus(url: string, transactionId: number, status: string): Promise<void> {
+	const origin = assertLocalStubUrl(url).origin;
+	const response = await fetch(`${origin}/__test/transaction-status`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ transaction_id: transactionId, status }),
+		signal: AbortSignal.timeout(5_000),
+	});
+	await expectControlResponse(response, 'Trustap transaction status update');
+	await response.arrayBuffer();
+}

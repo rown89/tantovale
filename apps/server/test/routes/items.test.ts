@@ -15,7 +15,11 @@ import {
 	subcategories,
 	subcategory_properties,
 } from '../../src/database/schemas/schema';
-import { itemStatus, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
+import {
+	itemStatus,
+	ORDER_PHASES,
+	PAYMENT_PROVIDER_IDENTITY_STATES,
+} from '../../src/database/schemas/enumerated_values';
 import { createItemSchema, updateItemSchema } from '../../src/extended_schemas/item';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { paymentProviderIdentityLockScope } from '../../src/lib/payment-provider-identity-lock';
@@ -32,7 +36,7 @@ import {
 } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
-import { getProviderRequests } from '../helpers/providers';
+import { getProviderRequests, getTrustapGuestIdentities, setProviderScenario } from '../helpers/providers';
 import type { CookieJar } from '../helpers/request';
 
 type JsonObject = Record<string, unknown>;
@@ -348,6 +352,140 @@ describe('item and listing routes', () => {
 
 			expect(response.status).toBe(201);
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
+		});
+
+		it('recovers a response-lost guest provision with the same durable client identity', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			await db
+				.update(profiles)
+				.set({
+					payment_provider_id: null,
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+				})
+				.where(eq(profiles.id, actors.seller.profile.id));
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			await setProviderScenario(providerUrl, 'guest-disconnect-after-create');
+
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			const [interrupted] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(interrupted).toMatchObject({
+				payment_provider_id: null,
+				payment_provider_identity_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
+			});
+			expect(await getTrustapGuestIdentities(providerUrl)).toEqual([
+				expect.objectContaining({ client_id: actors.seller.profile.id, id: `guest-${actors.seller.profile.id}` }),
+			]);
+
+			await setProviderScenario(providerUrl, 'success');
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(201);
+			const [recovered] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(recovered).toMatchObject({
+				payment_provider_id: `guest-${actors.seller.profile.id}`,
+				payment_provider_identity_attempt_id: interrupted?.payment_provider_identity_attempt_id,
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.CREATED,
+			});
+			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
+		});
+
+		it('holds no database transaction or identity lock while Trustap guest creation is delayed', async () => {
+			const actors = await createCommerceActors();
+			const { client, db } = getTestDatabase();
+			await db
+				.update(profiles)
+				.set({
+					payment_provider_id: null,
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+				})
+				.where(eq(profiles.id, actors.seller.profile.id));
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			await setProviderScenario(providerUrl, 'guest-delay');
+			const responsePromise = authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors));
+			await waitForPaymentProviderRequests(1);
+
+			const contender = await client.connect();
+			try {
+				await contender.query('BEGIN');
+				const { rows } = await contender.query<{ acquired: boolean }>(
+					'SELECT pg_try_advisory_xact_lock(hashtext(current_database() || $1), $2) AS acquired',
+					[paymentProviderIdentityLockScope, actors.seller.profile.id],
+				);
+				const idle = await contender.query<{ count: number }>(
+					`SELECT count(*)::int AS count FROM pg_stat_activity
+					 WHERE datname = current_database() AND state = 'idle in transaction' AND pid <> pg_backend_pid()`,
+				);
+				expect(rows[0]?.acquired).toBe(true);
+				expect(idle.rows[0]?.count).toBe(0);
+				await contender.query('COMMIT');
+			} finally {
+				contender.release();
+			}
+			expect((await responsePromise).status).toBe(201);
+		});
+
+		it('recovers one remote guest after local identity finalization fails', async () => {
+			const actors = await createCommerceActors();
+			const { client, db } = getTestDatabase();
+			await db
+				.update(profiles)
+				.set({
+					payment_provider_id: null,
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+				})
+				.where(eq(profiles.id, actors.seller.profile.id));
+			await client.query(`CREATE FUNCTION reject_identity_finalization() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					IF OLD.payment_provider_id IS NULL AND NEW.payment_provider_id IS NOT NULL THEN
+						RAISE EXCEPTION 'injected local finalization failure';
+					END IF;
+					RETURN NEW;
+				END $$`);
+			await client.query(
+				'CREATE TRIGGER reject_identity_finalization BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION reject_identity_finalization()',
+			);
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			try {
+				expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			} finally {
+				await client.query('DROP TRIGGER reject_identity_finalization ON profiles');
+				await client.query('DROP FUNCTION reject_identity_finalization()');
+			}
+			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(201);
+			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
+			const [profile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(profile?.payment_provider_identity_state).toBe(PAYMENT_PROVIDER_IDENTITY_STATES.CREATED);
+		});
+
+		it('never stores or uses an invalid Trustap guest response', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			await db
+				.update(profiles)
+				.set({
+					payment_provider_id: null,
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+				})
+				.where(eq(profiles.id, actors.seller.profile.id));
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			await setProviderScenario(providerUrl, 'guest-invalid-body');
+
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			const [profile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(profile).toMatchObject({
+				payment_provider_id: null,
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
+			});
+			expect(await db.select().from(items)).toEqual([]);
 		});
 
 		it('releases preflight transactions before concurrent requests wait on the payment identity lock', async () => {

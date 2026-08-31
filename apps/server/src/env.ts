@@ -78,6 +78,7 @@ const EnvSchemaObject = z.object({
 	SMTP_USER: z.string(),
 	SMTP_PASS: z.string(),
 	SMTP_FROM: z.string().optional(),
+	SMTP_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 	// CRON
 	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
 	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),

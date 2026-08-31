@@ -11,6 +11,7 @@ import {
 	categories,
 	chat_messages,
 	chat_rooms,
+	cities,
 	entityTrustapTransactions,
 	items,
 	orders,
@@ -38,6 +39,18 @@ function providerUrl(name: 'PAYMENT_PROVIDER_API_URL' | 'SHIPPING_PROVIDER_API_U
 	const parsed = new URL(value);
 	if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1') throw new Error(`Unsafe ${name}`);
 	return value;
+}
+
+async function proposalAcceptedMailCount(recipient: string): Promise<number> {
+	/* eslint-disable-next-line turbo/no-undeclared-env-vars -- Worker-local Mailpit is supplied by the test harness. */
+	const origin = process.env.MAILPIT_API_URL;
+	if (!origin) throw new Error('Missing worker-local Mailpit URL');
+	const url = new URL('/api/v1/search', origin);
+	url.searchParams.set('query', `to:${recipient}`);
+	const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+	if (!response.ok) throw new Error(`Mailpit search failed with ${response.status}`);
+	const body = (await response.json()) as { messages: Array<{ Subject: string }> };
+	return body.messages.filter(({ Subject }) => Subject === 'Tantovale - Proposal accepted').length;
 }
 
 type CreatedShippingQuote = {
@@ -237,6 +250,9 @@ describe('proposal routes', () => {
 			.from(shipping_quotes)
 			.where(eq(shipping_quotes.id, body.proposal.shipping_quote_id));
 		expect(quote).toMatchObject({ consumed_at: expect.any(Date), amount: 750, currency: 'EUR' });
+		expect(quote?.expires_at.getTime() ?? 0).toBeGreaterThanOrEqual(
+			(stored?.created_at.getTime() ?? Number.POSITIVE_INFINITY) + 96 * 60 * 60 * 1_000 - 2_000,
+		);
 		const [room] = await db.select().from(chat_rooms).where(eq(chat_rooms.id, body.chatRoomId));
 		expect(room).toMatchObject({ item_id: item.id, buyer_id: actors.buyer.profile.id });
 		const messages = await rowsForProposal(body.proposal.id);
@@ -378,6 +394,71 @@ describe('proposal routes', () => {
 			async: false,
 			metadata: `tvq1:${quote.shipping_quote_id}`,
 		});
+	});
+
+	it('maps address city and province into distinct Shippo city and state fields', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const { db } = getTestDatabase();
+		await db.insert(cities).values({
+			id: 77_002,
+			name: 'Lombardia Province',
+			state_id: actors.catalog.state.id,
+			state_code: 'LOM',
+			country_id: actors.catalog.country.id,
+			country_code: actors.catalog.country.iso2,
+			latitude: '45.00000000',
+			longitude: '9.00000000',
+		});
+		await db.update(addresses).set({ province_id: 77_002 }).where(eq(addresses.id, actors.seller.address.id));
+		await db.update(addresses).set({ province_id: 77_002 }).where(eq(addresses.id, actors.buyer.address.id));
+
+		await createShippingQuote(actors, item.id);
+
+		const [request] = await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'));
+		expect(request?.body).toMatchObject({
+			address_from: { city: actors.catalog.city.name, state: 'Lombardia Province' },
+			address_to: { city: actors.catalog.city.name, state: 'Lombardia Province' },
+		});
+	});
+
+	it.each([
+		'shippo-create-metadata-mismatch',
+		'shippo-create-address-mismatch',
+		'shippo-create-parcel-mismatch',
+		'shippo-create-rate-currency-mismatch',
+		'shippo-create-rate-amount-mismatch',
+		'shippo-create-rate-shipment-mismatch',
+		'shippo-create-status-error',
+	] as const)('rejects tampered Shippo creation response %s without persisting a quote', async (scenario) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), scenario);
+
+		const response = await authenticatedRequest(
+			'/shipment_provider/auth/calculate_shipment_cost',
+			'POST',
+			actors.buyer.jar,
+			{ item_id: item.id },
+		);
+
+		expect(response.status).not.toBe(200);
+		const { db } = getTestDatabase();
+		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
+	});
+
+	it('selects the Shippo BESTVALUE rate instead of trusting creation response ordering', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-create-reordered-rates');
+
+		const quote = await createShippingQuote(actors, item.id);
+
+		expect(quote.amount).toBe('7.50');
+		const { db } = getTestDatabase();
+		const [stored] = await db.select().from(shipping_quotes).where(eq(shipping_quotes.id, quote.shipping_quote_id));
+		expect(stored?.shippo_rate_id).toMatch(/^rate-test/);
+		expect(stored?.amount).toBe(750);
 	});
 
 	it('bounds a delayed Shippo quote request without persisting a quote', async () => {
@@ -893,6 +974,44 @@ describe('proposal routes', () => {
 				features: ['use_custom_postage_fee'],
 			},
 		});
+		expect((transactionRequests[0]?.body as { description?: string }).description).toContain(order?.payment_attempt_id);
+	});
+
+	it.each([
+		['16 minutes', 16 * 60 * 1_000],
+		['24 hours', 24 * 60 * 60 * 1_000],
+		['just before 96 hours', 96 * 60 * 60 * 1_000 - 5 * 60 * 1_000],
+	] as const)('accepts an unchanged proposal %s after creation', async (_label, ageMs) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item);
+		const createdAt = new Date(Date.now() - ageMs);
+		const { db } = getTestDatabase();
+		await db.update(orders_proposals).set({ created_at: createdAt }).where(eq(orders_proposals.id, proposal.id));
+		await db
+			.update(shipping_quotes)
+			.set({ expires_at: new Date(createdAt.getTime() + 96 * 60 * 60 * 1_000) })
+			.where(eq(shipping_quotes.id, proposal.shipping_quote_id!));
+
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(200);
+	});
+
+	it('rejects proposal acceptance after the immutable 96-hour quote evidence expires', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item);
+		const createdAt = new Date(Date.now() - (96 * 60 * 60 * 1_000 + 60_000));
+		const { db } = getTestDatabase();
+		await db.update(orders_proposals).set({ created_at: createdAt }).where(eq(orders_proposals.id, proposal.id));
+		await db
+			.update(shipping_quotes)
+			.set({ expires_at: new Date(createdAt.getTime() + 96 * 60 * 60 * 1_000) })
+			.where(eq(shipping_quotes.id, proposal.shipping_quote_id!));
+
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(400);
+		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
 	});
 
 	it('keeps a reconciliation reservation after an ambiguous Trustap transaction failure', async () => {
@@ -1168,6 +1287,11 @@ describe('proposal routes', () => {
 		expect(recoveredMessages).toEqual([
 			expect.objectContaining({ metadata: { order_id: reservations[0]!.id, type: 'proposal_accepted' } }),
 		]);
+		const recoveredMail = await waitForEmail(actors.buyer.user.email, 'Tantovale - Proposal accepted');
+		expect(recoveredMail.HTML).toContain(`/auth/profile/orders?highlight=${reservations[0]!.id}`);
+		expect(recoveredMail.HTML).toContain(`/online/transactions/${expectedTransactionId}/guest_pay`);
+		await new TransactionSyncService().syncTransactionStatuses();
+		expect(await proposalAcceptedMailCount(actors.buyer.user.email)).toBe(1);
 
 		const retry = await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
 		expect(retry.status).toBe(404);

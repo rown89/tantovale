@@ -9,6 +9,7 @@ export const shipping_quotes = pgTable(
 	'shipping_quotes',
 	{
 		id: uuid('id').primaryKey().notNull(),
+		checkout_attempt_id: uuid('checkout_attempt_id').unique(),
 		item_id: integer('item_id')
 			.notNull()
 			.references(() => items.id, { onDelete: 'cascade', onUpdate: 'cascade' }),

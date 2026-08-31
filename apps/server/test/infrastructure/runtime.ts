@@ -137,6 +137,7 @@ export function buildServerEnvironment(
 		SMTP_USER: '',
 		SMTP_PASS: '',
 		SMTP_FROM: 'Tantovale <noreply@tantovale.test>',
+		SMTP_REQUEST_TIMEOUT_MS: '150',
 		DAILY_ORDER_CHECK_SECRET_KEY: 'orders-cron-test-key',
 		DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: 'proposals-cron-test-key',
 		TRANSACTIONS_SYNC_SECRET_KEY: 'transactions-cron-test-key',

@@ -839,7 +839,12 @@ export const itemRoute = createRouter()
 				let paymentProviderCharge: number;
 				let calculatorVersion: number;
 				try {
-					quote = await new ShipmentService().createShippingQuote(item_id, user.profile_id, user.email);
+					quote = await new ShipmentService().createShippingQuote(
+						item_id,
+						user.profile_id,
+						user.email,
+						paymentAttemptId,
+					);
 					const costs = await calculatePlatformCosts(
 						{ price: preparation.transactionPrice, postage_fee: formatPriceToCents(Number(quote.amount)) },
 						{ payment_provider_charge: true },
@@ -853,7 +858,10 @@ export const itemRoute = createRouter()
 					paymentProviderCharge = costs.payment_provider_charge;
 					calculatorVersion = costs.payment_provider_charge_calculator_version;
 				} catch (providerError) {
-					await db.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+					await db.transaction(async (tx) => {
+						await tx.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+						await tx.delete(shipping_quotes).where(eq(shipping_quotes.checkout_attempt_id, paymentAttemptId));
+					});
 					throw providerError;
 				}
 
@@ -871,6 +879,7 @@ export const itemRoute = createRouter()
 						current.buyerInfo.address_id !== preparation.buyerAddressId
 					) {
 						await tx.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+						await tx.delete(shipping_quotes).where(eq(shipping_quotes.id, quote.shipping_quote_id));
 						return { error: 'Item or checkout terms changed', status: 409 as const };
 					}
 					const [storedQuote] = await tx
@@ -899,6 +908,7 @@ export const itemRoute = createRouter()
 						shippingSnapshotFingerprint(shippingState) !== storedQuote.snapshot_fingerprint
 					) {
 						await tx.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+						if (storedQuote) await tx.delete(shipping_quotes).where(eq(shipping_quotes.id, storedQuote.id));
 						return { error: 'Shipping quote is no longer valid', status: 409 as const };
 					}
 					const [consumed] = await tx
@@ -946,7 +956,7 @@ export const itemRoute = createRouter()
 						seller_id: reservation.sellerProviderId,
 						creator_role: 'buyer',
 						currency: 'eur',
-						description: `Transaction for ${reservation.itemTitle} - (Buy Now, ref ${paymentAttemptId.slice(0, 8)})`,
+						description: `Transaction for ${reservation.itemTitle} - (Buy Now, ref ${paymentAttemptId})`,
 						price: reservation.transactionPrice,
 						postage_fee: reservation.shippingPrice,
 						charge: reservation.paymentProviderCharge,
@@ -966,6 +976,7 @@ export const itemRoute = createRouter()
 										isNull(orders.payment_transaction_id),
 									),
 								);
+							await tx.delete(shipping_quotes).where(eq(shipping_quotes.id, quote.shipping_quote_id));
 						});
 					} else {
 						await db

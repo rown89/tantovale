@@ -89,12 +89,14 @@ export function shipmentMatchesShippingState(shipment: Shipment, state: Shipment
 	const [parcel] = shipment.parcels;
 	return (
 		shipment.addressFrom.street1 === `${itemData.seller_street_address} ${itemData.seller_civic_number}` &&
-		shipment.addressFrom.city === itemData.seller_province_name &&
+		shipment.addressFrom.city === itemData.seller_city_name &&
+		shipment.addressFrom.state === itemData.seller_province_name &&
 		shipment.addressFrom.zip === itemData.seller_postal_code.toString() &&
 		shipment.addressFrom.country === itemData.seller_country_code &&
 		shipment.addressFrom.phone === itemData.seller_phone &&
 		shipment.addressTo.street1 === `${buyerProfile.street_address} ${buyerProfile.civic_number}` &&
-		shipment.addressTo.city === buyerProfile.province_name &&
+		shipment.addressTo.city === buyerProfile.city_name &&
+		shipment.addressTo.state === buyerProfile.province_name &&
 		shipment.addressTo.zip === buyerProfile.postal_code.toString() &&
 		shipment.addressTo.country === buyerProfile.country_code &&
 		shipment.addressTo.phone === buyerProfile.phone &&
@@ -240,7 +242,8 @@ export class ShipmentService {
 				name: `${itemData.seller_name} ${itemData.seller_surname}`,
 				street1: `${itemData.seller_street_address} ${itemData.seller_civic_number}`,
 				streetNo: itemData.seller_civic_number,
-				city: itemData.seller_province_name,
+				city: itemData.seller_city_name,
+				state: itemData.seller_province_name,
 				zip: itemData.seller_postal_code.toString(),
 				country: itemData.seller_country_code,
 				phone: itemData.seller_phone,
@@ -252,7 +255,8 @@ export class ShipmentService {
 				name: `${buyerProfile.name} ${buyerProfile.surname}`,
 				street1: `${buyerProfile.street_address} ${buyerProfile.civic_number}`,
 				streetNo: buyerProfile.civic_number,
-				city: buyerProfile.province_name,
+				city: buyerProfile.city_name,
+				state: buyerProfile.province_name,
 				zip: buyerProfile.postal_code.toString(),
 				country: buyerProfile.country_code,
 				phone: buyerProfile.phone,
@@ -273,7 +277,7 @@ export class ShipmentService {
 		};
 	}
 
-	async createShippingQuote(itemId: number, buyerProfileId: number, buyerEmail: string) {
+	async createShippingQuote(itemId: number, buyerProfileId: number, buyerEmail: string, checkoutAttemptId?: string) {
 		const quoteId = randomUUID();
 		const initial = await this.getShipmentCalculationData(itemId, buyerProfileId);
 		if (initial.itemData.seller_profile_id === buyerProfileId) throw new Error(ERROR_MESSAGES.ITEM_NOT_FOUND);
@@ -283,11 +287,28 @@ export class ShipmentService {
 			this.createShipmentOptions(initial.itemData, initial.buyerProfile, buyerEmail, `tvq1:${quoteId}`),
 		);
 		if (!response.ok) throw new ShippingProviderOperationalError();
-		if (response.value?.status !== 'SUCCESS') {
+		if (
+			response.value?.status !== 'SUCCESS' ||
+			response.value.metadata !== `tvq1:${quoteId}` ||
+			!shipmentMatchesShippingState(response.value, initial)
+		) {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 		const shipmentId = response.value.objectId;
-		const rate = response.value.rates?.[0];
+		const validRates = response.value.rates
+			?.filter((candidate) => {
+				const cents = candidate.amount ? formatPriceToCents(Number(candidate.amount)) : undefined;
+				return (
+					Boolean(candidate.objectId) &&
+					candidate.shipment === shipmentId &&
+					candidate.currency === 'EUR' &&
+					cents !== undefined &&
+					Number.isSafeInteger(cents) &&
+					cents > 0
+				);
+			})
+			.sort((left, right) => left.objectId.localeCompare(right.objectId));
+		const rate = validRates?.find((candidate) => candidate.attributes?.includes('BESTVALUE')) ?? validRates?.[0];
 		const amount = rate?.amount ? formatPriceToCents(Number(rate.amount)) : undefined;
 		if (
 			!shipmentId ||
@@ -313,6 +334,7 @@ export class ShipmentService {
 			}
 			await tx.insert(shipping_quotes).values({
 				id: quoteId,
+				checkout_attempt_id: checkoutAttemptId,
 				item_id: itemId,
 				buyer_profile_id: buyerProfileId,
 				seller_profile_id: initial.itemData.seller_profile_id,

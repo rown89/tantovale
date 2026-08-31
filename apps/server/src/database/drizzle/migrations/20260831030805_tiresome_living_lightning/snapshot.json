@@ -2264,6 +2264,32 @@
 			"table": "orders"
 		},
 		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "'none'",
+			"generated": null,
+			"identity": null,
+			"name": "payment_cancellation_state",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "payment_recovery_notification_claimed_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
 			"type": "integer",
 			"typeSchema": null,
 			"notNull": false,
@@ -2563,6 +2589,32 @@
 			"generated": null,
 			"identity": null,
 			"name": "payment_provider_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "profiles"
+		},
+		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "payment_provider_identity_attempt_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "profiles"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "'uninitialized'",
+			"generated": null,
+			"identity": null,
+			"name": "payment_provider_identity_state",
 			"entityType": "columns",
 			"schema": "public",
 			"table": "profiles"
@@ -3032,6 +3084,19 @@
 			"generated": null,
 			"identity": null,
 			"name": "id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "checkout_attempt_id",
 			"entityType": "columns",
 			"schema": "public",
 			"table": "shipping_quotes"
@@ -5339,6 +5404,15 @@
 		},
 		{
 			"nameExplicit": false,
+			"columns": ["payment_provider_identity_attempt_id"],
+			"nullsNotDistinct": false,
+			"name": "profiles_payment_provider_identity_attempt_id_key",
+			"schema": "public",
+			"table": "profiles",
+			"entityType": "uniques"
+		},
+		{
+			"nameExplicit": false,
 			"columns": ["slug"],
 			"nullsNotDistinct": false,
 			"name": "properties_slug_key",
@@ -5353,6 +5427,15 @@
 			"name": "refresh_tokens_token_key",
 			"schema": "public",
 			"table": "refresh_tokens",
+			"entityType": "uniques"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["checkout_attempt_id"],
+			"nullsNotDistinct": false,
+			"name": "shipping_quotes_checkout_attempt_id_key",
+			"schema": "public",
+			"table": "shipping_quotes",
 			"entityType": "uniques"
 		},
 		{
@@ -5397,6 +5480,20 @@
 			"entityType": "checks",
 			"schema": "public",
 			"table": "orders"
+		},
+		{
+			"value": "\"payment_cancellation_state\" IN ('none', 'cancelling', 'reconciliation_required', 'cancelled')",
+			"name": "orders_payment_cancellation_state_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"value": "\"payment_provider_identity_state\" IN ('uninitialized', 'creating', 'reconciliation_required', 'created')",
+			"name": "profiles_payment_provider_identity_state_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "profiles"
 		},
 		{
 			"value": "\"amount\" > 0",

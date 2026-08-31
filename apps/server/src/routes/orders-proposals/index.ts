@@ -40,7 +40,7 @@ import { sendProposalAcceptedMessage } from '#mailer/templates/proposals/buyer/p
 import { sendProposalRejectedMessage } from '#mailer/templates/proposals/buyer/proposal-rejected';
 import { sendProposalCancelledMessage } from '#mailer/templates/proposals/seller/proposal-buyer-cancelled';
 import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
-import { authPath } from '#utils/constants';
+import { authPath, environment } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 
@@ -298,7 +298,12 @@ export const ordersProposalsRoute = createRouter()
 				if (!proposal) throw new Error('Failed to create proposal');
 				const [consumedQuote] = await tx
 					.update(shipping_quotes)
-					.set({ consumed_at: new Date() })
+					.set({
+						consumed_at: new Date(),
+						expires_at: new Date(
+							proposal.created_at.getTime() + environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS * 60 * 60 * 1_000,
+						),
+					})
 					.where(and(eq(shipping_quotes.id, quote.id), isNull(shipping_quotes.consumed_at)))
 					.returning({ id: shipping_quotes.id });
 				if (!consumedQuote) throw new Error('Shipping quote was already consumed');
@@ -738,7 +743,7 @@ export const ordersProposalsRoute = createRouter()
 						seller_id: result.sellerProviderId,
 						creator_role: 'seller',
 						currency: 'eur',
-						description: `Transaction for ${result.itemTitle} - (Proposal #${id}, ref ${paymentAttemptId.slice(0, 8)})`,
+						description: `Transaction for ${result.itemTitle} - (Proposal #${id}, ref ${paymentAttemptId})`,
 						price: result.transactionPrice,
 						postage_fee: result.shippingPrice,
 						charge: paymentProviderCharge,

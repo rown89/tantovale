@@ -190,7 +190,7 @@ describe('local commerce provider stubs', () => {
 		await assertShippoContract(shippo);
 	});
 
-	it('derives distinct deterministic Trustap guest identities from each validated request', async () => {
+	it('keeps one immutable Trustap guest identity per stable client id', async () => {
 		const stub = await startStub('trustap');
 		const createGuest = async (id: number, email: string) => {
 			const response = await fetch(`${stub.url}/api/v1/guest_users`, {
@@ -208,7 +208,7 @@ describe('local commerce provider stubs', () => {
 
 		expect(buyer).toMatchObject({ email: 'buyer@tantovale.test' });
 		expect(seller).toMatchObject({ email: 'seller@tantovale.test' });
-		expect(repeatedBuyer).toMatchObject({ email: 'buyer-updated@tantovale.test', id: buyer.id });
+		expect(repeatedBuyer).toMatchObject({ email: 'buyer@tantovale.test', id: buyer.id });
 		expect(seller.id).not.toBe(buyer.id);
 	});
 

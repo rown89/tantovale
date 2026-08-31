@@ -1,8 +1,10 @@
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
-import { pgTable, integer, timestamp, date, boolean, varchar, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, integer, timestamp, date, boolean, varchar, index, text, uuid, check } from 'drizzle-orm/pg-core';
 
 import { profileEnum, sexEnum } from './enumerated_types';
 import { users } from './users';
+import { PAYMENT_PROVIDER_IDENTITY_STATES } from './enumerated_values';
 
 export const profiles = pgTable(
 	'profiles',
@@ -21,10 +23,20 @@ export const profiles = pgTable(
 		privacy_policy: boolean('privacy_policy').default(false).notNull(),
 		marketing_policy: boolean('marketing_policy').default(false).notNull(),
 		payment_provider_id: varchar('payment_provider_id', { length: 100 }),
+		payment_provider_identity_attempt_id: uuid('payment_provider_identity_attempt_id').unique(),
+		payment_provider_identity_state: text('payment_provider_identity_state')
+			.notNull()
+			.default(PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED),
 		created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('profiles_name_surname_idx').on(table.name, table.surname)],
+	(table) => [
+		index('profiles_name_surname_idx').on(table.name, table.surname),
+		check(
+			'profiles_payment_provider_identity_state_check',
+			sql`${table.payment_provider_identity_state} IN ('uninitialized', 'creating', 'reconciliation_required', 'created')`,
+		),
+	],
 );
 
 export type SelectProfile = typeof profiles.$inferSelect;

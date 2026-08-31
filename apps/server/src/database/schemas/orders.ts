@@ -7,6 +7,7 @@ import { addresses } from './addresses';
 import { items } from './items';
 import { ORDER_PHASES } from './enumerated_values';
 import { PAYMENT_CREATION_STATES } from './enumerated_values';
+import { PAYMENT_CANCELLATION_STATES } from './enumerated_values';
 import { orders_proposals } from './orders_proposals';
 import { shipping_quotes } from './shipping_quotes';
 
@@ -42,6 +43,10 @@ export const orders = pgTable(
 		legacy_payment_transaction_id: integer('legacy_payment_transaction_id'),
 		payment_attempt_id: uuid('payment_attempt_id').unique(),
 		payment_creation_state: text('payment_creation_state').notNull().default(PAYMENT_CREATION_STATES.CREATED),
+		payment_cancellation_state: text('payment_cancellation_state').notNull().default(PAYMENT_CANCELLATION_STATES.NONE),
+		payment_recovery_notification_claimed_at: timestamp('payment_recovery_notification_claimed_at', {
+			withTimezone: true,
+		}),
 		item_price: integer('item_price'),
 		order_proposal_id: integer('order_proposal_id')
 			.unique()
@@ -61,6 +66,10 @@ export const orders = pgTable(
 		check(
 			'orders_payment_creation_state_check',
 			sql`${table.payment_creation_state} IN ('preparing', 'creating', 'reconciliation_required', 'created')`,
+		),
+		check(
+			'orders_payment_cancellation_state_check',
+			sql`${table.payment_cancellation_state} IN ('none', 'cancelling', 'reconciliation_required', 'cancelled')`,
 		),
 		index('orders_status_idx').on(table.status),
 		uniqueIndex('orders_payment_transaction_id_idx')

@@ -107,6 +107,15 @@ describe('order routes', () => {
 		const sellerResponse = await authenticatedRequest('/orders/auth/status/all', 'GET', actors.seller.jar);
 		const [sellerOrder] = (await sellerResponse.json()) as Array<Record<string, unknown>>;
 		expect(sellerOrder).not.toHaveProperty('payment_url');
+		for (const internalField of [
+			'payment_attempt_id',
+			'payment_creation_state',
+			'payment_cancellation_state',
+			'legacy_payment_transaction_id',
+			'payment_transaction_id',
+		]) {
+			expect(sellerOrder).not.toHaveProperty(internalField);
+		}
 
 		const buyerDetail = (await (
 			await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar)
@@ -116,6 +125,35 @@ describe('order routes', () => {
 			await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.seller.jar)
 		).json()) as Record<string, unknown>;
 		expect(sellerDetail).not.toHaveProperty('payment_url');
+		for (const internalField of [
+			'payment_attempt_id',
+			'payment_creation_state',
+			'payment_cancellation_state',
+			'legacy_payment_transaction_id',
+			'payment_transaction_id',
+		]) {
+			expect(sellerDetail).not.toHaveProperty(internalField);
+		}
+	});
+
+	it.each([
+		{ payment_creation_state: 'reconciliation_required' },
+		{ payment_cancellation_state: 'reconciliation_required' },
+		{ status: ORDER_PHASES.PAYMENT_CONFIRMED },
+	] as const)('withholds the buyer payment action unless the order is exactly payable: %j', async (override) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const order = await createOrderFixture(actors, item, {
+			payment_transaction_id: 91_337,
+			payment_creation_state: 'created',
+			...override,
+		});
+
+		const response = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as Record<string, unknown>;
+		expect(body).not.toHaveProperty('payment_url');
+		expect(body).not.toHaveProperty('payment_transaction_id');
 	});
 
 	it.each(['unknown', 'PAYMENT_PENDING'])('rejects invalid status %j', async (status) => {

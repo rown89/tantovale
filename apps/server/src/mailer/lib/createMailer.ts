@@ -16,6 +16,9 @@ export function createMailer(process: NodeJS.Process) {
 		host: environment.SMTP_HOST,
 		port: environment.SMTP_PORT,
 		secure: environment.SMTP_PORT === 465,
+		connectionTimeout: environment.SMTP_REQUEST_TIMEOUT_MS,
+		greetingTimeout: environment.SMTP_REQUEST_TIMEOUT_MS,
+		socketTimeout: environment.SMTP_REQUEST_TIMEOUT_MS,
 		...auth,
 	});
 }

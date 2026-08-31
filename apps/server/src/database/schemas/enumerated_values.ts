@@ -24,6 +24,20 @@ export const PAYMENT_CREATION_STATES = {
 	CREATED: 'created',
 } as const;
 
+export const PAYMENT_CANCELLATION_STATES = {
+	NONE: 'none',
+	CANCELLING: 'cancelling',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CANCELLED: 'cancelled',
+} as const;
+
+export const PAYMENT_PROVIDER_IDENTITY_STATES = {
+	UNINITIALIZED: 'uninitialized',
+	CREATING: 'creating',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CREATED: 'created',
+} as const;
+
 /**
  * States that are blocked for the user to place a new order
  */

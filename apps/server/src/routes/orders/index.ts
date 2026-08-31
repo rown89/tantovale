@@ -7,17 +7,12 @@ import { addresses, cities, items, orders, profiles, users } from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath } from '#utils/constants';
-import { PAYMENT_CREATION_STATES } from '#database/schemas/enumerated_values';
+import { PAYMENT_CANCELLATION_STATES, PAYMENT_CREATION_STATES } from '#database/schemas/enumerated_values';
 
 import { buildGuestPaymentUrl } from '../payments/payment-provider.service';
 
 const postgresIntegerMax = 2_147_483_647;
 const orderStatuses = new Set<string>(Object.values(ORDER_PHASES));
-const paymentActionStates = new Set<string>([
-	PAYMENT_CREATION_STATES.CREATED,
-	PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
-]);
-
 function parseResourceId(value: string): number | undefined {
 	if (!/^[1-9]\d*$/.test(value)) return undefined;
 	const id = Number(value);
@@ -73,7 +68,9 @@ export const ordersRoute = createRouter()
 					updated_at: order.orders.updated_at,
 					created_at: order.orders.created_at,
 					...(order.orders.buyer_id === user.profile_id &&
-					paymentActionStates.has(order.orders.payment_creation_state) &&
+					order.orders.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
+					order.orders.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.NONE &&
+					order.orders.status === ORDER_PHASES.PAYMENT_PENDING &&
 					paymentTransactionId
 						? {
 								payment_transaction_id: paymentTransactionId,
@@ -101,9 +98,26 @@ export const ordersRoute = createRouter()
 		const paymentTransactionId = order.payment_transaction_id ?? order.legacy_payment_transaction_id;
 		return c.json(
 			{
-				...order,
+				id: order.id,
+				item_id: order.item_id,
+				payment_provider_charge: order.payment_provider_charge,
+				platform_charge: order.platform_charge,
+				shipping_label_id: order.shipping_label_id,
+				shipping_price: order.shipping_price,
+				buyer_id: order.buyer_id,
+				seller_id: order.seller_id,
+				buyer_address: order.buyer_address,
+				seller_address: order.seller_address,
+				item_price: order.item_price,
+				order_proposal_id: order.order_proposal_id,
+				shipping_quote_id: order.shipping_quote_id,
+				status: order.status,
+				created_at: order.created_at,
+				updated_at: order.updated_at,
 				...(order.buyer_id === user.profile_id &&
-				paymentActionStates.has(order.payment_creation_state) &&
+				order.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
+				order.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.NONE &&
+				order.status === ORDER_PHASES.PAYMENT_PENDING &&
 				paymentTransactionId
 					? {
 							payment_transaction_id: paymentTransactionId,

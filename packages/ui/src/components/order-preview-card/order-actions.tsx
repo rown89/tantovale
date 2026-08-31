@@ -112,7 +112,7 @@ export function OrderActions({
 		}
 	};
 
-	const actions = getActions(status);
+	const actions = getActions(status).filter((action) => action.onClick !== undefined);
 
 	if (actions.length === 0) return null;
 

@@ -111,6 +111,9 @@ describe('local service configuration', () => {
 				host: runtime.mailpit.smtpHost,
 				port: runtime.mailpit.smtpPort,
 				secure: false,
+				connectionTimeout: 150,
+				greetingTimeout: 150,
+				socketTimeout: 150,
 			});
 			expect(options).not.toHaveProperty('auth');
 

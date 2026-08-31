@@ -5,13 +5,15 @@ import { eq } from 'drizzle-orm';
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders } from '#db-schema';
-import { EntityTrustapTransactionStatus } from '#database/schemas/enumerated_values';
+import { entityTrustapTransactionStatusValues } from '#database/schemas/enumerated_values';
+import { resolveTrustapOrderTransition } from '../payments/trustap-order-state';
+import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 
 // Trustap webhook payload schema
 const trustapWebhookSchema = z.object({
 	event: z.string(),
-	transaction_id: z.number(),
-	status: z.string(),
+	transaction_id: z.int().positive().max(2_147_483_647),
+	status: z.enum(entityTrustapTransactionStatusValues),
 	paid: z.string().optional(),
 	funds_released: z.string().optional(),
 	complaint_period_deadline: z.string().optional(),
@@ -44,12 +46,29 @@ export const webhooksRoute = createRouter().post(
 					console.error(`Transaction ${payload.transaction_id} not found in database`);
 					return c.json({ error: 'Transaction not found' }, 404);
 				}
+				if (trustapTransaction.entityId === null) {
+					return c.json({ error: 'Transaction item not found' }, 404);
+				}
+				await acquireItemCommerceLock(tx, trustapTransaction.entityId);
+				const [order] = await tx
+					.select({ id: orders.id, status: orders.status })
+					.from(orders)
+					.where(eq(orders.payment_transaction_id, payload.transaction_id))
+					.limit(1);
+				if (!order) {
+					console.warn(`Order not found for transaction ${payload.transaction_id}`);
+					return c.json({ error: 'Order not found' }, 404);
+				}
+				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
+				if (!transition.apply) {
+					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
+				}
 
 				// Update transaction status
 				const [updatedTransaction] = await tx
 					.update(entityTrustapTransactions)
 					.set({
-						status: payload.status as EntityTrustapTransactionStatus,
+						status: transition.providerStatus,
 						updated_at: new Date(),
 						...(payload.complaint_period_deadline && {
 							complaintPeriodDeadline: new Date(payload.complaint_period_deadline),
@@ -66,15 +85,13 @@ export const webhooksRoute = createRouter().post(
 				const [updatedOrder] = await tx
 					.update(orders)
 					.set({
-						status: payload.status,
+						status: transition.orderStatus,
 						updated_at: new Date(),
 					})
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))
 					.returning();
 
-				if (!updatedOrder) {
-					console.warn(`Order not found for transaction ${payload.transaction_id}`);
-				}
+				if (!updatedOrder) throw new Error('Failed to update order status');
 
 				// Handle specific status changes
 				switch (payload.status) {
@@ -86,11 +103,6 @@ export const webhooksRoute = createRouter().post(
 					case 'funds_released':
 						// Funds have been released to seller
 						console.log(`Transaction ${payload.transaction_id} funds released`);
-						break;
-
-					case 'disputed':
-						// Transaction is in dispute
-						console.log(`Transaction ${payload.transaction_id} is in dispute`);
 						break;
 
 					case 'cancelled':

@@ -81,7 +81,11 @@ export default function UserSellingItemsComponent() {
 						<>
 							<OrderPreviewCard
 								order={order}
-								onCompletePayment={() => handleCompletePayment(order)}
+								onCompletePayment={
+									'payment_url' in order && typeof order.payment_url === 'string'
+										? () => handleCompletePayment(order)
+										: undefined
+								}
 								onCancel={() => handleCancel(order)}
 								onRequestAssistance={() => handleRequestAssistance(order)}
 								onViewShipment={() => handleShipping(order)}
