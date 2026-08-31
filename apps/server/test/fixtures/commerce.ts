@@ -1,6 +1,6 @@
 import type { z } from 'zod/v4';
 import { randomUUID } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 import {
 	categories,
@@ -44,6 +44,63 @@ type CommerceActor = UserFixture & { jar: CookieJar; address: SelectAddress };
 async function createCommerceCatalogFixture() {
 	const catalog = await createCatalogFixture();
 	const { db } = getTestDatabase();
+	const [buyerCountry, outsiderCountry] = await db
+		.insert(countries)
+		.values([
+			{ id: 907001, name: 'France', iso3: 'FRA', iso2: 'FR', phonecode: '33' },
+			{ id: 907002, name: 'Germany', iso3: 'DEU', iso2: 'DE', phonecode: '49' },
+		])
+		.returning();
+	if (!buyerCountry || !outsiderCountry) throw new Error('Commerce actor countries insert failed');
+
+	const [buyerState, outsiderState] = await db
+		.insert(states)
+		.values([
+			{
+				id: 907011,
+				name: 'Ile-de-France',
+				country_id: buyerCountry.id,
+				country_code: buyerCountry.iso2,
+				state_code: 'IDF',
+			},
+			{
+				id: 907012,
+				name: 'Berlin',
+				country_id: outsiderCountry.id,
+				country_code: outsiderCountry.iso2,
+				state_code: 'BE',
+			},
+		])
+		.returning();
+	if (!buyerState || !outsiderState) throw new Error('Commerce actor states insert failed');
+
+	const [buyerCity, outsiderCity] = await db
+		.insert(cities)
+		.values([
+			{
+				id: 907021,
+				name: 'Paris',
+				state_id: buyerState.id,
+				state_code: buyerState.state_code ?? 'IDF',
+				country_id: buyerCountry.id,
+				country_code: buyerCountry.iso2,
+				latitude: '48.85660000',
+				longitude: '2.35220000',
+			},
+			{
+				id: 907022,
+				name: 'Berlin',
+				state_id: outsiderState.id,
+				state_code: outsiderState.state_code ?? 'BE',
+				country_id: outsiderCountry.id,
+				country_code: outsiderCountry.iso2,
+				latitude: '52.52000000',
+				longitude: '13.40500000',
+			},
+		])
+		.returning();
+	if (!buyerCity || !outsiderCity) throw new Error('Commerce actor cities insert failed');
+
 	const [deliveryProperty] = await db
 		.insert(properties)
 		.values({ name: 'Delivery Methods', slug: 'delivery_method', type: 'select' })
@@ -74,6 +131,11 @@ async function createCommerceCatalogFixture() {
 
 	return {
 		...catalog,
+		actorLocations: {
+			seller: { country: catalog.country, state: catalog.state, city: catalog.city, province: catalog.city },
+			buyer: { country: buyerCountry, state: buyerState, city: buyerCity, province: buyerCity },
+			outsider: { country: outsiderCountry, state: outsiderState, city: outsiderCity, province: outsiderCity },
+		},
 		delivery: {
 			property: deliveryProperty,
 			mapping: deliveryMapping,
@@ -132,6 +194,21 @@ async function resolveCatalogFixture(): Promise<CommerceCatalogFixture> {
 	}
 
 	const expectedCategories = [cached.publishedCategory, cached.unpublishedCategory];
+	const expectedCountries = [
+		cached.actorLocations.seller.country,
+		cached.actorLocations.buyer.country,
+		cached.actorLocations.outsider.country,
+	];
+	const expectedStates = [
+		cached.actorLocations.seller.state,
+		cached.actorLocations.buyer.state,
+		cached.actorLocations.outsider.state,
+	];
+	const expectedCities = [
+		cached.actorLocations.seller.city,
+		cached.actorLocations.buyer.city,
+		cached.actorLocations.outsider.city,
+	];
 	const expectedSubcategories = [cached.parentSubcategory, cached.childSubcategory, cached.unpublishedSubcategory];
 	const expectedProperties = [
 		...Object.values(cached.properties),
@@ -158,9 +235,33 @@ async function resolveCatalogFixture(): Promise<CommerceCatalogFixture> {
 		mappingRows,
 		propertyValueRows,
 	] = await Promise.all([
-		db.select().from(countries).where(eq(countries.id, cached.country.id)),
-		db.select().from(states).where(eq(states.id, cached.state.id)),
-		db.select().from(cities).where(eq(cities.id, cached.city.id)),
+		db
+			.select()
+			.from(countries)
+			.where(
+				inArray(
+					countries.id,
+					expectedCountries.map(({ id }) => id),
+				),
+			),
+		db
+			.select()
+			.from(states)
+			.where(
+				inArray(
+					states.id,
+					expectedStates.map(({ id }) => id),
+				),
+			),
+		db
+			.select()
+			.from(cities)
+			.where(
+				inArray(
+					cities.id,
+					expectedCities.map(({ id }) => id),
+				),
+			),
 		db
 			.select()
 			.from(categories)
@@ -225,13 +326,18 @@ async function resolveCatalogFixture(): Promise<CommerceCatalogFixture> {
 	}
 
 	const catalogIsComplete =
-		fixtureRowsMatch(countryRows, [cached.country], ['id', 'name', 'iso3', 'iso2', 'phonecode']) &&
-		fixtureRowsMatch(stateRows, [cached.state], ['id', 'name', 'country_id', 'country_code', 'state_code']) &&
-		fixtureRowsMatch(
-			cityRows,
-			[cached.city],
-			['id', 'name', 'state_id', 'state_code', 'country_id', 'country_code', 'latitude', 'longitude'],
-		) &&
+		fixtureRowsMatch(countryRows, expectedCountries, ['id', 'name', 'iso3', 'iso2', 'phonecode']) &&
+		fixtureRowsMatch(stateRows, expectedStates, ['id', 'name', 'country_id', 'country_code', 'state_code']) &&
+		fixtureRowsMatch(cityRows, expectedCities, [
+			'id',
+			'name',
+			'state_id',
+			'state_code',
+			'country_id',
+			'country_code',
+			'latitude',
+			'longitude',
+		]) &&
 		fixtureRowsMatch(categoryRows, expectedCategories, ['id', 'name', 'slug', 'published']) &&
 		fixtureRowsMatch(subcategoryRows, expectedSubcategories, [
 			'id',
@@ -318,9 +424,39 @@ async function buildCommerceActors(): Promise<CommerceActorGraph> {
 	});
 
 	const [sellerAddress, buyerAddress, outsiderAddress] = await Promise.all([
-		createAddressFixture(sellerFixture.profile.id, { label: 'Seller home', status: 'active' }),
-		createAddressFixture(buyerFixture.profile.id, { label: 'Buyer home', status: 'active' }),
-		createAddressFixture(outsiderFixture.profile.id, { label: 'Outsider home', status: 'active' }),
+		createAddressFixture(sellerFixture.profile.id, {
+			label: 'Seller home',
+			street_address: 'Corso Venditore',
+			civic_number: '11A',
+			city_id: catalog.actorLocations.seller.city.id,
+			province_id: catalog.actorLocations.seller.province.id,
+			postal_code: 20121,
+			country_code: catalog.actorLocations.seller.country.iso2,
+			phone: '+390212345611',
+			status: 'active',
+		}),
+		createAddressFixture(buyerFixture.profile.id, {
+			label: 'Buyer home',
+			street_address: 'Rue Acheteur',
+			civic_number: '22B',
+			city_id: catalog.actorLocations.buyer.city.id,
+			province_id: catalog.actorLocations.buyer.province.id,
+			postal_code: 75001,
+			country_code: catalog.actorLocations.buyer.country.iso2,
+			phone: '+33142345622',
+			status: 'active',
+		}),
+		createAddressFixture(outsiderFixture.profile.id, {
+			label: 'Outsider home',
+			street_address: 'Kaeuferstrasse',
+			civic_number: '33C',
+			city_id: catalog.actorLocations.outsider.city.id,
+			province_id: catalog.actorLocations.outsider.province.id,
+			postal_code: 10115,
+			country_code: catalog.actorLocations.outsider.country.iso2,
+			phone: '+493012345633',
+			status: 'active',
+		}),
 	]);
 	const [sellerJar, buyerJar, outsiderJar] = await Promise.all([
 		loginAs(sellerFixture),

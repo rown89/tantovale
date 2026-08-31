@@ -427,8 +427,8 @@ describe('proposal routes', () => {
 
 		const [request] = await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'));
 		expect(request?.body).toMatchObject({
-			address_from: { city: actors.catalog.city.name, state: 'LOM' },
-			address_to: { city: actors.catalog.city.name, state: 'LOM' },
+			address_from: { city: actors.catalog.actorLocations.seller.city.name, state: 'LOM' },
+			address_to: { city: actors.catalog.actorLocations.buyer.city.name, state: 'LOM' },
 		});
 	});
 

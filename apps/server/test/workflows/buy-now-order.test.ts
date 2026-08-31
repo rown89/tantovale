@@ -21,6 +21,7 @@ import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
+import { assertShipmentDateWithinWindow, type ProviderOperationWindow } from '../helpers/provider-contract';
 import { getProviderRequests } from '../helpers/providers';
 import { PROVIDER_TEST_CREDENTIALS, type CapturedRequest } from '../infrastructure/provider-stubs';
 
@@ -34,13 +35,15 @@ function providerUrl(name: 'PAYMENT_PROVIDER_API_URL' | 'SHIPPING_PROVIDER_API_U
 	return value;
 }
 
-function normalizeProviderRequests(requests: CapturedRequest[]) {
-	return requests.map(({ method, path, headers, body }) => {
+function normalizeProviderRequests(requests: CapturedRequest[], shipmentOperations: ProviderOperationWindow[] = []) {
+	let shipmentOperationIndex = 0;
+	const normalizedRequests = requests.map(({ method, path, headers, body }) => {
 		let normalizedBody = body;
 		if (typeof body === 'object' && body !== null && 'shipment_date' in body) {
 			const shipmentDate = body.shipment_date;
-			expect(typeof shipmentDate).toBe('string');
-			expect(new Date(String(shipmentDate)).toISOString()).toBe(shipmentDate);
+			const operationWindow = shipmentOperations[shipmentOperationIndex++];
+			if (!operationWindow) throw new Error('Missing API operation window for Shippo request');
+			assertShipmentDateWithinWindow(shipmentDate, operationWindow);
 			normalizedBody = { ...body, shipment_date: '<iso-date>' };
 		}
 
@@ -52,6 +55,10 @@ function normalizeProviderRequests(requests: CapturedRequest[]) {
 
 		return { method, path, headers: businessHeaders, body: normalizedBody };
 	});
+	if (shipmentOperationIndex !== shipmentOperations.length) {
+		throw new Error('API operation window does not correspond to a Shippo request');
+	}
+	return normalizedRequests;
 }
 
 function stableRow<Row extends { created_at: Date; updated_at: Date }>(
@@ -127,12 +134,19 @@ describe('independent Buy Now workflow', () => {
 			proposalExpireTime: environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS,
 		});
 
+		const previewStartedAt = Date.now();
 		const previewResponse = await authenticatedRequest(
 			'/shipment_provider/auth/calculate_shipment_cost',
 			'POST',
 			actors.buyer.jar,
 			{ item_id: itemId },
 		);
+		const previewEndedAt = Date.now();
+		const previewOperation = {
+			operation: 'buy-now shipping quote preview',
+			startedAt: previewStartedAt,
+			endedAt: previewEndedAt,
+		};
 		expect(previewResponse.status).toBe(200);
 		const preview = (
 			(await previewResponse.json()) as {
@@ -152,9 +166,16 @@ describe('independent Buy Now workflow', () => {
 		});
 		expect(preview?.shipping_quote_id).toMatch(/^[0-9a-f-]{36}$/);
 
+		const buyNowStartedAt = Date.now();
 		const buyNowResponse = await authenticatedRequest('/item/auth/buy_now', 'POST', actors.buyer.jar, {
 			item_id: itemId,
 		});
+		const buyNowEndedAt = Date.now();
+		const buyNowOperation = {
+			operation: 'buy-now checkout',
+			startedAt: buyNowStartedAt,
+			endedAt: buyNowEndedAt,
+		};
 		expect(buyNowResponse.status).toBe(200);
 		const buyNow = (await buyNowResponse.json()) as {
 			success: boolean;
@@ -392,9 +413,9 @@ describe('independent Buy Now workflow', () => {
 					actors.seller.address.province_id,
 					actors.seller.address.street_address,
 					actors.seller.address.civic_number,
-					actors.catalog.city.name,
-					actors.catalog.city.name,
-					actors.catalog.city.state_code,
+					actors.catalog.actorLocations.seller.city.name,
+					actors.catalog.actorLocations.seller.province.name,
+					actors.catalog.actorLocations.seller.province.state_code,
 					actors.seller.address.country_code,
 					actors.seller.address.postal_code,
 					actors.seller.address.phone,
@@ -408,9 +429,9 @@ describe('independent Buy Now workflow', () => {
 					actors.buyer.address.province_id,
 					actors.buyer.address.street_address,
 					actors.buyer.address.civic_number,
-					actors.catalog.city.name,
-					actors.catalog.city.name,
-					actors.catalog.city.state_code,
+					actors.catalog.actorLocations.buyer.city.name,
+					actors.catalog.actorLocations.buyer.province.name,
+					actors.catalog.actorLocations.buyer.province.state_code,
 					actors.buyer.address.country_code,
 					actors.buyer.address.postal_code,
 					actors.buyer.address.phone,
@@ -470,8 +491,8 @@ describe('independent Buy Now workflow', () => {
 				name: `${actors.seller.profile.name} ${actors.seller.profile.surname}`,
 				street1: `${actors.seller.address.street_address} ${actors.seller.address.civic_number}`,
 				street_no: actors.seller.address.civic_number,
-				city: actors.catalog.city.name,
-				state: actors.catalog.city.state_code,
+				city: actors.catalog.actorLocations.seller.city.name,
+				state: actors.catalog.actorLocations.seller.province.state_code,
 				zip: String(actors.seller.address.postal_code),
 				country: actors.seller.address.country_code,
 				phone: actors.seller.address.phone,
@@ -483,8 +504,8 @@ describe('independent Buy Now workflow', () => {
 				name: `${actors.buyer.profile.name} ${actors.buyer.profile.surname}`,
 				street1: `${actors.buyer.address.street_address} ${actors.buyer.address.civic_number}`,
 				street_no: actors.buyer.address.civic_number,
-				city: actors.catalog.city.name,
-				state: actors.catalog.city.state_code,
+				city: actors.catalog.actorLocations.buyer.city.name,
+				state: actors.catalog.actorLocations.buyer.province.state_code,
 				zip: String(actors.buyer.address.postal_code),
 				country: actors.buyer.address.country_code,
 				phone: actors.buyer.address.phone,
@@ -504,7 +525,7 @@ describe('independent Buy Now workflow', () => {
 				},
 			],
 		});
-		expect(normalizeProviderRequests(shippoBeforeRepeat)).toEqual([
+		expect(normalizeProviderRequests(shippoBeforeRepeat, [previewOperation, buyNowOperation])).toEqual([
 			{
 				method: 'POST',
 				path: '/shipments',

@@ -31,6 +31,7 @@ import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
 import { createTestObjectStorageClient } from '../helpers/object-storage';
+import { assertShipmentDateWithinWindow, type ProviderOperationWindow } from '../helpers/provider-contract';
 import { getProviderRequests } from '../helpers/providers';
 import { PROVIDER_TEST_CREDENTIALS, type CapturedRequest } from '../infrastructure/provider-stubs';
 
@@ -58,13 +59,15 @@ function providerUrl(name: 'PAYMENT_PROVIDER_API_URL' | 'SHIPPING_PROVIDER_API_U
 	return value;
 }
 
-function normalizeProviderRequests(requests: CapturedRequest[]) {
-	return requests.map(({ method, path, headers, body }) => {
+function normalizeProviderRequests(requests: CapturedRequest[], shipmentOperations: ProviderOperationWindow[] = []) {
+	let shipmentOperationIndex = 0;
+	const normalizedRequests = requests.map(({ method, path, headers, body }) => {
 		let normalizedBody = body;
 		if (typeof body === 'object' && body !== null && 'shipment_date' in body) {
 			const shipmentDate = body.shipment_date;
-			expect(typeof shipmentDate).toBe('string');
-			expect(new Date(String(shipmentDate)).toISOString()).toBe(shipmentDate);
+			const operationWindow = shipmentOperations[shipmentOperationIndex++];
+			if (!operationWindow) throw new Error('Missing API operation window for Shippo request');
+			assertShipmentDateWithinWindow(shipmentDate, operationWindow);
 			normalizedBody = { ...body, shipment_date: '<iso-date>' };
 		}
 
@@ -76,6 +79,10 @@ function normalizeProviderRequests(requests: CapturedRequest[]) {
 
 		return { method, path, headers: businessHeaders, body: normalizedBody };
 	});
+	if (shipmentOperationIndex !== shipmentOperations.length) {
+		throw new Error('API operation window does not correspond to a Shippo request');
+	}
+	return normalizedRequests;
 }
 
 function stableRow<Row extends { created_at: Date; updated_at: Date }>(
@@ -114,6 +121,37 @@ function expectUuid(value: string | null | undefined): asserts value is string {
 }
 
 describe('exact commerce contract mutation proof', () => {
+	const shipmentOperationWindow = {
+		operation: 'shipping quote preview',
+		startedAt: Date.parse('2026-08-31T11:59:59.999Z'),
+		endedAt: Date.parse('2026-08-31T12:00:00.001Z'),
+	};
+	const sellerProviderAddress = {
+		name: 'Seller Fixture',
+		street1: 'Corso Venditore 11A',
+		street_no: '11A',
+		city: 'Milano',
+		state: 'MI',
+		zip: '20121',
+		country: 'IT',
+		phone: '+390212345611',
+		email: 'seller@example.test',
+		is_residential: true,
+		validate: false,
+	};
+	const buyerProviderAddress = {
+		name: 'Buyer Fixture',
+		street1: 'Rue Acheteur 22B',
+		street_no: '22B',
+		city: 'Paris',
+		state: 'IDF',
+		zip: '75001',
+		country: 'FR',
+		phone: '+33142345622',
+		email: 'buyer@example.test',
+		is_residential: true,
+		validate: false,
+	};
 	const shippoRequest: CapturedRequest = {
 		method: 'POST',
 		path: '/shipments',
@@ -124,7 +162,8 @@ describe('exact commerce contract mutation proof', () => {
 		},
 		body: {
 			shipment_date: '2026-08-31T12:00:00.000Z',
-			address_from: { validate: false },
+			address_from: sellerProviderAddress,
+			address_to: buyerProviderAddress,
 		},
 	};
 	const trustapRequest: CapturedRequest = {
@@ -173,8 +212,49 @@ describe('exact commerce contract mutation proof', () => {
 		const mutated = structuredClone(shippoRequest);
 		(mutated.body as { address_from: { validate: boolean } }).address_from.validate = true;
 		expect(() =>
-			expect(normalizeProviderRequests([mutated])).toEqual(normalizeProviderRequests([shippoRequest])),
+			expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
+				normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
+			),
 		).toThrow();
+	});
+
+	it('rejects swapping the complete destination address with seller provider fields', () => {
+		const mutated = structuredClone(shippoRequest);
+		(mutated.body as { address_to: typeof sellerProviderAddress }).address_to = structuredClone(sellerProviderAddress);
+		expect(() =>
+			expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
+				normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
+			),
+		).toThrow();
+	});
+
+	it.each(['street1', 'street_no', 'city', 'state', 'zip', 'country', 'phone'] as const)(
+		'rejects mixing seller %s into the destination address',
+		(field) => {
+			const mutated = structuredClone(shippoRequest);
+			const body = mutated.body as {
+				address_from: typeof sellerProviderAddress;
+				address_to: typeof buyerProviderAddress;
+			};
+			body.address_to[field] = body.address_from[field];
+			expect(() =>
+				expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
+					normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
+				),
+			).toThrow();
+		},
+	);
+
+	it('accepts only an ISO shipment date generated inside its API operation window', () => {
+		const operationWindow = {
+			operation: 'shipping quote preview',
+			startedAt: Date.parse('2026-08-31T12:00:00.000Z'),
+			endedAt: Date.parse('2026-08-31T12:00:00.010Z'),
+		};
+
+		expect(() => assertShipmentDateWithinWindow('2026-08-31T12:00:00.005Z', operationWindow)).not.toThrow();
+		expect(() => assertShipmentDateWithinWindow('2026-08-31T11:59:59.999Z', operationWindow)).toThrow();
+		expect(() => assertShipmentDateWithinWindow('2026-08-31T12:00:00.011Z', operationWindow)).toThrow();
 	});
 
 	it('rejects a changed Trustap transaction description after normalization', () => {
@@ -225,6 +305,40 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 		const actorProfileIds = [actors.seller.profile.id, actors.buyer.profile.id, actors.outsider.profile.id];
 		expect(actorUserIds.every((id) => !actorProfileIds.includes(id))).toBe(true);
 		expect(new Set([actors.seller.jar.header(), actors.buyer.jar.header(), actors.outsider.jar.header()]).size).toBe(3);
+		const sellerProviderFingerprintFields = {
+			address_id: actors.seller.address.id,
+			city_id: actors.seller.address.city_id,
+			province_id: actors.seller.address.province_id,
+			street_address: actors.seller.address.street_address,
+			civic_number: actors.seller.address.civic_number,
+			city_name: actors.catalog.actorLocations.seller.city.name,
+			province_name: actors.catalog.actorLocations.seller.province.name,
+			province_code: actors.catalog.actorLocations.seller.province.state_code,
+			country_code: actors.seller.address.country_code,
+			postal_code: actors.seller.address.postal_code,
+			phone: actors.seller.address.phone,
+		};
+		const buyerProviderFingerprintFields = {
+			address_id: actors.buyer.address.id,
+			city_id: actors.buyer.address.city_id,
+			province_id: actors.buyer.address.province_id,
+			street_address: actors.buyer.address.street_address,
+			civic_number: actors.buyer.address.civic_number,
+			city_name: actors.catalog.actorLocations.buyer.city.name,
+			province_name: actors.catalog.actorLocations.buyer.province.name,
+			province_code: actors.catalog.actorLocations.buyer.province.state_code,
+			country_code: actors.buyer.address.country_code,
+			postal_code: actors.buyer.address.postal_code,
+			phone: actors.buyer.address.phone,
+		};
+		expect(Object.keys(sellerProviderFingerprintFields)).toEqual(Object.keys(buyerProviderFingerprintFields));
+		for (const field of Object.keys(sellerProviderFingerprintFields) as Array<
+			keyof typeof sellerProviderFingerprintFields
+		>) {
+			expect(sellerProviderFingerprintFields[field], `${field} must identify the commerce actor`).not.toBe(
+				buyerProviderFingerprintFields[field],
+			);
+		}
 
 		const itemBody = validItemBody(actors, { commons: { title: 'M08 API Workflow Listing' } });
 		const createItemResponse = await authenticatedRequest('/item/auth/new', 'POST', actors.seller.jar, itemBody);
@@ -399,12 +513,19 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 		const buyerMessageEmail = await waitForEmail(actors.buyer.user.email, 'Tantovale - New message received');
 		expect(buyerMessageEmail.HTML).toContain(sellerText);
 
+		const shippingQuoteStartedAt = Date.now();
 		const quoteResponse = await authenticatedRequest(
 			'/shipment_provider/auth/calculate_shipment_cost',
 			'POST',
 			actors.buyer.jar,
 			{ item_id: itemId },
 		);
+		const shippingQuoteEndedAt = Date.now();
+		const shippingQuoteOperation = {
+			operation: 'proposal shipping quote preview',
+			startedAt: shippingQuoteStartedAt,
+			endedAt: shippingQuoteEndedAt,
+		};
 		expect(quoteResponse.status).toBe(200);
 		const quote = ((await quoteResponse.json()) as { rates: ShippingQuoteResponse[] }).rates[0];
 		expect(quote).toEqual({
@@ -740,9 +861,9 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 					actors.seller.address.province_id,
 					actors.seller.address.street_address,
 					actors.seller.address.civic_number,
-					actors.catalog.city.name,
-					actors.catalog.city.name,
-					actors.catalog.city.state_code,
+					actors.catalog.actorLocations.seller.city.name,
+					actors.catalog.actorLocations.seller.province.name,
+					actors.catalog.actorLocations.seller.province.state_code,
 					actors.seller.address.country_code,
 					actors.seller.address.postal_code,
 					actors.seller.address.phone,
@@ -756,9 +877,9 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 					actors.buyer.address.province_id,
 					actors.buyer.address.street_address,
 					actors.buyer.address.civic_number,
-					actors.catalog.city.name,
-					actors.catalog.city.name,
-					actors.catalog.city.state_code,
+					actors.catalog.actorLocations.buyer.city.name,
+					actors.catalog.actorLocations.buyer.province.name,
+					actors.catalog.actorLocations.buyer.province.state_code,
 					actors.buyer.address.country_code,
 					actors.buyer.address.postal_code,
 					actors.buyer.address.phone,
@@ -951,8 +1072,8 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 				name: `${actors.seller.profile.name} ${actors.seller.profile.surname}`,
 				street1: `${actors.seller.address.street_address} ${actors.seller.address.civic_number}`,
 				street_no: actors.seller.address.civic_number,
-				city: actors.catalog.city.name,
-				state: actors.catalog.city.state_code,
+				city: actors.catalog.actorLocations.seller.city.name,
+				state: actors.catalog.actorLocations.seller.province.state_code,
 				zip: String(actors.seller.address.postal_code),
 				country: actors.seller.address.country_code,
 				phone: actors.seller.address.phone,
@@ -964,8 +1085,8 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 				name: `${actors.buyer.profile.name} ${actors.buyer.profile.surname}`,
 				street1: `${actors.buyer.address.street_address} ${actors.buyer.address.civic_number}`,
 				street_no: actors.buyer.address.civic_number,
-				city: actors.catalog.city.name,
-				state: actors.catalog.city.state_code,
+				city: actors.catalog.actorLocations.buyer.city.name,
+				state: actors.catalog.actorLocations.buyer.province.state_code,
 				zip: String(actors.buyer.address.postal_code),
 				country: actors.buyer.address.country_code,
 				phone: actors.buyer.address.phone,
@@ -985,7 +1106,7 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 				},
 			],
 		};
-		expect(normalizeProviderRequests(shippoRequests)).toEqual([
+		expect(normalizeProviderRequests(shippoRequests, [shippingQuoteOperation])).toEqual([
 			{ method: 'POST', path: '/shipments', headers: shippoHeaders, body: expectedShipmentBody },
 			{ method: 'GET', path: '/shipments/shipment-test', headers: shippoGetHeaders, body: undefined },
 			{ method: 'GET', path: '/shipments/shipment-test', headers: shippoGetHeaders, body: undefined },
