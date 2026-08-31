@@ -20,6 +20,8 @@ import { ProposalDialog } from '#components/dialogs/order-proposal-dialog';
 import { useAuth } from '#providers/auth-providers';
 import useTantovaleStore from '#stores';
 import AddressProtectedRoute from '#utils/address-protected';
+import { createAddressPreflightController } from '#utils/address-preflight-lifecycle';
+import { captureCommerceOwner, commerceOwnerMatches } from '#stores/commerce-ownership';
 
 export default function ItemWDetailWrapper({
 	item,
@@ -66,6 +68,7 @@ export default function ItemWDetailWrapper({
 
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const infoBoxRef = useRef<HTMLDivElement>(null);
+	const addressPreflight = useMemo(() => createAddressPreflightController(), []);
 
 	const { setIsProposalModalOpen, setIsBuyNowModalOpen } = useTantovaleStore();
 
@@ -111,6 +114,8 @@ export default function ItemWDetailWrapper({
 		setOrderProposal,
 	]);
 
+	useEffect(() => () => addressPreflight.invalidate(), [addressPreflight]);
+
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {
 		return item.images?.map((url, i) => {
@@ -137,51 +142,57 @@ export default function ItemWDetailWrapper({
 		if (!user) {
 			router.push('/login');
 		} else {
-			setIsAddressLoading(true);
-
-			const address_id = await AddressProtectedRoute();
-
-			if (address_id) {
-				setAddressId(address_id);
-				// Open the proposal modal
-				setIsProposalModalOpen(true);
-			} else {
-				toast.error('Oops!', {
-					description: 'You must have an active address to sell or buy.',
-					duration: 8000,
-				});
-
-				router.push('/auth/profile-setup/address');
-			}
-
-			setIsAddressLoading(false);
+			const owner = captureCommerceOwner(useTantovaleStore.getState());
+			if (owner.commerceOwnerProfileId !== user.profile_id || owner.commerceOwnerItemId !== item.id) return;
+			await addressPreflight.run({
+				request: AddressProtectedRoute,
+				isOwnerCurrent: () => commerceOwnerMatches(useTantovaleStore.getState(), owner),
+				setLoading: setIsAddressLoading,
+				onAddress: (addressId) => {
+					setAddressId(addressId);
+					setIsProposalModalOpen(true);
+				},
+				onMissing: () => {
+					toast.error('Oops!', {
+						description: 'You must have an active address to sell or buy.',
+						duration: 8000,
+					});
+					router.push('/auth/profile-setup/address');
+				},
+				onError: () => {
+					toast.error('Oops!', { description: 'Unable to verify your active address.', duration: 8000 });
+				},
+			});
 		}
-	}, [user, router, setIsAddressLoading, setAddressId, setIsProposalModalOpen]);
+	}, [addressPreflight, item.id, user, router, setIsAddressLoading, setAddressId, setIsProposalModalOpen]);
 
 	const handlePayment = useCallback(async () => {
 		if (!user) {
 			router.push('/login');
 		} else {
-			setIsAddressLoading(true);
-
-			const address_id = await AddressProtectedRoute();
-
-			if (address_id) {
-				setAddressId(address_id);
-				// Open the buy now modal
-				setIsBuyNowModalOpen(true);
-			} else {
-				toast.error('Oops!', {
-					description: 'You must have an active address to sell or buy.',
-					duration: 8000,
-				});
-
-				router.push('/auth/profile-setup/address');
-			}
-
-			setIsAddressLoading(false);
+			const owner = captureCommerceOwner(useTantovaleStore.getState());
+			if (owner.commerceOwnerProfileId !== user.profile_id || owner.commerceOwnerItemId !== item.id) return;
+			await addressPreflight.run({
+				request: AddressProtectedRoute,
+				isOwnerCurrent: () => commerceOwnerMatches(useTantovaleStore.getState(), owner),
+				setLoading: setIsAddressLoading,
+				onAddress: (addressId) => {
+					setAddressId(addressId);
+					setIsBuyNowModalOpen(true);
+				},
+				onMissing: () => {
+					toast.error('Oops!', {
+						description: 'You must have an active address to sell or buy.',
+						duration: 8000,
+					});
+					router.push('/auth/profile-setup/address');
+				},
+				onError: () => {
+					toast.error('Oops!', { description: 'Unable to verify your active address.', duration: 8000 });
+				},
+			});
 		}
-	}, [user, router, setIsAddressLoading, setAddressId, setIsBuyNowModalOpen]);
+	}, [addressPreflight, item.id, user, router, setIsAddressLoading, setAddressId, setIsBuyNowModalOpen]);
 
 	return (
 		<div className='container mx-auto my-4 flex flex-col px-4 xl:px-0'>

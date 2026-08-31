@@ -13,6 +13,7 @@ import { profiles, refreshTokens, users } from '../../database/schemas/schema';
 
 import { getAuthTokenDeleteOptions, getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { hasLiveMatchingRefreshSession, verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
 
 export const verifyRoute = createRouter()
@@ -224,9 +225,13 @@ export const verifyRoute = createRouter()
 					exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
 				});
 				const new_access_token = await sign({ ...access_token_payload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
-				const new_refresh_token = await sign({ ...refresh_token_payload, jti: randomUUID() }, REFRESH_TOKEN_SECRET);
+				const new_refresh_token = await sign(
+					{ ...refresh_token_payload, jti: randomUUID(), sid: randomUUID() },
+					REFRESH_TOKEN_SECRET,
+				);
 
 				await db.transaction(async (tx) => {
+					await acquireUserTransactionLock(tx, user.id);
 					await tx.update(users).set({ email_verified: true }).where(eq(users.id, user.id));
 					await tx.insert(refreshTokens).values({
 						username: user.username,

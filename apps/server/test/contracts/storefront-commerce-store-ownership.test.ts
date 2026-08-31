@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const storefrontStorePath = '../../../storefront/src/stores/index';
 const clientLogoutPath = '../../../storefront/src/utils/client-logout';
+const proposalAbortFeedbackPath = '../../../storefront/src/utils/proposal-abort-feedback';
 
 type CommerceStoreState = {
 	commerceOwnerProfileId: number | null;
@@ -30,7 +31,7 @@ type CommerceStoreState = {
 		shipping_quote_id: string;
 		message: string;
 	}): Promise<unknown>;
-	handleBuyerAbortedProposal(proposalId: number): Promise<boolean>;
+	handleBuyerAbortedProposal(proposalId: number): Promise<'cancelled' | 'failed' | 'stale'>;
 };
 
 type Store = {
@@ -82,6 +83,25 @@ beforeEach(() => {
 });
 
 describe('storefront commerce Zustand ownership', () => {
+	it.each([
+		['cancelled', 1, 0],
+		['failed', 0, 1],
+		['stale', 0, 0],
+	] as const)('maps proposal abort result %s to truthful caller feedback', async (result, successes, failures) => {
+		const { applyProposalAbortFeedback } = (await import(/* @vite-ignore */ proposalAbortFeedbackPath)) as {
+			applyProposalAbortFeedback(
+				result: 'cancelled' | 'failed' | 'stale',
+				actions: { onCancelled(): void; onFailed(): void },
+			): void;
+		};
+		const onCancelled = vi.fn();
+		const onFailed = vi.fn();
+
+		applyProposalAbortFeedback(result, { onCancelled, onFailed });
+
+		expect(onCancelled).toHaveBeenCalledTimes(successes);
+		expect(onFailed).toHaveBeenCalledTimes(failures);
+	});
 	it('advances the owner epoch on every reset and activation, including the same owner tuple', async () => {
 		const store = await loadStore({});
 		const initialEpoch = store.getState().commerceOwnerEpoch;
@@ -347,7 +367,7 @@ describe('storefront commerce Zustand ownership', () => {
 		store.getState().setCommerceContext(17, 101);
 		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
 
-		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe(false);
+		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('failed');
 		expect(store.getState()).toMatchObject({
 			clientProposalId: 81,
 			clientProposalCreatedAt: '2037-10-21T07:28:00.000Z',
@@ -365,7 +385,7 @@ describe('storefront commerce Zustand ownership', () => {
 		store.getState().setCommerceContext(17, 101);
 		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
 
-		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe(false);
+		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('failed');
 		expect(store.getState().clientProposalId).toBe(81);
 		expect(errorLog).toHaveBeenCalledOnce();
 		errorLog.mockRestore();
@@ -390,7 +410,7 @@ describe('storefront commerce Zustand ownership', () => {
 		store.setState({ clientProposalId: 82, clientProposalCreatedAt: '2037-10-22T07:28:00.000Z' });
 		release(new Response(null, { status: 200 }));
 
-		await expect(abort).resolves.toBe(false);
+		await expect(abort).resolves.toBe('stale');
 		expect(store.getState()).toMatchObject({ clientProposalId: 82, isCreatingProposal: false });
 	});
 
@@ -403,7 +423,7 @@ describe('storefront commerce Zustand ownership', () => {
 		store.getState().setCommerceContext(17, 101);
 		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
 
-		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe(true);
+		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('cancelled');
 		expect(store.getState()).toMatchObject({
 			clientProposalId: undefined,
 			clientProposalCreatedAt: undefined,

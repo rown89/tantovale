@@ -18,6 +18,7 @@ import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES } from '../
 export type AuthTokenClaims = User & {
 	exp: number;
 	jti?: string;
+	sid?: string;
 };
 
 export class InvalidRefreshSessionError extends Error {
@@ -36,6 +37,7 @@ function validateAuthTokenClaims(payload: Awaited<ReturnType<typeof verify>>): A
 		phone_verified: payload.phone_verified,
 		exp: payload.exp,
 		jti: payload.jti,
+		sid: payload.sid,
 	};
 
 	if (
@@ -50,7 +52,8 @@ function validateAuthTokenClaims(payload: Awaited<ReturnType<typeof verify>>): A
 		typeof claims.exp !== 'number' ||
 		!Number.isFinite(claims.exp) ||
 		claims.exp * 1_000 <= Date.now() ||
-		(claims.jti !== undefined && (typeof claims.jti !== 'string' || claims.jti.length === 0))
+		(claims.jti !== undefined && (typeof claims.jti !== 'string' || claims.jti.length === 0)) ||
+		(claims.sid !== undefined && (typeof claims.sid !== 'string' || claims.sid.length === 0))
 	) {
 		throw new Error('Invalid authentication token claims');
 	}
@@ -63,7 +66,17 @@ export async function verifyAccessTokenClaims(token: string, secret: string): Pr
 }
 
 export async function verifyRefreshTokenClaims(token: string, secret: string): Promise<AuthTokenClaims> {
-	return validateAuthTokenClaims(await verify(token, secret));
+	const claims = validateAuthTokenClaims(await verify(token, secret));
+	if (!claims.jti) {
+		throw new Error('Invalid refresh token claims');
+	}
+	return claims;
+}
+
+export function getRefreshSessionFamilyId(claims: Pick<AuthTokenClaims, 'jti' | 'sid'>): string {
+	if (claims.sid) return claims.sid;
+	if (claims.jti) return claims.jti;
+	throw new Error('Refresh token has no session family');
 }
 
 type LiveRefreshSessionOptions = {
@@ -210,6 +223,7 @@ export async function rotateRefreshSession({
 
 	const rotation = await db.transaction(async (tx) => {
 		await acquireUserTransactionLock(tx, claims.id);
+		const sessionFamilyId = getRefreshSessionFamilyId(claims);
 		const [existingUser] = await tx
 			.select({
 				id: users.id,
@@ -270,6 +284,7 @@ export async function rotateRefreshSession({
 			{
 				...tokenPayload({ ...user, exp: Math.floor(refreshTokenExpires.getTime() / 1_000) }),
 				jti: randomUUID(),
+				sid: sessionFamilyId,
 			},
 			refreshTokenSecret,
 		);

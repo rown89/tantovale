@@ -103,7 +103,10 @@ export const loginRoute = createRouter().post('/', zValidator('json', loginSchem
 				exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
 			});
 			const accessToken = await sign({ ...accessTokenPayload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
-			const refreshToken = await sign({ ...refreshTokenPayload, jti: randomUUID() }, REFRESH_TOKEN_SECRET);
+			const refreshToken = await sign(
+				{ ...refreshTokenPayload, jti: randomUUID(), sid: randomUUID() },
+				REFRESH_TOKEN_SECRET,
+			);
 			const [persistedSession] = await tx
 				.insert(refreshTokens)
 				.values({

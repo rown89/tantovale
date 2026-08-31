@@ -21,6 +21,7 @@ import { useItemChat } from '../hooks/use-item-chat';
 import { useAuth } from '#providers/auth-providers';
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
+import { applyProposalAbortFeedback } from '#utils/proposal-abort-feedback';
 import { PaymentButton } from './payment-button';
 import { toast } from 'sonner';
 import {
@@ -134,17 +135,18 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 																onClick={async () => {
 																	if (orderProposal.id) {
 																		const result = await handleBuyerAbortedProposal(orderProposal.id);
-																		if (result) {
-																			toast.success('Proposal cancelled successfully', {
-																				description: 'The seller will be notified.',
-																				duration: 8000,
-																			});
-																		} else {
-																			toast.error('Failed to cancel proposal', {
-																				description: 'Please try again later.',
-																				duration: 8000,
-																			});
-																		}
+																		applyProposalAbortFeedback(result, {
+																			onCancelled: () =>
+																				toast.success('Proposal cancelled successfully', {
+																					description: 'The seller will be notified.',
+																					duration: 8000,
+																				}),
+																			onFailed: () =>
+																				toast.error('Failed to cancel proposal', {
+																					description: 'Please try again later.',
+																					duration: 8000,
+																				}),
+																		});
 																	}
 																}}>
 																Confirm

@@ -40,7 +40,7 @@ export type OrderProposalStore = {
 	proposalRequestToken: number;
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => void;
 	setIsCreatingProposal: (isCreatingProposal: boolean) => void;
-	handleBuyerAbortedProposal: (proposal_id: number) => Promise<boolean>;
+	handleBuyerAbortedProposal: (proposal_id: number) => Promise<ProposalAbortResult>;
 	handleProposal: ({
 		item_id,
 		proposal_price,
@@ -49,6 +49,8 @@ export type OrderProposalStore = {
 	}: handleProposalProps) => Promise<OrderProposalProps | undefined>;
 	resetProposal: () => void;
 };
+
+export type ProposalAbortResult = 'cancelled' | 'failed' | 'stale';
 
 export const createProposalSlice: StateCreator<
 	OrderProposalStore & CommerceOwnershipState,
@@ -78,18 +80,19 @@ export const createProposalSlice: StateCreator<
 					proposal_id,
 				},
 			});
-			if (!response.ok) return false;
-			if (!commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) return false;
+			if (!commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) return 'stale';
+			if (!response.ok) return 'failed';
 
 			set({
 				clientProposalId: undefined,
 				clientProposalCreatedAt: undefined,
 			});
 
-			return true;
+			return 'cancelled';
 		} catch (error) {
+			if (!commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) return 'stale';
 			console.error('Failed to abort proposal:', error);
-			return false;
+			return 'failed';
 		} finally {
 			if (commerceRequestMatches(get(), requestSnapshot, get().proposalRequestToken)) {
 				set({ isCreatingProposal: false });

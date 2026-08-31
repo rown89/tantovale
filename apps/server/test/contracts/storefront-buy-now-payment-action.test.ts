@@ -77,6 +77,7 @@ describe('Buy Now delayed payment action', () => {
 			const { scheduleBuyNowPaymentAction } = await loadScheduler();
 			let current = true;
 			let ownerListener: () => void = () => undefined;
+			const unsubscribe = vi.fn();
 			const open = vi.fn();
 			const dismiss = vi.fn();
 			const handle = scheduleBuyNowPaymentAction({
@@ -84,7 +85,7 @@ describe('Buy Now delayed payment action', () => {
 				isCurrent: () => current,
 				subscribe: (listener) => {
 					ownerListener = listener;
-					return vi.fn();
+					return unsubscribe;
 				},
 				onPending: () => 'toast-1',
 				onCancel: dismiss,
@@ -98,6 +99,7 @@ describe('Buy Now delayed payment action', () => {
 
 			expect(open).not.toHaveBeenCalled();
 			expect(dismiss).toHaveBeenCalledOnce();
+			expect(unsubscribe).toHaveBeenCalledOnce();
 			handle.cancel();
 			expect(dismiss).toHaveBeenCalledOnce();
 		},
@@ -129,10 +131,11 @@ describe('Buy Now delayed payment action', () => {
 		const { scheduleBuyNowPaymentAction } = await loadScheduler();
 		const open = vi.fn();
 		const dismiss = vi.fn();
+		const unsubscribe = vi.fn();
 		scheduleBuyNowPaymentAction({
 			paymentUrl: 'https://payments.invalid/current',
 			isCurrent: () => true,
-			subscribe: () => vi.fn(),
+			subscribe: () => unsubscribe,
 			onPending: () => 'toast-1',
 			onCancel: dismiss,
 			open,
@@ -144,5 +147,27 @@ describe('Buy Now delayed payment action', () => {
 		expect(open).toHaveBeenCalledOnce();
 		expect(open).toHaveBeenCalledWith('https://payments.invalid/current');
 		expect(dismiss).not.toHaveBeenCalled();
+		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it('unsubscribes exactly once when component cleanup cancels the scheduled action', async () => {
+		const { scheduleBuyNowPaymentAction } = await loadScheduler();
+		const unsubscribe = vi.fn();
+		const dismiss = vi.fn();
+		const handle = scheduleBuyNowPaymentAction({
+			paymentUrl: 'https://payments.invalid/current',
+			isCurrent: () => true,
+			subscribe: () => unsubscribe,
+			onPending: () => 'toast-1',
+			onCancel: dismiss,
+			open: vi.fn(),
+			delayMs: 3000,
+		});
+
+		handle.cancel();
+		handle.cancel();
+
+		expect(unsubscribe).toHaveBeenCalledOnce();
+		expect(dismiss).toHaveBeenCalledOnce();
 	});
 });

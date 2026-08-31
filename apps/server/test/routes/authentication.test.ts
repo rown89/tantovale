@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { sign, verify } from 'hono/jwt';
+import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
@@ -72,6 +73,47 @@ async function signupUnverified(label: string) {
 
 async function refreshSession(jar: CookieJar): Promise<Response> {
 	return authenticatedRequest('/refresh/auth', 'POST', jar);
+}
+
+async function openDedicatedTestConnection(): Promise<pg.Client> {
+	const { client } = getTestDatabase();
+	const connection = new pg.Client(client.options);
+	await connection.connect();
+	return connection;
+}
+
+async function waitForBlockedStatements(
+	connection: Pick<pg.Client, 'query'>,
+	blockerPid: number,
+	count: number,
+	queryPattern = '%',
+): Promise<Array<{ pid: number; query: string }>> {
+	const deadline = Date.now() + 5_000;
+	while (Date.now() < deadline) {
+		const { rows } = await connection.query<{ pid: number; query: string }>(
+			`
+			SELECT activity.pid, activity.query
+			FROM pg_stat_activity AS activity
+			WHERE activity.datname = current_database()
+				AND activity.pid <> pg_backend_pid()
+				AND activity.wait_event_type = 'Lock'
+				AND (
+					$1::integer = ANY(pg_blocking_pids(activity.pid))
+					OR EXISTS (
+						SELECT 1
+						FROM unnest(pg_blocking_pids(activity.pid)) AS immediate_blocker(pid)
+						WHERE $1::integer = ANY(pg_blocking_pids(immediate_blocker.pid))
+					)
+				)
+				AND activity.query ILIKE $2
+			ORDER BY activity.pid
+		`,
+			[blockerPid, queryPattern],
+		);
+		if (rows.length >= count) return rows;
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+	throw new Error(`Timed out waiting for ${count} statements blocked by backend ${blockerPid}`);
 }
 
 describe('authentication routes', () => {
@@ -327,6 +369,8 @@ describe('authentication routes', () => {
 		expect(await verify(refreshToken!, requiredSecret('REFRESH_TOKEN_SECRET'))).toMatchObject({
 			id: user.id,
 			email_verified: true,
+			jti: expect.any(String),
+			sid: expect.any(String),
 		});
 		expect(sessions).toHaveLength(1);
 		expect(sessions[0]?.token === refreshToken).toBe(true);
@@ -386,6 +430,7 @@ describe('authentication routes', () => {
 		expect(sessions[0]?.token).toBe(refreshToken);
 		expect(accessClaims.jti).toEqual(expect.any(String));
 		expect(refreshClaims.jti).toEqual(expect.any(String));
+		expect(refreshClaims.sid).toEqual(expect.any(String));
 		expect(Number(accessClaims.exp)).toBeGreaterThanOrEqual(now + 24 * 60 * 60 - 5);
 		expect(Number(refreshClaims.exp)).toBeGreaterThanOrEqual(now + 7 * 24 * 60 * 60 - 5);
 		expect(cookieMaxAge(response, 'access_token')).toBe(24 * 60 * 60);
@@ -623,6 +668,7 @@ describe('authentication routes', () => {
 		const siblingToken = cookieValue(siblingJar.header(), 'refresh_token');
 		const { db } = getTestDatabase();
 
+		const oldRefreshClaims = await verify(oldRefreshToken!, requiredSecret('REFRESH_TOKEN_SECRET'));
 		const response = await refreshSession(jar);
 		const body = await response.json();
 		const newAccessToken = cookieValue(jar.header(), 'access_token');
@@ -635,6 +681,9 @@ describe('authentication routes', () => {
 		expect(body).not.toHaveProperty('refresh_token');
 		expect(newAccessToken).not.toBe(oldAccessToken);
 		expect(newRefreshToken).not.toBe(oldRefreshToken);
+		expect(await verify(newRefreshToken!, requiredSecret('REFRESH_TOKEN_SECRET'))).toMatchObject({
+			sid: oldRefreshClaims.sid,
+		});
 		expect(sessions.map(({ token }) => token)).toEqual(expect.arrayContaining([siblingToken, newRefreshToken]));
 		expect(sessions.map(({ token }) => token)).not.toContain(oldRefreshToken);
 		expect(sessions).toHaveLength(2);
@@ -704,6 +753,178 @@ describe('authentication routes', () => {
 		expect(responses.map(({ status }) => status).sort()).toEqual([200, 401]);
 		expect(sessions).toHaveLength(1);
 		expect(sessions[0]?.token).not.toBe(refreshToken);
+	});
+
+	it('serializes refresh-first logout by family and rejects a refresh response applied after logout', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const [sessionJar, siblingJar] = await Promise.all([loginAs(fixture), loginAs(fixture)]);
+		const originalCookies = sessionJar.header();
+		const siblingToken = cookieValue(siblingJar.header(), 'refresh_token');
+		const { client, db } = getTestDatabase();
+		const barrier = await openDedicatedTestConnection();
+		let lockHeld = false;
+		let pendingRefresh: Promise<Response> | undefined;
+		let pendingLogout: Promise<Response> | undefined;
+
+		await client.query(`
+			CREATE FUNCTION test_hold_refresh_family_insert() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(hashtext(current_database()), 71001);
+				RETURN NEW;
+			END;
+			$$;
+			CREATE TRIGGER test_hold_refresh_family_insert
+				BEFORE INSERT ON refresh_tokens
+				FOR EACH ROW EXECUTE FUNCTION test_hold_refresh_family_insert();
+		`);
+
+		try {
+			await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 71001)');
+			lockHeld = true;
+			const blocker = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+			const blockerPid = blocker.rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing refresh-family barrier PID');
+
+			pendingRefresh = Promise.resolve(
+				app.request('/refresh/auth', { method: 'POST', headers: { cookie: originalCookies } }),
+			);
+			await waitForBlockedStatements(barrier, blockerPid, 1, '%insert into "refresh_tokens"%');
+			pendingLogout = Promise.resolve(
+				app.request('/logout/auth', { method: 'POST', headers: { cookie: originalCookies } }),
+			);
+			const [logoutWaiter] = await waitForBlockedStatements(barrier, blockerPid, 1, '%pg_advisory_xact_lock%');
+			expect(logoutWaiter?.query).toContain('pg_advisory_xact_lock');
+
+			await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71001)');
+			lockHeld = false;
+		} finally {
+			if (lockHeld) await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71001)');
+			await Promise.allSettled([pendingRefresh, pendingLogout].filter((request) => request !== undefined));
+			await client.query('DROP TRIGGER IF EXISTS test_hold_refresh_family_insert ON refresh_tokens');
+			await client.query('DROP FUNCTION IF EXISTS test_hold_refresh_family_insert()');
+			await barrier.end();
+		}
+
+		if (!pendingRefresh || !pendingLogout) throw new Error('Refresh/logout requests did not start');
+		const [refreshResponse, logoutResponse] = await Promise.all([pendingRefresh, pendingLogout]);
+		const lateAccessToken = responseCookie(refreshResponse, 'access_token');
+		const lateRefreshToken = responseCookie(refreshResponse, 'refresh_token');
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(refreshResponse.status).toBe(200);
+		expect(logoutResponse.status).toBe(200);
+		expect(sessions.map(({ token }) => token)).toEqual([siblingToken]);
+		const lateCookies = `access_token=${lateAccessToken}; refresh_token=${lateRefreshToken}`;
+		expect((await app.request('/user/auth', { headers: { cookie: lateCookies } })).status).toBe(401);
+		expect(
+			(
+				await app.request('/refresh/auth', {
+					method: 'POST',
+					headers: { cookie: lateCookies },
+				})
+			).status,
+		).toBe(401);
+		expect((await refreshSession(siblingJar)).status).toBe(200);
+	});
+
+	it('serializes logout-first refresh so logout consumes the family before rotation', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const [sessionJar, siblingJar] = await Promise.all([loginAs(fixture), loginAs(fixture)]);
+		const originalCookies = sessionJar.header();
+		const { client } = getTestDatabase();
+		const barrier = await openDedicatedTestConnection();
+		let lockHeld = false;
+		let pendingLogout: Promise<Response> | undefined;
+		let pendingRefresh: Promise<Response> | undefined;
+
+		await client.query(`
+			CREATE FUNCTION test_hold_refresh_family_delete() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(hashtext(current_database()), 71002);
+				RETURN OLD;
+			END;
+			$$;
+			CREATE TRIGGER test_hold_refresh_family_delete
+				BEFORE DELETE ON refresh_tokens
+				FOR EACH ROW EXECUTE FUNCTION test_hold_refresh_family_delete();
+		`);
+
+		try {
+			await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 71002)');
+			lockHeld = true;
+			const blocker = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+			const blockerPid = blocker.rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing logout-family barrier PID');
+
+			pendingLogout = Promise.resolve(
+				app.request('/logout/auth', { method: 'POST', headers: { cookie: originalCookies } }),
+			);
+			await waitForBlockedStatements(barrier, blockerPid, 1, '%delete from "refresh_tokens"%');
+			pendingRefresh = Promise.resolve(
+				app.request('/refresh/auth', { method: 'POST', headers: { cookie: originalCookies } }),
+			);
+			const [refreshWaiter] = await waitForBlockedStatements(barrier, blockerPid, 1, '%pg_advisory_xact_lock%');
+			expect(refreshWaiter?.query).toContain('pg_advisory_xact_lock');
+
+			await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71002)');
+			lockHeld = false;
+		} finally {
+			if (lockHeld) await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71002)');
+			await Promise.allSettled([pendingLogout, pendingRefresh].filter((request) => request !== undefined));
+			await client.query('DROP TRIGGER IF EXISTS test_hold_refresh_family_delete ON refresh_tokens');
+			await client.query('DROP FUNCTION IF EXISTS test_hold_refresh_family_delete()');
+			await barrier.end();
+		}
+
+		if (!pendingLogout || !pendingRefresh) throw new Error('Logout/refresh requests did not start');
+		const [logoutResponse, refreshResponse] = await Promise.all([pendingLogout, pendingRefresh]);
+		expect(logoutResponse.status).toBe(200);
+		expect(refreshResponse.status).toBe(401);
+		expect((await refreshSession(siblingJar)).status).toBe(200);
+	});
+
+	it('uses a legacy refresh jti as its family root so logout of the original revokes its successor', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const siblingJar = await loginAs(fixture);
+		const legacyJti = uniqueValue('legacy-family');
+		const legacyToken = await sign(
+			{
+				id: fixture.user.id,
+				profile_id: fixture.profile.id,
+				username: fixture.user.username,
+				email: fixture.user.email,
+				email_verified: true,
+				phone_verified: false,
+				exp: Math.floor(Date.now() / 1_000) + 60 * 60,
+				jti: legacyJti,
+			},
+			requiredSecret('REFRESH_TOKEN_SECRET'),
+		);
+		const { db } = getTestDatabase();
+		await db.insert(refreshTokens).values({
+			username: fixture.user.username,
+			token: legacyToken,
+			expires_at: new Date(Date.now() + 60 * 60 * 1_000),
+		});
+		const legacyJar = new CookieJar();
+		legacyJar.capture([`refresh_token=${legacyToken}`]);
+
+		const refreshResponse = await refreshSession(legacyJar);
+		const successor = responseCookie(refreshResponse, 'refresh_token');
+		const successorClaims = await verify(successor!, requiredSecret('REFRESH_TOKEN_SECRET'));
+		const logoutResponse = await app.request('/logout/auth', {
+			method: 'POST',
+			headers: { cookie: `refresh_token=${legacyToken}` },
+		});
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(refreshResponse.status).toBe(200);
+		expect(successorClaims.sid).toBe(legacyJti);
+		expect(logoutResponse.status).toBe(200);
+		expect(sessions.map(({ token }) => token)).toEqual([cookieValue(siblingJar.header(), 'refresh_token')]);
+		expect((await refreshSession(siblingJar)).status).toBe(200);
 	});
 
 	it('POST /refresh/auth rejects replay of the old token and leaves no row for it', async () => {
