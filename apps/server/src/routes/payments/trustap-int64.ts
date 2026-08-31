@@ -19,6 +19,8 @@ export function publicTrustapId(value: TrustapId): number | string {
 
 function topLevelIntegerToken(source: string, property: string): string | undefined {
 	let depth = 0;
+	let propertyOccurrences = 0;
+	let integerToken: string | undefined;
 	for (let index = 0; index < source.length; index += 1) {
 		const character = source[index];
 		if (character === '{') {
@@ -56,14 +58,17 @@ function topLevelIntegerToken(source: string, property: string): string | undefi
 		let cursor = index + 1;
 		while (/\s/.test(source[cursor] ?? '')) cursor += 1;
 		if (source[cursor] !== ':') continue;
+		propertyOccurrences += 1;
 		cursor += 1;
 		while (/\s/.test(source[cursor] ?? '')) cursor += 1;
 		const tokenStart = cursor;
 		while (/\d/.test(source[cursor] ?? '')) cursor += 1;
-		if (cursor === tokenStart || !/[\s,}]/.test(source[cursor] ?? '')) return undefined;
-		return source.slice(tokenStart, cursor);
+		if (cursor !== tokenStart && /[\s,}]/.test(source[cursor] ?? '')) {
+			integerToken = source.slice(tokenStart, cursor);
+		}
 	}
-	return undefined;
+	if (propertyOccurrences > 1) throw new SyntaxError(`Duplicate top-level property: ${property}`);
+	return integerToken;
 }
 
 export function parseJsonWithTopLevelTrustapId(source: string, property: string): unknown {

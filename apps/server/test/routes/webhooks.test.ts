@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PoolClient } from 'pg';
 
 import { app } from '../../src/app';
@@ -32,6 +32,21 @@ const mappedStatuses = [
 const webhookAuthorization = `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString(
 	'base64',
 )}`;
+const trustapV1TimestampFields = [
+	'created',
+	'joined',
+	'paid',
+	'tracked',
+	'delivered',
+	'complained',
+	'complaint_period_deadline',
+	'complaint_period_ended',
+	'funds_released',
+	'rejected',
+	'cancelled',
+	'cancelled_with_payment',
+	'payment_refunded',
+] as const;
 
 async function createProviderBackedOrder(
 	initialStatus: EntityTrustapTransactionStatus = entityTrustapTransactionTypeValues.CREATED,
@@ -80,12 +95,17 @@ async function waitForBlockedRequests(blocker: PoolClient, blockingProcessId: nu
 	throw new Error(`Expected ${expected} webhook request(s) to wait on blocker ${blockingProcessId}`);
 }
 
-async function postWebhookBody(body: string, authorization = webhookAuthorization): Promise<Response> {
+async function postWebhookBody(
+	body: string,
+	authorization = webhookAuthorization,
+	additionalHeaders: Record<string, string> = {},
+): Promise<Response> {
 	return app.request('/webhooks/trustap/transaction-update', {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/json',
 			authorization,
+			...additionalHeaders,
 		},
 		body,
 	});
@@ -166,6 +186,48 @@ describe('Trustap transaction webhook state mapping', () => {
 	});
 
 	it.each([
+		`basic ${webhookAuthorization.slice('Basic '.length)}`,
+		`bAsIc    ${webhookAuthorization.slice('Basic '.length)}`,
+	])('accepts a case-insensitive Basic scheme followed by one or more spaces', async (authorization) => {
+		expect((await postWebhookBody('{invalid-json', authorization)).status).toBe(400);
+	});
+
+	it('rejects an authenticated request whose declared body exceeds 64 KiB before JSON parsing', async () => {
+		const response = await postWebhookBody('{}', webhookAuthorization, { 'content-length': String(65_537) });
+
+		expect(response.status).toBe(413);
+		expect(await response.json()).toEqual({ error: 'Webhook payload too large' });
+	});
+
+	it('rejects an authenticated streamed body that exceeds 64 KiB', async () => {
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(encoder.encode('x'.repeat(32_768)));
+				controller.enqueue(encoder.encode('x'.repeat(32_769)));
+				controller.close();
+			},
+		});
+		const request = new Request('http://localhost/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: webhookAuthorization },
+			body: stream,
+			duplex: 'half',
+		} as RequestInit & { duplex: 'half' });
+
+		const response = await app.request(request);
+
+		expect(response.status).toBe(413);
+		expect(await response.json()).toEqual({ error: 'Webhook payload too large' });
+	});
+
+	it('authenticates before rejecting an oversized request body', async () => {
+		const response = await postWebhookBody('{}', 'Basic invalid!', { 'content-length': String(65_537) });
+
+		expect(response.status).toBe(401);
+	});
+
+	it.each([
 		['invalid JSON', '{invalid-json'],
 		[
 			'legacy event name',
@@ -224,6 +286,70 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect((await postWebhookBody(body)).status).toBe(400);
 	});
 
+	it.each(trustapV1TimestampFields)('validates the known v1 %s timestamp when present', async (field) => {
+		const body = JSON.stringify({
+			event: 'transaction_updated',
+			transaction_id: '9223372036854775806',
+			status: 'paid',
+			[field]: '2026-08-30T12:00:00+25:00',
+		});
+
+		expect((await postWebhookBody(body)).status).toBe(400);
+	});
+
+	it.each(['2026-08-30T12:00:00+25:00', '2026-08-30T12:00:00+99:00', '2026-02-31T12:00:00Z'])(
+		'rejects an impossible provider timestamp %s without mutating commerce state',
+		async (timestamp) => {
+			const { order, transactionId } = await createProviderBackedOrder();
+			const { db } = getTestDatabase();
+			const [orderBefore] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [providerBefore] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+
+			const response = await postWebhookBody(
+				JSON.stringify({
+					event: 'transaction_updated',
+					transaction_id: transactionId,
+					status: 'paid',
+					complaint_period_deadline: timestamp,
+				}),
+			);
+
+			expect(response.status).toBe(400);
+			expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([orderBefore]);
+			expect(
+				await db
+					.select()
+					.from(entityTrustapTransactions)
+					.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+			).toEqual([providerBefore]);
+		},
+	);
+
+	it.each([
+		`{"event":"transaction_updated","transaction_id":1900001,"transaction_id":"9223372036854775807","status":"paid"}`,
+		`{"event":"transaction_updated","transaction_id":"9223372036854775807","transaction_id":1900001,"status":"paid"}`,
+	])('rejects duplicate webhook transaction IDs without applying JSON first/last-key semantics', async (body) => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const { db } = getTestDatabase();
+		const [orderBefore] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [providerBefore] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+
+		expect((await postWebhookBody(body)).status).toBe(400);
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([orderBefore]);
+		expect(
+			await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([providerBefore]);
+	});
+
 	it('returns 404 for an unknown transaction without creating commerce state', async () => {
 		const { db } = getTestDatabase();
 		const providersBefore = await db.select().from(entityTrustapTransactions);
@@ -255,7 +381,7 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(providerAfter).toEqual(providerBefore);
 	});
 
-	it('accepts harmless v1 timestamp fields and applies the current transition atomically', async () => {
+	it('accepts an enriched v1 payload, strips benign extras, and applies the current transition atomically', async () => {
 		const { order, transactionId } = await createProviderBackedOrder();
 		const complaintDeadline = '2026-09-01T12:00:00.000Z';
 
@@ -264,12 +390,16 @@ describe('Trustap transaction webhook state mapping', () => {
 				event: 'transaction_updated',
 				transaction_id: transactionId,
 				status: entityTrustapTransactionTypeValues.PAID,
+				created: '2026-08-30T10:00:00.000Z',
+				joined: '2026-08-30T11:00:00.000Z',
 				paid: '2026-08-30T12:00:00.000Z',
 				complaint_period_deadline: complaintDeadline,
+				webhook_delivery_id: 'benign-v1-delivery-metadata',
 			}),
 		);
 
 		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ success: true, message: 'Transaction updated successfully' });
 		const { db } = getTestDatabase();
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		const [storedProvider] = await db
@@ -281,6 +411,45 @@ describe('Trustap transaction webhook state mapping', () => {
 			status: entityTrustapTransactionTypeValues.PAID,
 			complaintPeriodDeadline: new Date(complaintDeadline),
 		});
+	});
+
+	it('fails closed when the order points at an item different from the provider transaction lock identity', async () => {
+		const { item, order, transactionId } = await createProviderBackedOrder();
+		const actors = await createCommerceActors();
+		const otherItem = await createItemFixture(actors);
+		const { client, db } = getTestDatabase();
+		await db.update(orders).set({ item_id: otherItem.id }).where(eq(orders.id, order.id));
+		const [orderBefore] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [providerBefore] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		const blocker = await client.connect();
+		try {
+			await blocker.query('BEGIN');
+			const blockerPid = (await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing blocker PID');
+			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+				itemCommerceLockScope,
+				item.id,
+			]);
+			const responsePromise = postStatus(transactionId, entityTrustapTransactionTypeValues.PAID);
+			await waitForBlockedRequests(blocker, blockerPid, 1);
+			await blocker.query('COMMIT');
+			const response = await responsePromise;
+
+			expect(response.status).toBe(409);
+			expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([orderBefore]);
+			expect(
+				await db
+					.select()
+					.from(entityTrustapTransactions)
+					.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+			).toEqual([providerBefore]);
+		} finally {
+			await blocker.query('ROLLBACK').catch(() => undefined);
+			blocker.release();
+		}
 	});
 
 	it('acknowledges a duplicate status without touching provider or order timestamps', async () => {
@@ -305,6 +474,45 @@ describe('Trustap transaction webhook state mapping', () => {
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder?.updated_at).toEqual(stableTimestamp);
 		expect(storedProvider?.updated_at).toEqual(stableTimestamp);
+	});
+
+	it('rolls back the provider update when the corresponding order update fails', async () => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const { client, db } = getTestDatabase();
+		const [orderBefore] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [providerBefore] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		await client.query(`
+			CREATE FUNCTION test_fail_webhook_order_update() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				RAISE EXCEPTION 'injected webhook order update failure';
+			END;
+			$$;
+			CREATE TRIGGER test_fail_webhook_order_update
+				BEFORE UPDATE ON orders
+				FOR EACH ROW EXECUTE FUNCTION test_fail_webhook_order_update();
+		`);
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		let response: Response;
+		try {
+			response = await postStatus(transactionId, entityTrustapTransactionTypeValues.PAID);
+		} finally {
+			consoleError.mockRestore();
+			await client.query('DROP TRIGGER IF EXISTS test_fail_webhook_order_update ON orders');
+			await client.query('DROP FUNCTION IF EXISTS test_fail_webhook_order_update()');
+		}
+
+		expect(response.status).toBe(500);
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([orderBefore]);
+		expect(
+			await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([providerBefore]);
 	});
 
 	it.each(mappedStatuses)('maps Trustap %s to order phase %s', async (remoteStatus, expectedOrderStatus) => {

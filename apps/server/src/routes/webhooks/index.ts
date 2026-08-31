@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
+import { bodyLimit } from 'hono/body-limit';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
@@ -23,31 +24,66 @@ import {
 } from '#lib/shipping-label-transition-guard';
 import { authenticateTrustapWebhook } from './basic-auth';
 
-const trustapTimestamp = z.string().datetime({ offset: true });
+// Trustap v1 webhook JSON is small; bound buffering before parsing to 64 KiB.
+const maxWebhookBodySize = 64 * 1024;
+const trustapTimestamp = z
+	.string()
+	.datetime({ offset: true })
+	.transform((value, context) => {
+		const timestamp = new Date(value);
+		if (Number.isFinite(timestamp.getTime())) return timestamp;
+		context.addIssue({ code: 'custom', message: 'Invalid provider timestamp' });
+		return z.NEVER;
+	});
+const trustapV1WebhookSchema = z.object({
+	event: z.literal('transaction_updated'),
+	transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
+		const id = canonicalTrustapId(value);
+		if (id) return id;
+		context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
+		return z.NEVER;
+	}),
+	status: z.enum(entityTrustapTransactionStatusValues),
+	created: trustapTimestamp.optional(),
+	joined: trustapTimestamp.optional(),
+	paid: trustapTimestamp.optional(),
+	tracked: trustapTimestamp.optional(),
+	delivered: trustapTimestamp.optional(),
+	complained: trustapTimestamp.optional(),
+	funds_released: trustapTimestamp.optional(),
+	complaint_period_deadline: trustapTimestamp.optional(),
+	complaint_period_ended: trustapTimestamp.optional(),
+	rejected: trustapTimestamp.optional(),
+	cancelled: trustapTimestamp.optional(),
+	cancelled_with_payment: trustapTimestamp.optional(),
+	payment_refunded: trustapTimestamp.optional(),
+});
+const v2WebhookMarkers = ['code', 'target_id', 'target_preview'] as const;
 const trustapWebhookSchema = z
-	.object({
-		event: z.literal('transaction_updated'),
-		transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
-			const id = canonicalTrustapId(value);
-			if (id) return id;
-			context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
-			return z.NEVER;
-		}),
-		status: z.enum(entityTrustapTransactionStatusValues),
-		paid: trustapTimestamp.optional(),
-		funds_released: trustapTimestamp.optional(),
-		complaint_period_deadline: trustapTimestamp.optional(),
+	.unknown()
+	.superRefine((value, context) => {
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
+		for (const marker of v2WebhookMarkers) {
+			if (Object.hasOwn(value, marker)) {
+				context.addIssue({ code: 'custom', message: 'Trustap v2 payload is not supported' });
+			}
+		}
 	})
-	.strict();
+	.pipe(trustapV1WebhookSchema);
 
 export const webhooksRoute = createRouter().post(
 	'/trustap/transaction-update',
 	authenticateTrustapWebhook,
+	bodyLimit({
+		maxSize: maxWebhookBodySize,
+		onError: (context) => context.json({ error: 'Webhook payload too large' }, 413),
+	}),
 	async (c) => {
 		let parsedBody: unknown;
 		try {
 			parsedBody = parseJsonWithTopLevelTrustapId(await c.req.text(), 'transaction_id');
-		} catch {
+		} catch (error) {
+			if (error instanceof Error && error.name === 'BodyLimitError') throw error;
 			return c.json({ error: 'Invalid payload' }, 400);
 		}
 		const parsedPayload = trustapWebhookSchema.safeParse(parsedBody);
@@ -85,6 +121,7 @@ export const webhooksRoute = createRouter().post(
 				const [order] = await tx
 					.select({
 						id: orders.id,
+						itemId: orders.item_id,
 						status: orders.status,
 						paymentCancellationState: orders.payment_cancellation_state,
 						paymentCreationState: orders.payment_creation_state,
@@ -95,6 +132,9 @@ export const webhooksRoute = createRouter().post(
 				if (!order) {
 					console.warn(`Order not found for transaction ${payload.transaction_id}`);
 					return c.json({ error: 'Order not found' }, 404);
+				}
+				if (order.itemId !== identity.entityId) {
+					return c.json({ error: 'Order transaction conflict' }, 409);
 				}
 				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
 				const resolvesCancellation =
@@ -127,7 +167,7 @@ export const webhooksRoute = createRouter().post(
 							status: transition.providerStatus,
 							updated_at: new Date(),
 							...(payload.complaint_period_deadline && {
-								complaintPeriodDeadline: new Date(payload.complaint_period_deadline),
+								complaintPeriodDeadline: payload.complaint_period_deadline,
 							}),
 						})
 						.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))

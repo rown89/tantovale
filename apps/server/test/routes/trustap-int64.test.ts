@@ -18,6 +18,20 @@ describe('Trustap signed int64 identifiers', () => {
 		});
 	});
 
+	it.each(['{"id":9223372036854775807,"id":"1"}', '{"id":"1","id":9223372036854775807}'])(
+		'rejects duplicate top-level identifiers before JSON last-key semantics can win: %s',
+		(body) => {
+			expect(() => parseJsonWithTopLevelTrustapId(body, 'id')).toThrow('Duplicate top-level property: id');
+		},
+	);
+
+	it('does not confuse a nested identifier with the unique top-level provider identifier', () => {
+		expect(parseJsonWithTopLevelTrustapId('{"metadata":{"id":"nested"},"id":9223372036854775807}', 'id')).toEqual({
+			metadata: { id: 'nested' },
+			id: '9223372036854775807',
+		});
+	});
+
 	it.each(['1', '9007199254740991', '9223372036854775807'])('accepts canonical positive int64 %s', (id) => {
 		expect(canonicalTrustapId(id)).toBe(id);
 	});
