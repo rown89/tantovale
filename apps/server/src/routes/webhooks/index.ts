@@ -1,6 +1,7 @@
-import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
+import { timingSafeEqual } from 'node:crypto';
+import type { MiddlewareHandler } from 'hono';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
@@ -8,11 +9,17 @@ import { entityTrustapTransactions, orders } from '#db-schema';
 import { entityTrustapTransactionStatusValues } from '#database/schemas/enumerated_values';
 import { resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
+import { environment } from '#utils/constants';
+import { canonicalTrustapId, parseJsonWithTopLevelTrustapId } from '../payments/trustap-int64';
 
 // Trustap webhook payload schema
 const trustapWebhookSchema = z.object({
 	event: z.string(),
-	transaction_id: z.int().positive().max(2_147_483_647),
+	transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
+		const id = canonicalTrustapId(value);
+		if (!id) context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
+		return id as string;
+	}),
 	status: z.enum(entityTrustapTransactionStatusValues),
 	paid: z.string().optional(),
 	funds_released: z.string().optional(),
@@ -20,20 +27,51 @@ const trustapWebhookSchema = z.object({
 	// Add other fields as needed based on Trustap webhook documentation
 });
 
+function secureEqual(left: string, right: string): boolean {
+	const leftBuffer = Buffer.from(left);
+	const rightBuffer = Buffer.from(right);
+	return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function hasValidTrustapBasicAuth(authorization: string | undefined): boolean {
+	if (!authorization?.startsWith('Basic ')) return false;
+	let decoded: string;
+	try {
+		decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
+	} catch {
+		return false;
+	}
+	const separator = decoded.indexOf(':');
+	if (separator < 0) return false;
+	return (
+		secureEqual(decoded.slice(0, separator), environment.PAYMENT_PROVIDER_WEBHOOK_USERNAME) &&
+		secureEqual(decoded.slice(separator + 1), environment.PAYMENT_PROVIDER_WEBHOOK_SECRET)
+	);
+}
+
+const authenticateTrustapWebhook: MiddlewareHandler = async (c, next) => {
+	if (!hasValidTrustapBasicAuth(c.req.header('authorization'))) {
+		return c.json({ error: 'Unauthorized' }, 401);
+	}
+	await next();
+};
+
 export const webhooksRoute = createRouter().post(
 	'/trustap/transaction-update',
-	zValidator('json', trustapWebhookSchema),
+	authenticateTrustapWebhook,
 	async (c) => {
-		const payload = c.req.valid('json');
+		let parsedBody: unknown;
+		try {
+			parsedBody = parseJsonWithTopLevelTrustapId(await c.req.text(), 'transaction_id');
+		} catch {
+			return c.json({ error: 'Invalid payload' }, 400);
+		}
+		const parsedPayload = trustapWebhookSchema.safeParse(parsedBody);
+		if (!parsedPayload.success) return c.json({ error: 'Invalid payload' }, 400);
+		const payload = parsedPayload.data;
 		const { db } = createClient();
 
 		try {
-			// Verify webhook signature if Trustap provides one
-			// const signature = c.req.header('X-Trustap-Signature');
-			// if (!verifyWebhookSignature(payload, signature)) {
-			// 	return c.json({ error: 'Invalid signature' }, 401);
-			// }
-
 			return await db.transaction(async (tx) => {
 				// Find the transaction in our database
 				const [trustapTransaction] = await tx

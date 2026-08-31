@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
@@ -11,6 +12,7 @@ import {
 	orders,
 	orders_proposals,
 	refreshTokens,
+	shipping_quotes,
 	states,
 	subcategories,
 } from '../../src/database/schemas/schema';
@@ -80,6 +82,18 @@ async function createItemWithPendingBuyerMetadata() {
 				phone: '+3900000000',
 			})
 			.returning();
+		const [buyerAddress] = await tx
+			.insert(addresses)
+			.values({
+				profile_id: buyer.profile.id,
+				street_address: 'Via Buyer',
+				civic_number: '2',
+				city_id: 1,
+				province_id: 1,
+				postal_code: 20100,
+				phone: '+3900000001',
+			})
+			.returning();
 		const [category] = await tx
 			.insert(categories)
 			.values({ name: `Category ${suffix}`, slug: `category-${suffix}` })
@@ -104,6 +118,21 @@ async function createItemWithPendingBuyerMetadata() {
 				published: true,
 			})
 			.returning();
+		const quoteId = randomUUID();
+		await tx.insert(shipping_quotes).values({
+			id: quoteId,
+			item_id: item!.id,
+			buyer_profile_id: buyer.profile.id,
+			seller_profile_id: seller.profile.id,
+			buyer_address_id: buyerAddress!.id,
+			seller_address_id: address!.id,
+			shippo_shipment_id: `shipment-${suffix}`,
+			shippo_rate_id: `rate-${suffix}`,
+			amount: 500,
+			currency: 'EUR',
+			snapshot_fingerprint: `fingerprint-${suffix}`,
+			expires_at: new Date(Date.now() + 96 * 60 * 60 * 1_000),
+		});
 		const [proposal] = await tx
 			.insert(orders_proposals)
 			.values({
@@ -114,6 +143,8 @@ async function createItemWithPendingBuyerMetadata() {
 				payment_provider_charge: 100,
 				platform_charge: 200,
 				shipping_label_id: `proposal-${suffix}`,
+				shipping_quote_id: quoteId,
+				shipping_price: 500,
 			})
 			.returning();
 		const [order] = await tx
@@ -126,6 +157,7 @@ async function createItemWithPendingBuyerMetadata() {
 				platform_charge: 200,
 				shipping_label_id: `order-${suffix}`,
 				shipping_price: 500,
+				item_price: item!.price,
 			})
 			.returning();
 

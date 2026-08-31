@@ -18,6 +18,7 @@ export type StubScenario =
 	| 'success'
 	| 'unauthorized'
 	| 'invalid-payload'
+	| 'unprocessable'
 	| 'provider-error'
 	| 'charge-error'
 	| 'charge-delay'
@@ -129,6 +130,7 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'success',
 	'unauthorized',
 	'invalid-payload',
+	'unprocessable',
 	'provider-error',
 	'charge-error',
 	'charge-delay',
@@ -433,6 +435,9 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 			return true;
 		case 'invalid-payload':
 			sendValidationError(kind, response);
+			return true;
+		case 'unprocessable':
+			sendJson(response, 422, { error: 'unprocessable', message: 'Provider could not safely classify outcome' });
 			return true;
 		case 'provider-error':
 			sendProviderError(kind, response);

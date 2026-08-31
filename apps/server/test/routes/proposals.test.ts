@@ -29,7 +29,7 @@ import {
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
-import { getProviderRequests, setProviderScenario } from '../helpers/providers';
+import { getProviderRequests, setProviderScenario, setTrustapTransactionStatus } from '../helpers/providers';
 import type { CookieJar } from '../helpers/request';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 
@@ -417,8 +417,8 @@ describe('proposal routes', () => {
 
 		const [request] = await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'));
 		expect(request?.body).toMatchObject({
-			address_from: { city: actors.catalog.city.name, state: 'Lombardia Province' },
-			address_to: { city: actors.catalog.city.name, state: 'Lombardia Province' },
+			address_from: { city: actors.catalog.city.name, state: 'LOM' },
+			address_to: { city: actors.catalog.city.name, state: 'LOM' },
 		});
 	});
 
@@ -924,7 +924,7 @@ describe('proposal routes', () => {
 		};
 		expect(body.proposal).toMatchObject({ id: proposal.id, status: ORDER_PROPOSAL_PHASES.accepted });
 		expect(body.order.id).toEqual(expect.any(Number));
-		expect(body.transaction).toMatchObject({ id: expect.any(Number), status: 'created' });
+		expect(body.transaction).toMatchObject({ id: expect.any(String), status: 'created' });
 		expect(body).not.toHaveProperty('payment_url');
 
 		const { db } = getTestDatabase();
@@ -1224,7 +1224,7 @@ describe('proposal routes', () => {
 			proposal_price: 10_000,
 			platform_charge: 90,
 		});
-		const expectedTransactionId = trustapTransactionFixture.id + 1;
+		const expectedTransactionId = String(trustapTransactionFixture.id + 1);
 		const { db } = getTestDatabase();
 		await db.insert(entityTrustapTransactions).values({
 			entityId: conflictingItem.id,
@@ -1299,6 +1299,57 @@ describe('proposal routes', () => {
 			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
 		);
 		expect(transactionRequests).toHaveLength(1);
+	});
+
+	it('finalizes a recovered proposal as rejected without inviting payment when Trustap is terminal', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const conflictingItem = await createItemFixture(actors, {
+			commons: { title: 'Terminal recovered proposal conflict item' },
+		});
+		const roomId = await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
+			proposal_price: 10_000,
+			platform_charge: 90,
+		});
+		const expectedTransactionId = String(trustapTransactionFixture.id + 1);
+		const { db } = getTestDatabase();
+		await db.insert(entityTrustapTransactions).values({
+			entityId: conflictingItem.id,
+			sellerId: actors.seller.profile.payment_provider_id,
+			buyerId: actors.buyer.profile.payment_provider_id,
+			transactionId: expectedTransactionId,
+			status: 'created',
+			price: 1,
+			charge: 0,
+			chargeSeller: 0,
+			entityTitle: conflictingItem.title,
+		});
+
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(500);
+		const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		expect(reservation?.payment_creation_state).toBe('reconciliation_required');
+		await db
+			.delete(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, expectedTransactionId));
+		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), expectedTransactionId, 'rejected');
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [recoveredProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		const [recoveredOrder] = await db.select().from(orders).where(eq(orders.id, reservation!.id));
+		expect(recoveredProposal?.status).toBe(ORDER_PROPOSAL_PHASES.rejected);
+		expect(recoveredOrder).toMatchObject({
+			payment_creation_state: 'created',
+			status: ORDER_PHASES.PAYMENT_FAILED,
+		});
+		expect(
+			await db
+				.select()
+				.from(chat_messages)
+				.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system'))),
+		).toEqual([expect.objectContaining({ metadata: { order_id: reservation!.id, type: 'proposal_rejected' } })]);
+		expect(await proposalAcceptedMailCount(actors.buyer.user.email)).toBe(0);
 	});
 
 	it('allows only the proposal buyer to abort while pending', async () => {

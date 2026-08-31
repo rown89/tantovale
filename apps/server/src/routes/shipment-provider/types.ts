@@ -19,6 +19,7 @@ export interface ShipmentCalculationData {
 		seller_civic_number: string;
 		seller_city_name: string;
 		seller_province_name: string;
+		seller_province_code: string;
 		seller_country_code: string;
 		seller_postal_code: number;
 		seller_phone: string;
@@ -38,6 +39,7 @@ export interface ShipmentCalculationData {
 		civic_number: string;
 		city_name: string;
 		province_name: string;
+		province_code: string;
 		country_code: string;
 		postal_code: number;
 		phone: string;

@@ -17,12 +17,11 @@ const mappedStatuses = [
 	[entityTrustapTransactionTypeValues.CREATED, ORDER_PHASES.PAYMENT_PENDING],
 	[entityTrustapTransactionTypeValues.JOINED, ORDER_PHASES.PAYMENT_PENDING],
 	[entityTrustapTransactionTypeValues.PAID, ORDER_PHASES.PAYMENT_CONFIRMED],
-	[entityTrustapTransactionTypeValues.TRACKED, ORDER_PHASES.SHIPPING_PENDING],
-	[entityTrustapTransactionTypeValues.DELIVERED, ORDER_PHASES.SHIPPING_CONFIRMED],
-	[entityTrustapTransactionTypeValues.COMPLAINED, ORDER_PHASES.SHIPPING_CONFIRMED],
-	[entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED, ORDER_PHASES.SHIPPING_CONFIRMED],
+	[entityTrustapTransactionTypeValues.TRACKED, ORDER_PHASES.SHIPPING_CONFIRMED],
+	[entityTrustapTransactionTypeValues.DELIVERED, ORDER_PHASES.COMPLETED],
+	[entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED, ORDER_PHASES.COMPLETED],
 	[entityTrustapTransactionTypeValues.FUNDS_RELEASED, ORDER_PHASES.COMPLETED],
-	[entityTrustapTransactionTypeValues.REJECTED, ORDER_PHASES.CANCELLED],
+	[entityTrustapTransactionTypeValues.REJECTED, ORDER_PHASES.PAYMENT_FAILED],
 	[entityTrustapTransactionTypeValues.CANCELLED, ORDER_PHASES.CANCELLED],
 	[entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT, ORDER_PHASES.PAYMENT_REFUNDED],
 	[entityTrustapTransactionTypeValues.PAYMENT_REFUNDED, ORDER_PHASES.PAYMENT_REFUNDED],
@@ -33,7 +32,7 @@ async function createProviderBackedOrder(
 ) {
 	const actors = await createCommerceActors();
 	const item = await createItemFixture(actors);
-	const transactionId = 1_900_001;
+	const transactionId = '1900001';
 	const order = await createOrderFixture(actors, item, {
 		item_price: item.price,
 		payment_transaction_id: transactionId,
@@ -75,15 +74,76 @@ async function waitForBlockedRequest(blocker: PoolClient, blockingProcessId: num
 	throw new Error('Webhook never waited on the item commerce lock');
 }
 
-async function postStatus(transactionId: number, status: string): Promise<Response> {
+async function postStatus(transactionId: string, status: string): Promise<Response> {
 	return app.request('/webhooks/trustap/transaction-update', {
 		method: 'POST',
-		headers: { 'content-type': 'application/json' },
+		headers: {
+			'content-type': 'application/json',
+			authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+		},
 		body: JSON.stringify({ event: 'transaction_status_updated', transaction_id: transactionId, status }),
 	});
 }
 
 describe('Trustap transaction webhook state mapping', () => {
+	it('persists a numeric max-int64 webhook id without precision loss', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const transactionId = '9223372036854775807';
+		const order = await createOrderFixture(actors, item, {
+			item_price: item.price,
+			payment_transaction_id: transactionId,
+			payment_creation_state: 'created',
+		});
+		const { db } = getTestDatabase();
+		await db.insert(entityTrustapTransactions).values({
+			entityId: item.id,
+			sellerId: actors.seller.profile.payment_provider_id,
+			buyerId: actors.buyer.profile.payment_provider_id,
+			transactionId,
+			status: entityTrustapTransactionTypeValues.CREATED,
+			price: item.price + order.platform_charge,
+			charge: order.payment_provider_charge,
+			chargeSeller: 0,
+			entityTitle: item.title,
+		});
+
+		const response = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+			},
+			body: `{"event":"transaction_status_updated","transaction_id":${transactionId},"status":"paid"}`,
+		});
+
+		expect(response.status).toBe(200);
+		const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(stored).toMatchObject({ payment_transaction_id: transactionId, status: ORDER_PHASES.PAYMENT_CONFIRMED });
+	});
+
+	it.each([
+		undefined,
+		'Bearer trustap-webhook-test-secret',
+		'Basic definitely-not-base64',
+		`Basic ${Buffer.from('wrong:credentials').toString('base64')}`,
+	])('rejects an unauthenticated webhook before reading or mutating its body (%s)', async (authorization) => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const headers: Record<string, string> = { 'content-type': 'application/json' };
+		if (authorization) headers.authorization = authorization;
+
+		const response = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ event: 'transaction_status_updated', transaction_id: transactionId, status: 'paid' }),
+		});
+
+		expect(response.status).toBe(401);
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_PENDING);
+	});
+
 	it.each(mappedStatuses)('maps Trustap %s to order phase %s', async (remoteStatus, expectedOrderStatus) => {
 		const { order, transactionId } = await createProviderBackedOrder();
 

@@ -4,6 +4,8 @@ import { z } from 'zod/v4';
 import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -30,6 +32,7 @@ import { getShippingCost } from '#queries/get-shipping-cost';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
+	const queryClient = useQueryClient();
 
 	const { setChatId, item, isProposalModalOpen, isCreatingProposal, setIsProposalModalOpen, handleProposal } =
 		useTantovaleStore();
@@ -39,6 +42,7 @@ export function ProposalDialog() {
 			.number()
 			.min(0.01)
 			.max(item?.price ? formatPrice(item?.price - 1) : 0),
+		shipping_quote_id: z.uuid(),
 	});
 
 	const form = useForm({
@@ -47,6 +51,7 @@ export function ProposalDialog() {
 			proposal_price: !item?.price ? 0 : formatPrice(item.price - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
 			shipping_label_id: '',
+			shipping_quote_id: '',
 		},
 		validators: {
 			onSubmit: formSchema,
@@ -63,6 +68,7 @@ export function ProposalDialog() {
 					item_id,
 					proposal_price,
 					shipping_label_id: value.shipping_label_id,
+					shipping_quote_id: value.shipping_quote_id,
 					message,
 				});
 
@@ -74,6 +80,8 @@ export function ProposalDialog() {
 						description: 'The seller will be notified to Accept or Reject the proposal.',
 						duration: 8000,
 					});
+				} else {
+					await queryClient.invalidateQueries({ queryKey: ['shipping_quote', 'proposal', item_id] });
 				}
 			} catch {
 				toast.error('Failed to submit proposal :(', {
@@ -96,28 +104,35 @@ export function ProposalDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', itemId],
+		queryKey: ['shipping_quote', 'proposal', itemId],
 		queryFn: async () => {
 			if (!itemId) return null;
-
-			const shippingCost = await getShippingCost(itemId);
-
-			if (shippingCost?.shipment_label_id) {
-				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
-			}
-
-			return shippingCost;
+			return getShippingCost(itemId);
 		},
 		enabled: isProposalModalOpen && hasMandatoryArguments,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		staleTime: 10 * 60 * 1_000,
+		refetchOnMount: true,
 	});
+
+	useEffect(() => {
+		if (!shippingCost) return;
+		form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
+		form.setFieldValue('shipping_quote_id', shippingCost.shipping_quote_id);
+	}, [form, shippingCost]);
 
 	const {
 		data: platformsCosts,
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', formPrice, shippingCost, item?.id],
+		queryKey: [
+			'platforms_costs',
+			'proposal',
+			formPrice,
+			shippingCost?.shipping_quote_id,
+			shippingCost?.amount,
+			item?.id,
+		],
 		queryFn: async () => {
 			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
 			const totalPrice = formatPriceToCents(formPrice);
@@ -127,7 +142,7 @@ export function ProposalDialog() {
 			return platformsCosts;
 		},
 		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingCost,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		staleTime: 10 * 60 * 1_000,
 	});
 
 	if (!item) return null;

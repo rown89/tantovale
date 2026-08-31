@@ -9,6 +9,7 @@ import {
 	GetTransactionStatusResponse,
 	CreateTransactionWithBothUsersProps,
 } from './types';
+import { canonicalTrustapId, parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
 
 export class PaymentProviderHttpError extends Error {
 	constructor(
@@ -71,9 +72,7 @@ function isTransactionResponse(value: unknown): value is CreateTransactionRespon
 	if (typeof value !== 'object' || value === null) return false;
 	const candidate = value as Partial<CreateTransactionResponse>;
 	return (
-		Number.isSafeInteger(candidate.id) &&
-		(candidate.id ?? 0) > 0 &&
-		(candidate.id ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
+		canonicalTrustapId(candidate.id) !== undefined &&
 		Number.isSafeInteger(candidate.price) &&
 		(candidate.price ?? 0) > 0 &&
 		(candidate.price ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
@@ -95,7 +94,7 @@ function isTransactionResponse(value: unknown): value is CreateTransactionRespon
 	);
 }
 
-export function buildGuestPaymentUrl(transactionId: number, orderId: number): string {
+export function buildGuestPaymentUrl(transactionId: TrustapId, orderId: number): string {
 	const base = new URL(environment.PAYMENT_PROVIDER_PAY_PAGE_URL);
 	const basePath = base.pathname.replace(/\/$/u, '');
 	const transactionBase = basePath.endsWith('/online/transactions') ? basePath : `${basePath}/online/transactions`;
@@ -135,12 +134,12 @@ export class PaymentProviderService {
 		});
 
 		if (!response.ok) {
-			throw new Error('Failed to create guest user');
+			throw new PaymentProviderHttpError('Failed to create guest user', response.status);
 		}
 
 		let data: unknown;
 		try {
-			data = await response.json();
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
 			throw new Error('Payment provider returned an invalid guest user');
 		}
@@ -177,7 +176,7 @@ export class PaymentProviderService {
 
 		let data: unknown;
 		try {
-			data = await response.json();
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
 			throw new Error('Payment provider returned an invalid transaction fee');
 		}
@@ -243,7 +242,7 @@ export class PaymentProviderService {
 
 		let data: unknown;
 		try {
-			data = await response.json();
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
 			throw new PaymentProviderAmbiguousError();
 		}
@@ -261,13 +260,13 @@ export class PaymentProviderService {
 			throw new PaymentProviderAmbiguousError();
 		}
 
-		return data;
+		return { ...data, id: canonicalTrustapId(data.id)! };
 	}
 
 	/**
 	 * Get transaction status
 	 */
-	async getTransactionStatus(transactionId: number): Promise<GetTransactionStatusResponse | undefined> {
+	async getTransactionStatus(transactionId: TrustapId): Promise<GetTransactionStatusResponse | undefined> {
 		const response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
 			method: 'GET',
 			headers: {
@@ -283,18 +282,18 @@ export class PaymentProviderService {
 
 		let data: unknown;
 		try {
-			data = await response.json();
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
 			throw new Error('Payment provider returned an invalid transaction');
 		}
 		if (!isTransactionResponse(data)) {
 			throw new Error('Payment provider returned an invalid transaction');
 		}
-		return data as GetTransactionStatusResponse;
+		return { ...data, id: canonicalTrustapId(data.id)! };
 	}
 
 	async cancelGuestTransaction(
-		transactionId: number,
+		transactionId: TrustapId,
 		actingProviderUserId: string,
 	): Promise<CreateTransactionResponse> {
 		let response: Response;
@@ -319,39 +318,18 @@ export class PaymentProviderService {
 		}
 		let data: unknown;
 		try {
-			data = await response.json();
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
 			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
 		}
 		if (
 			!isTransactionResponse(data) ||
-			data.id !== transactionId ||
+			canonicalTrustapId(data.id) !== transactionId ||
 			data.status !== 'cancelled' ||
 			(data.buyer_id !== actingProviderUserId && data.seller_id !== actingProviderUserId)
 		) {
 			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
 		}
-		return data;
-	}
-
-	/**
-	 * Verify webhook signature (implement based on Trustap documentation)
-	 */
-	verifyWebhookSignature(payload: unknown, signature: string | undefined): boolean {
-		// TODO: Implement webhook signature verification based on Trustap documentation
-		// This is a placeholder - you should implement proper signature verification
-		if (!signature) {
-			console.warn('No webhook signature provided');
-			return false;
-		}
-
-		// Example implementation (adjust based on Trustap's signature method):
-		// const expectedSignature = crypto
-		//   .createHmac('sha256', this.webhook_secret)
-		//   .update(JSON.stringify(payload))
-		//   .digest('hex');
-		// return signature === expectedSignature;
-
-		return true; // Placeholder - implement proper verification
+		return { ...data, id: canonicalTrustapId(data.id)! };
 	}
 }

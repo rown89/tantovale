@@ -115,6 +115,7 @@ export function buildServerEnvironment(
 		PAYMENT_PROVIDER_CLIENT_ID: 'trustap-test-client',
 		PAYMENT_PROVIDER_CLIENT_SECRET: 'trustap-test-client-secret',
 		PAYMENT_PROVIDER_WEBHOOK_SECRET: 'trustap-webhook-test-secret',
+		PAYMENT_PROVIDER_WEBHOOK_USERNAME: 'trustap-webhook-test-user',
 		PAYMENT_PROVIDER_PAY_PAGE_URL: 'http://trustap.test/online/transactions',
 		PROVIDER_REQUEST_TIMEOUT_MS: '150',
 		POST_PAYMENT_REDIRECT_URL: 'http://storefront.test',

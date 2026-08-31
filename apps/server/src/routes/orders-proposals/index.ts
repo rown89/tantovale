@@ -41,7 +41,6 @@ import { sendProposalRejectedMessage } from '#mailer/templates/proposals/buyer/p
 import { sendProposalCancelledMessage } from '#mailer/templates/proposals/seller/proposal-buyer-cancelled';
 import { sendNewProposalMessageSeller } from '#mailer/templates/proposals/seller/proposal-received';
 import { authPath, environment } from '#utils/constants';
-import { formatPriceToCents } from '#utils/price-formatter';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 
 import {
@@ -49,7 +48,7 @@ import {
 	PaymentProviderHttpError,
 	PaymentProviderService,
 } from '../payments/payment-provider.service';
-import { ShipmentService } from '../shipment-provider/shipment.service';
+import { parseProviderDecimalToCents, ShipmentService } from '../shipment-provider/shipment.service';
 import { shipmentMatchesShippingState, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
 
 const postgresIntegerMax = 2_147_483_647;
@@ -61,11 +60,7 @@ function parseResourceId(value: string): number | undefined {
 }
 
 function toPositiveCents(value: string | undefined): number | undefined {
-	if (!value) return undefined;
-	const decimal = Number(value);
-	if (!Number.isFinite(decimal) || decimal <= 0) return undefined;
-	const cents = formatPriceToCents(decimal);
-	return Number.isSafeInteger(cents) && cents > 0 && cents <= postgresIntegerMax ? cents : undefined;
+	return value ? parseProviderDecimalToCents(value) : undefined;
 }
 
 async function bestEffortEmail(send: () => Promise<unknown>): Promise<void> {

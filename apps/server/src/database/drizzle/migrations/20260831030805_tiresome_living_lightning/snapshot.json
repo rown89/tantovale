@@ -1335,7 +1335,7 @@
 			"table": "entity_trustap_transactions"
 		},
 		{
-			"type": "integer",
+			"type": "bigint",
 			"typeSchema": null,
 			"notNull": true,
 			"dimensions": 0,
@@ -2212,7 +2212,7 @@
 			"table": "orders"
 		},
 		{
-			"type": "integer",
+			"type": "bigint",
 			"typeSchema": null,
 			"notNull": false,
 			"dimensions": 0,
@@ -2225,7 +2225,7 @@
 			"table": "orders"
 		},
 		{
-			"type": "integer",
+			"type": "bigint",
 			"typeSchema": null,
 			"notNull": false,
 			"dimensions": 0,
@@ -2292,7 +2292,7 @@
 		{
 			"type": "integer",
 			"typeSchema": null,
-			"notNull": false,
+			"notNull": true,
 			"dimensions": 0,
 			"default": null,
 			"generated": null,
@@ -5484,6 +5484,27 @@
 		{
 			"value": "\"payment_cancellation_state\" IN ('none', 'cancelling', 'reconciliation_required', 'cancelled')",
 			"name": "orders_payment_cancellation_state_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"value": "\"status\" <> 'pending' OR (\"shipping_quote_id\" IS NOT NULL AND \"shipping_price\" IS NOT NULL AND \"shipping_price\" > 0)",
+			"name": "orders_proposals_pending_quote_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders_proposals"
+		},
+		{
+			"value": "\"status\" IN ('payment_pending', 'payment_confirmed', 'payment_failed', 'payment_refunded', 'shipping_pending', 'shipping_confirmed', 'completed', 'cancelled', 'expired')",
+			"name": "orders_status_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"value": "\"item_price\" > 0",
+			"name": "orders_item_price_positive",
 			"entityType": "checks",
 			"schema": "public",
 			"table": "orders"

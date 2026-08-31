@@ -72,12 +72,18 @@ export async function getTrustapGuestIdentities(
 	return (await response.json()) as Array<{ client_id: number; created_at: string; email: string; id: string }>;
 }
 
-export async function setTrustapTransactionStatus(url: string, transactionId: number, status: string): Promise<void> {
+export async function setTrustapTransactionStatus(
+	url: string,
+	transactionId: number | string,
+	status: string,
+): Promise<void> {
 	const origin = assertLocalStubUrl(url).origin;
+	const numericId = typeof transactionId === 'string' ? Number(transactionId) : transactionId;
+	const controlId = Number.isSafeInteger(numericId) ? numericId : transactionId;
 	const response = await fetch(`${origin}/__test/transaction-status`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ transaction_id: transactionId, status }),
+		body: JSON.stringify({ transaction_id: controlId, status }),
 		signal: AbortSignal.timeout(5_000),
 	});
 	await expectControlResponse(response, 'Trustap transaction status update');

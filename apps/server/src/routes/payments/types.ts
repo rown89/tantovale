@@ -54,7 +54,8 @@ export interface CreateTransactionResponse {
 	currency: string;
 	description: string;
 	funds_released: string;
-	id: number;
+	/** A positive Trustap signed-int64 identifier, represented losslessly. */
+	id: string;
 	is_payment_in_progress: boolean;
 	joined: string;
 	paid: string;

@@ -36,7 +36,7 @@ export function BuyNowDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', itemId],
+		queryKey: ['shipping_quote', 'buy_now', itemId],
 		queryFn: async () => {
 			if (!itemId) return null;
 
@@ -45,7 +45,8 @@ export function BuyNowDialog() {
 			return shippingCost;
 		},
 		enabled: isBuyNowModalOpen && hasMandatoryArguments,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		staleTime: 10 * 60 * 1_000,
+		refetchOnMount: true,
 	});
 
 	const {
@@ -53,7 +54,7 @@ export function BuyNowDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', shippingCost, itemId, itemPrice],
+		queryKey: ['platforms_costs', 'buy_now', shippingCost?.shipping_quote_id, shippingCost?.amount, itemId, itemPrice],
 		queryFn: async () => {
 			if (!itemPrice) return null;
 
@@ -64,7 +65,7 @@ export function BuyNowDialog() {
 			return platformsCosts;
 		},
 		enabled: isBuyNowModalOpen && hasMandatoryArguments && !!shippingCost,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		staleTime: 10 * 60 * 1_000,
 	});
 
 	if (!item) return null;

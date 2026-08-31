@@ -354,7 +354,7 @@ describe('item and listing routes', () => {
 			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
 		});
 
-		it('recovers a response-lost guest provision with the same durable client identity', async () => {
+		it('keeps a response-lost guest provision in manual reconciliation without a second POST', async () => {
 			const actors = await createCommerceActors();
 			const { db } = getTestDatabase();
 			await db
@@ -381,14 +381,18 @@ describe('item and listing routes', () => {
 			]);
 
 			await setProviderScenario(providerUrl, 'success');
-			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(201);
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
 			const [recovered] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
 			expect(recovered).toMatchObject({
-				payment_provider_id: `guest-${actors.seller.profile.id}`,
+				payment_provider_id: null,
 				payment_provider_identity_attempt_id: interrupted?.payment_provider_identity_attempt_id,
-				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.CREATED,
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
 			});
 			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
+			const guestRequests = (await getProviderRequests(providerUrl)).filter(
+				({ path }) => path === '/api/v1/guest_users',
+			);
+			expect(guestRequests).toHaveLength(1);
 		});
 
 		it('holds no database transaction or identity lock while Trustap guest creation is delayed', async () => {
@@ -428,7 +432,7 @@ describe('item and listing routes', () => {
 			expect((await responsePromise).status).toBe(201);
 		});
 
-		it('recovers one remote guest after local identity finalization fails', async () => {
+		it('requires manual reconciliation after local identity finalization fails without another POST', async () => {
 			const actors = await createCommerceActors();
 			const { client, db } = getTestDatabase();
 			await db
@@ -458,10 +462,14 @@ describe('item and listing routes', () => {
 				await client.query('DROP FUNCTION reject_identity_finalization()');
 			}
 			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
-			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(201);
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
 			expect(await getTrustapGuestIdentities(providerUrl)).toHaveLength(1);
 			const [profile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
-			expect(profile?.payment_provider_identity_state).toBe(PAYMENT_PROVIDER_IDENTITY_STATES.CREATED);
+			expect(profile?.payment_provider_identity_state).toBe(PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED);
+			const guestRequests = (await getProviderRequests(providerUrl)).filter(
+				({ path }) => path === '/api/v1/guest_users',
+			);
+			expect(guestRequests).toHaveLength(1);
 		});
 
 		it('never stores or uses an invalid Trustap guest response', async () => {
@@ -486,6 +494,44 @@ describe('item and listing routes', () => {
 				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
 			});
 			expect(await db.select().from(items)).toEqual([]);
+		});
+
+		it('clears a documented deterministic guest rejection but keeps 422 ambiguous', async () => {
+			const actors = await createCommerceActors();
+			const { db } = getTestDatabase();
+			const providerUrl = environment.PAYMENT_PROVIDER_API_URL;
+			if (!providerUrl) throw new Error('Missing worker-local Trustap stub URL');
+			await db
+				.update(profiles)
+				.set({
+					payment_provider_id: null,
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+				})
+				.where(eq(profiles.id, actors.seller.profile.id));
+
+			await setProviderScenario(providerUrl, 'unauthorized');
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			let [profile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(profile).toMatchObject({
+				payment_provider_identity_attempt_id: null,
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+			});
+
+			await setProviderScenario(providerUrl, 'unprocessable');
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			[profile] = await db.select().from(profiles).where(eq(profiles.id, actors.seller.profile.id));
+			expect(profile).toMatchObject({
+				payment_provider_id: null,
+				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
+			});
+
+			await setProviderScenario(providerUrl, 'success');
+			expect((await authJson('/item/auth/new', 'POST', actors.seller.jar, validItemBody(actors))).status).toBe(400);
+			const guestRequests = (await getProviderRequests(providerUrl)).filter(
+				({ path }) => path === '/api/v1/guest_users',
+			);
+			expect(guestRequests).toHaveLength(2);
 		});
 
 		it('releases preflight transactions before concurrent requests wait on the payment identity lock', async () => {

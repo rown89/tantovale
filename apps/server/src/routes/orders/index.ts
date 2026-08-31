@@ -50,7 +50,7 @@ export const ordersRoute = createRouter()
 				return {
 					id: order.orders.id,
 					status: order.orders.status as (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES],
-					original_price: order.orders.item_price ?? order.items.price,
+					original_price: order.orders.item_price,
 					payment_provider_charge: order.orders.payment_provider_charge,
 					platform_charge: order.orders.platform_charge,
 					shipping_price: order.orders.shipping_price,

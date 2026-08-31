@@ -54,7 +54,10 @@ describe('M07 commerce migration', () => {
 				ALTER TABLE orders DROP CONSTRAINT orders_order_proposal_id_orders_proposals_id_fkey;
 				ALTER TABLE orders DROP CONSTRAINT orders_shipping_quote_id_shipping_quotes_id_fkey;
 				ALTER TABLE orders DROP CONSTRAINT orders_payment_creation_state_check;
-				ALTER TABLE orders DROP CONSTRAINT orders_payment_cancellation_state_check;
+					ALTER TABLE orders DROP CONSTRAINT orders_payment_cancellation_state_check;
+					ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+					ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_item_price_positive;
+					ALTER TABLE orders_proposals DROP CONSTRAINT IF EXISTS orders_proposals_pending_quote_check;
 				ALTER TABLE orders DROP COLUMN legacy_payment_transaction_id;
 				ALTER TABLE orders DROP COLUMN payment_attempt_id;
 				ALTER TABLE orders DROP COLUMN payment_creation_state;
@@ -71,15 +74,18 @@ describe('M07 commerce migration', () => {
 				ALTER TABLE profiles DROP CONSTRAINT profiles_payment_provider_identity_attempt_id_key;
 				ALTER TABLE profiles DROP CONSTRAINT profiles_payment_provider_identity_state_check;
 				ALTER TABLE profiles DROP COLUMN payment_provider_identity_attempt_id;
-				ALTER TABLE profiles DROP COLUMN payment_provider_identity_state;
+					ALTER TABLE profiles DROP COLUMN payment_provider_identity_state;
+					ALTER TABLE entity_trustap_transactions ALTER COLUMN transaction_id TYPE integer USING transaction_id::integer;
+					ALTER TABLE orders ALTER COLUMN payment_transaction_id TYPE integer USING payment_transaction_id::integer;
 			`);
 
 			await migrationClient.query(`
 				SET session_replication_role = replica;
 				INSERT INTO users (id, username, email, password) OVERRIDING SYSTEM VALUE VALUES
 					(1, 'seller', 'seller@example.test', 'x'), (2, 'buyer', 'buyer@example.test', 'x');
-				INSERT INTO profiles (id, user_id, name, surname, gender) OVERRIDING SYSTEM VALUE VALUES
-					(1, 1, 'Seller', 'One', 'male'), (2, 2, 'Buyer', 'One', 'female');
+					INSERT INTO profiles (id, user_id, name, surname, gender) OVERRIDING SYSTEM VALUE VALUES
+						(1, 1, 'Seller', 'One', 'male'), (2, 2, 'Buyer', 'One', 'female');
+					UPDATE profiles SET payment_provider_id = CASE id WHEN 1 THEN 'legacy-seller' ELSE 'legacy-buyer' END;
 				INSERT INTO addresses (id, profile_id, street_address, civic_number, city_id, province_id, postal_code, phone)
 					OVERRIDING SYSTEM VALUE VALUES
 					(1, 1, 'Seller street', '1', 1, 1, 10000, '1'), (2, 2, 'Buyer street', '2', 1, 1, 10000, '2');
@@ -88,8 +94,10 @@ describe('M07 commerce migration', () => {
 					(1, 'Subcategory', 'subcategory', 1);
 				INSERT INTO items (id, profile_id, subcategory_id, address_id, title, description, published, price, easy_pay)
 					OVERRIDING SYSTEM VALUE VALUES
-					(1, 1, 1, 1, 'Item one', 'Description', true, 10000, true),
-					(2, 1, 1, 1, 'Item two', 'Description', true, 20000, true);
+						(1, 1, 1, 1, 'Item one', 'Description', true, 10000, true),
+						(2, 1, 1, 1, 'Item two', 'Description', true, 20000, true),
+						(3, 1, 1, 1, 'Raw paid item', 'Description', true, 30000, true),
+						(4, 1, 1, 1, 'Unknown state item', 'Description', true, 40000, true);
 				INSERT INTO orders_proposals
 					(id, item_id, profile_id, original_price, proposal_price, payment_provider_charge, platform_charge, shipping_label_id, status, created_at)
 					OVERRIDING SYSTEM VALUE VALUES
@@ -99,12 +107,12 @@ describe('M07 commerce migration', () => {
 				SELECT setval(pg_get_serial_sequence('orders_proposals', 'id'), 2, true);
 				INSERT INTO chat_messages (id, chat_room_id, sender_id, message, message_type, order_proposal_id)
 					OVERRIDING SYSTEM VALUE VALUES (1, 1, 2, 'Preserve duplicate proposal history', 'proposal', 2);
-				INSERT INTO entity_trustap_transactions
-					(id, entity_id, transaction_id, status, price, charge, charge_seller, entity_title, created_at)
-					OVERRIDING SYSTEM VALUE VALUES
-					(1, 2, 500, 'created', 20000, 1000, 0, 'Item two ambiguous oldest', now() - interval '2 hours'),
-					(2, 1, 500, 'created', 10000, 500, 0, 'Item one ambiguous duplicate', now() - interval '1 hour'),
-					(3, 1, 700, 'created', 10000, 500, 0, 'Item one correlated', now() - interval '30 minutes');
+					INSERT INTO entity_trustap_transactions
+						(id, entity_id, seller_id, buyer_id, transaction_id, status, price, charge, charge_seller, entity_title, created_at)
+						OVERRIDING SYSTEM VALUE VALUES
+						(1, 2, 'legacy-seller', 'legacy-buyer', 500, 'created', 20180, 1000, 0, 'Item two ambiguous oldest', now() - interval '2 hours'),
+						(2, 1, 'legacy-seller', 'legacy-buyer', 500, 'created', 10090, 500, 0, 'Item one ambiguous duplicate', now() - interval '1 hour'),
+						(3, 1, 'legacy-seller', 'legacy-buyer', 700, 'created', 10090, 500, 0, 'Item one correlated', now() - interval '30 minutes');
 				INSERT INTO orders
 					(id, item_id, payment_provider_charge, platform_charge, shipping_label_id, shipping_price, buyer_id, seller_id, buyer_address, seller_address, payment_transaction_id, status, created_at)
 					OVERRIDING SYSTEM VALUE VALUES
@@ -113,7 +121,9 @@ describe('M07 commerce migration', () => {
 					(3, 2, 1000, 180, 'shipment-3', 750, 2, 1, 2, 1, 500, 'payment_pending', now() - interval '2 hours'),
 					(4, 2, 900, 160, 'shipment-4', 750, 2, 1, 2, 1, 600, 'payment_pending', now() - interval '1 hour'),
 					(5, 1, 500, 90, 'shipment-5', 750, 2, 1, 2, 1, 700, 'payment_pending', now() - interval '30 minutes'),
-					(6, 1, 500, 90, 'shipment-6', 750, 2, 1, 2, 1, 700, 'payment_pending', now() - interval '20 minutes');
+						(6, 1, 500, 90, 'shipment-6', 750, 2, 1, 2, 1, 700, 'payment_pending', now() - interval '20 minutes'),
+						(7, 3, 500, 90, 'shipment-7', 750, 2, 1, 2, 1, NULL, 'paid', now() - interval '10 minutes'),
+						(8, 4, 500, 90, 'shipment-8', 750, 2, 1, 2, 1, NULL, 'provider_future_state', now() - interval '5 minutes');
 				SET session_replication_role = DEFAULT;
 			`);
 
@@ -142,11 +152,9 @@ describe('M07 commerce migration', () => {
 			await migrationClient.query('COMMIT');
 
 			const writerResult = await writerResultPromise;
-			if (!writerResult.ok) {
-				const writerError = writerResult.error as { code?: string; message?: string };
-				throw new Error(`Concurrent writer failed: ${writerError.code ?? 'unknown'} ${writerError.message ?? ''}`);
-			}
-			expect(writerResult.ok).toBe(true);
+			expect(writerResult.ok).toBe(false);
+			if (writerResult.ok) throw new Error('Legacy pending proposal writer unexpectedly bypassed the constraint');
+			expect((writerResult.error as { code?: string }).code).toBe('23514');
 
 			const proposals = await migrationClient.query<{ id: number; status: string }>(
 				'SELECT id, status FROM orders_proposals ORDER BY id',
@@ -160,19 +168,19 @@ describe('M07 commerce migration', () => {
 			);
 			expect(history.rows[0]?.order_proposal_id).toBe(2);
 
-			const providerRows = await migrationClient.query<{ id: number; entity_id: number; transaction_id: number }>(
+			const providerRows = await migrationClient.query<{ id: number; entity_id: number; transaction_id: string }>(
 				'SELECT id, entity_id, transaction_id FROM entity_trustap_transactions ORDER BY id',
 			);
 			expect(providerRows.rows).toEqual([
-				{ id: 1, entity_id: 2, transaction_id: 500 },
-				{ id: 3, entity_id: 1, transaction_id: 700 },
+				{ id: 1, entity_id: 2, transaction_id: '500' },
+				{ id: 3, entity_id: 1, transaction_id: '700' },
 			]);
 			const reconciledOrders = await migrationClient.query<{
 				id: number;
 				status: string;
 				payment_creation_state: string;
-				payment_transaction_id: number | null;
-				legacy_payment_transaction_id: number | null;
+				payment_transaction_id: string | null;
+				legacy_payment_transaction_id: string | null;
 			}>(
 				'SELECT id, status, payment_creation_state, payment_transaction_id, legacy_payment_transaction_id FROM orders ORDER BY id',
 			);
@@ -187,21 +195,54 @@ describe('M07 commerce migration', () => {
 				id: 5,
 				status: 'payment_pending',
 				payment_creation_state: 'created',
-				payment_transaction_id: 700,
+				payment_transaction_id: '700',
 			});
 			expect(
-				reconciledOrders.rows.filter(({ legacy_payment_transaction_id }) => legacy_payment_transaction_id === 500),
+				reconciledOrders.rows.filter(({ legacy_payment_transaction_id }) => legacy_payment_transaction_id === '500'),
 			).toHaveLength(3);
 			expect(reconciledOrders.rows[5]).toMatchObject({
 				id: 6,
 				status: 'cancelled',
 				payment_creation_state: 'reconciliation_required',
 				payment_transaction_id: null,
-				legacy_payment_transaction_id: 700,
+				legacy_payment_transaction_id: '700',
 			});
+			expect(reconciledOrders.rows[6]).toMatchObject({
+				id: 7,
+				status: 'payment_confirmed',
+				payment_creation_state: 'created',
+			});
+			expect(reconciledOrders.rows[7]).toMatchObject({
+				id: 8,
+				status: 'payment_pending',
+				payment_creation_state: 'reconciliation_required',
+			});
+			const frozenPrices = await migrationClient.query<{ id: number; item_price: number }>(
+				'SELECT id, item_price FROM orders ORDER BY id',
+			);
+			expect(frozenPrices.rows).toEqual([
+				{ id: 1, item_price: 10000 },
+				{ id: 2, item_price: 10000 },
+				{ id: 3, item_price: 20000 },
+				{ id: 4, item_price: 20000 },
+				{ id: 5, item_price: 10000 },
+				{ id: 6, item_price: 10000 },
+				{ id: 7, item_price: 30000 },
+				{ id: 8, item_price: 40000 },
+			]);
+			await expect(
+				migrationClient.query(
+					"INSERT INTO orders (payment_provider_charge, platform_charge, shipping_label_id, shipping_price, status, item_price) VALUES (1, 1, 'x', 1, 'paid', 1)",
+				),
+			).rejects.toMatchObject({ code: '23514' });
+			await expect(
+				migrationClient.query(
+					"INSERT INTO orders_proposals (original_price, proposal_price, payment_provider_charge, platform_charge, shipping_label_id, status) VALUES (1, 1, 1, 1, 'x', 'pending')",
+				),
+			).rejects.toMatchObject({ code: '23514' });
 			expect(
 				reconciledOrders.rows.some(
-					({ status, payment_transaction_id }) => status === 'payment_pending' && payment_transaction_id === 500,
+					({ status, payment_transaction_id }) => status === 'payment_pending' && payment_transaction_id === '500',
 				),
 			).toBe(false);
 
@@ -217,6 +258,8 @@ describe('M07 commerce migration', () => {
 					'duplicate_pending_proposal',
 					'duplicate_active_order',
 					'duplicate_order_transaction',
+					'legacy_order_item_price_backfill',
+					'legacy_order_provider_status',
 				]),
 			);
 			expect(audit.rows.every(({ snapshot }) => typeof snapshot.id === 'number')).toBe(true);

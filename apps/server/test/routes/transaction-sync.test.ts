@@ -10,7 +10,12 @@ import {
 } from '../../src/database/schemas/enumerated_values';
 import { entityTrustapTransactions, orders, shipping_quotes } from '../../src/database/schemas/schema';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
-import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
+import {
+	createCommerceActors,
+	createItemFixture,
+	createOrderFixture,
+	createProposalFixture,
+} from '../fixtures/commerce';
 import { getTestDatabase } from '../helpers/database';
 import { setTrustapTransactionStatus } from '../helpers/providers';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
@@ -19,12 +24,11 @@ const mappedStatuses = [
 	[entityTrustapTransactionTypeValues.CREATED, ORDER_PHASES.PAYMENT_PENDING],
 	[entityTrustapTransactionTypeValues.JOINED, ORDER_PHASES.PAYMENT_PENDING],
 	[entityTrustapTransactionTypeValues.PAID, ORDER_PHASES.PAYMENT_CONFIRMED],
-	[entityTrustapTransactionTypeValues.TRACKED, ORDER_PHASES.SHIPPING_PENDING],
-	[entityTrustapTransactionTypeValues.DELIVERED, ORDER_PHASES.SHIPPING_CONFIRMED],
-	[entityTrustapTransactionTypeValues.COMPLAINED, ORDER_PHASES.SHIPPING_CONFIRMED],
-	[entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED, ORDER_PHASES.SHIPPING_CONFIRMED],
+	[entityTrustapTransactionTypeValues.TRACKED, ORDER_PHASES.SHIPPING_CONFIRMED],
+	[entityTrustapTransactionTypeValues.DELIVERED, ORDER_PHASES.COMPLETED],
+	[entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED, ORDER_PHASES.COMPLETED],
 	[entityTrustapTransactionTypeValues.FUNDS_RELEASED, ORDER_PHASES.COMPLETED],
-	[entityTrustapTransactionTypeValues.REJECTED, ORDER_PHASES.CANCELLED],
+	[entityTrustapTransactionTypeValues.REJECTED, ORDER_PHASES.PAYMENT_FAILED],
 	[entityTrustapTransactionTypeValues.CANCELLED, ORDER_PHASES.CANCELLED],
 	[entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT, ORDER_PHASES.PAYMENT_REFUNDED],
 	[entityTrustapTransactionTypeValues.PAYMENT_REFUNDED, ORDER_PHASES.PAYMENT_REFUNDED],
@@ -42,8 +46,11 @@ async function createStaleProviderBackedOrder(
 	const actors = await createCommerceActors();
 	const item = await createItemFixture(actors);
 	const order = await createOrderFixture(actors, item, {
-		item_price: item.price,
-		payment_transaction_id: trustapTransactionFixture.id,
+		item_price: trustapTransactionFixture.price - 500,
+		platform_charge: 500,
+		payment_provider_charge: trustapTransactionFixture.charge,
+		shipping_price: trustapTransactionFixture.postage_fee,
+		payment_transaction_id: String(trustapTransactionFixture.id),
 		payment_creation_state: 'created',
 	});
 	const { db } = getTestDatabase();
@@ -51,7 +58,7 @@ async function createStaleProviderBackedOrder(
 		entityId: item.id,
 		sellerId: trustapTransactionFixture.seller_id,
 		buyerId: trustapTransactionFixture.buyer_id,
-		transactionId: trustapTransactionFixture.id,
+		transactionId: String(trustapTransactionFixture.id),
 		status: initialStatus,
 		price: trustapTransactionFixture.price,
 		charge: trustapTransactionFixture.charge,
@@ -59,7 +66,7 @@ async function createStaleProviderBackedOrder(
 		entityTitle: item.title,
 		updated_at: new Date(0),
 	});
-	return { order, transactionId: trustapTransactionFixture.id };
+	return { order, transactionId: String(trustapTransactionFixture.id) };
 }
 
 describe('Trustap transaction polling state mapping', () => {
@@ -97,6 +104,27 @@ describe('Trustap transaction polling state mapping', () => {
 		);
 		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([]);
 		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.id, quoteId))).toEqual([]);
+	});
+
+	it('removes a stale PREPARING order without deleting the quote retained by its pending proposal', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const proposal = await createProposalFixture(actors, item);
+		const order = await createOrderFixture(actors, item, {
+			order_proposal_id: proposal.id,
+			shipping_quote_id: proposal.shipping_quote_id,
+			shipping_price: proposal.shipping_price!,
+			payment_creation_state: PAYMENT_CREATION_STATES.PREPARING,
+			updated_at: new Date(0),
+		});
+		const { db } = getTestDatabase();
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([]);
+		expect(
+			await db.select().from(shipping_quotes).where(eq(shipping_quotes.id, proposal.shipping_quote_id!)),
+		).toHaveLength(1);
 	});
 
 	it('moves stale CREATING to visible manual reconciliation without retrying or releasing evidence', async () => {

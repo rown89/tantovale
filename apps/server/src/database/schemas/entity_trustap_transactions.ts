@@ -1,4 +1,4 @@
-import { pgTable, integer, timestamp, text, boolean, varchar, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, pgTable, integer, timestamp, text, boolean, varchar, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
@@ -14,7 +14,7 @@ export const entityTrustapTransactions = pgTable(
 		}),
 		sellerId: text('seller_id'),
 		buyerId: text('buyer_id'),
-		transactionId: integer('transaction_id').notNull(),
+		transactionId: bigint('transaction_id', { mode: 'string' }).notNull(),
 		transactionType: varchar('transaction_type', { length: 255 }).notNull().default('online_payment'),
 		status: entityTrustapTransactionTypeEnum('status').notNull(),
 		price: integer('price').notNull(),

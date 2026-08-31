@@ -5,7 +5,7 @@ import type { DrizzleClient } from '#database/index';
 import { addressStatus, PAYMENT_PROVIDER_IDENTITY_STATES } from '#database/schemas/enumerated_values';
 import { addresses, profiles } from '#db-schema';
 import type { User } from '#lib/types';
-import { PaymentProviderService } from '../routes/payments/payment-provider.service';
+import { PaymentProviderHttpError, PaymentProviderService } from '../routes/payments/payment-provider.service';
 import { environment } from '#utils/constants';
 
 import { acquirePaymentProviderIdentityLock } from './payment-provider-identity-lock';
@@ -16,7 +16,6 @@ export async function ensurePaymentProviderIdentity(
 	requestIp: string,
 ): Promise<void> {
 	const waitDeadline = Date.now() + environment.PROVIDER_REQUEST_TIMEOUT_MS * 2;
-	let waitedForAnotherAttempt = false;
 	let preparation:
 		| { done: true }
 		| { wait: true }
@@ -44,14 +43,11 @@ export async function ensurePaymentProviderIdentity(
 				.limit(1);
 			if (!profile) throw new Error('Profile not found');
 			if (profile.payment_provider_id) return { done: true as const };
+			if (profile.identityState === PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED) {
+				throw new Error('Payment provider identity requires manual reconciliation');
+			}
 			if (profile.identityState === PAYMENT_PROVIDER_IDENTITY_STATES.CREATING) {
 				return { wait: true as const };
-			}
-			if (
-				waitedForAnotherAttempt &&
-				profile.identityState === PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED
-			) {
-				throw new Error('Payment provider identity requires reconciliation');
 			}
 			const [address] = await identityTx
 				.select({ country_code: addresses.country_code })
@@ -81,7 +77,6 @@ export async function ensurePaymentProviderIdentity(
 			};
 		});
 		if ('done' in preparation) break;
-		waitedForAnotherAttempt = true;
 		if (Date.now() >= waitDeadline) {
 			await db.transaction(async (identityTx) => {
 				await acquirePaymentProviderIdentityLock(identityTx, user.profile_id);
@@ -122,6 +117,25 @@ export async function ensurePaymentProviderIdentity(
 				);
 		});
 	};
+	const clearDeterministicAttempt = async () => {
+		await db.transaction(async (identityTx) => {
+			await acquirePaymentProviderIdentityLock(identityTx, user.profile_id);
+			await identityTx
+				.update(profiles)
+				.set({
+					payment_provider_identity_attempt_id: null,
+					payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.UNINITIALIZED,
+					updated_at: new Date(),
+				})
+				.where(
+					and(
+						eq(profiles.id, user.profile_id),
+						eq(profiles.payment_provider_identity_attempt_id, preparation.attemptId),
+						eq(profiles.payment_provider_identity_state, PAYMENT_PROVIDER_IDENTITY_STATES.CREATING),
+					),
+				);
+		});
+	};
 
 	let guest: Awaited<ReturnType<PaymentProviderService['createGuestUser']>>;
 	try {
@@ -134,7 +148,11 @@ export async function ensurePaymentProviderIdentity(
 			tos_acceptance: { unix_timestamp: Math.floor(Date.now() / 1_000), ip: requestIp },
 		});
 	} catch (error) {
-		await markReconciliationRequired();
+		if (error instanceof PaymentProviderHttpError && [400, 401, 403, 404].includes(error.status)) {
+			await clearDeterministicAttempt();
+		} else {
+			await markReconciliationRequired();
+		}
 		throw error;
 	}
 

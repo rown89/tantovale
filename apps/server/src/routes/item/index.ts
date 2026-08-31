@@ -39,13 +39,16 @@ import {
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
-import { formatPriceToCents } from '#utils/price-formatter';
 import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
 import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
 import { ensurePaymentProviderIdentity } from '#lib/payment-provider-identity';
 import { acquireItemCommerceLock, itemCommerceOrderBlockingPredicate } from '#lib/item-commerce-lock';
 
-import { ShipmentService, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
+import {
+	parseProviderDecimalToCents,
+	ShipmentService,
+	shippingSnapshotFingerprint,
+} from '../shipment-provider/shipment.service';
 import {
 	buildGuestPaymentUrl,
 	PaymentProviderHttpError,
@@ -846,7 +849,10 @@ export const itemRoute = createRouter()
 						paymentAttemptId,
 					);
 					const costs = await calculatePlatformCosts(
-						{ price: preparation.transactionPrice, postage_fee: formatPriceToCents(Number(quote.amount)) },
+						{
+							price: preparation.transactionPrice,
+							postage_fee: parseProviderDecimalToCents(quote.amount),
+						},
 						{ payment_provider_charge: true },
 					);
 					if (

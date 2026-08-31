@@ -25,7 +25,6 @@ import type { Rate, Shipment, ShipmentCreateRequest } from 'shippo/models/compon
 import type { ShipmentCalculationData } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
-import { formatPriceToCents } from '#utils/price-formatter';
 
 const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
@@ -43,6 +42,16 @@ export class ShippingProviderOperationalError extends Error {
 type DatabaseQuery = Pick<ReturnType<typeof createClient>['db'], 'select'>;
 
 const shippingQuoteTtlMs = 15 * 60 * 1_000;
+const postgresIntegerMax = 2_147_483_647n;
+
+export function parseProviderDecimalToCents(amount: string): number | undefined {
+	const match = /^(\d+)(?:\.(\d+))?$/.exec(amount);
+	if (!match) return undefined;
+	const fraction = match[2] ?? '';
+	if (fraction.length > 2 && /[^0]/.test(fraction.slice(2))) return undefined;
+	const cents = BigInt(match[1]!) * 100n + BigInt((fraction.slice(0, 2) + '00').slice(0, 2));
+	return cents > 0n && cents <= postgresIntegerMax ? Number(cents) : undefined;
+}
 
 export function shippingSnapshotFingerprint({ itemData, buyerProfile }: ShipmentCalculationData): string {
 	const canonical = [
@@ -62,6 +71,7 @@ export function shippingSnapshotFingerprint({ itemData, buyerProfile }: Shipment
 		itemData.seller_civic_number,
 		itemData.seller_city_name,
 		itemData.seller_province_name,
+		itemData.seller_province_code,
 		itemData.seller_country_code,
 		itemData.seller_postal_code,
 		itemData.seller_phone,
@@ -77,6 +87,7 @@ export function shippingSnapshotFingerprint({ itemData, buyerProfile }: Shipment
 		buyerProfile.civic_number,
 		buyerProfile.city_name,
 		buyerProfile.province_name,
+		buyerProfile.province_code,
 		buyerProfile.country_code,
 		buyerProfile.postal_code,
 		buyerProfile.phone,
@@ -90,13 +101,13 @@ export function shipmentMatchesShippingState(shipment: Shipment, state: Shipment
 	return (
 		shipment.addressFrom.street1 === `${itemData.seller_street_address} ${itemData.seller_civic_number}` &&
 		shipment.addressFrom.city === itemData.seller_city_name &&
-		shipment.addressFrom.state === itemData.seller_province_name &&
+		shipment.addressFrom.state === itemData.seller_province_code &&
 		shipment.addressFrom.zip === itemData.seller_postal_code.toString() &&
 		shipment.addressFrom.country === itemData.seller_country_code &&
 		shipment.addressFrom.phone === itemData.seller_phone &&
 		shipment.addressTo.street1 === `${buyerProfile.street_address} ${buyerProfile.civic_number}` &&
 		shipment.addressTo.city === buyerProfile.city_name &&
-		shipment.addressTo.state === buyerProfile.province_name &&
+		shipment.addressTo.state === buyerProfile.province_code &&
 		shipment.addressTo.zip === buyerProfile.postal_code.toString() &&
 		shipment.addressTo.country === buyerProfile.country_code &&
 		shipment.addressTo.phone === buyerProfile.phone &&
@@ -145,6 +156,7 @@ export class ShipmentService {
 				seller_civic_number: addresses.civic_number,
 				seller_city_name: cityTable.name,
 				seller_province_name: provinceTable.name,
+				seller_province_code: provinceTable.state_code,
 				seller_country_code: addresses.country_code,
 				seller_postal_code: addresses.postal_code,
 				seller_phone: addresses.phone,
@@ -208,6 +220,7 @@ export class ShipmentService {
 				civic_number: addresses.civic_number,
 				city_name: cityTable.name,
 				province_name: provinceTable.name,
+				province_code: provinceTable.state_code,
 				country_code: addresses.country_code,
 				postal_code: addresses.postal_code,
 				phone: addresses.phone,
@@ -243,7 +256,7 @@ export class ShipmentService {
 				street1: `${itemData.seller_street_address} ${itemData.seller_civic_number}`,
 				streetNo: itemData.seller_civic_number,
 				city: itemData.seller_city_name,
-				state: itemData.seller_province_name,
+				state: itemData.seller_province_code,
 				zip: itemData.seller_postal_code.toString(),
 				country: itemData.seller_country_code,
 				phone: itemData.seller_phone,
@@ -256,7 +269,7 @@ export class ShipmentService {
 				street1: `${buyerProfile.street_address} ${buyerProfile.civic_number}`,
 				streetNo: buyerProfile.civic_number,
 				city: buyerProfile.city_name,
-				state: buyerProfile.province_name,
+				state: buyerProfile.province_code,
 				zip: buyerProfile.postal_code.toString(),
 				country: buyerProfile.country_code,
 				phone: buyerProfile.phone,
@@ -297,7 +310,7 @@ export class ShipmentService {
 		const shipmentId = response.value.objectId;
 		const validRates = response.value.rates
 			?.filter((candidate) => {
-				const cents = candidate.amount ? formatPriceToCents(Number(candidate.amount)) : undefined;
+				const cents = candidate.amount ? parseProviderDecimalToCents(candidate.amount) : undefined;
 				return (
 					Boolean(candidate.objectId) &&
 					candidate.shipment === shipmentId &&
@@ -309,7 +322,7 @@ export class ShipmentService {
 			})
 			.sort((left, right) => left.objectId.localeCompare(right.objectId));
 		const rate = validRates?.find((candidate) => candidate.attributes?.includes('BESTVALUE')) ?? validRates?.[0];
-		const amount = rate?.amount ? formatPriceToCents(Number(rate.amount)) : undefined;
+		const amount = rate?.amount ? parseProviderDecimalToCents(rate.amount) : undefined;
 		if (
 			!shipmentId ||
 			!rate?.objectId ||
@@ -399,7 +412,9 @@ export class ShipmentService {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 
-		const result = rateAmount ? parseFloat(rateAmount) : 0;
+		const cents = parseProviderDecimalToCents(rateAmount);
+		if (cents === undefined) throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		const result = cents / 100;
 
 		return result;
 	}
@@ -450,8 +465,10 @@ export class ShipmentService {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 
+		const cents = parseProviderDecimalToCents(rateAmount);
+		if (cents === undefined) throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		return {
-			cost: parseFloat(rateAmount),
+			cost: cents / 100,
 			rates,
 		};
 	}

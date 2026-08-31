@@ -1,4 +1,5 @@
 import type { z } from 'zod/v4';
+import { randomUUID } from 'node:crypto';
 import { eq, inArray } from 'drizzle-orm';
 
 import {
@@ -10,6 +11,7 @@ import {
 	items_properties_values,
 	orders,
 	orders_proposals,
+	shipping_quotes,
 	properties,
 	property_values,
 	states,
@@ -501,6 +503,26 @@ export async function createProposalFixture(
 	overrides: Partial<InsertOrderProposal> = {},
 ): Promise<SelectOrderProposal> {
 	const { db } = getTestDatabase();
+	const status = overrides.status ?? ORDER_PROPOSAL_PHASES.pending;
+	let shippingQuoteId = overrides.shipping_quote_id;
+	const shippingLabelId = overrides.shipping_label_id ?? uniqueValue('shipment');
+	if (status === ORDER_PROPOSAL_PHASES.pending && !shippingQuoteId) {
+		shippingQuoteId = randomUUID();
+		await db.insert(shipping_quotes).values({
+			id: shippingQuoteId,
+			item_id: item.id,
+			buyer_profile_id: actorGraph.buyer.profile.id,
+			seller_profile_id: actorGraph.seller.profile.id,
+			buyer_address_id: actorGraph.buyer.address.id,
+			seller_address_id: actorGraph.seller.address.id,
+			shippo_shipment_id: shippingLabelId,
+			shippo_rate_id: uniqueValue('rate'),
+			amount: overrides.shipping_price ?? 750,
+			currency: 'EUR',
+			snapshot_fingerprint: uniqueValue('fixture-quote'),
+			expires_at: new Date(Date.now() + 96 * 60 * 60 * 1_000),
+		});
+	}
 	const [proposalRow] = await db
 		.insert(orders_proposals)
 		.values({
@@ -510,8 +532,10 @@ export async function createProposalFixture(
 			proposal_price: Math.max(1, item.price - 1_000),
 			payment_provider_charge: 500,
 			platform_charge: 600,
-			shipping_label_id: uniqueValue('shipment'),
-			status: ORDER_PROPOSAL_PHASES.pending,
+			shipping_label_id: shippingLabelId,
+			shipping_quote_id: shippingQuoteId,
+			shipping_price: overrides.shipping_price ?? 750,
+			status,
 			...overrides,
 		})
 		.returning();
@@ -537,6 +561,7 @@ export async function createOrderFixture(
 			platform_charge: 600,
 			shipping_label_id: uniqueValue('shipment'),
 			shipping_price: item.custom_shipping_price ?? 1_250,
+			item_price: item.price,
 			status: ORDER_PHASES.PAYMENT_PENDING,
 			...overrides,
 		})

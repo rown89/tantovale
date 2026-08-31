@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
@@ -35,6 +35,10 @@ export const orders_proposals = pgTable(
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
 	(table) => [
+		check(
+			'orders_proposals_pending_quote_check',
+			sql`${table.status} <> 'pending' OR (${table.shipping_quote_id} IS NOT NULL AND ${table.shipping_price} IS NOT NULL AND ${table.shipping_price} > 0)`,
+		),
 		index('orders_proposals_status_idx').on(table.status),
 		uniqueIndex('orders_proposals_pending_item_buyer_idx')
 			.on(table.item_id, table.profile_id)

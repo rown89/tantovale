@@ -37,14 +37,14 @@ async function createPayableExpiredCandidate() {
 		created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000),
 		item_price: trustapTransactionFixture.price,
 		payment_provider_charge: trustapTransactionFixture.charge,
-		payment_transaction_id: trustapTransactionFixture.id,
+		payment_transaction_id: String(trustapTransactionFixture.id),
 		payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
 	});
 	await db.insert(entityTrustapTransactions).values({
 		entityId: item.id,
 		sellerId: trustapTransactionFixture.seller_id,
 		buyerId: trustapTransactionFixture.buyer_id,
-		transactionId: trustapTransactionFixture.id,
+		transactionId: String(trustapTransactionFixture.id),
 		status: 'created',
 		price: trustapTransactionFixture.price,
 		charge: trustapTransactionFixture.charge,

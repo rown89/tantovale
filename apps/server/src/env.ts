@@ -48,6 +48,7 @@ const EnvSchemaObject = z.object({
 	PAYMENT_PROVIDER_API_KEY: z.string(),
 	PAYMENT_PROVIDER_CLIENT_ID: z.string(),
 	PAYMENT_PROVIDER_CLIENT_SECRET: z.string(),
+	PAYMENT_PROVIDER_WEBHOOK_USERNAME: z.string().default('trustap'),
 	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
 	PAYMENT_PROVIDER_PAY_PAGE_URL: z.string(),
 	POST_PAYMENT_REDIRECT_URL: z.string(),

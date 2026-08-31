@@ -243,7 +243,7 @@ describe('buy-now route', () => {
 			payment_creation_state: 'created',
 			payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
 		});
-		expect(order?.payment_transaction_id).toEqual(expect.any(Number));
+		expect(order?.payment_transaction_id).toMatch(/^\d+$/);
 
 		const transactionRows = await db
 			.select()
@@ -535,8 +535,10 @@ describe('buy-now route', () => {
 			payment_creation_state: 'reconciliation_required',
 			payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
 		});
-		expect(await new PaymentProviderService().getTransactionStatus(trustapTransactionFixture.id + 1)).toMatchObject({
-			id: trustapTransactionFixture.id + 1,
+		expect(
+			await new PaymentProviderService().getTransactionStatus(String(trustapTransactionFixture.id + 1)),
+		).toMatchObject({
+			id: String(trustapTransactionFixture.id + 1),
 			buyer_id: actors.buyer.profile.payment_provider_id,
 			seller_id: actors.seller.profile.payment_provider_id,
 		});
@@ -553,7 +555,7 @@ describe('buy-now route', () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		const conflictingItem = await createItemFixture(actors, { commons: { title: 'Transaction conflict item' } });
-		const expectedTransactionId = trustapTransactionFixture.id + 1;
+		const expectedTransactionId = String(trustapTransactionFixture.id + 1);
 		const { db } = getTestDatabase();
 		await db.insert(entityTrustapTransactions).values({
 			entityId: conflictingItem.id,
@@ -637,7 +639,7 @@ describe('buy-now route', () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		const conflictingItem = await createItemFixture(actors, { commons: { title: 'Order transaction conflict item' } });
-		const expectedTransactionId = trustapTransactionFixture.id + 1;
+		const expectedTransactionId = String(trustapTransactionFixture.id + 1);
 		const conflictingOrder = await createOrderFixture(actors, conflictingItem, {
 			status: ORDER_PHASES.CANCELLED,
 			payment_transaction_id: expectedTransactionId,
@@ -698,7 +700,7 @@ describe('buy-now route', () => {
 		const reservation = await createOrderFixture(actors, item, {
 			item_price: trustapTransactionFixture.price - 600,
 			payment_attempt_id: '00000000-0000-4000-8000-000000000002',
-			payment_transaction_id: trustapTransactionFixture.id,
+			payment_transaction_id: String(trustapTransactionFixture.id),
 			payment_creation_state: 'reconciliation_required',
 		});
 		await setTrustapTransactionScenario('transaction-delay');

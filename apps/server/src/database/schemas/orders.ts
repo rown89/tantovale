@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, check, pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
@@ -39,15 +39,15 @@ export const orders = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		payment_transaction_id: integer('payment_transaction_id'),
-		legacy_payment_transaction_id: integer('legacy_payment_transaction_id'),
+		payment_transaction_id: bigint('payment_transaction_id', { mode: 'string' }),
+		legacy_payment_transaction_id: bigint('legacy_payment_transaction_id', { mode: 'string' }),
 		payment_attempt_id: uuid('payment_attempt_id').unique(),
 		payment_creation_state: text('payment_creation_state').notNull().default(PAYMENT_CREATION_STATES.CREATED),
 		payment_cancellation_state: text('payment_cancellation_state').notNull().default(PAYMENT_CANCELLATION_STATES.NONE),
 		payment_recovery_notification_claimed_at: timestamp('payment_recovery_notification_claimed_at', {
 			withTimezone: true,
 		}),
-		item_price: integer('item_price'),
+		item_price: integer('item_price').notNull(),
 		order_proposal_id: integer('order_proposal_id')
 			.unique()
 			.references(() => orders_proposals.id, {
@@ -71,6 +71,11 @@ export const orders = pgTable(
 			'orders_payment_cancellation_state_check',
 			sql`${table.payment_cancellation_state} IN ('none', 'cancelling', 'reconciliation_required', 'cancelled')`,
 		),
+		check(
+			'orders_status_check',
+			sql`${table.status} IN ('payment_pending', 'payment_confirmed', 'payment_failed', 'payment_refunded', 'shipping_pending', 'shipping_confirmed', 'completed', 'cancelled', 'expired')`,
+		),
+		check('orders_item_price_positive', sql`${table.item_price} > 0`),
 		index('orders_status_idx').on(table.status),
 		uniqueIndex('orders_payment_transaction_id_idx')
 			.on(table.payment_transaction_id)

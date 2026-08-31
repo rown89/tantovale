@@ -1,4 +1,4 @@
-import { eq, and, inArray, lt } from 'drizzle-orm';
+import { eq, and, inArray, isNull, lt, notExists } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { subHours } from 'date-fns';
 
@@ -25,9 +25,10 @@ import {
 } from '#database/schemas/enumerated_values';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { resolveTrustapOrderTransition } from './trustap-order-state';
+import type { TrustapId } from './trustap-int64';
 
 type TransactionSyncResult = {
-	transactionId: number | null;
+	transactionId: TrustapId | null;
 	success: boolean;
 	orderId?: number;
 	localAttemptId?: string;
@@ -40,6 +41,12 @@ type TransactionSyncResult = {
 
 function isTrustapStatus(value: string): value is EntityTrustapTransactionStatus {
 	return (entityTrustapTransactionStatusValues as readonly string[]).includes(value);
+}
+
+function proposalStatusForRecoveredTransaction(status: EntityTrustapTransactionStatus) {
+	return ['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(status)
+		? ORDER_PROPOSAL_PHASES.rejected
+		: ORDER_PROPOSAL_PHASES.accepted;
 }
 
 export class TransactionSyncService {
@@ -86,10 +93,40 @@ export class TransactionSyncService {
 						.returning({ id: orders.id });
 					if (!deleted) return false;
 					if (candidate.quoteId) {
-						await tx.delete(shipping_quotes).where(eq(shipping_quotes.id, candidate.quoteId));
+						await tx
+							.delete(shipping_quotes)
+							.where(
+								and(
+									eq(shipping_quotes.id, candidate.quoteId),
+									notExists(
+										tx
+											.select({ id: orders_proposals.id })
+											.from(orders_proposals)
+											.where(eq(orders_proposals.shipping_quote_id, candidate.quoteId)),
+									),
+									notExists(
+										tx.select({ id: orders.id }).from(orders).where(eq(orders.shipping_quote_id, candidate.quoteId)),
+									),
+								),
+							);
 					}
 					if (candidate.attemptId) {
-						await tx.delete(shipping_quotes).where(eq(shipping_quotes.checkout_attempt_id, candidate.attemptId));
+						await tx
+							.delete(shipping_quotes)
+							.where(
+								and(
+									eq(shipping_quotes.checkout_attempt_id, candidate.attemptId),
+									notExists(
+										tx
+											.select({ id: orders_proposals.id })
+											.from(orders_proposals)
+											.where(eq(orders_proposals.shipping_quote_id, shipping_quotes.id)),
+									),
+									notExists(
+										tx.select({ id: orders.id }).from(orders).where(eq(orders.shipping_quote_id, shipping_quotes.id)),
+									),
+								),
+							);
 					}
 					return true;
 				}
@@ -241,6 +278,10 @@ export class TransactionSyncService {
 					candidate.orderStatus,
 					remoteStatus,
 				);
+				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
+				const shouldSendPaymentInvitation =
+					recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted &&
+					recoveredTransition.orderStatus === ORDER_PHASES.PAYMENT_PENDING;
 
 				const recovery = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, itemId);
@@ -312,9 +353,9 @@ export class TransactionSyncService {
 
 					if (reservation.proposalId !== null) {
 						const proposalId = reservation.proposalId;
-						const [acceptedProposal] = await tx
+						const [finalizedProposal] = await tx
 							.update(orders_proposals)
-							.set({ status: ORDER_PROPOSAL_PHASES.accepted, updated_at: new Date() })
+							.set({ status: recoveredProposalStatus, updated_at: new Date() })
 							.where(
 								and(
 									eq(orders_proposals.id, proposalId),
@@ -323,7 +364,7 @@ export class TransactionSyncService {
 								),
 							)
 							.returning({ id: orders_proposals.id });
-						if (!acceptedProposal) throw new Error('The proposal is no longer pending');
+						if (!finalizedProposal) throw new Error('The proposal is no longer pending');
 						const [room] = await tx
 							.select({ id: chat_rooms.id })
 							.from(chat_rooms)
@@ -333,9 +374,18 @@ export class TransactionSyncService {
 						await tx.insert(chat_messages).values({
 							chat_room_id: room.id,
 							sender_id: sellerProfileId,
-							message: `Proposal #${proposalId}, has been accepted by the seller.`,
+							message:
+								recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted
+									? `Proposal #${proposalId}, has been accepted by the seller.`
+									: `Proposal #${proposalId}, was not completed by the payment provider.`,
 							message_type: 'system',
-							metadata: { order_id: reservation.id, type: 'proposal_accepted' },
+							metadata: {
+								order_id: reservation.id,
+								type:
+									recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted
+										? 'proposal_accepted'
+										: 'proposal_rejected',
+							},
 						});
 					}
 
@@ -346,7 +396,9 @@ export class TransactionSyncService {
 							legacy_payment_transaction_id: null,
 							payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredTransition.orderStatus,
-							...(reservation.proposalId !== null && reservation.notificationClaimedAt === null
+							...(reservation.proposalId !== null &&
+							shouldSendPaymentInvitation &&
+							reservation.notificationClaimedAt === null
 								? { payment_recovery_notification_claimed_at: new Date() }
 								: {}),
 							updated_at: new Date(),
@@ -360,7 +412,10 @@ export class TransactionSyncService {
 						.returning({ id: orders.id });
 					if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
 					return {
-						shouldNotify: reservation.proposalId !== null && reservation.notificationClaimedAt === null,
+						shouldNotify:
+							reservation.proposalId !== null &&
+							shouldSendPaymentInvitation &&
+							reservation.notificationClaimedAt === null,
 					};
 				});
 				if (recovery.shouldNotify) {
@@ -374,6 +429,10 @@ export class TransactionSyncService {
 						});
 					} catch (error) {
 						console.error('Failed to send recovered proposal notification:', error);
+						await db
+							.update(orders)
+							.set({ payment_recovery_notification_claimed_at: null, updated_at: new Date() })
+							.where(eq(orders.id, candidate.orderId));
 					}
 				}
 				results.push({ transactionId, orderId: candidate.orderId, recovered: true, success: true });
@@ -391,6 +450,63 @@ export class TransactionSyncService {
 		return results;
 	}
 
+	/** Retry mail delivery only for a successfully recovered, still-payable proposal. */
+	private async dispatchPendingRecoveryNotifications(): Promise<void> {
+		const { db } = this.db;
+		const buyerProfiles = alias(profiles, 'recovery_mail_buyer_profiles');
+		const sellerProfiles = alias(profiles, 'recovery_mail_seller_profiles');
+		const buyerUsers = alias(users, 'recovery_mail_buyer_users');
+		const sellerUsers = alias(users, 'recovery_mail_seller_users');
+		const pending = await db
+			.select({
+				orderId: orders.id,
+				transactionId: orders.payment_transaction_id,
+				buyerEmail: buyerUsers.email,
+				sellerUsername: sellerUsers.username,
+				itemTitle: items.title,
+			})
+			.from(orders)
+			.innerJoin(orders_proposals, eq(orders.order_proposal_id, orders_proposals.id))
+			.innerJoin(items, eq(orders.item_id, items.id))
+			.innerJoin(buyerProfiles, eq(orders.buyer_id, buyerProfiles.id))
+			.innerJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
+			.innerJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
+			.innerJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
+			.where(
+				and(
+					eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
+					eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
+					eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.accepted),
+					isNull(orders.payment_recovery_notification_claimed_at),
+				),
+			);
+
+		for (const candidate of pending) {
+			if (candidate.transactionId === null) continue;
+			const [claimed] = await db
+				.update(orders)
+				.set({ payment_recovery_notification_claimed_at: new Date(), updated_at: new Date() })
+				.where(and(eq(orders.id, candidate.orderId), isNull(orders.payment_recovery_notification_claimed_at)))
+				.returning({ id: orders.id });
+			if (!claimed) continue;
+			try {
+				await sendProposalAcceptedMessage({
+					to: candidate.buyerEmail,
+					merchant_username: candidate.sellerUsername,
+					itemName: candidate.itemTitle,
+					orderId: candidate.orderId,
+					paymentUrl: buildGuestPaymentUrl(candidate.transactionId, candidate.orderId),
+				});
+			} catch (error) {
+				console.error('Failed to send recovered proposal notification:', error);
+				await db
+					.update(orders)
+					.set({ payment_recovery_notification_claimed_at: null, updated_at: new Date() })
+					.where(eq(orders.id, candidate.orderId));
+			}
+		}
+	}
+
 	/**
 	 * Sync transaction statuses with Trustap
 	 * This method can be called periodically to ensure our database is in sync
@@ -400,6 +516,7 @@ export class TransactionSyncService {
 
 		try {
 			const recoveryResults = await this.recoverKnownTransactions();
+			await this.dispatchPendingRecoveryNotifications();
 			const staleReservationResults = await this.recoverStalePaymentReservations();
 			const staleTransactions = await db
 				.select({
@@ -407,10 +524,21 @@ export class TransactionSyncService {
 					entityId: entityTrustapTransactions.entityId,
 					transactionId: entityTrustapTransactions.transactionId,
 					status: entityTrustapTransactions.status,
+					providerBuyerId: entityTrustapTransactions.buyerId,
+					providerSellerId: entityTrustapTransactions.sellerId,
+					providerCurrency: entityTrustapTransactions.currency,
+					providerPrice: entityTrustapTransactions.price,
+					providerCharge: entityTrustapTransactions.charge,
+					providerChargeSeller: entityTrustapTransactions.chargeSeller,
 					updated_at: entityTrustapTransactions.updated_at,
 					orderId: orders.id,
 					orderItemId: orders.item_id,
 					orderStatus: orders.status,
+					orderItemPrice: orders.item_price,
+					orderPlatformCharge: orders.platform_charge,
+					orderProviderCharge: orders.payment_provider_charge,
+					orderShippingPrice: orders.shipping_price,
+					orderAttemptId: orders.payment_attempt_id,
 				})
 				.from(entityTrustapTransactions)
 				.leftJoin(orders, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
@@ -429,10 +557,29 @@ export class TransactionSyncService {
 						throw new Error('Unknown Trustap transaction status');
 					}
 					if (
+						trustapStatus.id !== transaction.transactionId ||
 						transaction.entityId === null ||
 						transaction.orderId === null ||
 						transaction.orderItemId !== transaction.entityId ||
-						transaction.orderStatus === null
+						transaction.orderStatus === null ||
+						transaction.orderItemPrice === null ||
+						transaction.orderPlatformCharge === null ||
+						transaction.orderProviderCharge === null ||
+						transaction.orderShippingPrice === null ||
+						transaction.providerBuyerId === null ||
+						transaction.providerSellerId === null ||
+						transaction.providerCurrency !== 'eur' ||
+						transaction.providerPrice !== transaction.orderItemPrice + transaction.orderPlatformCharge ||
+						transaction.providerCharge !== transaction.orderProviderCharge ||
+						transaction.providerChargeSeller !== 0 ||
+						trustapStatus.buyer_id !== transaction.providerBuyerId ||
+						trustapStatus.seller_id !== transaction.providerSellerId ||
+						trustapStatus.currency !== transaction.providerCurrency ||
+						trustapStatus.price !== transaction.providerPrice ||
+						trustapStatus.postage_fee !== transaction.orderShippingPrice ||
+						trustapStatus.charge !== transaction.providerCharge ||
+						trustapStatus.charge_seller !== transaction.providerChargeSeller ||
+						(transaction.orderAttemptId !== null && !trustapStatus.description.includes(transaction.orderAttemptId))
 					) {
 						throw new Error('Trustap transaction is not correlated to one local order and item');
 					}
@@ -495,7 +642,7 @@ export class TransactionSyncService {
 	/**
 	 * Get transaction details with current status
 	 */
-	async getTransactionDetails(transactionId: number) {
+	async getTransactionDetails(transactionId: TrustapId) {
 		const { db } = this.db;
 
 		const [transaction] = await db
