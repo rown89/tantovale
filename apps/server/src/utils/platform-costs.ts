@@ -26,6 +26,15 @@ export interface PlatformCostsResult {
 	platform_charge_amount?: number;
 }
 
+const providerIntegerCentsMax = 2_147_483_647;
+
+function requireProviderIntegerCents(value: number | undefined, name: string, minimum: number): number {
+	if (value === undefined || !Number.isSafeInteger(value) || value < minimum || value > providerIntegerCentsMax) {
+		throw new RangeError(`${name} must be valid integer cents`);
+	}
+	return value;
+}
+
 // Optional: Singleton service instances for better performance
 let shipmentServiceInstance: ShipmentService | null = null;
 let paymentProviderServiceInstance: PaymentProviderService | null = null;
@@ -91,14 +100,16 @@ export async function calculatePlatformCosts(
 	}
 
 	// Calculate payment provider charge if requested
-	if (config.payment_provider_charge && price && postage_fee) {
+	if (config.payment_provider_charge) {
+		const providerPrice = requireProviderIntegerCents(price, 'price', 1);
+		const providerPostageFee = requireProviderIntegerCents(postage_fee ?? 0, 'postage_fee', 0);
 		asyncOperations.push(
 			(async () => {
 				const paymentProviderService = getPaymentProviderService();
 				const transactionFee = await paymentProviderService.calculateTransactionFee({
-					price,
+					price: providerPrice,
 					currency: 'eur',
-					postage_fee,
+					postage_fee: providerPostageFee,
 				});
 				result.payment_provider_charge = transactionFee?.charge ?? undefined;
 				result.payment_provider_charge_calculator_version = transactionFee?.charge_calculator_version ?? undefined;

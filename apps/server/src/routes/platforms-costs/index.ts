@@ -8,7 +8,7 @@ import { calculatePlatformCosts } from '#utils/platform-costs';
 
 const calculatePlatformCostsSchema = z.object({
 	price: z.number().int().positive().max(2_147_483_647),
-	shipping_price: z.number().int().positive().max(2_147_483_647),
+	shipping_price: z.number().int().nonnegative().max(2_147_483_647),
 });
 
 export const platformsCostsRoute = createRouter().post(

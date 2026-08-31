@@ -56,6 +56,9 @@ export type StubScenario =
 	| 'transaction-cancel-delay'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
+	| 'transaction-buyer-missing'
+	| 'transaction-seller-missing'
+	| 'response-extra-field'
 	| 'transaction-fetch-disconnect'
 	| 'transaction-fetch-invalid-body'
 	| 'transaction-fetch-malformed-json'
@@ -174,6 +177,9 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'transaction-cancel-delay',
 	'transaction-invalid-json',
 	'transaction-invalid-body',
+	'transaction-buyer-missing',
+	'transaction-seller-missing',
+	'response-extra-field',
 	'transaction-fetch-disconnect',
 	'transaction-fetch-invalid-body',
 	'transaction-fetch-malformed-json',
@@ -456,6 +462,26 @@ function trustapHandshakeKey(input: Pick<TrustapTransactionRequest, 'price' | 'c
 	return `${input.price}:${input.currency}:${input.postage_fee}`;
 }
 
+function trustapTransactionResponse(
+	transaction: TrustapTransactionResource,
+	scenario: StubScenario,
+): Record<string, unknown> {
+	if (scenario === 'transaction-buyer-missing') {
+		const response: Partial<TrustapTransactionResource> = { ...transaction };
+		delete response.buyer_id;
+		return response;
+	}
+	if (scenario === 'transaction-seller-missing') {
+		const response: Partial<TrustapTransactionResource> = { ...transaction };
+		delete response.seller_id;
+		return response;
+	}
+	if (scenario === 'response-extra-field') {
+		return { ...transaction, provider_future_optional: 'safe-future-value' };
+	}
+	return transaction;
+}
+
 function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario, response: ServerResponse): boolean {
 	switch (scenario) {
 		case 'success':
@@ -510,6 +536,9 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'transaction-cancel-delay':
 		case 'transaction-invalid-json':
 		case 'transaction-invalid-body':
+		case 'transaction-buyer-missing':
+		case 'transaction-seller-missing':
+		case 'response-extra-field':
 		case 'transaction-fetch-disconnect':
 		case 'transaction-fetch-invalid-body':
 		case 'transaction-fetch-malformed-json':
@@ -834,16 +863,20 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						}),
 						{ charge, version: chargeResponse.charge_calculator_version },
 					);
+					const responseBody =
+						scenario === 'response-extra-field'
+							? { ...chargeResponse, provider_future_optional: 'safe-future-value' }
+							: chargeResponse;
 					if (scenario === 'charge-delay') {
-						setTimeout(() => sendJson(response, 200, chargeResponse), 500);
+						setTimeout(() => sendJson(response, 200, responseBody), 500);
 						return;
 					}
-					sendJson(response, 200, chargeResponse);
+					sendJson(response, 200, responseBody);
 					return;
 				}
 				case 'trustap-create-transaction': {
 					if (!trustapTransaction) throw new Error('Validated Trustap transaction input is missing');
-					const transaction = {
+					const transaction: TrustapTransactionResource = {
 						...trustapTransactionFixture,
 						id: nextTrustapTransactionId,
 						buyer_id: trustapTransaction.buyer_id,
@@ -889,7 +922,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						response.destroy();
 						return;
 					}
-					sendJson(response, 201, transaction);
+					sendJson(response, 201, trustapTransactionResponse(transaction, scenario));
 					return;
 				}
 				case 'trustap-get-transaction': {
@@ -916,7 +949,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						setTimeout(() => sendJson(response, 200, transaction), 500);
 						return;
 					}
-					sendJson(response, 200, transaction);
+					sendJson(response, 200, trustapTransactionResponse(transaction, scenario));
 					return;
 				}
 				case 'trustap-cancel-transaction': {
@@ -926,13 +959,14 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendProviderError(kind, response);
 						return;
 					}
-					const cancelled = { ...transaction, status: 'cancelled' };
+					const cancelled: TrustapTransactionResource = { ...transaction, status: 'cancelled' };
 					trustapTransactions.set(route.transactionId, cancelled);
+					const responseBody = trustapTransactionResponse(cancelled, scenario);
 					if (scenario === 'transaction-cancel-delay') {
-						setTimeout(() => sendJson(response, 200, cancelled), 500);
+						setTimeout(() => sendJson(response, 200, responseBody), 500);
 						return;
 					}
-					sendJson(response, 200, cancelled);
+					sendJson(response, 200, responseBody);
 					return;
 				}
 				case 'shippo-carrier-accounts':

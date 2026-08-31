@@ -6,6 +6,7 @@ import { ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
 import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
 import {
 	trustapChargeResponseSchema,
+	trustapCorrelatedTransactionResponseSchema,
 	trustapGuestUserResponseSchema,
 	trustapTransactionResponseSchema,
 } from '../../src/routes/payments/provider.schemas';
@@ -465,6 +466,143 @@ describe('Trustap v1 provider boundary', () => {
 			.catch((caught: unknown) => caught);
 		expect(error).toBeInstanceOf(Error);
 		assertTypedRedactedError(error as Error, 'create_transaction', { category: 'http', status: 400 });
+	});
+
+	it('keys the charge handshake by postage even when the numeric charge is unchanged', async () => {
+		const service = new PaymentProviderService();
+		const charge = await service.calculateTransactionFee({
+			price: transactionInput.price,
+			currency: transactionInput.currency,
+			postage_fee: transactionInput.postage_fee,
+			use_hr_post: false,
+		});
+		const mismatchedPostage = transactionInput.postage_fee + 1;
+		const mismatch = await service
+			.createTransactionWithBothUsers({
+				...transactionInput,
+				postage_fee: mismatchedPostage,
+				charge: charge!.charge,
+				charge_calculator_version: charge!.charge_calculator_version,
+			})
+			.catch((error: unknown) => error);
+		expect(mismatch).toMatchObject({
+			name: 'PaymentProviderHttpError',
+			operation: 'create_transaction',
+			category: 'http',
+			status: 400,
+		});
+
+		const transaction = await service.createTransactionWithBothUsers({
+			...transactionInput,
+			charge: charge!.charge,
+			charge_calculator_version: charge!.charge_calculator_version,
+		});
+		expect(transaction?.id).toBe('91002');
+	});
+
+	it.each(['buyer_id', 'seller_id'] as const)(
+		'accepts an official response without optional %s only at the base schema boundary',
+		(identityField) => {
+			const response: Record<string, unknown> = {
+				buyer_id: transactionInput.buyer_id,
+				charge: 625,
+				charge_buyer_client: 0,
+				charge_seller: 0,
+				charge_seller_client: 0,
+				client_id: 'trustap-test-client',
+				created: '2026-08-30T12:00:00.000Z',
+				currency: 'eur',
+				description: transactionInput.description,
+				id: 91_001,
+				is_payment_in_progress: false,
+				price: transactionInput.price,
+				quantity: 1,
+				seller_id: transactionInput.seller_id,
+				status: 'created',
+			};
+			delete response[identityField];
+			expect(trustapTransactionResponseSchema.safeParse(response).success).toBe(true);
+			expect(trustapCorrelatedTransactionResponseSchema.safeParse(response).success).toBe(false);
+		},
+	);
+
+	it.each(['buyer', 'seller'] as const)(
+		'treats create as ambiguous for an otherwise valid response missing the %s identity',
+		async (identity) => {
+			const service = new PaymentProviderService();
+			const scenario = `transaction-${identity}-missing` as StubScenario;
+			const charge = await service.calculateTransactionFee({
+				price: transactionInput.price,
+				currency: transactionInput.currency,
+				postage_fee: transactionInput.postage_fee,
+				use_hr_post: false,
+			});
+			await setProviderScenario(paymentProviderUrl(), scenario);
+			const createError = await service
+				.createTransactionWithBothUsers({
+					...transactionInput,
+					charge: charge!.charge,
+					charge_calculator_version: charge!.charge_calculator_version,
+				})
+				.catch((error: unknown) => error);
+			expect(createError).toMatchObject({
+				name: 'PaymentProviderAmbiguousError',
+				operation: 'create_transaction',
+				category: 'ambiguous',
+			});
+		},
+	);
+
+	it.each(['buyer', 'seller'] as const)(
+		'treats fetch as invalid for an otherwise valid response missing the %s identity',
+		async (identity) => {
+			const service = new PaymentProviderService();
+			const scenario = `transaction-${identity}-missing` as StubScenario;
+			await setProviderScenario(paymentProviderUrl(), scenario);
+			const fetchError = await service.getTransactionStatus(existingTransactionId).catch((error: unknown) => error);
+			expect(fetchError).toMatchObject({
+				name: 'PaymentProviderInvalidResponseError',
+				operation: 'fetch_transaction',
+				category: 'invalid_response',
+			});
+		},
+	);
+
+	it.each(['buyer', 'seller'] as const)(
+		'treats cancellation as ambiguous for an otherwise valid response missing the %s identity',
+		async (identity) => {
+			const service = new PaymentProviderService();
+			const scenario = `transaction-${identity}-missing` as StubScenario;
+			await setProviderScenario(paymentProviderUrl(), scenario);
+			const cancelError = await service
+				.cancelGuestTransaction(existingTransactionId, transactionInput.buyer_id)
+				.catch((error: unknown) => error);
+			expect(cancelError).toMatchObject({
+				name: 'PaymentProviderAmbiguousError',
+				operation: 'cancel_transaction',
+				category: 'ambiguous',
+			});
+		},
+	);
+
+	it('strips unknown future response fields instead of exposing or rejecting them', async () => {
+		const service = new PaymentProviderService();
+		await setProviderScenario(paymentProviderUrl(), 'response-extra-field' as StubScenario);
+		const charge = await service.calculateTransactionFee({
+			price: transactionInput.price,
+			currency: transactionInput.currency,
+			postage_fee: transactionInput.postage_fee,
+			use_hr_post: false,
+		});
+		const transaction = await service.createTransactionWithBothUsers({
+			...transactionInput,
+			charge: charge!.charge,
+			charge_calculator_version: charge!.charge_calculator_version,
+		});
+		const fetched = await service.getTransactionStatus(transaction!.id);
+		for (const response of [charge, transaction, fetched]) {
+			expect((response as Record<string, unknown>).provider_future_optional).toBeUndefined();
+		}
 	});
 
 	it('rejects schema-invalid success payloads instead of returning unsafe casts', async () => {

@@ -13,7 +13,7 @@ import {
 	profiles,
 	shipping_quotes,
 } from '../../src/database/schemas/schema';
-import { calculatePlatformFee } from '../../src/utils/platform-costs';
+import { calculatePlatformCosts, calculatePlatformFee } from '../../src/utils/platform-costs';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
@@ -59,6 +59,8 @@ type TrustapTransactionScenario =
 	| 'transaction-rate-limit'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
+	| 'transaction-buyer-missing'
+	| 'transaction-seller-missing'
 	| 'transaction-delay'
 	| 'transaction-disconnect';
 
@@ -142,7 +144,6 @@ describe('platform costs route', () => {
 		{ price: 0, shipping_price: 750 },
 		{ price: -1, shipping_price: 750 },
 		{ price: 12_000.5, shipping_price: 750 },
-		{ price: 12_000, shipping_price: 0 },
 		{ price: 12_000, shipping_price: -1 },
 		{ price: 12_000, shipping_price: 750.5 },
 		{ price: 2_147_483_648, shipping_price: 750 },
@@ -155,6 +156,68 @@ describe('platform costs route', () => {
 			body,
 		);
 		expect(response.status).toBe(400);
+	});
+
+	it('calculates Trustap charge and version for an exact zero-postage quote', async () => {
+		const actors = await createCommerceActors();
+		const price = 12_000;
+		const platformCharge = Math.round(price * calculatePlatformFee(price));
+		const transactionPrice = price + platformCharge;
+		const response = await authenticatedRequest(
+			'/platforms_costs/auth/calculate_platform_costs',
+			'POST',
+			actors.buyer.jar,
+			{ price, shipping_price: 0 },
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			platform_charge: platformCharge,
+			payment_provider_charge: Math.round(transactionPrice * 0.05),
+			/* eslint-disable turbo/no-undeclared-env-vars -- Assertion covers the worker-local parsed environment. */
+			proposalExpireTime: Number(process.env.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS),
+		});
+		const requests = await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'));
+		expect(requests.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
+			{
+				method: 'GET',
+				path: `/api/v1/charge?price=${transactionPrice}&currency=eur&postage_fee=0&use_hr_post=false`,
+				body: undefined,
+			},
+		]);
+	});
+
+	it('defaults omitted utility postage to zero and returns the provider charge version', async () => {
+		const price = 12_090;
+		const result = await calculatePlatformCosts({ price }, { payment_provider_charge: true });
+		expect(result).toEqual({
+			payment_provider_charge: Math.round(price * 0.05),
+			payment_provider_charge_calculator_version: 1,
+		});
+		const requests = await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'));
+		expect(requests.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
+			{
+				method: 'GET',
+				path: `/api/v1/charge?price=${price}&currency=eur&postage_fee=0&use_hr_post=false`,
+				body: undefined,
+			},
+		]);
+	});
+
+	it.each([
+		{ postage_fee: 0 },
+		{ price: 0, postage_fee: 0 },
+		{ price: -1, postage_fee: 0 },
+		{ price: 12_000.5, postage_fee: 0 },
+		{ price: 2_147_483_648, postage_fee: 0 },
+		{ price: 12_000, postage_fee: -1 },
+		{ price: 12_000, postage_fee: 0.5 },
+		{ price: 12_000, postage_fee: 2_147_483_648 },
+	])('rejects invalid utility payment cents before contacting Trustap: %j', async (params) => {
+		await expect(calculatePlatformCosts(params, { payment_provider_charge: true })).rejects.toThrow(
+			/valid integer cents/u,
+		);
+		expect(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).toEqual([]);
 	});
 
 	it('returns exact integer-cent platform and Trustap costs with configured expiry', async () => {
@@ -494,6 +557,8 @@ describe('buy-now route', () => {
 		'transaction-rate-limit',
 		'transaction-invalid-json',
 		'transaction-invalid-body',
+		'transaction-buyer-missing',
+		'transaction-seller-missing',
 		'transaction-delay',
 		'transaction-disconnect',
 	] as const)('never retries an ambiguous Trustap outcome: %s', async (scenario) => {
