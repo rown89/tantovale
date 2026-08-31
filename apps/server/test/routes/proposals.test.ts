@@ -452,7 +452,8 @@ describe('proposal routes', () => {
 			{ item_id: item.id },
 		);
 
-		expect(response.status).not.toBe(200);
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ message: 'Failed to calculate shipping cost' });
 		const { db } = getTestDatabase();
 		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
 	});

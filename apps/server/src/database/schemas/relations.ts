@@ -176,6 +176,10 @@ export const relations = defineRelations(schema, (r) => ({
 			to: r.shippings.item_id,
 			alias: 'shippings_itemId_items_id',
 		}),
+		shippingLabelPurchases: r.many.shipping_label_purchases({
+			from: r.items.id,
+			to: r.shipping_label_purchases.item_id,
+		}),
 		profilesViaUserItemsFavorites: r.many.profiles({
 			from: r.items.id.through(r.profiles_items_favorites.item_id),
 			to: r.profiles.id.through(r.profiles_items_favorites.profile_id),
@@ -230,6 +234,10 @@ export const relations = defineRelations(schema, (r) => ({
 		paymentInvitation: r.one.payment_invitation_outbox({
 			from: r.orders.id,
 			to: r.payment_invitation_outbox.order_id,
+		}),
+		shippingLabelPurchase: r.one.shipping_label_purchases({
+			from: r.orders.id,
+			to: r.shipping_label_purchases.order_id,
 		}),
 	},
 	payment_invitation_outbox: {
@@ -364,6 +372,16 @@ export const relations = defineRelations(schema, (r) => ({
 		}),
 		order: r.one.orders({
 			from: r.shippings.order_id,
+			to: r.orders.id,
+		}),
+	},
+	shipping_label_purchases: {
+		item: r.one.items({
+			from: r.shipping_label_purchases.item_id,
+			to: r.items.id,
+		}),
+		order: r.one.orders({
+			from: r.shipping_label_purchases.order_id,
 			to: r.orders.id,
 		}),
 	},

@@ -52,26 +52,27 @@ export class ShippoProviderError extends Error {
 	}
 }
 
-const carrierAccountSchema = z
-	.object({
-		accountId: z.string().min(1),
-		active: z.boolean(),
-		carrier: z.string().min(1),
-	})
-	.passthrough();
+const carrierAccountSchema = z.object({
+	accountId: z.string().min(1),
+	active: z.boolean(),
+	carrier: z.string().min(1),
+});
 
-const carrierAccountsSchema = z.object({ results: z.array(carrierAccountSchema).min(1) }).passthrough();
-const rateSchema = z.object({ objectId: z.string().min(1), shipment: z.string().min(1) }).passthrough();
-const labelTransactionSchema = z
-	.object({
-		objectId: z.string().min(1),
-		status: z.literal('SUCCESS'),
-		labelUrl: z.string().url(),
-		rate: z.union([z.string().min(1), z.object({ objectId: z.string().min(1) }).passthrough()]),
-		trackingNumber: z.string().min(1),
-		trackingUrlProvider: z.string().url(),
-	})
-	.passthrough();
+const carrierAccountsSchema = z.object({ results: z.array(carrierAccountSchema) });
+const rateSchema = z.object({
+	objectId: z.string().min(1),
+	shipment: z.string().min(1),
+	amount: z.string().min(1),
+	currency: z.string().min(1),
+});
+const labelTransactionSchema = z.object({
+	objectId: z.string().min(1),
+	status: z.literal('SUCCESS'),
+	labelUrl: z.string().url(),
+	rate: z.union([z.string().min(1), z.object({ objectId: z.string().min(1) }).passthrough()]),
+	trackingNumber: z.string().min(1).nullish(),
+	trackingUrlProvider: z.string().url().nullish(),
+});
 
 function shippoErrorStatus(error: unknown): number | undefined {
 	if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined;
@@ -194,14 +195,23 @@ export class ShipmentService {
 		return parsed.data.results.filter((carrier) => carrier.active);
 	}
 
-	async purchaseLabel(rateId: string, expectedShipmentId: string) {
-		const rateValue = await executeShippoRequest('get_rate', () => ratesGet(shippoClient, rateId));
+	async verifyRateForPurchase(expectation: { rateId: string; shipmentId: string; amount: number; currency: 'EUR' }) {
+		const rateValue = await executeShippoRequest('get_rate', () => ratesGet(shippoClient, expectation.rateId));
 		const rate = rateSchema.safeParse(rateValue);
 		if (!rate.success) throw new ShippoProviderError('get_rate', 'invalid_response');
-		if (rate.data.objectId !== rateId || rate.data.shipment !== expectedShipmentId) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND);
+		const amount = parseProviderDecimalToCents(rate.data.amount);
+		if (
+			rate.data.objectId !== expectation.rateId ||
+			rate.data.shipment !== expectation.shipmentId ||
+			amount !== expectation.amount ||
+			rate.data.currency !== expectation.currency
+		) {
+			throw new ShippoProviderError('get_rate', 'invalid_response');
 		}
+		return rate.data;
+	}
 
+	async purchaseVerifiedLabel(rateId: string) {
 		const transactionValue = await executeShippoRequest('create_label', () =>
 			transactionsCreate(shippoClient, { rate: rateId, async: false, labelFileType: 'PDF' }),
 		);

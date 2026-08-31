@@ -20,6 +20,7 @@ export * from './properties';
 export * from './refreshTokens';
 export * from './regions';
 export * from './shippings';
+export * from './shipping_label_purchases';
 export * from './shipping_quotes';
 export * from './states';
 export * from './subcategories';

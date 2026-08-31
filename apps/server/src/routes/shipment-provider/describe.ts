@@ -10,15 +10,20 @@ export const activeCarriersDescription: DescribeRouteOptions = {
 					schema: {
 						type: 'object',
 						properties: {
-							carriers: {
+							activeCarriers: {
 								type: 'array',
 								items: {
 									type: 'object',
-									properties: {},
+									properties: {
+										accountId: { type: 'string' },
+										active: { type: 'boolean' },
+										carrier: { type: 'string' },
+									},
+									required: ['accountId', 'active', 'carrier'],
 								},
 							},
 						},
-						required: ['carriers'],
+						required: ['activeCarriers'],
 					},
 				},
 			},
@@ -45,7 +50,7 @@ export const createLabelDescription: DescribeRouteOptions = {
 									tracking_number: { type: 'string' },
 									tracking_url: { type: 'string', format: 'uri' },
 								},
-								required: ['id', 'status', 'label_url', 'tracking_number', 'tracking_url'],
+								required: ['id', 'status', 'label_url'],
 							},
 						},
 						required: ['label'],

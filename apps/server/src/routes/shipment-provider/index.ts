@@ -2,24 +2,48 @@ import z from 'zod/v4';
 import { describeRoute } from 'hono-openapi';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 
 import { createRouter } from '#lib/create-app';
 import { createClient } from '#create-client';
-import { orders } from '#db-schema';
+import { orders, shipping_label_purchases, shipping_quotes, SHIPPING_LABEL_PURCHASE_STATES } from '#db-schema';
 import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 import { activeCarriersDescription, createLabelDescription } from './describe';
 import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { ShipmentService, ShippoProviderError } from './shipment.service';
+import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
+
+const postgresIntegerMax = 2_147_483_647;
 
 const calculateShipmentCostSchema = z.object({
-	item_id: z.number().int().positive('Item ID must be a positive integer'),
+	item_id: z.number().int().positive('Item ID must be a positive integer').max(postgresIntegerMax),
 });
 
 const createLabelSchema = z.object({
-	order_id: z.number().int().positive(),
+	order_id: z.number().int().positive().max(postgresIntegerMax),
 	rate_id: z.string().trim().min(1),
 });
+
+type LabelProjection = {
+	id: string;
+	status: string;
+	label_url: string;
+	tracking_number?: string;
+	tracking_url?: string;
+};
+
+function labelResponse(label: LabelProjection) {
+	return {
+		label: {
+			id: label.id,
+			status: label.status,
+			label_url: label.label_url,
+			...(label.tracking_number ? { tracking_number: label.tracking_number } : {}),
+			...(label.tracking_url ? { tracking_url: label.tracking_url } : {}),
+		},
+	};
+}
 
 const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
@@ -86,44 +110,211 @@ export const shipmentProviderRoute = createRouter()
 			if (!user) return c.json({ message: 'User not authenticated' }, 401);
 			const { order_id, rate_id } = c.req.valid('json');
 			const { db } = createClient();
-			const [order] = await db
-				.select({
-					id: orders.id,
-					seller_id: orders.seller_id,
-					shipping_label_id: orders.shipping_label_id,
-					status: orders.status,
-				})
+			const [candidate] = await db
+				.select({ item_id: orders.item_id })
 				.from(orders)
-				.where(and(eq(orders.id, order_id), eq(orders.seller_id, user.profile_id)));
-			if (!order) return c.json({ message: 'Order not found' }, 404);
-			if (order.status !== ORDER_PHASES.PAYMENT_CONFIRMED && order.status !== ORDER_PHASES.SHIPPING_PENDING) {
-				return c.json({ message: 'Order is not ready for label purchase' }, 409);
-			}
-			try {
-				const transaction = await new ShipmentService().purchaseLabel(rate_id, order.shipping_label_id);
-				return c.json(
-					{
-						label: {
-							id: transaction.objectId,
-							status: transaction.status,
-							label_url: transaction.labelUrl,
-							tracking_number: transaction.trackingNumber,
-							tracking_url: transaction.trackingUrlProvider,
-						},
-					},
-					201,
-				);
-			} catch (error) {
-				if (error instanceof ShippoProviderError) {
-					if (error.operation === 'get_rate' && error.status === 404) {
-						return c.json({ message: 'Shipping rate not found' }, 400);
+				.where(and(eq(orders.id, order_id), eq(orders.seller_id, user.profile_id)))
+				.limit(1);
+			if (!candidate?.item_id) return c.json({ message: 'Order not found' }, 404);
+			const itemId = candidate.item_id;
+
+			const attemptId = randomUUID();
+			const claim = await db.transaction(async (tx) => {
+				await acquireItemCommerceLock(tx, itemId);
+				const [order] = await tx
+					.select({
+						id: orders.id,
+						item_id: orders.item_id,
+						buyer_id: orders.buyer_id,
+						seller_id: orders.seller_id,
+						buyer_address: orders.buyer_address,
+						seller_address: orders.seller_address,
+						shipping_label_id: orders.shipping_label_id,
+						shipping_price: orders.shipping_price,
+						shipping_quote_id: orders.shipping_quote_id,
+						status: orders.status,
+					})
+					.from(orders)
+					.where(and(eq(orders.id, order_id), eq(orders.item_id, itemId), eq(orders.seller_id, user.profile_id)))
+					.for('update')
+					.limit(1);
+				if (!order?.item_id) return { kind: 'not_found' as const };
+				if (order.status !== ORDER_PHASES.PAYMENT_CONFIRMED && order.status !== ORDER_PHASES.SHIPPING_PENDING) {
+					return { kind: 'wrong_state' as const };
+				}
+
+				const [existing] = await tx
+					.select()
+					.from(shipping_label_purchases)
+					.where(eq(shipping_label_purchases.order_id, order.id))
+					.for('update')
+					.limit(1);
+				if (existing) {
+					if (existing.shippo_rate_id !== rate_id) return { kind: 'rate_mismatch' as const };
+					if (
+						existing.state === SHIPPING_LABEL_PURCHASE_STATES.PURCHASED &&
+						existing.provider_transaction_id &&
+						existing.provider_status &&
+						existing.label_url
+					) {
+						return {
+							kind: 'purchased' as const,
+							label: {
+								id: existing.provider_transaction_id,
+								status: existing.provider_status,
+								label_url: existing.label_url,
+								...(existing.tracking_number ? { tracking_number: existing.tracking_number } : {}),
+								...(existing.tracking_url ? { tracking_url: existing.tracking_url } : {}),
+							},
+						};
 					}
-					return c.json({ message: 'Shipping provider request failed' }, 502);
+					return { kind: 'in_progress' as const };
 				}
-				if (error instanceof Error && error.message === SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND) {
-					return c.json({ message: 'Shipping rate does not belong to this order' }, 400);
+
+				if (!order.shipping_quote_id) return { kind: 'missing_quote' as const };
+				const [quote] = await tx
+					.select()
+					.from(shipping_quotes)
+					.where(eq(shipping_quotes.id, order.shipping_quote_id))
+					.for('update')
+					.limit(1);
+				if (!quote?.consumed_at) return { kind: 'missing_quote' as const };
+				if (quote.shippo_rate_id !== rate_id) return { kind: 'rate_mismatch' as const };
+				if (
+					quote.item_id !== order.item_id ||
+					quote.buyer_profile_id !== order.buyer_id ||
+					quote.seller_profile_id !== order.seller_id ||
+					quote.buyer_address_id !== order.buyer_address ||
+					quote.seller_address_id !== order.seller_address ||
+					quote.shippo_shipment_id !== order.shipping_label_id ||
+					quote.amount !== order.shipping_price ||
+					quote.currency !== 'EUR'
+				) {
+					return { kind: 'invalid_quote' as const };
 				}
-				return c.json({ message: 'Internal server error' }, 500);
+
+				const [purchase] = await tx
+					.insert(shipping_label_purchases)
+					.values({
+						order_id: order.id,
+						item_id: order.item_id,
+						purchase_attempt_id: attemptId,
+						shippo_rate_id: quote.shippo_rate_id,
+					})
+					.returning({ id: shipping_label_purchases.id });
+				if (!purchase) throw new Error('Failed to claim shipping label purchase');
+				return {
+					kind: 'claimed' as const,
+					purchaseId: purchase.id,
+					itemId: order.item_id,
+					rateId: quote.shippo_rate_id,
+					shipmentId: quote.shippo_shipment_id,
+					amount: quote.amount,
+				};
+			});
+
+			if (claim.kind === 'not_found') return c.json({ message: 'Order not found' }, 404);
+			if (claim.kind === 'wrong_state') return c.json({ message: 'Order is not ready for label purchase' }, 409);
+			if (claim.kind === 'rate_mismatch') {
+				return c.json({ message: 'Shipping rate does not match the consumed quote' }, 400);
 			}
+			if (claim.kind === 'missing_quote') return c.json({ message: 'Order has no consumed shipping quote' }, 409);
+			if (claim.kind === 'invalid_quote') return c.json({ message: 'Order shipping quote is inconsistent' }, 409);
+			if (claim.kind === 'in_progress') {
+				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 409);
+			}
+			if (claim.kind === 'purchased') return c.json(labelResponse(claim.label), 201);
+
+			const clearPrePostClaim = async () => {
+				await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					await tx
+						.delete(shipping_label_purchases)
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
+							),
+						);
+				});
+			};
+
+			const shipmentService = new ShipmentService();
+			try {
+				await shipmentService.verifyRateForPurchase({
+					rateId: claim.rateId,
+					shipmentId: claim.shipmentId,
+					amount: claim.amount,
+					currency: 'EUR',
+				});
+			} catch (error) {
+				await clearPrePostClaim();
+				return c.json(
+					{ message: 'Shipping provider request failed' },
+					error instanceof ShippoProviderError ? 502 : 500,
+				);
+			}
+
+			let transaction: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>;
+			try {
+				transaction = await shipmentService.purchaseVerifiedLabel(claim.rateId);
+			} catch {
+				await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					await tx
+						.update(shipping_label_purchases)
+						.set({ state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED, updated_at: new Date() })
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
+							),
+						);
+				});
+				return c.json({ message: 'Shipping provider request failed' }, 502);
+			}
+
+			let stored;
+			try {
+				stored = await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					const [purchase] = await tx
+						.update(shipping_label_purchases)
+						.set({
+							state: SHIPPING_LABEL_PURCHASE_STATES.PURCHASED,
+							provider_transaction_id: transaction.objectId,
+							provider_status: transaction.status,
+							label_url: transaction.labelUrl,
+							tracking_number: transaction.trackingNumber ?? null,
+							tracking_url: transaction.trackingUrlProvider ?? null,
+							updated_at: new Date(),
+						})
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
+							),
+						)
+						.returning();
+					if (!purchase) throw new Error('Shipping label purchase claim was lost');
+					return purchase;
+				});
+			} catch {
+				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 502);
+			}
+
+			return c.json(
+				labelResponse({
+					id: stored.provider_transaction_id!,
+					status: stored.provider_status!,
+					label_url: stored.label_url!,
+					...(stored.tracking_number ? { tracking_number: stored.tracking_number } : {}),
+					...(stored.tracking_url ? { tracking_url: stored.tracking_url } : {}),
+				}),
+				201,
+			);
 		},
 	);
