@@ -70,6 +70,13 @@ export type StubScenario =
 	| 'shippo-label-provider-error'
 	| 'shippo-label-status-error'
 	| 'shippo-label-status-error-malformed'
+	| 'shippo-label-status-error-rate-mismatch'
+	| 'shippo-label-error-label-url'
+	| 'shippo-label-error-commercial-invoice-url'
+	| 'shippo-label-error-qr-code-url'
+	| 'shippo-label-error-tracking-number'
+	| 'shippo-label-error-tracking-url'
+	| 'shippo-label-error-tracking-status'
 	| 'shippo-label-rate-mismatch'
 	| 'shippo-label-without-tracking'
 	| 'shippo-label-disconnect-after-create'
@@ -230,6 +237,13 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'shippo-label-provider-error',
 	'shippo-label-status-error',
 	'shippo-label-status-error-malformed',
+	'shippo-label-status-error-rate-mismatch',
+	'shippo-label-error-label-url',
+	'shippo-label-error-commercial-invoice-url',
+	'shippo-label-error-qr-code-url',
+	'shippo-label-error-tracking-number',
+	'shippo-label-error-tracking-url',
+	'shippo-label-error-tracking-status',
 	'shippo-label-rate-mismatch',
 	'shippo-label-without-tracking',
 	'shippo-label-disconnect-after-create',
@@ -628,6 +642,13 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'shippo-label-provider-error':
 		case 'shippo-label-status-error':
 		case 'shippo-label-status-error-malformed':
+		case 'shippo-label-status-error-rate-mismatch':
+		case 'shippo-label-error-label-url':
+		case 'shippo-label-error-commercial-invoice-url':
+		case 'shippo-label-error-qr-code-url':
+		case 'shippo-label-error-tracking-number':
+		case 'shippo-label-error-tracking-url':
+		case 'shippo-label-error-tracking-status':
 		case 'shippo-label-rate-mismatch':
 		case 'shippo-label-without-tracking':
 		case 'shippo-label-disconnect-after-create':
@@ -1413,12 +1434,43 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						setTimeout(() => sendJson(response, 201, transaction), 500);
 						return;
 					}
+					const cleanErrorTransaction = {
+						label_file_type: transaction.label_file_type,
+						messages: transaction.messages,
+						object_created: transaction.object_created,
+						object_id: transaction.object_id,
+						object_owner: transaction.object_owner,
+						object_state: transaction.object_state,
+						object_updated: transaction.object_updated,
+						rate: transaction.rate,
+						status: 'ERROR',
+						test: transaction.test,
+					};
 					if (scenario === 'shippo-label-status-error') {
-						sendJson(response, 201, { ...transaction, status: 'ERROR' });
+						sendJson(response, 201, cleanErrorTransaction);
 						return;
 					}
 					if (scenario === 'shippo-label-status-error-malformed') {
-						sendJson(response, 201, { ...transaction, object_id: undefined, status: 'ERROR' });
+						sendJson(response, 201, { ...cleanErrorTransaction, object_id: undefined });
+						return;
+					}
+					if (scenario === 'shippo-label-status-error-rate-mismatch') {
+						sendJson(response, 201, { ...cleanErrorTransaction, rate: 'rate-other' });
+						return;
+					}
+					const contradictoryErrorEvidence: Partial<Record<StubScenario, Record<string, unknown>>> = {
+						'shippo-label-error-label-url': { label_url: transaction.label_url },
+						'shippo-label-error-commercial-invoice-url': {
+							commercial_invoice_url: 'https://labels.test/commercial-invoice.pdf',
+						},
+						'shippo-label-error-qr-code-url': { qr_code_url: 'https://labels.test/qr-code.png' },
+						'shippo-label-error-tracking-number': { tracking_number: transaction.tracking_number },
+						'shippo-label-error-tracking-url': { tracking_url_provider: transaction.tracking_url_provider },
+						'shippo-label-error-tracking-status': { tracking_status: 'TRANSIT' },
+					};
+					const contradictoryEvidence = contradictoryErrorEvidence[scenario];
+					if (contradictoryEvidence) {
+						sendJson(response, 201, { ...cleanErrorTransaction, ...contradictoryEvidence });
 						return;
 					}
 					if (scenario === 'shippo-label-rate-mismatch') {

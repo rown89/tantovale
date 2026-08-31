@@ -77,15 +77,54 @@ const successfulLabelTransactionSchema = z.object({
 	trackingNumber: z.string().min(1).nullish(),
 	trackingUrlProvider: z.string().url().nullish(),
 });
-const rejectedLabelTransactionSchema = z.object({
-	objectId: z.string().min(1),
-	status: z.literal('ERROR'),
-	rate: labelTransactionRateSchema,
-});
-const labelTransactionSchema = z.discriminatedUnion('status', [
-	successfulLabelTransactionSchema,
-	rejectedLabelTransactionSchema,
-]);
+const rejectedLabelTransactionSchema = z
+	.object({
+		objectId: z.string().min(1),
+		status: z.literal('ERROR'),
+		rate: labelTransactionRateSchema,
+		commercialInvoiceUrl: z.unknown().optional(),
+		labelUrl: z.unknown().optional(),
+		qrCodeUrl: z.unknown().optional(),
+		trackingNumber: z.unknown().optional(),
+		trackingStatus: z.unknown().optional(),
+		trackingUrlProvider: z.unknown().optional(),
+	})
+	.passthrough();
+
+const rejectedTransactionEvidenceFields = [
+	'commercialInvoiceUrl',
+	'labelUrl',
+	'qrCodeUrl',
+	'trackingNumber',
+	'trackingStatus',
+	'trackingUrlProvider',
+] as const;
+
+function hasPositiveProviderEvidence(value: unknown): boolean {
+	if (value === undefined || value === null) return false;
+	if (typeof value === 'string') return value.trim().length > 0;
+	if (Array.isArray(value)) return value.length > 0;
+	return true;
+}
+
+const labelTransactionSchema = z
+	.discriminatedUnion('status', [successfulLabelTransactionSchema, rejectedLabelTransactionSchema])
+	.superRefine((transaction, context) => {
+		if (transaction.status !== 'ERROR') return;
+		for (const field of rejectedTransactionEvidenceFields) {
+			if (!hasPositiveProviderEvidence(transaction[field])) continue;
+			context.addIssue({
+				code: 'custom',
+				message: 'Rejected transaction contains success evidence',
+				path: [field],
+			});
+		}
+	})
+	.transform((transaction) =>
+		transaction.status === 'ERROR'
+			? { objectId: transaction.objectId, rate: transaction.rate, status: transaction.status }
+			: transaction,
+	);
 
 function shippoErrorStatus(error: unknown): number | undefined {
 	if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined;

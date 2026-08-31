@@ -654,6 +654,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		'shippo-label-delay',
 		'shippo-label-disconnect',
 		'shippo-label-status-error-malformed',
+		'shippo-label-status-error-rate-mismatch',
 		'shippo-label-rate-mismatch',
 	] as const)('blocks retries after ambiguous Shippo label outcome %s', async (scenario) => {
 		const { actors, order } = await prepareLabelOrder();
@@ -701,6 +702,38 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		});
 		expect(retry.status).toBe(201);
 		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toHaveLength(2);
+	});
+
+	it.each([
+		'shippo-label-error-label-url',
+		'shippo-label-error-commercial-invoice-url',
+		'shippo-label-error-qr-code-url',
+		'shippo-label-error-tracking-number',
+		'shippo-label-error-tracking-url',
+		'shippo-label-error-tracking-status',
+	] as const)('blocks retry when Shippo ERROR contradicts itself with success evidence %s', async (scenario) => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), scenario);
+		const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(first.status).toBe(502);
+		const afterFirst = await getProviderRequests(shippoUrl());
+		expect(afterFirst.filter(({ path }) => path === '/transactions')).toHaveLength(1);
+		const [intent] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(intent?.state).toBe('reconciliation_required');
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(retry.status).toBe(409);
+		expect(await getProviderRequests(shippoUrl())).toEqual(afterFirst);
 	});
 
 	it('compensates a local finalization failure with complete known provider evidence', async () => {
