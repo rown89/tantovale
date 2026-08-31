@@ -376,7 +376,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 								.from(chat_rooms)
 								.innerJoin(items, eq(chat_rooms.item_id, items.id))
 								.where(eq(chat_rooms.id, roomId))
-								.for('update');
+								.for('update', { of: chat_rooms });
 
 							if (!room) return { outcome: 'not-found' } as const;
 							if (room.buyer_id !== user.profile_id && room.seller_id !== user.profile_id) {

@@ -1027,6 +1027,91 @@ describe('chat routes', () => {
 			expect(await emailsFor(actors.seller.user.email)).toHaveLength(0);
 		});
 
+		it('locks only the chat room row while preserving sender serialization', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const roomId = await createRoomId(actors.buyer.jar, item.id);
+			const { client } = getTestDatabase();
+			const barrier = await openDedicatedTestConnection();
+			const itemWriter = await openDedicatedTestConnection();
+			let firstSend: Promise<Response> | undefined;
+			let secondSend: Promise<Response> | undefined;
+			let itemUpdate: Promise<unknown> | undefined;
+			let advisoryLockHeld = false;
+
+			await client.query(`
+				CREATE FUNCTION test_hold_chat_message_insert() RETURNS trigger
+				LANGUAGE plpgsql AS $$
+				BEGIN
+					PERFORM pg_advisory_xact_lock(hashtext(current_database()), 606);
+					RETURN NEW;
+				END;
+				$$;
+				CREATE TRIGGER test_hold_chat_message_insert
+					BEFORE INSERT ON chat_messages
+					FOR EACH ROW EXECUTE FUNCTION test_hold_chat_message_insert();
+			`);
+
+			try {
+				await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 606)');
+				advisoryLockHeld = true;
+				const barrierBackend = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+				const barrierPid = barrierBackend.rows[0]?.pid;
+				if (!barrierPid) throw new Error('Missing message-insert barrier PID');
+
+				firstSend = directlyAuthenticatedRequest(
+					`/chat/auth/rooms/${roomId}/messages`,
+					'POST',
+					actorApiUser(actors.buyer),
+					{ message: 'First lock-scope message' },
+				);
+				const [blockedInsert] = await waitForBlockedStatements(barrier, barrierPid, 1, '%insert into "chat_messages"%');
+				const firstSenderPid = blockedInsert?.pid;
+				if (!firstSenderPid) throw new Error('Missing blocked first-sender PID');
+
+				secondSend = directlyAuthenticatedRequest(
+					`/chat/auth/rooms/${roomId}/messages`,
+					'POST',
+					actorApiUser(actors.buyer),
+					{ message: 'Second serialized message' },
+				);
+				const [blockedRoomLock] = await waitForBlockedStatements(
+					barrier,
+					firstSenderPid,
+					1,
+					'%from "chat_rooms"%for update%',
+				);
+
+				itemUpdate = itemWriter.query('UPDATE items SET updated_at = updated_at WHERE id = $1 RETURNING id', [item.id]);
+				let itemUpdateCompletedWhileRoomWasLocked = true;
+				try {
+					await bounded(itemUpdate, 'independent item update');
+				} catch {
+					itemUpdateCompletedWhileRoomWasLocked = false;
+				}
+
+				expect({
+					itemUpdateCompletedWhileRoomWasLocked,
+					roomLockIsScoped: blockedRoomLock?.query.includes('for update of "chat_rooms"') ?? false,
+				}).toEqual({ itemUpdateCompletedWhileRoomWasLocked: true, roomLockIsScoped: true });
+			} finally {
+				if (advisoryLockHeld) {
+					await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 606)');
+				}
+				await Promise.allSettled([firstSend, secondSend, itemUpdate].filter((promise) => promise !== undefined));
+				await client.query('DROP TRIGGER IF EXISTS test_hold_chat_message_insert ON chat_messages');
+				await client.query('DROP FUNCTION IF EXISTS test_hold_chat_message_insert()');
+				await itemWriter.end();
+				await barrier.end();
+			}
+
+			if (!firstSend || !secondSend) throw new Error('Lock-scope sender requests did not start');
+			expect((await Promise.all([firstSend, secondSend])).map(({ status }) => status)).toEqual([200, 200]);
+			expect(new Set((await messageRows(roomId)).map(({ message }) => message))).toEqual(
+				new Set(['First lock-scope message', 'Second serialized message']),
+			);
+		});
+
 		it('serializes concurrent first sends and emits exactly one post-commit notification', async () => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
