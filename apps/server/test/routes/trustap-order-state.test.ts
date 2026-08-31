@@ -44,7 +44,6 @@ describe('Trustap order transition policy', () => {
 	it.each([
 		[TRUSTAP.PAID, ORDER_PHASES.PAYMENT_CONFIRMED, TRUSTAP.CANCELLED],
 		[TRUSTAP.TRACKED, ORDER_PHASES.SHIPPING_CONFIRMED, TRUSTAP.REJECTED],
-		[TRUSTAP.DELIVERED, ORDER_PHASES.COMPLETED, TRUSTAP.PAYMENT_REFUNDED],
 		[TRUSTAP.FUNDS_RELEASED, ORDER_PHASES.COMPLETED, TRUSTAP.PAID],
 	] as const)('rejects illegal transition %s -> %s', (currentProvider, currentOrder, incomingProvider) => {
 		expect(resolveTrustapOrderTransition(currentProvider, currentOrder, incomingProvider)).toEqual({
@@ -78,6 +77,14 @@ describe('Trustap order transition policy', () => {
 		expect(
 			resolveTrustapOrderTransition(TRUSTAP.COMPLAINED, ORDER_PHASES.SHIPPING_CONFIRMED, TRUSTAP.PAYMENT_REFUNDED),
 		).toEqual({
+			apply: true,
+			orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+			providerStatus: TRUSTAP.PAYMENT_REFUNDED,
+		});
+	});
+
+	it('applies an authoritative refund after delivered even when the order is already completed', () => {
+		expect(resolveTrustapOrderTransition(TRUSTAP.DELIVERED, ORDER_PHASES.COMPLETED, TRUSTAP.PAYMENT_REFUNDED)).toEqual({
 			apply: true,
 			orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
 			providerStatus: TRUSTAP.PAYMENT_REFUNDED,

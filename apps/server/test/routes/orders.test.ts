@@ -2,11 +2,31 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
-import { ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
-import { items, orders } from '../../src/database/schemas/schema';
+import { entityTrustapTransactionTypeValues, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
+import { entityTrustapTransactions, items, orders } from '../../src/database/schemas/schema';
 import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
+
+async function attachPayableProvider(
+	actors: Awaited<ReturnType<typeof createCommerceActors>>,
+	item: Awaited<ReturnType<typeof createItemFixture>>,
+	order: Awaited<ReturnType<typeof createOrderFixture>>,
+) {
+	if (!order.payment_transaction_id) throw new Error('Expected provider-backed order');
+	const { db } = getTestDatabase();
+	await db.insert(entityTrustapTransactions).values({
+		entityId: item.id,
+		sellerId: actors.seller.profile.payment_provider_id,
+		buyerId: actors.buyer.profile.payment_provider_id,
+		transactionId: order.payment_transaction_id,
+		status: entityTrustapTransactionTypeValues.CREATED,
+		price: order.item_price + order.platform_charge,
+		charge: order.payment_provider_charge,
+		chargeSeller: 0,
+		entityTitle: item.title,
+	});
+}
 
 describe('order routes', () => {
 	it.each([['/orders/auth/status/all'], ['/orders/auth/1']])('requires authentication for GET %s', async (path) => {
@@ -91,6 +111,7 @@ describe('order routes', () => {
 			payment_transaction_id: '91337',
 			payment_creation_state: 'created',
 		});
+		await attachPayableProvider(actors, item, order);
 		const { db } = getTestDatabase();
 		await db.update(items).set({ price: 42_000 }).where(eq(items.id, item.id));
 
@@ -140,14 +161,16 @@ describe('order routes', () => {
 		const actors = await createCommerceActors();
 		const safeItem = await createItemFixture(actors);
 		const largeItem = await createItemFixture(actors, { commons: { title: 'Large transaction ID item' } });
-		await createOrderFixture(actors, safeItem, {
+		const safeOrder = await createOrderFixture(actors, safeItem, {
 			payment_transaction_id: '91337',
 			payment_creation_state: 'created',
 		});
-		await createOrderFixture(actors, largeItem, {
+		const largeOrder = await createOrderFixture(actors, largeItem, {
 			payment_transaction_id: '9223372036854775807',
 			payment_creation_state: 'created',
 		});
+		await attachPayableProvider(actors, safeItem, safeOrder);
+		await attachPayableProvider(actors, largeItem, largeOrder);
 
 		const response = await authenticatedRequest('/orders/auth/status/payment_pending', 'GET', actors.buyer.jar);
 		expect(response.status).toBe(200);
@@ -168,9 +191,34 @@ describe('order routes', () => {
 			payment_creation_state: 'created',
 			...override,
 		});
+		await attachPayableProvider(actors, item, order);
 
 		const response = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
 		expect(response.status).toBe(200);
+		const body = (await response.json()) as Record<string, unknown>;
+		expect(body).not.toHaveProperty('payment_url');
+		expect(body).not.toHaveProperty('payment_transaction_id');
+	});
+
+	it.each([
+		{ status: entityTrustapTransactionTypeValues.PAID, quarantined: false },
+		{ status: entityTrustapTransactionTypeValues.COMPLAINED, quarantined: false },
+		{ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true },
+	])('withholds payment action for nonpayable provider evidence: %j', async (providerOverride) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const order = await createOrderFixture(actors, item, {
+			payment_transaction_id: '91337',
+			payment_creation_state: 'created',
+		});
+		await attachPayableProvider(actors, item, order);
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set(providerOverride)
+			.where(eq(entityTrustapTransactions.transactionId, '91337'));
+
+		const response = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
 		const body = (await response.json()) as Record<string, unknown>;
 		expect(body).not.toHaveProperty('payment_url');
 		expect(body).not.toHaveProperty('payment_transaction_id');

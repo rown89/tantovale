@@ -6,8 +6,17 @@ import type { MiddlewareHandler } from 'hono';
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders } from '#db-schema';
-import { entityTrustapTransactionStatusValues, PAYMENT_CANCELLATION_STATES } from '#database/schemas/enumerated_values';
-import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
+import {
+	entityTrustapTransactionStatusValues,
+	entityTrustapTransactionTypeValues,
+	PAYMENT_CANCELLATION_STATES,
+	PAYMENT_CREATION_STATES,
+} from '#database/schemas/enumerated_values';
+import {
+	isAuthoritativeCancellationStatus,
+	isAuthoritativeCreationResolutionStatus,
+	resolveTrustapOrderTransition,
+} from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { environment } from '#utils/constants';
 import { canonicalTrustapId, parseJsonWithTopLevelTrustapId } from '../payments/trustap-int64';
@@ -95,7 +104,7 @@ export const webhooksRoute = createRouter().post(
 				if (!trustapTransaction || trustapTransaction.entityId !== identity.entityId) {
 					return c.json({ error: 'Transaction not found' }, 404);
 				}
-				if (trustapTransaction.reconciliationRequired) {
+				if (trustapTransaction.quarantined) {
 					return c.json({ success: true, message: 'Quarantined transaction update ignored' }, 200);
 				}
 				const [order] = await tx
@@ -103,6 +112,7 @@ export const webhooksRoute = createRouter().post(
 						id: orders.id,
 						status: orders.status,
 						paymentCancellationState: orders.payment_cancellation_state,
+						paymentCreationState: orders.payment_creation_state,
 					})
 					.from(orders)
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))
@@ -115,7 +125,18 @@ export const webhooksRoute = createRouter().post(
 				const resolvesCancellation =
 					isAuthoritativeCancellationStatus(payload.status) &&
 					order.paymentCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
-				if (!transition.apply && !resolvesCancellation) {
+				const complaintRequiresReconciliation =
+					payload.status === entityTrustapTransactionTypeValues.COMPLAINED &&
+					order.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
+				const resolvesCreationReconciliation =
+					order.paymentCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
+					isAuthoritativeCreationResolutionStatus(payload.status);
+				if (
+					!transition.apply &&
+					!resolvesCancellation &&
+					!complaintRequiresReconciliation &&
+					!resolvesCreationReconciliation
+				) {
 					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
 				}
 
@@ -140,6 +161,11 @@ export const webhooksRoute = createRouter().post(
 					.update(orders)
 					.set({
 						status: transition.orderStatus,
+						...(payload.status === entityTrustapTransactionTypeValues.COMPLAINED
+							? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
+							: resolvesCreationReconciliation
+								? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }
+								: {}),
 						...(isAuthoritativeCancellationStatus(payload.status)
 							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
 							: {}),

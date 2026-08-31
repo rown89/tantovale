@@ -1,15 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import type { PoolClient } from 'pg';
 
 import {
 	type EntityTrustapTransactionStatus,
 	entityTrustapTransactionTypeValues,
 	ORDER_PHASES,
+	ORDER_PROPOSAL_PHASES,
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
+	PAYMENT_INVITATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
-import { entityTrustapTransactions, orders, profiles, shipping_quotes } from '../../src/database/schemas/schema';
+import {
+	commerce_reconciliation_audit,
+	entityTrustapTransactions,
+	orders,
+	payment_invitation_outbox,
+	profiles,
+	shipping_quotes,
+} from '../../src/database/schemas/schema';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
 import {
 	createCommerceActors,
@@ -20,6 +30,7 @@ import {
 import { getTestDatabase } from '../helpers/database';
 import { setTrustapTransactionStatus } from '../helpers/providers';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
+import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 
 const mappedStatuses = [
 	[entityTrustapTransactionTypeValues.CREATED, ORDER_PHASES.PAYMENT_PENDING],
@@ -39,6 +50,39 @@ function providerUrl(name: 'PAYMENT_PROVIDER_API_URL'): string {
 	const value = process.env[name];
 	if (!value) throw new Error(`Missing worker ${name}`);
 	return value;
+}
+
+async function acceptedMailCount(recipient: string): Promise<number> {
+	/* eslint-disable-next-line turbo/no-undeclared-env-vars -- The disposable test harness supplies worker-local Mailpit. */
+	const origin = process.env.MAILPIT_API_URL;
+	if (!origin) throw new Error('Missing worker-local Mailpit URL');
+	const url = new URL('/api/v1/search', origin);
+	url.searchParams.set('query', `to:${recipient}`);
+	const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+	if (!response.ok) throw new Error(`Mailpit search failed with ${response.status}`);
+	const body = (await response.json()) as { messages: Array<{ Subject: string }> };
+	return body.messages.filter(({ Subject }) => Subject === 'Tantovale - Proposal accepted').length;
+}
+
+async function waitForBlockedRequests(blocker: PoolClient, blockingProcessId: number, expected: number): Promise<void> {
+	const deadline = Date.now() + 3_000;
+	do {
+		const { rows } = await blocker.query<{ blocked_count: number }>(
+			`SELECT count(*)::int AS blocked_count
+			 FROM pg_locks AS waiting
+			 JOIN pg_locks AS holding
+			   ON holding.locktype = waiting.locktype
+			  AND holding.database IS NOT DISTINCT FROM waiting.database
+			  AND holding.classid IS NOT DISTINCT FROM waiting.classid
+			  AND holding.objid IS NOT DISTINCT FROM waiting.objid
+			  AND holding.objsubid IS NOT DISTINCT FROM waiting.objsubid
+			 WHERE NOT waiting.granted AND holding.granted AND holding.pid = $1`,
+			[blockingProcessId],
+		);
+		if ((rows[0]?.blocked_count ?? 0) >= expected) return;
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	} while (Date.now() < deadline);
+	throw new Error(`Expected ${expected} polling request(s) to wait on blocker ${blockingProcessId}`);
 }
 
 async function createStaleProviderBackedOrder(
@@ -83,7 +127,7 @@ async function createStaleProviderBackedOrder(
 			description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
 		},
 	);
-	return { order, transactionId: String(trustapTransactionFixture.id) };
+	return { actors, item, order, transactionId: String(trustapTransactionFixture.id) };
 }
 
 describe('Trustap transaction polling state mapping', () => {
@@ -211,6 +255,179 @@ describe('Trustap transaction polling state mapping', () => {
 		expect(storedProvider?.status).toBe(remoteStatus);
 	});
 
+	it('fail-closes a polled complaint while preserving the current order phase', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder();
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.COMPLAINED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+		});
+	});
+
+	it('polls a stale complaint before draining its pending payment invitation', async () => {
+		const { actors, item, order, transactionId } = await createStaleProviderBackedOrder();
+		const proposal = await createProposalFixture(actors, item, { status: ORDER_PROPOSAL_PHASES.accepted });
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ order_proposal_id: proposal.id }).where(eq(orders.id, order.id));
+		await db.insert(payment_invitation_outbox).values({
+			order_id: order.id,
+			transaction_id: transactionId,
+			recipient_email: actors.buyer.user.email,
+			merchant_username: actors.seller.user.username,
+			item_name: item.title,
+		});
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.COMPLAINED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [intent] = await db
+			.select()
+			.from(payment_invitation_outbox)
+			.where(eq(payment_invitation_outbox.order_id, order.id));
+		expect(intent).toMatchObject({ state: PAYMENT_INVITATION_STATES.PENDING, attempt_count: 0 });
+		expect(await acceptedMailCount(actors.buyer.user.email)).toBe(0);
+	});
+
+	it.each([
+		['complaint then refund', true],
+		['missed complaint then refund', false],
+	] as const)('accepts a polled authoritative refund after delivery (%s)', async (_label, sendComplaint) => {
+		const { order, transactionId } = await createStaleProviderBackedOrder(entityTrustapTransactionTypeValues.DELIVERED);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, order.id));
+		if (sendComplaint) {
+			await setTrustapTransactionStatus(
+				providerUrl('PAYMENT_PROVIDER_API_URL'),
+				transactionId,
+				entityTrustapTransactionTypeValues.COMPLAINED,
+			);
+			await new TransactionSyncService().syncTransactionStatuses();
+			await db
+				.update(entityTrustapTransactions)
+				.set({ updated_at: new Date(0) })
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		}
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_REFUNDED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
+		});
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAYMENT_REFUNDED);
+	});
+
+	it.each(['item', 'identity', 'amount'] as const)(
+		'permanently quarantines a polled %s correlation mismatch',
+		async (mismatch) => {
+			const { order, transactionId } = await createStaleProviderBackedOrder();
+			const { db } = getTestDatabase();
+			if (mismatch === 'item') {
+				const actors = await createCommerceActors();
+				const otherItem = await createItemFixture(actors);
+				await db
+					.update(entityTrustapTransactions)
+					.set({ entityId: otherItem.id })
+					.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			} else if (mismatch === 'identity') {
+				await db
+					.update(entityTrustapTransactions)
+					.set({ buyerId: 'wrong-local-provider-user' })
+					.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			} else {
+				await db
+					.update(entityTrustapTransactions)
+					.set({ price: trustapTransactionFixture.price + 1 })
+					.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			}
+
+			const first = await new TransactionSyncService().syncTransactionStatuses();
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			const audits = await db
+				.select()
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId));
+			expect(first.failedTransactions).toBeGreaterThanOrEqual(1);
+			expect(storedOrder?.payment_creation_state).toBe(PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED);
+			expect(storedProvider?.quarantined).toBe(true);
+			expect(audits.map(({ source_table }) => source_table).sort()).toEqual(['entity_trustap_transactions', 'orders']);
+
+			await new TransactionSyncService().syncTransactionStatuses();
+			const repeatedAudits = await db
+				.select()
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId));
+			expect(repeatedAudits).toHaveLength(2);
+		},
+	);
+
+	it('quarantines a polling mismatch only after waiting on the exact shared item lock', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder();
+		if (order.item_id === null) throw new Error('Expected order item');
+		const { db, client } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ price: trustapTransactionFixture.price + 1 })
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		const blocker = await client.connect();
+		try {
+			await blocker.query('BEGIN');
+			const blockerPid = (await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing blocker PID');
+			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+				itemCommerceLockScope,
+				order.item_id,
+			]);
+
+			const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+			await waitForBlockedRequests(blocker, blockerPid, 1);
+			const [whileBlocked] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(whileBlocked?.quarantined).toBe(false);
+			await blocker.query('COMMIT');
+			await syncPromise;
+
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(storedProvider?.quarantined).toBe(true);
+		} finally {
+			await blocker.query('ROLLBACK').catch(() => undefined);
+			blocker.release();
+		}
+	});
+
 	it('ignores stale provider replays and active regressions', async () => {
 		const { order, transactionId } = await createStaleProviderBackedOrder(entityTrustapTransactionTypeValues.DELIVERED);
 		const { db } = getTestDatabase();
@@ -284,6 +501,7 @@ describe('Trustap transaction polling state mapping', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAYMENT_REFUNDED);
 		expect(storedOrder).toMatchObject({
 			status: ORDER_PHASES.PAYMENT_REFUNDED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
 		});
 	});

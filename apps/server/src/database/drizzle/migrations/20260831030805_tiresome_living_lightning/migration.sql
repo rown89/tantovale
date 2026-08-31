@@ -2,7 +2,7 @@ LOCK TABLE "addresses", "entity_trustap_transactions", "items", "orders", "order
 --> statement-breakpoint
 ALTER TABLE "entity_trustap_transactions" ALTER COLUMN "transaction_id" TYPE bigint USING "transaction_id"::bigint;
 --> statement-breakpoint
-ALTER TABLE "entity_trustap_transactions" ADD COLUMN "reconciliation_required" boolean DEFAULT false NOT NULL;
+ALTER TABLE "entity_trustap_transactions" ADD COLUMN "quarantined" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "orders" ALTER COLUMN "payment_transaction_id" TYPE bigint USING "payment_transaction_id"::bigint;
 --> statement-breakpoint
@@ -224,10 +224,40 @@ WHERE transaction.id = ranked.id AND ranked.duplicate_rank > 1;
 --> statement-breakpoint
 CREATE TEMP TABLE m07_conflicted_transactions (transaction_id bigint PRIMARY KEY) ON COMMIT DROP;
 --> statement-breakpoint
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
+SELECT 'invalid_provider_graph', 'entity_trustap_transactions', transaction.id,
+	transaction.transaction_id::text, to_jsonb(transaction)
+FROM entity_trustap_transactions AS transaction
+WHERE transaction.entity_id IS NULL OR transaction.seller_id IS NULL OR transaction.buyer_id IS NULL
+	OR transaction.currency IS DISTINCT FROM 'eur' OR transaction.price <= 0
+	OR transaction.charge < 0 OR transaction.charge_seller IS DISTINCT FROM 0;
+--> statement-breakpoint
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
+SELECT 'orphan_provider_transaction', 'entity_trustap_transactions', transaction.id,
+	transaction.transaction_id::text, to_jsonb(transaction)
+FROM entity_trustap_transactions AS transaction
+WHERE transaction.entity_id IS NOT NULL AND transaction.seller_id IS NOT NULL AND transaction.buyer_id IS NOT NULL
+	AND transaction.currency = 'eur' AND transaction.price > 0 AND transaction.charge >= 0 AND transaction.charge_seller = 0
+	AND NOT EXISTS (
+		SELECT 1
+		FROM orders AS target
+		JOIN profiles AS buyer_profile ON buyer_profile.id = target.buyer_id
+		JOIN profiles AS seller_profile ON seller_profile.id = target.seller_id
+		WHERE target.payment_transaction_id = transaction.transaction_id
+			AND target.item_id = transaction.entity_id
+			AND target.buyer_address IS NOT NULL AND target.seller_address IS NOT NULL
+			AND target.payment_attempt_id IS NOT NULL AND target.item_price IS NOT NULL
+			AND target.shipping_price > 0 AND target.platform_charge >= 0 AND target.payment_provider_charge >= 0
+			AND transaction.buyer_id = buyer_profile.payment_provider_id
+			AND transaction.seller_id = seller_profile.payment_provider_id
+			AND transaction.price = target.item_price + target.platform_charge
+			AND transaction.charge = target.payment_provider_charge
+	);
+--> statement-breakpoint
 INSERT INTO m07_conflicted_transactions (transaction_id)
 SELECT DISTINCT original_reference::bigint
 FROM commerce_reconciliation_audit
-WHERE conflict_type = 'ambiguous_provider_transaction';
+WHERE conflict_type IN ('ambiguous_provider_transaction', 'invalid_provider_graph', 'orphan_provider_transaction');
 --> statement-breakpoint
 INSERT INTO m07_conflicted_transactions (transaction_id)
 SELECT DISTINCT target.payment_transaction_id
@@ -291,7 +321,7 @@ JOIN orders AS target ON target.id = ranked.id
 WHERE ranked.duplicate_rank > 1;
 --> statement-breakpoint
 UPDATE entity_trustap_transactions
-SET reconciliation_required = true, updated_at = now()
+SET quarantined = true, updated_at = now()
 WHERE transaction_id IN (SELECT transaction_id FROM m07_conflicted_transactions);
 --> statement-breakpoint
 UPDATE orders AS target
@@ -386,7 +416,7 @@ SET legacy_payment_transaction_id = target.payment_transaction_id,
 FROM ranked
 WHERE target.id = ranked.id AND ranked.duplicate_rank > 1;
 --> statement-breakpoint
-ALTER TABLE "entity_trustap_transactions" ADD CONSTRAINT "entity_trustap_transactions_active_graph_check" CHECK ("reconciliation_required" OR ("entity_id" IS NOT NULL AND "seller_id" IS NOT NULL AND "buyer_id" IS NOT NULL AND "currency" = 'eur' AND "price" > 0 AND "charge" >= 0 AND "charge_seller" = 0));
+ALTER TABLE "entity_trustap_transactions" ADD CONSTRAINT "entity_trustap_transactions_active_graph_check" CHECK ("quarantined" OR ("entity_id" IS NOT NULL AND "seller_id" IS NOT NULL AND "buyer_id" IS NOT NULL AND "currency" = 'eur' AND "price" > 0 AND "charge" >= 0 AND "charge_seller" = 0));
 --> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_operational_graph_check" CHECK (
 	"payment_creation_state" = 'reconciliation_required' OR (

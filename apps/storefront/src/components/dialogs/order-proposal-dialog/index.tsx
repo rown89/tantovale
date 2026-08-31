@@ -23,6 +23,7 @@ import { Textarea } from '@workspace/ui/components/textarea';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { create_order_proposal_schema } from '@workspace/server/extended_schemas';
 import { Spinner } from '@workspace/ui/components/spinner';
+import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
 
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
@@ -36,6 +37,10 @@ export function ProposalDialog() {
 
 	const { setChatId, item, isProposalModalOpen, isCreatingProposal, setIsProposalModalOpen, handleProposal } =
 		useTantovaleStore();
+	const { userAddress, isUserAddressLoading, isUserAddressError } = useAddressesRetrieval({
+		status: 'active',
+		enabled: isProposalModalOpen && !!user,
+	});
 
 	const formSchema = create_order_proposal_schema.extend({
 		proposal_price: z
@@ -98,18 +103,20 @@ export function ProposalDialog() {
 	const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item && !!item?.id && !!item?.price;
 	const itemId = item?.id;
+	const activeAddressId = userAddress?.[0]?.id;
+	const canQuoteShipping = hasMandatoryArguments && !!activeAddressId && !isUserAddressLoading && !isUserAddressError;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_quote', 'proposal', itemId, user?.profile_id],
+		queryKey: ['shipping_quote', 'proposal', itemId, user?.profile_id, activeAddressId],
 		queryFn: async () => {
 			if (!itemId) return null;
 			return getShippingCost(itemId);
 		},
-		enabled: isProposalModalOpen && hasMandatoryArguments,
+		enabled: isProposalModalOpen && canQuoteShipping,
 		staleTime: 10 * 60 * 1_000,
 		refetchOnMount: true,
 	});
@@ -133,6 +140,7 @@ export function ProposalDialog() {
 			shippingCost?.amount,
 			item?.id,
 			user?.profile_id,
+			activeAddressId,
 		],
 		queryFn: async () => {
 			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
@@ -142,7 +150,7 @@ export function ProposalDialog() {
 
 			return platformsCosts;
 		},
-		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingCost,
+		enabled: isProposalModalOpen && canQuoteShipping && !!shippingCost,
 		staleTime: 10 * 60 * 1_000,
 	});
 

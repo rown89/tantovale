@@ -37,7 +37,9 @@ const activeOrderPhaseRank: Partial<Record<OrderPhase, number>> = {
 
 function shouldRepairOrderStatus(current: string, expected: OrderPhase): boolean {
 	if (!validOrderPhases.has(current)) return true;
-	if (current === expected || terminalOrderPhases.has(current)) return false;
+	if (current === expected) return false;
+	if (expected === ORDER_PHASES.PAYMENT_REFUNDED) return true;
+	if (terminalOrderPhases.has(current)) return false;
 	if (terminalOrderPhases.has(expected)) return true;
 	return (
 		(activeOrderPhaseRank[current as OrderPhase] ?? Number.POSITIVE_INFINITY) <
@@ -52,11 +54,18 @@ const directSuccessors: Record<EntityTrustapTransactionStatus, readonly EntityTr
 	[TRUSTAP.JOINED]: [TRUSTAP.PAID, TRUSTAP.REJECTED, TRUSTAP.CANCELLED],
 	[TRUSTAP.PAID]: [TRUSTAP.TRACKED, TRUSTAP.CANCELLED_WITH_PAYMENT, TRUSTAP.PAYMENT_REFUNDED],
 	[TRUSTAP.TRACKED]: [TRUSTAP.DELIVERED, TRUSTAP.COMPLAINED, TRUSTAP.CANCELLED_WITH_PAYMENT, TRUSTAP.PAYMENT_REFUNDED],
-	[TRUSTAP.DELIVERED]: [TRUSTAP.COMPLAINED, TRUSTAP.COMPLAINT_PERIOD_ENDED, TRUSTAP.FUNDS_RELEASED],
+	[TRUSTAP.DELIVERED]: [
+		TRUSTAP.COMPLAINED,
+		TRUSTAP.COMPLAINT_PERIOD_ENDED,
+		TRUSTAP.FUNDS_RELEASED,
+		TRUSTAP.PAYMENT_REFUNDED,
+	],
 	[TRUSTAP.COMPLAINED]: [
 		TRUSTAP.DELIVERED,
 		TRUSTAP.COMPLAINT_PERIOD_ENDED,
 		TRUSTAP.FUNDS_RELEASED,
+		TRUSTAP.CANCELLED,
+		TRUSTAP.CANCELLED_WITH_PAYMENT,
 		TRUSTAP.PAYMENT_REFUNDED,
 	],
 	[TRUSTAP.COMPLAINT_PERIOD_ENDED]: [TRUSTAP.FUNDS_RELEASED],
@@ -96,9 +105,20 @@ const authoritativeCancellationStatuses = new Set<EntityTrustapTransactionStatus
 	TRUSTAP.CANCELLED_WITH_PAYMENT,
 	TRUSTAP.PAYMENT_REFUNDED,
 ]);
+const authoritativeCreationResolutionStatuses = new Set<EntityTrustapTransactionStatus>([
+	TRUSTAP.REJECTED,
+	TRUSTAP.CANCELLED,
+	TRUSTAP.CANCELLED_WITH_PAYMENT,
+	TRUSTAP.PAYMENT_REFUNDED,
+	TRUSTAP.FUNDS_RELEASED,
+]);
 
 export function isAuthoritativeCancellationStatus(status: EntityTrustapTransactionStatus): boolean {
 	return authoritativeCancellationStatuses.has(status);
+}
+
+export function isAuthoritativeCreationResolutionStatus(status: EntityTrustapTransactionStatus): boolean {
+	return authoritativeCreationResolutionStatuses.has(status);
 }
 
 export function resolveTrustapOrderTransition(

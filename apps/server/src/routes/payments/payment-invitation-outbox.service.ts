@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, lte, notInArray, or, sql } from 'drizzle-orm';
 
 import { createClient } from '#database/index';
 import {
 	ORDER_PHASES,
 	ORDER_PROPOSAL_PHASES,
+	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 	PAYMENT_INVITATION_STATES,
+	entityTrustapTransactionTypeValues,
 } from '#database/schemas/enumerated_values';
-import { orders, orders_proposals, payment_invitation_outbox } from '#db-schema';
+import { entityTrustapTransactions, orders, orders_proposals, payment_invitation_outbox } from '#db-schema';
 import { sendProposalAcceptedMessage } from '#mailer/templates/proposals/buyer/proposal-accepted';
 import { buildGuestPaymentUrl } from './payment-provider.service';
 
@@ -27,7 +29,11 @@ type ClaimedInvitation = {
 export class PaymentInvitationOutboxService {
 	private readonly db = createClient().db;
 
-	private async claimOne(excludedIds: number[]): Promise<ClaimedInvitation | undefined> {
+	/**
+	 * Delivery is durable and at-least-once. The lease prevents concurrent active sends, but SMTP cannot prove
+	 * exactly-once delivery if a worker crashes after SMTP accepts a message and before SENT is committed.
+	 */
+	private async claimOne(excludedIds: number[], orderId?: number): Promise<ClaimedInvitation | undefined> {
 		return this.db.transaction(async (tx) => {
 			const now = new Date();
 			const available = or(
@@ -41,10 +47,18 @@ export class PaymentInvitationOutboxService {
 			const predicates = [
 				available,
 				eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
+				eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.NONE),
 				eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
 				eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.accepted),
 				eq(orders.payment_transaction_id, payment_invitation_outbox.transaction_id),
+				eq(entityTrustapTransactions.transactionId, payment_invitation_outbox.transaction_id),
+				eq(entityTrustapTransactions.quarantined, false),
+				inArray(entityTrustapTransactions.status, [
+					entityTrustapTransactionTypeValues.CREATED,
+					entityTrustapTransactionTypeValues.JOINED,
+				]),
 			];
+			if (orderId !== undefined) predicates.push(eq(payment_invitation_outbox.order_id, orderId));
 			if (excludedIds.length > 0) predicates.push(notInArray(payment_invitation_outbox.id, excludedIds));
 			const [candidate] = await tx
 				.select({
@@ -58,6 +72,10 @@ export class PaymentInvitationOutboxService {
 				.from(payment_invitation_outbox)
 				.innerJoin(orders, eq(payment_invitation_outbox.order_id, orders.id))
 				.innerJoin(orders_proposals, eq(orders.order_proposal_id, orders_proposals.id))
+				.innerJoin(
+					entityTrustapTransactions,
+					eq(entityTrustapTransactions.transactionId, orders.payment_transaction_id),
+				)
 				.where(and(...predicates))
 				.for('update', { skipLocked: true })
 				.limit(1);
@@ -81,55 +99,64 @@ export class PaymentInvitationOutboxService {
 		});
 	}
 
+	private async deliver(claimed: ClaimedInvitation): Promise<void> {
+		try {
+			await sendProposalAcceptedMessage({
+				to: claimed.recipientEmail,
+				merchant_username: claimed.merchantUsername,
+				itemName: claimed.itemName,
+				orderId: claimed.orderId,
+				paymentUrl: buildGuestPaymentUrl(claimed.transactionId, claimed.orderId),
+			});
+			const now = new Date();
+			await this.db
+				.update(payment_invitation_outbox)
+				.set({
+					state: PAYMENT_INVITATION_STATES.SENT,
+					lease_token: null,
+					lease_expires_at: null,
+					sent_at: now,
+					updated_at: now,
+				})
+				.where(
+					and(
+						eq(payment_invitation_outbox.id, claimed.id),
+						eq(payment_invitation_outbox.state, PAYMENT_INVITATION_STATES.SENDING),
+						eq(payment_invitation_outbox.lease_token, claimed.leaseToken),
+					),
+				);
+		} catch (error) {
+			console.error('Failed to send proposal payment invitation:', error);
+			await this.db
+				.update(payment_invitation_outbox)
+				.set({
+					state: PAYMENT_INVITATION_STATES.PENDING,
+					lease_token: null,
+					lease_expires_at: null,
+					updated_at: new Date(),
+				})
+				.where(
+					and(
+						eq(payment_invitation_outbox.id, claimed.id),
+						eq(payment_invitation_outbox.state, PAYMENT_INVITATION_STATES.SENDING),
+						eq(payment_invitation_outbox.lease_token, claimed.leaseToken),
+					),
+				);
+		}
+	}
+
+	async dispatchOrder(orderId: number): Promise<void> {
+		const claimed = await this.claimOne([], orderId);
+		if (claimed) await this.deliver(claimed);
+	}
+
 	async dispatchPending(): Promise<void> {
 		const attemptedIds: number[] = [];
 		for (;;) {
 			const claimed = await this.claimOne(attemptedIds);
 			if (!claimed) return;
 			attemptedIds.push(claimed.id);
-			try {
-				await sendProposalAcceptedMessage({
-					to: claimed.recipientEmail,
-					merchant_username: claimed.merchantUsername,
-					itemName: claimed.itemName,
-					orderId: claimed.orderId,
-					paymentUrl: buildGuestPaymentUrl(claimed.transactionId, claimed.orderId),
-				});
-				const now = new Date();
-				await this.db
-					.update(payment_invitation_outbox)
-					.set({
-						state: PAYMENT_INVITATION_STATES.SENT,
-						lease_token: null,
-						lease_expires_at: null,
-						sent_at: now,
-						updated_at: now,
-					})
-					.where(
-						and(
-							eq(payment_invitation_outbox.id, claimed.id),
-							eq(payment_invitation_outbox.state, PAYMENT_INVITATION_STATES.SENDING),
-							eq(payment_invitation_outbox.lease_token, claimed.leaseToken),
-						),
-					);
-			} catch (error) {
-				console.error('Failed to send proposal payment invitation:', error);
-				await this.db
-					.update(payment_invitation_outbox)
-					.set({
-						state: PAYMENT_INVITATION_STATES.PENDING,
-						lease_token: null,
-						lease_expires_at: null,
-						updated_at: new Date(),
-					})
-					.where(
-						and(
-							eq(payment_invitation_outbox.id, claimed.id),
-							eq(payment_invitation_outbox.state, PAYMENT_INVITATION_STATES.SENDING),
-							eq(payment_invitation_outbox.lease_token, claimed.leaseToken),
-						),
-					);
-			}
+			await this.deliver(claimed);
 		}
 	}
 }

@@ -1491,7 +1491,7 @@
 			"default": "false",
 			"generated": null,
 			"identity": null,
-			"name": "reconciliation_required",
+			"name": "quarantined",
 			"entityType": "columns",
 			"schema": "public",
 			"table": "entity_trustap_transactions"
@@ -5714,7 +5714,7 @@
 			"entityType": "uniques"
 		},
 		{
-			"value": "\"reconciliation_required\" OR (\"entity_id\" IS NOT NULL AND \"seller_id\" IS NOT NULL AND \"buyer_id\" IS NOT NULL AND \"currency\" = 'eur' AND \"price\" > 0 AND \"charge\" >= 0 AND \"charge_seller\" = 0)",
+			"value": "\"quarantined\" OR (\"entity_id\" IS NOT NULL AND \"seller_id\" IS NOT NULL AND \"buyer_id\" IS NOT NULL AND \"currency\" = 'eur' AND \"price\" > 0 AND \"charge\" >= 0 AND \"charge_seller\" = 0)",
 			"name": "entity_trustap_transactions_active_graph_check",
 			"entityType": "checks",
 			"schema": "public",

@@ -876,7 +876,12 @@ export const ordersProposalsRoute = createRouter()
 					throw finalizationError;
 				}
 
-				await new PaymentInvitationOutboxService().dispatchPending();
+				try {
+					await new PaymentInvitationOutboxService().dispatchOrder(accepted.updatedOrder.id);
+				} catch {
+					// The durable intent is committed. A background sync will retry it without failing the accepted request.
+					console.error('Proposal payment invitation dispatch failed after commit');
+				}
 				return c.json(
 					{
 						message: 'Proposal updated successfully',

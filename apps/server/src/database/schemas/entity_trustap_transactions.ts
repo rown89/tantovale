@@ -26,7 +26,7 @@ export const entityTrustapTransactions = pgTable(
 		claimedBySeller: boolean('claimed_by_seller').notNull().default(false),
 		claimedByBuyer: boolean('claimed_by_buyer').notNull().default(false),
 		complaintPeriodDeadline: timestamp('complaint_period_deadline'),
-		reconciliationRequired: boolean('reconciliation_required').notNull().default(false),
+		quarantined: boolean('quarantined').notNull().default(false),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
@@ -34,7 +34,7 @@ export const entityTrustapTransactions = pgTable(
 		uniqueIndex('entity_trustap_transactions_transaction_id_idx').on(table.transactionId),
 		check(
 			'entity_trustap_transactions_active_graph_check',
-			sql`${table.reconciliationRequired} OR (${table.entityId} IS NOT NULL AND ${table.sellerId} IS NOT NULL AND ${table.buyerId} IS NOT NULL AND ${table.currency} = 'eur' AND ${table.price} > 0 AND ${table.charge} >= 0 AND ${table.chargeSeller} = 0)`,
+			sql`${table.quarantined} OR (${table.entityId} IS NOT NULL AND ${table.sellerId} IS NOT NULL AND ${table.buyerId} IS NOT NULL AND ${table.currency} = 'eur' AND ${table.price} > 0 AND ${table.charge} >= 0 AND ${table.chargeSeller} = 0)`,
 		),
 	],
 );

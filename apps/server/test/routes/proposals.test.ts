@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../../src/database/schemas/enumerated_values';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
+import { PaymentInvitationOutboxService } from '../../src/routes/payments/payment-invitation-outbox.service';
 import {
 	addresses,
 	categories,
@@ -993,6 +994,35 @@ describe('proposal routes', () => {
 		expect((transactionRequests[0]?.body as { description?: string }).description).toContain(order?.payment_attempt_id);
 	});
 
+	it('keeps proposal acceptance committed when the order-specific post-commit dispatcher fails', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item);
+		const dispatch = vi
+			.spyOn(PaymentInvitationOutboxService.prototype, 'dispatchOrder')
+			.mockRejectedValueOnce(new Error('forced claim failure'));
+
+		const response = await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as { order: { id: number } };
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch).toHaveBeenCalledWith(body.order.id);
+		dispatch.mockRestore();
+
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, body.order.id));
+		const [intent] = await db
+			.select()
+			.from(payment_invitation_outbox)
+			.where(eq(payment_invitation_outbox.order_id, body.order.id));
+		expect(storedOrder?.payment_creation_state).toBe(PAYMENT_CREATION_STATES.CREATED);
+		expect(intent).toMatchObject({ state: PAYMENT_INVITATION_STATES.PENDING, attempt_count: 0 });
+
+		await new PaymentInvitationOutboxService().dispatchPending();
+		expect(await proposalAcceptedMailCount(actors.buyer.user.email)).toBe(1);
+	});
+
 	it.each([
 		['16 minutes', 16 * 60 * 1_000],
 		['24 hours', 24 * 60 * 60 * 1_000],
@@ -1366,7 +1396,7 @@ describe('proposal routes', () => {
 			.from(entityTrustapTransactions)
 			.where(eq(entityTrustapTransactions.id, conflictingProviderRow!.id));
 		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
-		expect(storedProvider?.reconciliationRequired).toBe(true);
+		expect(storedProvider?.quarantined).toBe(true);
 		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
 		expect(
 			await db.select().from(payment_invitation_outbox).where(eq(payment_invitation_outbox.order_id, reservation!.id)),
@@ -1447,7 +1477,7 @@ describe('proposal routes', () => {
 			['paid', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.PAYMENT_CONFIRMED, false, false],
 			['tracked', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.SHIPPING_CONFIRMED, false, false],
 			['delivered', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.COMPLETED, false, false],
-			['complained', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.SHIPPING_CONFIRMED, false, true],
+			['complained', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.PAYMENT_PENDING, false, true],
 			['complaint_period_ended', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.COMPLETED, false, false],
 			['funds_released', ORDER_PROPOSAL_PHASES.accepted, ORDER_PHASES.COMPLETED, false, false],
 			['rejected', ORDER_PROPOSAL_PHASES.rejected, ORDER_PHASES.PAYMENT_FAILED, false, false],
@@ -1533,6 +1563,59 @@ describe('proposal routes', () => {
 			}
 		}
 	});
+
+	it.each([
+		['payment_refunded', ORDER_PHASES.PAYMENT_REFUNDED, PAYMENT_CANCELLATION_STATES.CANCELLED],
+		['funds_released', ORDER_PHASES.COMPLETED, PAYMENT_CANCELLATION_STATES.NONE],
+		['cancelled', ORDER_PHASES.CANCELLED, PAYMENT_CANCELLATION_STATES.CANCELLED],
+	] as const)(
+		'closes complained known-ID recovery with authoritative %s',
+		async (terminalStatus, orderStatus, cancellationState) => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const conflictingItem = await createItemFixture(actors, {
+				commons: { title: `Recovery ${terminalStatus.replaceAll('_', ' ')} conflict` },
+			});
+			await createRoom(actors, item.id);
+			const proposal = await createQuotedProposalFixture(actors, item);
+			const transactionId = String(trustapTransactionFixture.id + 1);
+			const { db } = getTestDatabase();
+			await db.insert(entityTrustapTransactions).values({
+				entityId: conflictingItem.id,
+				sellerId: actors.seller.profile.payment_provider_id,
+				buyerId: actors.buyer.profile.payment_provider_id,
+				transactionId,
+				status: 'created',
+				price: 1,
+				charge: 0,
+				chargeSeller: 0,
+				entityTitle: conflictingItem.title,
+			});
+			expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(500);
+			const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+			await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.transactionId, transactionId));
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, 'complained');
+			await new TransactionSyncService().syncTransactionStatuses();
+
+			const [complainedOrder] = await db.select().from(orders).where(eq(orders.id, reservation!.id));
+			expect(complainedOrder).toMatchObject({
+				status: ORDER_PHASES.PAYMENT_PENDING,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			});
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, terminalStatus);
+			await new TransactionSyncService().syncTransactionStatuses();
+
+			const [resolvedOrder] = await db.select().from(orders).where(eq(orders.id, reservation!.id));
+			const [resolvedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+			expect(resolvedOrder).toMatchObject({
+				status: orderStatus,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+				payment_cancellation_state: cancellationState,
+			});
+			expect(resolvedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
+			expect(await proposalAcceptedMailCount(actors.buyer.user.email)).toBe(0);
+		},
+	);
 
 	it('allows only the proposal buyer to abort while pending', async () => {
 		const actors = await createCommerceActors();

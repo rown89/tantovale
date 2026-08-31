@@ -77,7 +77,7 @@ describe('M07 commerce migration', () => {
 				ALTER TABLE profiles DROP CONSTRAINT profiles_payment_provider_identity_state_check;
 				ALTER TABLE profiles DROP COLUMN payment_provider_identity_attempt_id;
 				ALTER TABLE profiles DROP COLUMN payment_provider_identity_state;
-				ALTER TABLE entity_trustap_transactions DROP COLUMN reconciliation_required;
+				ALTER TABLE entity_trustap_transactions DROP COLUMN quarantined;
 					ALTER TABLE entity_trustap_transactions ALTER COLUMN transaction_id TYPE integer USING transaction_id::integer;
 					ALTER TABLE orders ALTER COLUMN payment_transaction_id TYPE integer USING payment_transaction_id::integer;
 			`);
@@ -125,7 +125,9 @@ describe('M07 commerce migration', () => {
 						(3, 1, 'legacy-seller', 'legacy-buyer', 700, 'created', 10090, 500, 0, 'Item one correlated', now() - interval '30 minutes'),
 						(4, 6, 'legacy-seller', 'legacy-buyer', 800, 'created', 45090, 500, 0, 'Provider evidence', now() - interval '20 minutes'),
 						(5, 7, 'legacy-seller', 'wrong-buyer', 900, 'created', 70090, 500, 0, 'Identity mismatch', now() - interval '15 minutes'),
-						(6, 8, 'legacy-seller', 'legacy-buyer', 901, 'created', 99999, 500, 0, 'Amount mismatch', now() - interval '10 minutes');
+						(6, 8, 'legacy-seller', 'legacy-buyer', 901, 'created', 99999, 500, 0, 'Amount mismatch', now() - interval '10 minutes'),
+						(7, NULL, NULL, NULL, 902, 'created', 0, -1, 1, 'Invalid orphan', now() - interval '9 minutes'),
+						(8, 9, 'legacy-seller', 'legacy-buyer', 903, 'created', 90090, 500, 0, 'Valid orphan', now() - interval '8 minutes');
 				INSERT INTO orders
 					(id, item_id, payment_provider_charge, platform_charge, shipping_label_id, shipping_price, buyer_id, seller_id, buyer_address, seller_address, payment_transaction_id, status, created_at)
 					OVERRIDING SYSTEM VALUE VALUES
@@ -191,19 +193,21 @@ describe('M07 commerce migration', () => {
 				id: number;
 				entity_id: number;
 				transaction_id: string;
-				reconciliation_required: boolean;
-			}>('SELECT id, entity_id, transaction_id, reconciliation_required FROM entity_trustap_transactions ORDER BY id');
+				quarantined: boolean;
+			}>('SELECT id, entity_id, transaction_id, quarantined FROM entity_trustap_transactions ORDER BY id');
 			expect(
-				providerRows.rows.map(({ transaction_id, reconciliation_required }) => ({
+				providerRows.rows.map(({ transaction_id, quarantined }) => ({
 					transaction_id,
-					reconciliation_required,
+					quarantined,
 				})),
 			).toEqual([
-				{ transaction_id: '500', reconciliation_required: true },
-				{ transaction_id: '700', reconciliation_required: true },
-				{ transaction_id: '800', reconciliation_required: true },
-				{ transaction_id: '900', reconciliation_required: true },
-				{ transaction_id: '901', reconciliation_required: true },
+				{ transaction_id: '500', quarantined: true },
+				{ transaction_id: '700', quarantined: true },
+				{ transaction_id: '800', quarantined: true },
+				{ transaction_id: '900', quarantined: true },
+				{ transaction_id: '901', quarantined: true },
+				{ transaction_id: '902', quarantined: true },
+				{ transaction_id: '903', quarantined: true },
 			]);
 			const reconciledOrders = await migrationClient.query<{
 				id: number;
@@ -294,6 +298,8 @@ describe('M07 commerce migration', () => {
 					'legacy_order_provider_status',
 					'legacy_status_missing_transaction',
 					'quarantined_provider_transaction',
+					'invalid_provider_graph',
+					'orphan_provider_transaction',
 				]),
 			);
 			expect(audit.rows.every(({ snapshot }) => typeof snapshot.id === 'number')).toBe(true);

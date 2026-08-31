@@ -2,18 +2,26 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { createClient } from '#database/index';
-import { ORDER_PHASES } from '#database/schemas/enumerated_values';
-import { addresses, cities, items, orders, profiles, users } from '#db-schema';
+import {
+	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
+	PAYMENT_CREATION_STATES,
+	entityTrustapTransactionTypeValues,
+} from '#database/schemas/enumerated_values';
+import { addresses, cities, entityTrustapTransactions, items, orders, profiles, users } from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath } from '#utils/constants';
-import { PAYMENT_CANCELLATION_STATES, PAYMENT_CREATION_STATES } from '#database/schemas/enumerated_values';
 
 import { buildGuestPaymentUrl } from '../payments/payment-provider.service';
 import { publicTrustapId } from '../payments/trustap-int64';
 
 const postgresIntegerMax = 2_147_483_647;
 const orderStatuses = new Set<string>(Object.values(ORDER_PHASES));
+const buyerPayableProviderStatuses = new Set<string>([
+	entityTrustapTransactionTypeValues.CREATED,
+	entityTrustapTransactionTypeValues.JOINED,
+]);
 function parseResourceId(value: string): number | undefined {
 	if (!/^[1-9]\d*$/.test(value)) return undefined;
 	const id = Number(value);
@@ -43,11 +51,16 @@ export const ordersRoute = createRouter()
 			.innerJoin(addresses, eq(orders.buyer_address, addresses.id))
 			.innerJoin(cityAlias, eq(addresses.city_id, cityAlias.id))
 			.innerJoin(provinceAlias, eq(addresses.province_id, provinceAlias.id))
+			.leftJoin(entityTrustapTransactions, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
 			.where(predicate);
 
 		return c.json(
 			userOrders.map((order) => {
-				const paymentTransactionId = order.orders.payment_transaction_id ?? order.orders.legacy_payment_transaction_id;
+				const paymentTransactionId = order.orders.payment_transaction_id;
+				const providerIsBuyerPayable =
+					order.entity_trustap_transactions !== null &&
+					!order.entity_trustap_transactions.quarantined &&
+					buyerPayableProviderStatuses.has(order.entity_trustap_transactions.status);
 				return {
 					id: order.orders.id,
 					status: order.orders.status as (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES],
@@ -72,6 +85,7 @@ export const ordersRoute = createRouter()
 					order.orders.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
 					order.orders.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.NONE &&
 					order.orders.status === ORDER_PHASES.PAYMENT_PENDING &&
+					providerIsBuyerPayable &&
 					paymentTransactionId
 						? {
 								payment_transaction_id: publicTrustapId(paymentTransactionId),
@@ -89,14 +103,24 @@ export const ordersRoute = createRouter()
 
 		const user = c.var.user;
 		const { db } = createClient();
-		const [order] = await db
-			.select()
+		const [result] = await db
+			.select({
+				order: orders,
+				providerStatus: entityTrustapTransactions.status,
+				providerQuarantined: entityTrustapTransactions.quarantined,
+			})
 			.from(orders)
+			.leftJoin(entityTrustapTransactions, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
 			.where(and(eq(orders.id, id), or(eq(orders.buyer_id, user.profile_id), eq(orders.seller_id, user.profile_id))))
 			.limit(1);
 
-		if (!order) return c.json({ error: 'Order not found' }, 404);
-		const paymentTransactionId = order.payment_transaction_id ?? order.legacy_payment_transaction_id;
+		if (!result) return c.json({ error: 'Order not found' }, 404);
+		const { order } = result;
+		const paymentTransactionId = order.payment_transaction_id;
+		const providerIsBuyerPayable =
+			result.providerQuarantined === false &&
+			result.providerStatus !== null &&
+			buyerPayableProviderStatuses.has(result.providerStatus);
 		return c.json(
 			{
 				id: order.id,
@@ -119,6 +143,7 @@ export const ordersRoute = createRouter()
 				order.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
 				order.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.NONE &&
 				order.status === ORDER_PHASES.PAYMENT_PENDING &&
+				providerIsBuyerPayable &&
 				paymentTransactionId
 					? {
 							payment_transaction_id: publicTrustapId(paymentTransactionId),

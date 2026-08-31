@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { client } from '@workspace/server/client-rpc';
 
-export function useAddressesRetrieval({ status }: { status?: 'active' | 'inactive' | 'deleted' } = {}) {
+export function useAddressesRetrieval({
+	status,
+	enabled = true,
+}: { status?: 'active' | 'inactive' | 'deleted'; enabled?: boolean } = {}) {
 	const {
 		data: userAddress,
 		isLoading: isUserAddressLoading,
 		isError: isUserAddressError,
 	} = useQuery({
 		queryKey: ['userAddress', status],
+		enabled,
 		queryFn: async () => {
 			const addressesResponse = await client.addresses.auth.addresses_profile.$get();
 

@@ -6,6 +6,7 @@ import { getShippingCost } from '#queries/get-shipping-cost';
 import useTantovaleStore from '#stores';
 import { useQuery } from '@tanstack/react-query';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
+import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -23,20 +24,25 @@ import { toast } from 'sonner';
 
 export function BuyNowDialog() {
 	const { user } = useAuth();
-
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
+	const { userAddress, isUserAddressLoading, isUserAddressError } = useAddressesRetrieval({
+		status: 'active',
+		enabled: isBuyNowModalOpen && !!user,
+	});
 
 	const userIsNotSeller = !!user && !!item && user.profile_id !== item.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
 	const itemId = item?.id;
 	const itemPrice = item?.price;
+	const activeAddressId = userAddress?.[0]?.id;
+	const canQuoteShipping = hasMandatoryArguments && !!activeAddressId && !isUserAddressLoading && !isUserAddressError;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_quote', 'buy_now', itemId, user?.profile_id],
+		queryKey: ['shipping_quote', 'buy_now', itemId, user?.profile_id, activeAddressId],
 		queryFn: async () => {
 			if (!itemId) return null;
 
@@ -44,7 +50,7 @@ export function BuyNowDialog() {
 
 			return shippingCost;
 		},
-		enabled: isBuyNowModalOpen && hasMandatoryArguments,
+		enabled: isBuyNowModalOpen && canQuoteShipping,
 		staleTime: 10 * 60 * 1_000,
 		refetchOnMount: true,
 	});
@@ -62,6 +68,7 @@ export function BuyNowDialog() {
 			itemId,
 			itemPrice,
 			user?.profile_id,
+			activeAddressId,
 		],
 		queryFn: async () => {
 			if (!itemPrice) return null;
@@ -72,7 +79,7 @@ export function BuyNowDialog() {
 
 			return platformsCosts;
 		},
-		enabled: isBuyNowModalOpen && hasMandatoryArguments && !!shippingCost,
+		enabled: isBuyNowModalOpen && canQuoteShipping && !!shippingCost,
 		staleTime: 10 * 60 * 1_000,
 	});
 
