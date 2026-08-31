@@ -1135,7 +1135,6 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 					postage_fee: 750,
 					charge: 505,
 					charge_calculator_version: 1,
-					features: ['use_custom_postage_fee'],
 				},
 			},
 		]);

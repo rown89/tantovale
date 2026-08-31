@@ -562,7 +562,6 @@ describe('independent Buy Now workflow', () => {
 					postage_fee: shippingPrice,
 					charge: paymentProviderCharge,
 					charge_calculator_version: 1,
-					features: ['use_custom_postage_fee'],
 				},
 			},
 		]);

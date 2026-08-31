@@ -25,7 +25,6 @@ export type StubScenario =
 	| 'charge-disconnect'
 	| 'charge-malformed-json'
 	| 'charge-price-mismatch'
-	| 'charge-postage-mismatch'
 	| 'charge-currency-mismatch'
 	| 'charge-negative'
 	| 'charge-overflow'
@@ -57,7 +56,6 @@ export type StubScenario =
 	| 'transaction-cancel-delay'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
-	| 'transaction-postage-mismatch'
 	| 'transaction-fetch-disconnect'
 	| 'transaction-fetch-invalid-body'
 	| 'transaction-fetch-malformed-json'
@@ -104,18 +102,19 @@ type TrustapTransactionRequest = {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
-	features: ['use_custom_postage_fee'];
+	features?: TrustapTransactionFeature[];
 };
+
+type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_hr_post' | 'use_shippo';
 
 type TrustapTransactionResource = Omit<
 	typeof trustapTransactionFixture,
-	'buyer_id' | 'charge' | 'description' | 'id' | 'postage_fee' | 'price' | 'seller_id' | 'status'
+	'buyer_id' | 'charge' | 'description' | 'id' | 'price' | 'seller_id' | 'status'
 > & {
 	buyer_id: string;
 	charge: number;
 	description: string;
 	id: number;
-	postage_fee: number;
 	price: number;
 	seller_id: string;
 	status: string;
@@ -144,7 +143,6 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'charge-disconnect',
 	'charge-malformed-json',
 	'charge-price-mismatch',
-	'charge-postage-mismatch',
 	'charge-currency-mismatch',
 	'charge-negative',
 	'charge-overflow',
@@ -176,7 +174,6 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'transaction-cancel-delay',
 	'transaction-invalid-json',
 	'transaction-invalid-body',
-	'transaction-postage-mismatch',
 	'transaction-fetch-disconnect',
 	'transaction-fetch-invalid-body',
 	'transaction-fetch-malformed-json',
@@ -326,6 +323,10 @@ function hasExpectedShippoVersion(headers: Record<string, string>): boolean {
 	return headers['shippo-api-version'] === '2018-02-08';
 }
 
+function hasJsonContentType(headers: Record<string, string>): boolean {
+	return headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase() === 'application/json';
+}
+
 function parseTrustapGuest(body: unknown): TrustapGuestRequest | undefined {
 	if (!isRecord(body) || !isRecord(body.tos_acceptance)) return undefined;
 	if (
@@ -378,9 +379,7 @@ function parseTrustapTransaction(body: unknown): TrustapTransactionRequest | und
 		!isSafeInteger(body.postage_fee, 0) ||
 		!isSafeInteger(body.charge, 0) ||
 		!isSafeInteger(body.charge_calculator_version, 1) ||
-		!Array.isArray(body.features) ||
-		body.features.length !== 1 ||
-		body.features[0] !== 'use_custom_postage_fee'
+		!hasSupportedTrustapFeatures(body.features)
 	) {
 		return undefined;
 	}
@@ -395,8 +394,25 @@ function parseTrustapTransaction(body: unknown): TrustapTransactionRequest | und
 		postage_fee: body.postage_fee,
 		charge: body.charge,
 		charge_calculator_version: body.charge_calculator_version,
-		features: ['use_custom_postage_fee'],
+		...(body.features === undefined ? {} : { features: body.features }),
 	};
+}
+
+const trustapTransactionFeatures: ReadonlySet<string> = new Set([
+	'require_seller_acceptance',
+	'use_hr_post',
+	'use_shippo',
+]);
+
+function hasSupportedTrustapFeatures(value: unknown): value is TrustapTransactionFeature[] | undefined {
+	return (
+		value === undefined ||
+		(Array.isArray(value) &&
+			value.every(
+				(feature): feature is TrustapTransactionFeature =>
+					typeof feature === 'string' && trustapTransactionFeatures.has(feature),
+			))
+	);
 }
 
 function isValidShippoShipment(body: unknown): boolean {
@@ -461,7 +477,6 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'charge-disconnect':
 		case 'charge-malformed-json':
 		case 'charge-price-mismatch':
-		case 'charge-postage-mismatch':
 		case 'charge-currency-mismatch':
 		case 'charge-negative':
 		case 'charge-overflow':
@@ -495,7 +510,6 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'transaction-cancel-delay':
 		case 'transaction-invalid-json':
 		case 'transaction-invalid-body':
-		case 'transaction-postage-mismatch':
 		case 'transaction-fetch-disconnect':
 		case 'transaction-fetch-invalid-body':
 		case 'transaction-fetch-malformed-json':
@@ -621,6 +635,14 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 				sendValidationError(kind, response, 'Unsupported Shippo API version');
 				return;
 			}
+			if (
+				kind === 'trustap' &&
+				(route.name === 'trustap-guest-user' || route.name === 'trustap-create-transaction') &&
+				!hasJsonContentType(headers)
+			) {
+				sendValidationError(kind, response, 'Trustap Content-Type must be application/json');
+				return;
+			}
 
 			const body = await readJsonBody(request);
 			requests.push({
@@ -651,6 +673,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					break;
 				case 'trustap-create-transaction': {
+					if (isRecord(body) && body.features !== undefined && !hasSupportedTrustapFeatures(body.features)) {
+						sendValidationError(kind, response, 'Unsupported Trustap transaction feature');
+						return;
+					}
 					trustapTransaction = parseTrustapTransaction(body);
 					const actingUser =
 						trustapTransaction?.creator_role === 'buyer' ? trustapTransaction.buyer_id : trustapTransaction?.seller_id;
@@ -765,15 +791,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					const chargeResponse = {
 						...trustapChargeFixture,
 						price: trustapCharge.price,
-						postage_fee: trustapCharge.postageFee,
 						charge,
 					};
 					if (scenario === 'charge-price-mismatch') {
 						sendJson(response, 200, { ...chargeResponse, price: trustapCharge.price + 1 });
-						return;
-					}
-					if (scenario === 'charge-postage-mismatch') {
-						sendJson(response, 200, { ...chargeResponse, postage_fee: trustapCharge.postageFee + 1 });
 						return;
 					}
 					if (scenario === 'charge-currency-mismatch') {
@@ -830,7 +851,6 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						currency: trustapTransaction.currency,
 						description: trustapTransaction.description,
 						price: trustapTransaction.price,
-						postage_fee: trustapTransaction.postage_fee,
 						charge: trustapTransaction.charge,
 					};
 					nextTrustapTransactionId += 1;
@@ -859,10 +879,6 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 							seller_id: transaction.seller_id,
 							status: transaction.status,
 						});
-						return;
-					}
-					if (scenario === 'transaction-postage-mismatch') {
-						sendJson(response, 201, { ...transaction, postage_fee: transaction.postage_fee + 1 });
 						return;
 					}
 					if (scenario === 'transaction-delay') {

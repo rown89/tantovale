@@ -23,6 +23,8 @@ export interface CalculateTransactionFeeProps {
 
 export type CalculateTransactionFeeResponse = TrustapChargeResponse;
 
+export type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_hr_post' | 'use_shippo';
+
 export interface CreateTransactionWithBothUsersProps {
 	buyer_id: string;
 	seller_id: string;
@@ -33,7 +35,7 @@ export interface CreateTransactionWithBothUsersProps {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
-	features?: ['use_custom_postage_fee'];
+	features?: TrustapTransactionFeature[];
 }
 
 export type CreateTransactionResponse = TrustapTransactionResponse;

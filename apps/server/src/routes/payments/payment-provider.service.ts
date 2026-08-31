@@ -10,8 +10,8 @@ import {
 } from './types';
 import {
 	trustapChargeResponseSchema,
+	trustapCorrelatedTransactionResponseSchema,
 	trustapGuestUserResponseSchema,
-	trustapTransactionResponseSchema,
 } from './provider.schemas';
 import { parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
 
@@ -181,12 +181,7 @@ export class PaymentProviderService {
 			throw new PaymentProviderInvalidResponseError('calculate_charge');
 		}
 		const parsed = trustapChargeResponseSchema.safeParse(data);
-		if (
-			!parsed.success ||
-			parsed.data.currency !== currency ||
-			parsed.data.price !== price ||
-			parsed.data.postage_fee !== postage_fee
-		) {
+		if (!parsed.success || parsed.data.currency !== currency || parsed.data.price !== price) {
 			throw new PaymentProviderInvalidResponseError('calculate_charge');
 		}
 
@@ -231,7 +226,7 @@ export class PaymentProviderService {
 					postage_fee,
 					charge,
 					charge_calculator_version,
-					features: features ?? ['use_custom_postage_fee'],
+					...(features === undefined ? {} : { features }),
 				}),
 				signal: providerSignal(),
 			});
@@ -256,14 +251,13 @@ export class PaymentProviderService {
 		} catch {
 			throw new PaymentProviderAmbiguousError();
 		}
-		const parsed = trustapTransactionResponseSchema.safeParse(data);
+		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
 		if (
 			!parsed.success ||
 			parsed.data.buyer_id !== buyer_id ||
 			parsed.data.seller_id !== seller_id ||
 			parsed.data.currency !== currency ||
 			parsed.data.price !== price ||
-			parsed.data.postage_fee !== postage_fee ||
 			parsed.data.charge !== charge ||
 			parsed.data.charge_seller !== 0 ||
 			parsed.data.description !== description
@@ -306,7 +300,7 @@ export class PaymentProviderService {
 		} catch {
 			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
-		const parsed = trustapTransactionResponseSchema.safeParse(data);
+		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
 		if (!parsed.success || parsed.data.id !== transactionId) {
 			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
@@ -352,7 +346,7 @@ export class PaymentProviderService {
 				'cancel_transaction',
 			);
 		}
-		const parsed = trustapTransactionResponseSchema.safeParse(data);
+		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
 		if (
 			!parsed.success ||
 			parsed.data.id !== transactionId ||

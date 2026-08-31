@@ -67,7 +67,6 @@ const validTrustapTransactionBody = {
 	postage_fee: 750,
 	charge: 500,
 	charge_calculator_version: 1,
-	features: ['use_custom_postage_fee'] as const,
 };
 
 const validShippoShipmentBody = {

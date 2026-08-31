@@ -59,7 +59,6 @@ type TrustapTransactionScenario =
 	| 'transaction-rate-limit'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
-	| 'transaction-postage-mismatch'
 	| 'transaction-delay'
 	| 'transaction-disconnect';
 
@@ -282,7 +281,6 @@ describe('buy-now route', () => {
 			price: item.price + (order?.platform_charge ?? 0),
 			postage_fee: 750,
 			charge: order?.payment_provider_charge,
-			features: ['use_custom_postage_fee'],
 		});
 		expect((trustapRequests[1]?.body as { description?: string }).description).toContain(order?.payment_attempt_id);
 		expect(trustapRequests[1]?.headers['trustap-user']).toBe(actors.buyer.profile.payment_provider_id);
@@ -393,7 +391,6 @@ describe('buy-now route', () => {
 
 	it.each([
 		'charge-price-mismatch',
-		'charge-postage-mismatch',
 		'charge-currency-mismatch',
 		'charge-negative',
 		'charge-overflow',
@@ -497,7 +494,6 @@ describe('buy-now route', () => {
 		'transaction-rate-limit',
 		'transaction-invalid-json',
 		'transaction-invalid-body',
-		'transaction-postage-mismatch',
 		'transaction-delay',
 		'transaction-disconnect',
 	] as const)('never retries an ambiguous Trustap outcome: %s', async (scenario) => {

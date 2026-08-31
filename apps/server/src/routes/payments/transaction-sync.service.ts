@@ -101,7 +101,6 @@ function isPollingCorrelationValid(
 		remote.seller_id === transaction.sellerProviderId &&
 		remote.currency === transaction.providerCurrency &&
 		remote.price === transaction.providerPrice &&
-		remote.postage_fee === transaction.orderShippingPrice &&
 		remote.charge === transaction.providerCharge &&
 		remote.charge_seller === transaction.providerChargeSeller &&
 		(transaction.orderAttemptId === null || remote.description.includes(transaction.orderAttemptId))
@@ -346,7 +345,6 @@ export class TransactionSyncService {
 					remote.seller_id !== sellerProviderId ||
 					remote.currency !== 'eur' ||
 					remote.price !== expectedPrice ||
-					remote.postage_fee !== candidate.shippingPrice ||
 					remote.charge !== candidate.providerCharge ||
 					remote.charge_seller !== 0 ||
 					!remote.description.includes(candidate.paymentAttemptId) ||

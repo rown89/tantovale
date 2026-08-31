@@ -988,7 +988,6 @@ describe('proposal routes', () => {
 				price: 10_090,
 				postage_fee: 750,
 				charge: 505,
-				features: ['use_custom_postage_fee'],
 			},
 		});
 		expect((transactionRequests[0]?.body as { description?: string }).description).toContain(order?.payment_attempt_id);

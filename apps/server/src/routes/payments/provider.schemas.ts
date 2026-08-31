@@ -7,6 +7,7 @@ const postgresIntegerMax = 2_147_483_647;
 const postgresInteger = z.number().int().min(0).max(postgresIntegerMax);
 const positivePostgresInteger = postgresInteger.min(1);
 const providerTimestamp = z.string().datetime({ offset: true });
+const providerUserId = z.string().trim().min(1).max(100);
 
 /**
  * Trustap v1 sends transaction IDs as JSON integers. The boundary JSON reader
@@ -30,17 +31,20 @@ export const trustapGuestUserResponseSchema = z.object({
 
 export const trustapChargeResponseSchema = z.object({
 	charge: postgresInteger,
+	charge_buyer_client: postgresInteger,
 	charge_calculator_version: positivePostgresInteger,
 	charge_seller: z.literal(0),
+	charge_seller_client: postgresInteger,
 	currency: z.literal('eur'),
-	postage_fee: postgresInteger,
 	price: positivePostgresInteger,
 });
 
 export const trustapTransactionResponseSchema = z.object({
-	buyer_id: z.string().trim().min(1).max(100),
+	buyer_id: providerUserId.optional(),
 	charge: postgresInteger,
+	charge_buyer_client: postgresInteger,
 	charge_seller: postgresInteger,
+	charge_seller_client: postgresInteger,
 	client_id: z.string().trim().min(1),
 	created: providerTimestamp,
 	currency: z.literal('eur'),
@@ -51,7 +55,6 @@ export const trustapTransactionResponseSchema = z.object({
 	is_payment_in_progress: z.boolean(),
 	joined: providerTimestamp.optional(),
 	paid: providerTimestamp.optional(),
-	postage_fee: postgresInteger,
 	posta_hr_tracking: z
 		.object({
 			barcode: z.string().min(1),
@@ -60,7 +63,7 @@ export const trustapTransactionResponseSchema = z.object({
 		.optional(),
 	price: positivePostgresInteger,
 	quantity: z.number().int().positive(),
-	seller_id: z.string().trim().min(1).max(100),
+	seller_id: providerUserId.optional(),
 	status: z.enum(entityTrustapTransactionStatusValues),
 	tracked: providerTimestamp.optional(),
 	tracking: z
@@ -71,6 +74,14 @@ export const trustapTransactionResponseSchema = z.object({
 		.optional(),
 });
 
+// Trustap marks the participant IDs optional in its general v1 response. Tantovale's
+// guest-user commerce flows require both before accepting remote evidence, because
+// polling and recovery must correlate it with the durable buyer/seller identities.
+export const trustapCorrelatedTransactionResponseSchema = trustapTransactionResponseSchema.extend({
+	buyer_id: providerUserId,
+	seller_id: providerUserId,
+});
+
 export type TrustapGuestUserResponse = z.infer<typeof trustapGuestUserResponseSchema>;
 export type TrustapChargeResponse = z.infer<typeof trustapChargeResponseSchema>;
-export type TrustapTransactionResponse = z.infer<typeof trustapTransactionResponseSchema>;
+export type TrustapTransactionResponse = z.infer<typeof trustapCorrelatedTransactionResponseSchema>;

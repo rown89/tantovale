@@ -29,7 +29,7 @@ import {
 } from '../fixtures/commerce';
 import { getTestDatabase } from '../helpers/database';
 import { setTrustapTransactionStatus } from '../helpers/providers';
-import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
+import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { app } from '../../src/app';
 import type { GetTransactionStatusResponse } from '../../src/routes/payments/types';
@@ -107,7 +107,7 @@ async function createStaleProviderBackedOrder(
 		item_price: trustapTransactionFixture.price - 500,
 		platform_charge: 500,
 		payment_provider_charge: trustapTransactionFixture.charge,
-		shipping_price: trustapTransactionFixture.postage_fee,
+		shipping_price: trustapPostageFeeFixture,
 		payment_transaction_id: String(trustapTransactionFixture.id),
 		payment_creation_state: 'created',
 	});

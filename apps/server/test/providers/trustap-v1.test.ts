@@ -10,11 +10,7 @@ import {
 	trustapTransactionResponseSchema,
 } from '../../src/routes/payments/provider.schemas';
 import { resolveTrustapOrderTransition, trustapToOrderPhase } from '../../src/routes/payments/trustap-order-state';
-import type {
-	CalculateTransactionFeeResponse,
-	CreateGuestUserProps,
-	CreateTransactionWithBothUsersProps,
-} from '../../src/routes/payments/types';
+import type { CreateGuestUserProps, CreateTransactionWithBothUsersProps } from '../../src/routes/payments/types';
 import { environment } from '../../src/utils/constants';
 import type { StubScenario } from '../infrastructure/provider-stubs';
 import { getProviderRequests, setProviderScenario } from '../helpers/providers';
@@ -38,7 +34,6 @@ const transactionInput = {
 	postage_fee: 875,
 	charge: 625,
 	charge_calculator_version: 1,
-	features: ['use_custom_postage_fee'],
 } satisfies CreateTransactionWithBothUsersProps;
 
 const existingTransactionId = '91001';
@@ -185,12 +180,13 @@ describe('Trustap v1 provider boundary', () => {
 		});
 		expect(charge).toEqual({
 			charge: 625,
+			charge_buyer_client: 0,
 			charge_calculator_version: 1,
 			charge_seller: 0,
+			charge_seller_client: 0,
 			currency: 'eur',
-			postage_fee: 875,
 			price: 12_500,
-		} satisfies CalculateTransactionFeeResponse);
+		});
 
 		const transaction = await service.createTransactionWithBothUsers({
 			...transactionInput,
@@ -207,14 +203,15 @@ describe('Trustap v1 provider boundary', () => {
 		expect(transaction).toEqual({
 			buyer_id: transactionInput.buyer_id,
 			charge: charge!.charge,
+			charge_buyer_client: 0,
 			charge_seller: 0,
+			charge_seller_client: 0,
 			client_id: 'trustap-test-client',
 			created: '2026-08-30T12:00:00.000Z',
 			currency: 'eur',
 			description: transactionInput.description,
 			id: '91002',
 			is_payment_in_progress: false,
-			postage_fee: transactionInput.postage_fee,
 			price: transactionInput.price,
 			quantity: 1,
 			seller_id: transactionInput.seller_id,
@@ -222,8 +219,10 @@ describe('Trustap v1 provider boundary', () => {
 		});
 		expect(fetched).toEqual(transaction);
 		expect(Number.isSafeInteger(charge!.price)).toBe(true);
-		expect(Number.isSafeInteger(charge!.postage_fee)).toBe(true);
 		expect(Number.isSafeInteger(charge!.charge)).toBe(true);
+		expect((charge as { postage_fee?: unknown }).postage_fee).toBeUndefined();
+		expect((transaction as { postage_fee?: unknown }).postage_fee).toBeUndefined();
+		expect((fetched as { postage_fee?: unknown }).postage_fee).toBeUndefined();
 
 		const requests = await getProviderRequests(paymentProviderUrl());
 		expect(requests.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
@@ -241,6 +240,8 @@ describe('Trustap v1 provider boundary', () => {
 			{ method: 'GET', path: '/api/v1/transactions/91002', body: undefined },
 		]);
 		for (const request of requests) assertBasicApiKey(request.headers.authorization);
+		expect(requests[0]?.headers['content-type']).toBe('application/json');
+		expect(requests[2]?.headers['content-type']).toBe('application/json');
 		expect(requests.map((request) => request.headers['trustap-user'])).toEqual([
 			undefined,
 			undefined,
@@ -285,23 +286,25 @@ describe('Trustap v1 provider boundary', () => {
 	it('rejects fractional wire values, non-eur currency, unknown status, and legacy response typos', () => {
 		const validCharge = {
 			charge: 625,
+			charge_buyer_client: 0,
 			charge_calculator_version: 1,
 			charge_seller: 0,
+			charge_seller_client: 0,
 			currency: 'eur',
-			postage_fee: 875,
 			price: 12_500,
 		};
 		const validTransaction = {
 			buyer_id: transactionInput.buyer_id,
 			charge: 625,
+			charge_buyer_client: 0,
 			charge_seller: 0,
+			charge_seller_client: 0,
 			client_id: 'trustap-test-client',
 			created: '2026-08-30T12:00:00.000Z',
 			currency: 'eur',
 			description: transactionInput.description,
 			id: 91_001,
 			is_payment_in_progress: false,
-			postage_fee: 875,
 			price: 12_500,
 			quantity: 1,
 			seller_id: transactionInput.seller_id,
@@ -317,19 +320,95 @@ describe('Trustap v1 provider boundary', () => {
 			trustapChargeResponseSchema.safeParse({ ...validCharge, currency: 'usd' }).success,
 			trustapChargeResponseSchema.safeParse({
 				charge: validCharge.charge,
+				charge_buyer_client: validCharge.charge_buyer_client,
 				charge_calculator_version: validCharge.charge_calculator_version,
 				charge_seller: validCharge.charge_seller,
+				charge_seller_client: validCharge.charge_seller_client,
 				currency: validCharge.currency,
-				postage_fee: validCharge.postage_fee,
 				pirce: validCharge.price,
 			}).success,
 			trustapTransactionResponseSchema.safeParse({ ...validTransaction, id: 91_001.5 }).success,
 			trustapTransactionResponseSchema.safeParse({ ...validTransaction, price: 12_500.5 }).success,
 			trustapTransactionResponseSchema.safeParse({ ...validTransaction, status: 'fund_released' }).success,
 		]).toEqual([false, false, false, false, false, false, false]);
+		expect(trustapChargeResponseSchema.safeParse(validCharge).success).toBe(true);
+		expect(trustapTransactionResponseSchema.safeParse(validTransaction).success).toBe(true);
 		expect(trustapTransactionResponseSchema.safeParse({ ...validTransaction, status: 'funds_released' }).success).toBe(
 			true,
 		);
+	});
+
+	it('rejects missing or wrong JSON Content-Type on both Trustap POST boundaries', async () => {
+		const authorization = `Basic ${Buffer.from(`${paymentProviderKey()}:`).toString('base64')}`;
+		const service = new PaymentProviderService();
+		const charge = await service.calculateTransactionFee({
+			price: transactionInput.price,
+			currency: transactionInput.currency,
+			postage_fee: transactionInput.postage_fee,
+			use_hr_post: false,
+		});
+		const postCases = [
+			{ path: '/api/v1/guest_users', body: guestInput, trustapUser: undefined },
+			{
+				path: '/api/v1/me/transactions/create_with_guest_user',
+				body: {
+					...transactionInput,
+					charge: charge!.charge,
+					charge_calculator_version: charge!.charge_calculator_version,
+				},
+				trustapUser: transactionInput.buyer_id,
+			},
+		];
+
+		for (const postCase of postCases) {
+			for (const contentType of [undefined, 'text/plain']) {
+				const serializedBody = JSON.stringify(postCase.body);
+				const response = await fetch(`${paymentProviderUrl()}${postCase.path}`, {
+					method: 'POST',
+					headers: {
+						authorization,
+						...(contentType ? { 'content-type': contentType } : {}),
+						...(postCase.trustapUser ? { 'trustap-user': postCase.trustapUser } : {}),
+					},
+					// A byte body avoids Undici's automatic text/plain header and proves the truly missing-header case.
+					body: contentType === undefined ? Buffer.from(serializedBody) : serializedBody,
+				});
+				expect(response.status).toBe(400);
+				expect(await response.json()).toEqual({
+					error: 'invalid_request',
+					message: 'Trustap Content-Type must be application/json',
+				});
+			}
+		}
+	});
+
+	it('rejects an unsupported transaction feature instead of accepting an invented custom-postage flag', async () => {
+		const service = new PaymentProviderService();
+		const charge = await service.calculateTransactionFee({
+			price: transactionInput.price,
+			currency: transactionInput.currency,
+			postage_fee: transactionInput.postage_fee,
+			use_hr_post: false,
+		});
+		const response = await fetch(`${paymentProviderUrl()}/api/v1/me/transactions/create_with_guest_user`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				authorization: `Basic ${Buffer.from(`${paymentProviderKey()}:`).toString('base64')}`,
+				'trustap-user': transactionInput.buyer_id,
+			},
+			body: JSON.stringify({
+				...transactionInput,
+				charge: charge!.charge,
+				charge_calculator_version: charge!.charge_calculator_version,
+				features: ['use_custom_postage_fee'],
+			}),
+		});
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			error: 'invalid_request',
+			message: 'Unsupported Trustap transaction feature',
+		});
 	});
 
 	it.each([401, 422, 500] as const)(
