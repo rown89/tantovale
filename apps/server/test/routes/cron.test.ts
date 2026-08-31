@@ -91,7 +91,11 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-async function createPayableExpiredCandidate(createdAt = new Date(Date.now() - 7 * 24 * hourInMilliseconds)) {
+async function createPayableExpiredCandidate(
+	createdAt = new Date(Date.now() - 7 * 24 * hourInMilliseconds),
+	options: { configureRemote?: boolean; transactionId?: number } = {},
+) {
+	const transactionId = options.transactionId ?? trustapTransactionFixture.id;
 	const actors = await createCommerceActors();
 	const { db } = getTestDatabase();
 	await db
@@ -108,23 +112,25 @@ async function createPayableExpiredCandidate(createdAt = new Date(Date.now() - 7
 		item_price: trustapTransactionFixture.price - 500,
 		platform_charge: 500,
 		payment_provider_charge: trustapTransactionFixture.charge,
-		payment_transaction_id: String(trustapTransactionFixture.id),
+		payment_transaction_id: String(transactionId),
 		payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
 	});
 	await db.insert(entityTrustapTransactions).values({
 		entityId: item.id,
 		sellerId: trustapTransactionFixture.seller_id,
 		buyerId: trustapTransactionFixture.buyer_id,
-		transactionId: String(trustapTransactionFixture.id),
+		transactionId: String(transactionId),
 		status: 'created',
 		price: trustapTransactionFixture.price,
 		charge: trustapTransactionFixture.charge,
 		chargeSeller: trustapTransactionFixture.charge_seller,
 		entityTitle: item.title,
 	});
-	await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'created', {
-		description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
-	});
+	if (options.configureRemote !== false) {
+		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, 'created', {
+			description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
+		});
+	}
 	return { actors, item, order };
 }
 
@@ -167,6 +173,50 @@ async function createStaleProviderBackedOrder(updatedAt = new Date(0)) {
 }
 
 describe('commerce expiry cron routes', () => {
+	it('reports every outcome class honestly for a mixed expiry batch', async () => {
+		const expired = await createPayableExpiredCandidate(undefined, {
+			configureRemote: false,
+			transactionId: 9_200_001,
+		});
+		const reconciliation = await createPayableExpiredCandidate(undefined, {
+			configureRemote: false,
+			transactionId: 9_200_002,
+		});
+		const superseded = await createPayableExpiredCandidate(undefined, {
+			configureRemote: false,
+			transactionId: 9_200_003,
+		});
+		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
+			if (snapshot.transaction_id === '9200002') throw new Error('Simulated ambiguous cancellation outcome');
+			if (snapshot.transaction_id === '9200003') {
+				const webhookResponse = await app.request('/webhooks/trustap/transaction-update', {
+					method: 'POST',
+					headers: {
+						Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						event: 'transaction_updated',
+						transaction_id: snapshot.transaction_id,
+						status: entityTrustapTransactionTypeValues.PAID,
+					}),
+				});
+				expect(webhookResponse.status).toBe(200);
+			}
+			return trustapTransactionFixture as never;
+		});
+
+		const response = await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			orders: [{ id: expired.order.id }],
+			reconciliation_required: [{ id: reconciliation.order.id }],
+			cancellation_superseded: [{ id: superseded.order.id }],
+			message: 'Order expiry processing completed',
+		});
+	});
+
 	it('cancels a payable Trustap guest transaction before expiring the local order and removing its payment action', async () => {
 		const { actors, order } = await createPayableExpiredCandidate();
 
@@ -321,7 +371,7 @@ describe('commerce expiry cron routes', () => {
 		expect(syncResponse.status).toBe(200);
 		const [afterSync] = await db.select().from(orders).where(eq(orders.id, order.id));
 		expect(afterSync).toMatchObject({
-			status: ORDER_PHASES.CANCELLED,
+			status: ORDER_PHASES.EXPIRED,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
 		});
 	});

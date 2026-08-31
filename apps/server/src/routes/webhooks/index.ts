@@ -14,6 +14,7 @@ import {
 import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
+	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 } from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
@@ -137,9 +138,12 @@ export const webhooksRoute = createRouter().post(
 					return c.json({ error: 'Order transaction conflict' }, 409);
 				}
 				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
-				const resolvesCancellation =
-					isAuthoritativeCancellationStatus(payload.status) &&
-					order.paymentCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+				const cancellationSettlement = resolveCronCancellationSettlement(
+					order.paymentCancellationState,
+					trustapTransaction.status,
+					payload.status,
+					transition,
+				);
 				const complaintRequiresReconciliation =
 					transition.apply &&
 					payload.status === entityTrustapTransactionTypeValues.COMPLAINED &&
@@ -149,7 +153,7 @@ export const webhooksRoute = createRouter().post(
 					isAuthoritativeCreationResolutionStatus(payload.status);
 				if (
 					!transition.apply &&
-					!resolvesCancellation &&
+					!cancellationSettlement &&
 					!complaintRequiresReconciliation &&
 					!resolvesCreationReconciliation
 				) {
@@ -179,15 +183,17 @@ export const webhooksRoute = createRouter().post(
 				const [updatedOrder] = await tx
 					.update(orders)
 					.set({
-						status: transition.orderStatus,
+						status: cancellationSettlement?.orderStatus ?? transition.orderStatus,
 						...(payload.status === entityTrustapTransactionTypeValues.COMPLAINED
 							? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
 							: resolvesCreationReconciliation
 								? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }
 								: {}),
-						...(isAuthoritativeCancellationStatus(payload.status)
-							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
-							: {}),
+						...(cancellationSettlement
+							? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
+							: isAuthoritativeCancellationStatus(payload.status)
+								? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+								: {}),
 						updated_at: new Date(),
 					})
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))

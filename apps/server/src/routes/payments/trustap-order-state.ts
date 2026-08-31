@@ -2,6 +2,7 @@ import {
 	entityTrustapTransactionTypeValues as TRUSTAP,
 	type EntityTrustapTransactionStatus,
 	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
 } from '#database/schemas/enumerated_values';
 
 export type OrderPhase = (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES];
@@ -120,6 +121,42 @@ export function isAuthoritativeCancellationStatus(status: EntityTrustapTransacti
 
 export function isAuthoritativeCreationResolutionStatus(status: EntityTrustapTransactionStatus): boolean {
 	return authoritativeCreationResolutionStatuses.has(status);
+}
+
+export type CronCancellationSettlement = {
+	orderStatus: OrderPhase | string;
+	paymentCancellationState: (typeof PAYMENT_CANCELLATION_STATES)[keyof typeof PAYMENT_CANCELLATION_STATES];
+};
+
+export function resolveCronCancellationSettlement(
+	currentCancellationState: string | null,
+	currentProviderStatus: EntityTrustapTransactionStatus,
+	incomingProviderStatus: EntityTrustapTransactionStatus,
+	transition: Pick<TrustapOrderTransition, 'apply' | 'orderStatus'>,
+): CronCancellationSettlement | undefined {
+	if (
+		currentCancellationState !== PAYMENT_CANCELLATION_STATES.CANCELLING &&
+		currentCancellationState !== PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED
+	) {
+		return undefined;
+	}
+	if (incomingProviderStatus === TRUSTAP.CREATED || incomingProviderStatus === TRUSTAP.JOINED) return undefined;
+	// A durable cron marker must not make an otherwise unreachable provider edge valid.
+	// Same-status replays are intentionally accepted so a webhook or poll can settle an
+	// intent left behind by a crash after the provider state was already persisted.
+	if (!transition.apply && currentProviderStatus !== incomingProviderStatus) return undefined;
+	if (incomingProviderStatus === TRUSTAP.CANCELLED) {
+		return {
+			orderStatus: ORDER_PHASES.EXPIRED,
+			paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+		};
+	}
+	return {
+		orderStatus: transition.orderStatus,
+		paymentCancellationState: isAuthoritativeCancellationStatus(incomingProviderStatus)
+			? PAYMENT_CANCELLATION_STATES.CANCELLED
+			: PAYMENT_CANCELLATION_STATES.NONE,
+	};
 }
 
 export function resolveTrustapOrderTransition(

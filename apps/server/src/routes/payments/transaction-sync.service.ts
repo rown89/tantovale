@@ -30,6 +30,7 @@ import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
+	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 	trustapToOrderPhase,
 } from './trustap-order-state';
@@ -699,9 +700,12 @@ export class TransactionSyncService {
 				throw new Error('Trustap transaction lost its local graph after correlation');
 			}
 			const transition = resolveTrustapOrderTransition(current.status, current.orderStatus, remoteStatus);
-			const resolvesCancellation =
-				isAuthoritativeCancellationStatus(remoteStatus) &&
-				current.orderCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+			const cancellationSettlement = resolveCronCancellationSettlement(
+				current.orderCancellationState,
+				current.status,
+				remoteStatus,
+				transition,
+			);
 			const complaintRequiresReconciliation =
 				transition.apply &&
 				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
@@ -711,7 +715,7 @@ export class TransactionSyncService {
 				isAuthoritativeCreationResolutionStatus(remoteStatus);
 			if (
 				!transition.apply &&
-				!resolvesCancellation &&
+				!cancellationSettlement &&
 				!complaintRequiresReconciliation &&
 				!resolvesCreationReconciliation
 			) {
@@ -731,15 +735,17 @@ export class TransactionSyncService {
 			await tx
 				.update(orders)
 				.set({
-					status: transition.orderStatus,
+					status: cancellationSettlement?.orderStatus ?? transition.orderStatus,
 					...(remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED
 						? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
 						: resolvesCreationReconciliation
 							? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }
 							: {}),
-					...(isAuthoritativeCancellationStatus(remoteStatus)
-						? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
-						: {}),
+					...(cancellationSettlement
+						? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
+						: isAuthoritativeCancellationStatus(remoteStatus)
+							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+							: {}),
 					updated_at: updatedAt,
 				})
 				.where(eq(orders.id, current.orderId));

@@ -97,6 +97,35 @@ describe('local service configuration', () => {
 				DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: sharedCronSecret,
 				TRANSACTIONS_SYNC_SECRET_KEY: sharedCronSecret,
 			});
+			for (const nodeEnv of ['development', 'test'] as const) {
+				expect(() =>
+					parseEnv(
+						{
+							...testEnvironment,
+							NODE_ENV: nodeEnv,
+							DAILY_ORDER_CHECK_SECRET_KEY: sharedCronSecret,
+							DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: sharedCronSecret,
+							TRANSACTIONS_SYNC_SECRET_KEY: sharedCronSecret,
+						},
+						{ runtime: true },
+					),
+				).not.toThrow();
+			}
+			for (const nodeEnv of ['production', 'staging', 'preview'] as const) {
+				expect(() =>
+					parseEnv(
+						{
+							...testEnvironment,
+							NODE_ENV: nodeEnv,
+							DAILY_ORDER_CHECK_SECRET_KEY: sharedCronSecret,
+							DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: sharedCronSecret,
+							TRANSACTIONS_SYNC_SECRET_KEY: sharedCronSecret,
+						},
+						{ runtime: true },
+					),
+				).toThrow(/Cron job secrets must be pairwise distinct/);
+			}
+			expect(() => parseEnv({ ...testEnvironment, NODE_ENV: 'production' }, { runtime: true })).not.toThrow();
 
 			expect(environment).toMatchObject({
 				AWS_ENDPOINT: runtime.minio.endpoint,

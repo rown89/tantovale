@@ -94,7 +94,21 @@ const EnvSchema = EnvSchemaObject.transform((environment) => ({
 	SMTP_FROM: environment.SMTP_FROM ?? `"Tantovale" <${environment.SMTP_USER}>`,
 }));
 
-export function parseEnv(data: z.input<typeof EnvSchema> | NodeJS.ProcessEnv) {
+type ParseEnvOptions = { runtime?: boolean };
+
+function assertRuntimeCronSecretIsolation(environment: z.output<typeof EnvSchema>): void {
+	if (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') return;
+	const cronSecrets = [
+		environment.DAILY_ORDER_CHECK_SECRET_KEY,
+		environment.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY,
+		environment.TRANSACTIONS_SYNC_SECRET_KEY,
+	];
+	if (new Set(cronSecrets).size !== cronSecrets.length) {
+		throw new Error('❌ Invalid env - Cron job secrets must be pairwise distinct outside development and test');
+	}
+}
+
+export function parseEnv(data: z.input<typeof EnvSchema> | NodeJS.ProcessEnv, options: ParseEnvOptions = {}) {
 	const { data: env, error } = EnvSchema.safeParse(data);
 
 	if (error) {
@@ -103,6 +117,7 @@ export function parseEnv(data: z.input<typeof EnvSchema> | NodeJS.ProcessEnv) {
 			.join(' | ')}`;
 		throw new Error(errorMessage);
 	}
+	if (options.runtime) assertRuntimeCronSecretIsolation(env);
 
 	return env;
 }

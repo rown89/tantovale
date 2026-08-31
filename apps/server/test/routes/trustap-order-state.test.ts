@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
 	entityTrustapTransactionTypeValues as TRUSTAP,
 	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
-import { resolveTrustapOrderTransition } from '../../src/routes/payments/trustap-order-state';
+import {
+	resolveCronCancellationSettlement,
+	resolveTrustapOrderTransition,
+} from '../../src/routes/payments/trustap-order-state';
 
 const exactMappings = [
 	[TRUSTAP.CREATED, ORDER_PHASES.PAYMENT_PENDING],
@@ -21,6 +25,119 @@ const exactMappings = [
 ] as const;
 
 describe('Trustap order transition policy', () => {
+	const cronSettlementMatrix = [
+		[TRUSTAP.CREATED, undefined],
+		[TRUSTAP.JOINED, undefined],
+		[
+			TRUSTAP.PAID,
+			{
+				orderStatus: ORDER_PHASES.PAYMENT_CONFIRMED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+		[
+			TRUSTAP.REJECTED,
+			{
+				orderStatus: ORDER_PHASES.PAYMENT_FAILED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			},
+		],
+		[
+			TRUSTAP.CANCELLED,
+			{
+				orderStatus: ORDER_PHASES.EXPIRED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			},
+		],
+		[
+			TRUSTAP.TRACKED,
+			{
+				orderStatus: ORDER_PHASES.SHIPPING_CONFIRMED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+		[
+			TRUSTAP.CANCELLED_WITH_PAYMENT,
+			{
+				orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			},
+		],
+		[
+			TRUSTAP.PAYMENT_REFUNDED,
+			{
+				orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			},
+		],
+		[
+			TRUSTAP.DELIVERED,
+			{
+				orderStatus: ORDER_PHASES.COMPLETED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+		[
+			TRUSTAP.COMPLAINED,
+			{
+				orderStatus: ORDER_PHASES.COMPLETED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+		[
+			TRUSTAP.COMPLAINT_PERIOD_ENDED,
+			{
+				orderStatus: ORDER_PHASES.COMPLETED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+		[
+			TRUSTAP.FUNDS_RELEASED,
+			{
+				orderStatus: ORDER_PHASES.COMPLETED,
+				paymentCancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			},
+		],
+	] as const;
+
+	it.each([PAYMENT_CANCELLATION_STATES.CANCELLING, PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED])(
+		'settles every authoritative provider outcome for a durable %s cron intent',
+		(cancellationState) => {
+			for (const [providerStatus, expected] of cronSettlementMatrix) {
+				const currentOrderStatus =
+					providerStatus === TRUSTAP.COMPLAINED
+						? ORDER_PHASES.COMPLETED
+						: (exactMappings.find(([status]) => status === providerStatus)?.[1] ?? ORDER_PHASES.COMPLETED);
+				const transition = resolveTrustapOrderTransition(providerStatus, currentOrderStatus, providerStatus);
+				expect(
+					resolveCronCancellationSettlement(cancellationState, providerStatus, providerStatus, transition),
+				).toEqual(expected);
+			}
+		},
+	);
+
+	it('does not reinterpret orders without a durable cron cancellation intent', () => {
+		expect(
+			resolveCronCancellationSettlement(PAYMENT_CANCELLATION_STATES.NONE, TRUSTAP.CANCELLED, TRUSTAP.CANCELLED, {
+				apply: false,
+				orderStatus: ORDER_PHASES.CANCELLED,
+			}),
+		).toBeUndefined();
+	});
+
+	it('does not let a cron marker authorize an unreachable terminal branch', () => {
+		const transition = resolveTrustapOrderTransition(TRUSTAP.REJECTED, ORDER_PHASES.PAYMENT_FAILED, TRUSTAP.CANCELLED);
+
+		expect(
+			resolveCronCancellationSettlement(
+				PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+				TRUSTAP.REJECTED,
+				TRUSTAP.CANCELLED,
+				transition,
+			),
+		).toBeUndefined();
+	});
+
 	it.each(exactMappings)('maps %s exactly to %s', (providerStatus, orderStatus) => {
 		const transition = resolveTrustapOrderTransition(TRUSTAP.CREATED, ORDER_PHASES.PAYMENT_PENDING, providerStatus);
 

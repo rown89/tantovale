@@ -472,6 +472,9 @@ export const cronRoute = createRouter()
 		if (!updatedOrders.length && !reconciliationRequired.length && !supersededCancellations.length) {
 			return c.json({ message: 'No orders to cancel', status: 200 }, 200);
 		}
+		const outcomeClassCount = [updatedOrders, reconciliationRequired, supersededCancellations].filter(
+			(outcomes) => outcomes.length > 0,
+		).length;
 
 		return c.json(
 			{
@@ -479,11 +482,14 @@ export const cronRoute = createRouter()
 				reconciliation_required: reconciliationRequired,
 				cancellation_superseded: supersededCancellations,
 				status: 200,
-				message: updatedOrders.length
-					? 'Orders expired'
-					: supersededCancellations.length
-						? 'Order cancellation superseded by provider state'
-						: 'Order cancellation requires reconciliation',
+				message:
+					outcomeClassCount > 1
+						? 'Order expiry processing completed'
+						: updatedOrders.length
+							? 'Orders expired'
+							: supersededCancellations.length
+								? 'Order cancellation superseded by provider state'
+								: 'Order cancellation requires reconciliation',
 			},
 			200,
 		);

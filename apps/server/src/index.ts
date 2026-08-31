@@ -1,8 +1,9 @@
 import { serve } from '@hono/node-server';
 
 import { app } from './app';
-import { environment } from './utils/constants';
+import { parseEnv } from './env';
 
+const environment = parseEnv(process.env, { runtime: true });
 const server_url = environment.SERVER_HOSTNAME;
 const port = environment.SERVER_PORT;
 

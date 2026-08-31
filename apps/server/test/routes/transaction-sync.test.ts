@@ -145,6 +145,58 @@ async function createStaleProviderBackedOrder(
 }
 
 describe('Trustap transaction polling state mapping', () => {
+	it.each([
+		[
+			'crashed in-flight cancellation',
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			entityTrustapTransactionTypeValues.CANCELLED,
+			ORDER_PHASES.EXPIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		],
+		[
+			'ambiguous cancellation timeout',
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			entityTrustapTransactionTypeValues.CANCELLED,
+			ORDER_PHASES.EXPIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		],
+		[
+			'crashed cancellation overtaken by payment',
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			entityTrustapTransactionTypeValues.PAID,
+			ORDER_PHASES.PAYMENT_CONFIRMED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+		[
+			'ambiguous cancellation overtaken by delivery',
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			entityTrustapTransactionTypeValues.DELIVERED,
+			ORDER_PHASES.COMPLETED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+	] as const)(
+		'recovers a %s from authoritative polled state',
+		async (_case, cancellationState, providerStatus, expectedOrderStatus, expectedCancellationState) => {
+			const { order, transactionId } = await createStaleProviderBackedOrder();
+			const { db } = getTestDatabase();
+			await db.update(orders).set({ payment_cancellation_state: cancellationState }).where(eq(orders.id, order.id));
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, providerStatus);
+
+			await new TransactionSyncService().syncTransactionStatuses();
+
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(storedOrder).toMatchObject({
+				status: expectedOrderStatus,
+				payment_cancellation_state: expectedCancellationState,
+			});
+			expect(storedProvider?.status).toBe(providerStatus);
+		},
+	);
+
 	it('removes a stale PREPARING reservation and its internal quote because no Trustap POST started', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -701,6 +753,37 @@ describe('Trustap transaction polling state mapping', () => {
 
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		expect(storedOrder?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.CANCELLED);
+	});
+
+	it('does not let a cron reconciliation marker authorize polled rejected to cancelled', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder(entityTrustapTransactionTypeValues.REJECTED);
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.PAYMENT_FAILED,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.CANCELLED,
+		);
+
+		const result = await new TransactionSyncService().syncTransactionStatuses();
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(result.syncedTransactions).toBe(0);
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_FAILED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.REJECTED);
 	});
 
 	it('reports an unknown provider state without writing it into PostgreSQL', async () => {

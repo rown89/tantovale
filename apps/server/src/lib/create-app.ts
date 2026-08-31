@@ -25,7 +25,7 @@ export function createApp() {
 	const app = createRouter();
 
 	app.use((c, next) => {
-		c.env = parseEnv(Object.assign(c.env || {}, process.env));
+		c.env = parseEnv(Object.assign(c.env || {}, process.env), { runtime: true });
 		return next();
 	});
 

@@ -116,6 +116,58 @@ async function postStatus(transactionId: string, status: string): Promise<Respon
 }
 
 describe('Trustap transaction webhook state mapping', () => {
+	it.each([
+		[
+			'crashed in-flight cancellation',
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			entityTrustapTransactionTypeValues.CANCELLED,
+			ORDER_PHASES.EXPIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		],
+		[
+			'ambiguous cancellation timeout',
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			entityTrustapTransactionTypeValues.CANCELLED,
+			ORDER_PHASES.EXPIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		],
+		[
+			'crashed cancellation overtaken by payment',
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			entityTrustapTransactionTypeValues.PAID,
+			ORDER_PHASES.PAYMENT_CONFIRMED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+		[
+			'ambiguous cancellation overtaken by tracking',
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			entityTrustapTransactionTypeValues.TRACKED,
+			ORDER_PHASES.SHIPPING_CONFIRMED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+	] as const)(
+		'recovers a %s from authoritative Trustap state',
+		async (_case, cancellationState, providerStatus, expectedOrderStatus, expectedCancellationState) => {
+			const { order, transactionId } = await createProviderBackedOrder();
+			const { db } = getTestDatabase();
+			await db.update(orders).set({ payment_cancellation_state: cancellationState }).where(eq(orders.id, order.id));
+
+			const response = await postStatus(transactionId, providerStatus);
+
+			expect(response.status).toBe(200);
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(storedOrder).toMatchObject({
+				status: expectedOrderStatus,
+				payment_cancellation_state: expectedCancellationState,
+			});
+			expect(storedProvider?.status).toBe(providerStatus);
+		},
+	);
+
 	it('persists a numeric max-int64 webhook id without precision loss', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -663,6 +715,31 @@ describe('Trustap transaction webhook state mapping', () => {
 
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		expect(storedOrder?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.CANCELLED);
+	});
+
+	it('does not let a cron reconciliation marker authorize rejected to cancelled', async () => {
+		const { order, transactionId } = await createProviderBackedOrder(entityTrustapTransactionTypeValues.REJECTED);
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.PAYMENT_FAILED,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.CANCELLED)).status).toBe(200);
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_FAILED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.REJECTED);
 	});
 
 	it('ignores an out-of-order active regression and preserves the newest local phase', async () => {
