@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Call Hono endpoint
         run: |
-          curl -s -X GET "https://${{ secrets.SERVER_HOSTNAME }}/cron/expired-orders-check?key=${{ secrets.DAILY_ORDER_CHECK_SECRET_KEY }}"
+          curl --fail-with-body --silent --show-error -X GET "https://${{ secrets.SERVER_HOSTNAME }}/cron/auth/expired-orders-check?key=${{ secrets.DAILY_ORDER_CHECK_SECRET_KEY }}"

@@ -1,4 +1,5 @@
 import { and, eq, inArray, lt, notExists } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { subHours } from 'date-fns';
 
 import { createRouter } from 'src/lib/create-app';
@@ -6,7 +7,6 @@ import { createClient } from 'src/database';
 import { orders_proposals } from 'src/database/schemas/orders_proposals';
 import { orders } from 'src/database/schemas/orders';
 import { authPath, environment } from 'src/utils/constants';
-import { authMiddleware } from 'src/middlewares/authMiddleware';
 import { TransactionSyncService } from '../payments/transaction-sync.service';
 import {
 	ORDER_PHASES,
@@ -17,18 +17,18 @@ import {
 import { acquireItemCommerceLock } from 'src/lib/item-commerce-lock';
 import { entityTrustapTransactions, profiles } from '#db-schema';
 import { PaymentProviderService } from '../payments/payment-provider.service';
+import { authenticateCronSecret } from './secret-auth';
 
 const expiredOrdersTolleranceInHours = environment.ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS;
 const expiredProposalsTolleranceInHours = environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS;
+const authenticateExpiredOrdersCron = authenticateCronSecret(environment.DAILY_ORDER_CHECK_SECRET_KEY);
+const authenticateExpiredProposalsCron = authenticateCronSecret(environment.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY);
+const authenticateTransactionSyncCron = authenticateCronSecret(environment.TRANSACTIONS_SYNC_SECRET_KEY);
+const cronSellerProfiles = alias(profiles, 'cron_seller_profiles');
 
 export const cronRoute = createRouter()
-	.get(`${authPath}/expired-orders-check`, authMiddleware, async (c) => {
+	.get(`${authPath}/expired-orders-check`, authenticateExpiredOrdersCron, async (c) => {
 		const { db } = createClient();
-
-		const { key } = c.req.query();
-		const secretKey = environment.DAILY_ORDER_CHECK_SECRET_KEY;
-
-		if (key !== secretKey) return c.json({ error: 'Invalid key' }, 401);
 
 		// Calculate date that is orders payment tollerance hours ago from creation date
 		const tolleranceDate = subHours(new Date(), expiredOrdersTolleranceInHours);
@@ -37,11 +37,8 @@ export const cronRoute = createRouter()
 			.select({
 				id: orders.id,
 				item_id: orders.item_id,
-				transaction_id: orders.payment_transaction_id,
-				buyer_provider_id: profiles.payment_provider_id,
 			})
 			.from(orders)
-			.leftJoin(profiles, eq(orders.buyer_id, profiles.id))
 			.where(
 				and(
 					eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
@@ -54,11 +51,89 @@ export const cronRoute = createRouter()
 		const reconciliationRequired: Array<{ id: number }> = [];
 		for (const candidate of candidates) {
 			if (!candidate.item_id) {
+				await db
+					.update(orders)
+					.set({
+						payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+						payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+						updated_at: new Date(),
+					})
+					.where(eq(orders.id, candidate.id));
 				reconciliationRequired.push({ id: candidate.id });
 				continue;
 			}
 			const marked = await db.transaction(async (tx) => {
 				await acquireItemCommerceLock(tx, candidate.item_id!);
+				const [current] = await tx
+					.select({
+						id: orders.id,
+						item_id: orders.item_id,
+						transaction_id: orders.payment_transaction_id,
+						buyer_provider_id: profiles.payment_provider_id,
+						seller_provider_id: cronSellerProfiles.payment_provider_id,
+						item_price: orders.item_price,
+						platform_charge: orders.platform_charge,
+						provider_charge: orders.payment_provider_charge,
+					})
+					.from(orders)
+					.leftJoin(profiles, eq(orders.buyer_id, profiles.id))
+					.leftJoin(cronSellerProfiles, eq(orders.seller_id, cronSellerProfiles.id))
+					.where(
+						and(
+							eq(orders.id, candidate.id),
+							eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
+							eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
+							eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.NONE),
+							lt(orders.created_at, tolleranceDate),
+						),
+					);
+				if (!current) return undefined;
+				const [providerTransaction] = current.transaction_id
+					? await tx
+							.select({
+								buyer_id: entityTrustapTransactions.buyerId,
+								charge: entityTrustapTransactions.charge,
+								charge_seller: entityTrustapTransactions.chargeSeller,
+								currency: entityTrustapTransactions.currency,
+								entity_id: entityTrustapTransactions.entityId,
+								price: entityTrustapTransactions.price,
+								quarantined: entityTrustapTransactions.quarantined,
+								seller_id: entityTrustapTransactions.sellerId,
+								status: entityTrustapTransactions.status,
+								transaction_id: entityTrustapTransactions.transactionId,
+							})
+							.from(entityTrustapTransactions)
+							.where(eq(entityTrustapTransactions.transactionId, current.transaction_id))
+							.limit(1)
+					: [];
+				const graphIsCancellable =
+					current.item_id === candidate.item_id &&
+					current.transaction_id !== null &&
+					current.buyer_provider_id !== null &&
+					current.seller_provider_id !== null &&
+					providerTransaction !== undefined &&
+					!providerTransaction.quarantined &&
+					providerTransaction.transaction_id === current.transaction_id &&
+					providerTransaction.entity_id === current.item_id &&
+					providerTransaction.buyer_id === current.buyer_provider_id &&
+					providerTransaction.seller_id === current.seller_provider_id &&
+					providerTransaction.currency === 'eur' &&
+					providerTransaction.price === current.item_price + current.platform_charge &&
+					providerTransaction.charge === current.provider_charge &&
+					providerTransaction.charge_seller === 0 &&
+					['created', 'joined'].includes(providerTransaction.status);
+				if (!graphIsCancellable) {
+					await tx
+						.update(orders)
+						.set({
+							payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+							updated_at: new Date(),
+						})
+						.where(eq(orders.id, current.id));
+					return { outcome: 'reconciliation' as const };
+				}
+				const transactionId = current.transaction_id!;
+				const buyerProviderId = current.buyer_provider_id!;
 				const [updated] = await tx
 					.update(orders)
 					.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING, updated_at: new Date() })
@@ -72,24 +147,22 @@ export const cronRoute = createRouter()
 						),
 					)
 					.returning({ id: orders.id });
-				return updated;
+				return updated
+					? {
+							outcome: 'marked' as const,
+							buyer_provider_id: buyerProviderId,
+							transaction_id: transactionId,
+						}
+					: undefined;
 			});
 			if (!marked) continue;
-
-			if (!candidate.transaction_id || !candidate.buyer_provider_id) {
-				await db
-					.update(orders)
-					.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED })
-					.where(eq(orders.id, candidate.id));
+			if (marked.outcome === 'reconciliation') {
 				reconciliationRequired.push({ id: candidate.id });
 				continue;
 			}
 
 			try {
-				await new PaymentProviderService().cancelGuestTransaction(
-					candidate.transaction_id,
-					candidate.buyer_provider_id,
-				);
+				await new PaymentProviderService().cancelGuestTransaction(marked.transaction_id, marked.buyer_provider_id);
 				const finalized = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, candidate.item_id!);
 					const [updated] = await tx
@@ -105,15 +178,17 @@ export const cronRoute = createRouter()
 								eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
 								eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
 								eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
-								eq(orders.payment_transaction_id, candidate.transaction_id!),
+								eq(orders.payment_transaction_id, marked.transaction_id),
 							),
 						)
 						.returning({ id: orders.id });
 					if (updated) {
-						await tx
+						const [updatedProvider] = await tx
 							.update(entityTrustapTransactions)
 							.set({ status: 'cancelled', updated_at: new Date() })
-							.where(eq(entityTrustapTransactions.transactionId, candidate.transaction_id!));
+							.where(eq(entityTrustapTransactions.transactionId, marked.transaction_id))
+							.returning({ transaction_id: entityTrustapTransactions.transactionId });
+						if (!updatedProvider) throw new Error('Provider transaction graph changed during cancellation');
 					}
 					return updated;
 				});
@@ -159,16 +234,8 @@ export const cronRoute = createRouter()
 			200,
 		);
 	})
-	.get(`${authPath}/expired-proposals-check`, authMiddleware, async (c) => {
+	.get(`${authPath}/expired-proposals-check`, authenticateExpiredProposalsCron, async (c) => {
 		const { db } = createClient();
-
-		const { key } = c.req.query();
-
-		const secretKey = environment.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY;
-
-		if (key !== secretKey) {
-			return c.json({ error: 'Invalid key' }, 401);
-		}
 
 		// Calculate date that is proposals tollerance hours ago from creation date
 		const toleranceDate = subHours(new Date(), expiredProposalsTolleranceInHours);
@@ -220,14 +287,7 @@ export const cronRoute = createRouter()
 
 		return c.json({ proposals: updatedProposals, status: 200, message: 'Proposals expired' }, 200);
 	})
-	.get(`${authPath}/sync-transactions`, authMiddleware, async (c) => {
-		const { key } = c.req.query();
-		const secretKey = environment.TRANSACTIONS_SYNC_SECRET_KEY;
-
-		if (key !== secretKey) {
-			return c.json({ error: 'Invalid key' }, 401);
-		}
-
+	.get(`${authPath}/sync-transactions`, authenticateTransactionSyncCron, async (c) => {
 		try {
 			const syncService = new TransactionSyncService();
 			const result = await syncService.syncTransactionStatuses();
