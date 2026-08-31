@@ -482,7 +482,7 @@ describe('proposal routes', () => {
 			actors.buyer.jar,
 			{ item_id: item.id },
 		);
-		expect(response.status).toBe(500);
+		expect(response.status).toBe(502);
 		expect(Date.now() - startedAt).toBeLessThan(1_000);
 		const { db } = getTestDatabase();
 		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);

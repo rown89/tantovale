@@ -27,24 +27,28 @@ export const activeCarriersDescription: DescribeRouteOptions = {
 };
 
 export const createLabelDescription: DescribeRouteOptions = {
-	description: 'Create a shipping label and return available rates',
+	description: 'Purchase a shipping label from a verified rate belonging to the order shipment',
 	responses: {
-		200: {
-			description: 'Shipping label created and rates returned',
+		201: {
+			description: 'Shipping label purchased',
 			content: {
 				'application/json': {
 					schema: {
 						type: 'object',
 						properties: {
-							rates: {
-								type: 'array',
-								items: {
-									type: 'object',
-									properties: {},
+							label: {
+								type: 'object',
+								properties: {
+									id: { type: 'string' },
+									status: { type: 'string', enum: ['SUCCESS'] },
+									label_url: { type: 'string', format: 'uri' },
+									tracking_number: { type: 'string' },
+									tracking_url: { type: 'string', format: 'uri' },
 								},
+								required: ['id', 'status', 'label_url', 'tracking_number', 'tracking_url'],
 							},
 						},
-						required: ['rates'],
+						required: ['label'],
 					},
 				},
 			},

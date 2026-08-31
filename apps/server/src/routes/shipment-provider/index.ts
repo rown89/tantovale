@@ -1,27 +1,24 @@
 import z from 'zod/v4';
 import { describeRoute } from 'hono-openapi';
 import { zValidator } from '@hono/zod-validator';
-
-import {
-	AddressCreateRequest,
-	DistanceUnitEnum,
-	ParcelCreateRequest,
-	WeightUnitEnum,
-} from 'shippo/models/components/index.js';
-import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
-import { ratesGet } from 'shippo/funcs/ratesGet.js';
-import { carrierAccountsList } from 'shippo/funcs/carrierAccountsList.js';
+import { and, eq } from 'drizzle-orm';
 
 import { createRouter } from '#lib/create-app';
-import { shippoClient } from '#lib/shippo-client';
 import { createClient } from '#create-client';
+import { orders } from '#db-schema';
+import { ORDER_PHASES } from '#database/schemas/enumerated_values';
 import { activeCarriersDescription, createLabelDescription } from './describe';
 import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { ShipmentService } from './shipment.service';
+import { ShipmentService, ShippoProviderError } from './shipment.service';
 
 const calculateShipmentCostSchema = z.object({
-	item_id: z.number().positive('Item ID must be a positive number'),
+	item_id: z.number().int().positive('Item ID must be a positive integer'),
+});
+
+const createLabelSchema = z.object({
+	order_id: z.number().int().positive(),
+	rate_id: z.string().trim().min(1),
 });
 
 const ERROR_MESSAGES = {
@@ -35,23 +32,13 @@ const ERROR_MESSAGES = {
 export const shipmentProviderRoute = createRouter()
 	.get(`/${authPath}/active_carriers`, authMiddleware, describeRoute(activeCarriersDescription), async (c) => {
 		try {
-			const res = await carrierAccountsList(shippoClient, {
-				page: 1,
-				results: 25,
-			});
-
-			const { value } = res;
-
-			if (!value || !value?.results?.length) {
+			const activeCarriers = await new ShipmentService().listActiveCarriers();
+			if (activeCarriers.length === 0) {
 				return c.json({ message: 'No active carriers found' }, 404);
 			}
-
-			const activeCarriers = value.results.filter((carrier) => carrier?.active);
-
 			return c.json({ activeCarriers }, 200);
-		} catch (error) {
-			console.error('Error fetching active carriers:', error);
-			return c.json({ message: 'Failed to fetch active carriers' }, 500);
+		} catch {
+			return c.json({ message: 'Failed to fetch active carriers' }, 502);
 		}
 	})
 	.post(
@@ -74,8 +61,9 @@ export const shipmentProviderRoute = createRouter()
 				const quote = await new ShipmentService().createShippingQuote(item_id, profile_id, user.email);
 				return c.json({ rates: [quote] }, 200);
 			} catch (error) {
-				console.error('Error calculating shipment cost:', error);
-
+				if (error instanceof ShippoProviderError) {
+					return c.json({ message: 'Shipping provider request failed' }, 502);
+				}
 				if (error instanceof Error) {
 					const errorMessage = error.message;
 					if (
@@ -89,49 +77,53 @@ export const shipmentProviderRoute = createRouter()
 			}
 		},
 	)
-	.post(`/${authPath}/create_label`, describeRoute(createLabelDescription), async (c) => {
-		const rates = await ratesGet(shippoClient, '377cad39afe049ac959063bb3b251a50');
-
-		const { db } = createClient();
-
-		const addressFrom: AddressCreateRequest = {
-			name: 'Shawn Ippotle',
-			street1: '215 Clayton St.',
-			city: 'San Francisco',
-			state: 'CA',
-			zip: '94117',
-			country: 'US',
-		};
-
-		const addressTo: AddressCreateRequest = {
-			name: 'Mr Hippo',
-			street1: 'Broadway 1',
-			city: 'New York',
-			state: 'NY',
-			zip: '10007',
-			country: 'US',
-		};
-
-		const parcel: ParcelCreateRequest = {
-			length: '5',
-			width: '5',
-			height: '5',
-			distanceUnit: DistanceUnitEnum.Cm,
-			weight: '2',
-			massUnit: WeightUnitEnum.G,
-		};
-
-		const shipment = await shipmentsCreate(shippoClient, {
-			addressFrom,
-			addressTo,
-			parcels: [parcel],
-			async: false,
-		});
-
-		// Preserve the existing endpoint side effects and response contract until its label workflow is redesigned.
-		void rates;
-		void db;
-		void shipment;
-
-		return c.json({ rates: [] });
-	});
+	.post(
+		`/${authPath}/create_label`,
+		describeRoute(createLabelDescription),
+		zValidator('json', createLabelSchema),
+		async (c) => {
+			const user = c.get('user');
+			if (!user) return c.json({ message: 'User not authenticated' }, 401);
+			const { order_id, rate_id } = c.req.valid('json');
+			const { db } = createClient();
+			const [order] = await db
+				.select({
+					id: orders.id,
+					seller_id: orders.seller_id,
+					shipping_label_id: orders.shipping_label_id,
+					status: orders.status,
+				})
+				.from(orders)
+				.where(and(eq(orders.id, order_id), eq(orders.seller_id, user.profile_id)));
+			if (!order) return c.json({ message: 'Order not found' }, 404);
+			if (order.status !== ORDER_PHASES.PAYMENT_CONFIRMED && order.status !== ORDER_PHASES.SHIPPING_PENDING) {
+				return c.json({ message: 'Order is not ready for label purchase' }, 409);
+			}
+			try {
+				const transaction = await new ShipmentService().purchaseLabel(rate_id, order.shipping_label_id);
+				return c.json(
+					{
+						label: {
+							id: transaction.objectId,
+							status: transaction.status,
+							label_url: transaction.labelUrl,
+							tracking_number: transaction.trackingNumber,
+							tracking_url: transaction.trackingUrlProvider,
+						},
+					},
+					201,
+				);
+			} catch (error) {
+				if (error instanceof ShippoProviderError) {
+					if (error.operation === 'get_rate' && error.status === 404) {
+						return c.json({ message: 'Shipping rate not found' }, 400);
+					}
+					return c.json({ message: 'Shipping provider request failed' }, 502);
+				}
+				if (error instanceof Error && error.message === SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND) {
+					return c.json({ message: 'Shipping rate does not belong to this order' }, 400);
+				}
+				return c.json({ message: 'Internal server error' }, 500);
+			}
+		},
+	);

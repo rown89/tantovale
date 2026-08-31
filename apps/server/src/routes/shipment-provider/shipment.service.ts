@@ -4,6 +4,10 @@ import { alias } from 'drizzle-orm/pg-core';
 
 import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
 import { shipmentsGet } from 'shippo/funcs/shipmentsGet.js';
+import { carrierAccountsList } from 'shippo/funcs/carrierAccountsList.js';
+import { ratesGet } from 'shippo/funcs/ratesGet.js';
+import { transactionsCreate } from 'shippo/funcs/transactionsCreate.js';
+import z from 'zod/v4';
 
 import { createClient } from '#create-client';
 import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
@@ -32,10 +36,68 @@ const ERROR_MESSAGES = {
 	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
 } as const;
 
-export class ShippingProviderOperationalError extends Error {
-	constructor() {
+export type ShippoOperation = 'list_carriers' | 'create_shipment' | 'get_shipment' | 'get_rate' | 'create_label';
+export type ShippoErrorCategory = 'http' | 'invalid_response' | 'network';
+
+export class ShippoProviderError extends Error {
+	readonly provider = 'shippo' as const;
+
+	constructor(
+		readonly operation: ShippoOperation,
+		readonly category: ShippoErrorCategory,
+		readonly status?: number,
+	) {
 		super('Shipping provider request failed');
-		this.name = 'ShippingProviderOperationalError';
+		this.name = 'ShippoProviderError';
+	}
+}
+
+const carrierAccountSchema = z
+	.object({
+		accountId: z.string().min(1),
+		active: z.boolean(),
+		carrier: z.string().min(1),
+	})
+	.passthrough();
+
+const carrierAccountsSchema = z.object({ results: z.array(carrierAccountSchema).min(1) }).passthrough();
+const rateSchema = z.object({ objectId: z.string().min(1), shipment: z.string().min(1) }).passthrough();
+const labelTransactionSchema = z
+	.object({
+		objectId: z.string().min(1),
+		status: z.literal('SUCCESS'),
+		labelUrl: z.string().url(),
+		rate: z.union([z.string().min(1), z.object({ objectId: z.string().min(1) }).passthrough()]),
+		trackingNumber: z.string().min(1),
+		trackingUrlProvider: z.string().url(),
+	})
+	.passthrough();
+
+function shippoErrorStatus(error: unknown): number | undefined {
+	if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined;
+	const status = error.statusCode;
+	return typeof status === 'number' && Number.isInteger(status) ? status : undefined;
+}
+
+function shippoErrorCategory(error: unknown): ShippoErrorCategory {
+	const name = error instanceof Error ? error.name : '';
+	if (name === 'SDKValidationError' || name === 'UnexpectedClientError') return 'invalid_response';
+	return shippoErrorStatus(error) === undefined ? 'network' : 'http';
+}
+
+async function executeShippoRequest<T>(
+	operation: ShippoOperation,
+	request: () => Promise<{ ok: true; value: T } | { ok: false; error: unknown }>,
+): Promise<T> {
+	try {
+		const result = await request();
+		if (!result.ok) {
+			throw new ShippoProviderError(operation, shippoErrorCategory(result.error), shippoErrorStatus(result.error));
+		}
+		return result.value;
+	} catch (error) {
+		if (error instanceof ShippoProviderError) throw error;
+		throw new ShippoProviderError(operation, 'network');
 	}
 }
 
@@ -122,6 +184,34 @@ export function shipmentMatchesShippingState(shipment: Shipment, state: Shipment
 
 export class ShipmentService {
 	private db = createClient().db;
+
+	async listActiveCarriers() {
+		const value = await executeShippoRequest('list_carriers', () =>
+			carrierAccountsList(shippoClient, { page: 1, results: 25 }),
+		);
+		const parsed = carrierAccountsSchema.safeParse(value);
+		if (!parsed.success) throw new ShippoProviderError('list_carriers', 'invalid_response');
+		return parsed.data.results.filter((carrier) => carrier.active);
+	}
+
+	async purchaseLabel(rateId: string, expectedShipmentId: string) {
+		const rateValue = await executeShippoRequest('get_rate', () => ratesGet(shippoClient, rateId));
+		const rate = rateSchema.safeParse(rateValue);
+		if (!rate.success) throw new ShippoProviderError('get_rate', 'invalid_response');
+		if (rate.data.objectId !== rateId || rate.data.shipment !== expectedShipmentId) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND);
+		}
+
+		const transactionValue = await executeShippoRequest('create_label', () =>
+			transactionsCreate(shippoClient, { rate: rateId, async: false, labelFileType: 'PDF' }),
+		);
+		const transaction = labelTransactionSchema.safeParse(transactionValue);
+		if (!transaction.success) throw new ShippoProviderError('create_label', 'invalid_response');
+		const purchasedRateId =
+			typeof transaction.data.rate === 'string' ? transaction.data.rate : transaction.data.rate.objectId;
+		if (purchasedRateId !== rateId) throw new ShippoProviderError('create_label', 'invalid_response');
+		return transaction.data;
+	}
 
 	/**
 	 * Get item data with seller information and shipping dimensions
@@ -295,20 +385,21 @@ export class ShipmentService {
 		const initial = await this.getShipmentCalculationData(itemId, buyerProfileId);
 		if (initial.itemData.seller_profile_id === buyerProfileId) throw new Error(ERROR_MESSAGES.ITEM_NOT_FOUND);
 		const fingerprint = shippingSnapshotFingerprint(initial);
-		const response = await shipmentsCreate(
-			shippoClient,
-			this.createShipmentOptions(initial.itemData, initial.buyerProfile, buyerEmail, `tvq1:${quoteId}`),
+		const responseValue = await executeShippoRequest('create_shipment', () =>
+			shipmentsCreate(
+				shippoClient,
+				this.createShipmentOptions(initial.itemData, initial.buyerProfile, buyerEmail, `tvq1:${quoteId}`),
+			),
 		);
-		if (!response.ok) throw new ShippingProviderOperationalError();
 		if (
-			response.value?.status !== 'SUCCESS' ||
-			response.value.metadata !== `tvq1:${quoteId}` ||
-			!shipmentMatchesShippingState(response.value, initial)
+			responseValue.status !== 'SUCCESS' ||
+			responseValue.metadata !== `tvq1:${quoteId}` ||
+			!shipmentMatchesShippingState(responseValue, initial)
 		) {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
-		const shipmentId = response.value.objectId;
-		const validRates = response.value.rates
+		const shipmentId = responseValue.objectId;
+		const validRates = responseValue.rates
 			?.filter((candidate) => {
 				const cents = candidate.amount ? parseProviderDecimalToCents(candidate.amount) : undefined;
 				return (
@@ -400,13 +491,11 @@ export class ShipmentService {
 		const shipmentOptions = this.createShipmentOptions(itemData, buyerProfile, buyerEmail);
 
 		// Call Shippo API
-		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
+		const shipment = await executeShippoRequest('create_shipment', () =>
+			shipmentsCreate(shippoClient, shipmentOptions),
+		);
 
-		if (!shipmentLabelCreateResponse.ok) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
-		}
-
-		const rateAmount = shipmentLabelCreateResponse.value?.rates?.[0]?.amount;
+		const rateAmount = shipment.rates?.[0]?.amount;
 
 		if (!rateAmount) {
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
@@ -452,13 +541,11 @@ export class ShipmentService {
 		const shipmentOptions = this.createShipmentOptions(itemData, buyerProfile, buyerEmail);
 
 		// Call Shippo API
-		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
+		const shipment = await executeShippoRequest('create_shipment', () =>
+			shipmentsCreate(shippoClient, shipmentOptions),
+		);
 
-		if (!shipmentLabelCreateResponse.ok) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
-		}
-
-		const rates = shipmentLabelCreateResponse.value?.rates ?? [];
+		const rates = shipment.rates ?? [];
 		const rateAmount = rates[0]?.amount;
 
 		if (!rateAmount) {
@@ -474,14 +561,6 @@ export class ShipmentService {
 	}
 
 	async getShippingLabel(shipmentLabelId: string) {
-		const shipmentLabel = await shipmentsGet(shippoClient, shipmentLabelId);
-
-		const shipmentLabelData = shipmentLabel.value;
-
-		if (!shipmentLabelData) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_LABEL_NOT_FOUND);
-		}
-
-		return shipmentLabelData;
+		return executeShippoRequest('get_shipment', () => shipmentsGet(shippoClient, shipmentLabelId));
 	}
 }
