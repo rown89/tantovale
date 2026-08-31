@@ -38,7 +38,7 @@ export const signupRoute = createRouter().post(
 			EMAIL_VERIFY_TOKEN_SECRET: string;
 		}>(c);
 
-		const { isDevelopmentMode, isProductionMode } = getNodeEnvMode(NODE_ENV);
+		const { isProductionMode } = getNodeEnvMode(NODE_ENV);
 		const { db } = createClient();
 		let createdUserId: number | undefined;
 
@@ -97,11 +97,7 @@ export const signupRoute = createRouter().post(
 			);
 			const verificationLink = `${environment.STOREFRONT_HOSTNAME}/api/verify/email?token=${emailActivationToken}`;
 
-			if (isDevelopmentMode) {
-				console.log('\nverificationLink: ', verificationLink, '\n');
-			} else {
-				await sendVerifyEmail(email, verificationLink);
-			}
+			await sendVerifyEmail(email, verificationLink);
 
 			setCookie(c, 'email_activation_token', emailActivationToken, {
 				...getAuthTokenOptions({

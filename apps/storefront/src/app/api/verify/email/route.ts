@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { client } from '@workspace/server/client-rpc';
-import { bridgeAuthCookies } from '#utils/auth-cookie-bridge';
 
 type VerifyEmailDependencies = {
 	verifyGet(input: { query: { token: string } }): Promise<Response>;
@@ -26,16 +25,29 @@ export async function GET(request: NextRequest, context: VerifyEmailRouteContext
 		return NextResponse.json({ error: 'No token provided' });
 	}
 
-	const response = await dependencies.verifyGet({ query: { token } });
+	let response: Response;
+	try {
+		response = await dependencies.verifyGet({ query: { token } });
+	} catch {
+		return NextResponse.json({ error: 'Unable to verify email' }, { status: 502 });
+	}
 
 	if (response.status !== 200) {
 		return NextResponse.json({ error: 'Invalid verify email token provided' });
 	}
 
 	const cookieReader = await dependencies.getCookieStore();
-	if (bridgeAuthCookies(response.headers, cookieReader, { requireCompletePair: true }) !== 2) {
-		return NextResponse.json({ error: 'Invalid token provided' });
-	}
+	cookieReader.set({
+		name: 'email_activation_token',
+		value: '',
+		expires: new Date(0),
+		maxAge: 0,
+		httpOnly: true,
+		secure: true,
+		sameSite: 'none',
+		path: '/',
+		...(process.env.NODE_ENV === 'production' ? { domain: 'tantovale.it' } : {}),
+	});
 
-	return NextResponse.redirect(new URL('/', request.url));
+	return NextResponse.redirect(new URL('/login', request.url));
 }

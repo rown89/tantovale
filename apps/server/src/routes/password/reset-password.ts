@@ -58,7 +58,7 @@ export const passwordResetRoute = createRouter()
 
 				const changed = await tx
 					.update(users)
-					.set({ password: hashedPassword, updated_at: new Date() })
+					.set({ password: hashedPassword, email_verified: true, updated_at: new Date() })
 					.where(eq(users.id, storedToken.user_id))
 					.returning({ id: users.id, username: users.username });
 

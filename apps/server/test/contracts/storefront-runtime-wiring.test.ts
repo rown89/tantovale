@@ -124,6 +124,97 @@ function buyNowUnmountCleanupCancels(source: ts.SourceFile): boolean {
 	});
 }
 
+function buyNowRequestGuardIsExact(source: ts.SourceFile): boolean {
+	const declaration = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === 'requestIsCurrent',
+	);
+	if (!declaration?.initializer || !ts.isArrowFunction(declaration.initializer)) return false;
+	const body = declaration.initializer.body;
+	return (
+		ts.isCallExpression(body) &&
+		body.expression.getText() === 'buyNowRequestMatches' &&
+		body.arguments[0]?.getText() === 'useTantovaleStore.getState()' &&
+		body.arguments[1]?.getText() === 'requestSnapshot'
+	);
+}
+
+function chatFormSubmitsThroughMutation(source: ts.SourceFile): boolean {
+	const formDeclaration = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === 'form',
+	);
+	if (!formDeclaration?.initializer || !ts.isCallExpression(formDeclaration.initializer)) return false;
+	const options = formDeclaration.initializer.arguments[0];
+	if (!options || !ts.isObjectLiteralExpression(options)) return false;
+	const onSubmit = objectProperty(options, 'onSubmit');
+	return callbackCalls(onSubmit).some(
+		(call) => call.expression.getText() === 'sendMessage.mutate' && call.arguments[0]?.getText() === 'value.message',
+	);
+}
+
+function itemAddressRun(source: ts.SourceFile, handlerName: 'handleProposal' | 'handlePayment') {
+	const handler = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === handlerName,
+	);
+	return handler
+		? descendants(handler, ts.isCallExpression).find((call) => call.expression.getText() === 'addressPreflight.run')
+		: undefined;
+}
+
+function itemHandlerOpensExpectedModal(
+	source: ts.SourceFile,
+	handlerName: 'handleProposal' | 'handlePayment',
+): boolean {
+	const run = itemAddressRun(source, handlerName);
+	const options = run?.arguments[0];
+	if (!options || !ts.isObjectLiteralExpression(options)) return false;
+	const calls = callbackCalls(objectProperty(options, 'onAddress'));
+	const expectedModal = handlerName === 'handleProposal' ? 'setIsProposalModalOpen' : 'setIsBuyNowModalOpen';
+	return (
+		calls.length === 2 &&
+		calls[0]?.expression.getText() === 'setAddressId' &&
+		calls[1]?.expression.getText() === expectedModal &&
+		calls[1]?.arguments[0]?.kind === ts.SyntaxKind.TrueKeyword
+	);
+}
+
+function proposalAbortFeedbackUsesAwaitedResult(source: ts.SourceFile): boolean {
+	const feedbackCall = callsNamed(source, 'applyProposalAbortFeedback')[0];
+	if (feedbackCall?.arguments[0]?.getText() !== 'result') return false;
+	const declaration = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === 'result',
+	);
+	if (!declaration?.initializer || !ts.isAwaitExpression(declaration.initializer)) return false;
+	const awaited = declaration.initializer.expression;
+	const nearestArrow = (node: ts.Node): ts.ArrowFunction | undefined => {
+		let current: ts.Node | undefined = node.parent;
+		while (current) {
+			if (ts.isArrowFunction(current)) return current;
+			current = current.parent;
+		}
+		return undefined;
+	};
+	return (
+		ts.isCallExpression(awaited) &&
+		awaited.expression.getText() === 'handleBuyerAbortedProposal' &&
+		awaited.arguments[0]?.getText() === 'orderProposal.id' &&
+		nearestArrow(declaration) === nearestArrow(feedbackCall)
+	);
+}
+
+function proposalWrapperUsesFilteredServerThenOwnedClient(source: ts.SourceFile): boolean {
+	const orderProposal = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === 'orderProposal',
+	);
+	const proposalId = descendants(source, ts.isVariableDeclaration).find(
+		(candidate) => candidate.name.getText() === 'proposalId',
+	);
+	return (
+		orderProposal?.initializer?.getText() === 'visibleServerProposal(item.orderProposal, dismissedServerProposalId)' &&
+		proposalId?.initializer?.getText() ===
+			'orderProposal?.id || (ownsCurrentCommerceState ? clientProposalId : undefined) || 0'
+	);
+}
+
 function addressGuardIsExact(property: ts.ObjectLiteralElementLike | undefined, navbar: boolean): boolean {
 	if (!property || !ts.isPropertyAssignment(property) || !ts.isArrowFunction(property.initializer)) return false;
 	const body = property.initializer.body;
@@ -251,6 +342,13 @@ describe('storefront real component lifecycle wiring', () => {
 		expect(objectProperty(scheduleOptions, 'subscribe')?.getText()).toContain('useTantovaleStore.subscribe(listener)');
 		expect(buyNowSchedulerIsAssigned(source)).toBe(true);
 		expect(buyNowUnmountCleanupCancels(source)).toBe(true);
+		expect(buyNowRequestGuardIsExact(source)).toBe(true);
+		const disabledGuard = mutatedSource(
+			source,
+			'() => buyNowRequestMatches(useTantovaleStore.getState(), requestSnapshot)',
+			'() => false',
+		);
+		expect(buyNowRequestGuardIsExact(disabledGuard)).toBe(false);
 		const withoutAssignment = mutatedSource(
 			source,
 			'pendingPaymentAction.current = scheduleBuyNowPaymentAction({',
@@ -294,6 +392,9 @@ describe('storefront real component lifecycle wiring', () => {
 			"client.chat.auth.rooms[':roomId'].messages.$post",
 		);
 		expect(objectProperty(helperOptions, 'reset')?.getText()).toContain('form.reset()');
+		expect(chatFormSubmitsThroughMutation(source)).toBe(true);
+		const inertFormMutation = mutatedSource(source, 'sendMessage.mutate(value.message);', 'void value.message;');
+		expect(chatFormSubmitsThroughMutation(inertFormMutation)).toBe(false);
 		const disconnected = mutatedSource(source, '...createChatMessageMutationOptions({', '...({');
 		expect(
 			descendants(disconnected, ts.isSpreadAssignment).some(
@@ -315,6 +416,11 @@ describe('storefront real component lifecycle wiring', () => {
 		);
 
 		expect(itemRuns).toHaveLength(2);
+		expect(itemHandlerOpensExpectedModal(itemSource, 'handleProposal')).toBe(true);
+		expect(itemHandlerOpensExpectedModal(itemSource, 'handlePayment')).toBe(true);
+		const swappedModals = swappedSource(itemSource, 'setIsProposalModalOpen(true)', 'setIsBuyNowModalOpen(true)');
+		expect(itemHandlerOpensExpectedModal(swappedModals, 'handleProposal')).toBe(false);
+		expect(itemHandlerOpensExpectedModal(swappedModals, 'handlePayment')).toBe(false);
 		for (const call of itemRuns) {
 			const options = call.arguments[0];
 			if (!options || !ts.isObjectLiteralExpression(options)) throw new Error('Missing item address preflight options');
@@ -386,12 +492,20 @@ describe('storefront real component lifecycle wiring', () => {
 		const feedbackCall = callsNamed(handler, 'applyProposalAbortFeedback')[0];
 		expect(feedbackCall).toBeDefined();
 		expect(feedbackCall?.arguments[0]?.getText()).toBe('result');
+		expect(proposalAbortFeedbackUsesAwaitedResult(source)).toBe(true);
+		const constantResult = mutatedSource(
+			source,
+			'const result = await handleBuyerAbortedProposal(orderProposal.id);',
+			"const result = 'cancelled' as const; void handleBuyerAbortedProposal(orderProposal.id);",
+		);
+		expect(proposalAbortFeedbackUsesAwaitedResult(constantResult)).toBe(false);
 		const actions = feedbackCall?.arguments[1];
 		if (!actions || !ts.isObjectLiteralExpression(actions)) throw new Error('Missing proposal feedback actions');
 		expect(objectProperty(actions, 'onCancelled')?.getText()).toContain('toast.success');
 		expect(objectProperty(actions, 'onFailed')?.getText()).toContain('toast.error');
 		expect(actions.properties).toHaveLength(2);
 		const wrapper = await storefrontSource('app/item/[slug]/item-detail-wrapper/index.tsx');
+		expect(proposalWrapperUsesFilteredServerThenOwnedClient(wrapper)).toBe(true);
 		const visibilityCall = callsNamed(wrapper, 'visibleServerProposal')[0];
 		expect(visibilityCall?.arguments.map((argument) => argument.getText())).toEqual([
 			'item.orderProposal',
@@ -403,5 +517,11 @@ describe('storefront real component lifecycle wiring', () => {
 			'item.orderProposal',
 		);
 		expect(callsNamed(disconnected, 'visibleServerProposal')).toHaveLength(0);
+		const reversedPriority = mutatedSource(
+			wrapper,
+			'orderProposal?.id || (ownsCurrentCommerceState ? clientProposalId : undefined) || 0',
+			'(ownsCurrentCommerceState ? clientProposalId : undefined) || orderProposal?.id || 0',
+		);
+		expect(proposalWrapperUsesFilteredServerThenOwnedClient(reversedPriority)).toBe(false);
 	});
 });

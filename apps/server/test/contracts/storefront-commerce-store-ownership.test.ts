@@ -539,4 +539,93 @@ describe('storefront commerce Zustand ownership', () => {
 		await expect(second).resolves.toBeUndefined();
 		expect(store.getState()).toMatchObject({ clientProposalId: 81, isCreatingProposal: false });
 	});
+
+	it('keeps the dismissed server proposal hidden while creating its replacement and then shows the client replacement', async () => {
+		let releaseCreate!: (response: Response) => void;
+		const abortPost = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+		const createPost = vi.fn().mockReturnValue(new Promise<Response>((resolve) => (releaseCreate = resolve)));
+		const store = await loadStore({
+			orders_proposals: {
+				auth: {
+					buyer_aborted_proposal: { $post: abortPost },
+					create: { $post: createPost },
+				},
+			},
+		});
+		const { visibleServerProposal } = (await import(/* @vite-ignore */ proposalVisibilityPath)) as {
+			visibleServerProposal<T extends { id?: number | null }>(
+				proposal: T | undefined,
+				dismissedId?: number,
+			): T | undefined;
+		};
+		const proposalInput = {
+			item_id: 101,
+			proposal_price: 10_000,
+			shipping_label_id: 'label-1',
+			shipping_quote_id: 'quote-1',
+			message: 'Replacement offer',
+		};
+		store.getState().setCommerceContext(17, 101);
+		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
+
+		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('cancelled');
+		const replacement = store.getState().handleProposal(proposalInput);
+		expect(store.getState()).toMatchObject({ dismissedServerProposalId: 81, isCreatingProposal: true });
+		expect(visibleServerProposal({ id: 81 }, store.getState().dismissedServerProposalId)).toBeUndefined();
+		releaseCreate(
+			new Response(
+				JSON.stringify({
+					proposal: {
+						id: 82,
+						item_id: 101,
+						status: 'pending',
+						proposal_price: 10_000,
+						profile_id: 17,
+						created_at: '2037-10-22T07:28:00.000Z',
+						updated_at: '2037-10-22T07:28:00.000Z',
+						shipping_label_id: 'label-1',
+					},
+					chatRoomId: 91,
+				}),
+				{ status: 200 },
+			),
+		);
+
+		await expect(replacement).resolves.toMatchObject({ id: 82 });
+		expect(store.getState()).toMatchObject({ clientProposalId: 82, dismissedServerProposalId: 81 });
+		expect(visibleServerProposal({ id: 82 }, store.getState().dismissedServerProposalId)).toEqual({ id: 82 });
+	});
+
+	it('keeps the dismissed server proposal hidden when replacement creation fails', async () => {
+		const store = await loadStore({
+			orders_proposals: {
+				auth: {
+					buyer_aborted_proposal: { $post: vi.fn().mockResolvedValue(new Response(null, { status: 200 })) },
+					create: { $post: vi.fn().mockResolvedValue(new Response(null, { status: 500 })) },
+				},
+			},
+		});
+		const { visibleServerProposal } = (await import(/* @vite-ignore */ proposalVisibilityPath)) as {
+			visibleServerProposal<T extends { id?: number | null }>(
+				proposal: T | undefined,
+				dismissedId?: number,
+			): T | undefined;
+		};
+		store.getState().setCommerceContext(17, 101);
+		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
+
+		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('cancelled');
+		await expect(
+			store.getState().handleProposal({
+				item_id: 101,
+				proposal_price: 10_000,
+				shipping_label_id: 'label-1',
+				shipping_quote_id: 'quote-1',
+				message: 'Replacement offer',
+			}),
+		).resolves.toBeUndefined();
+
+		expect(store.getState()).toMatchObject({ dismissedServerProposalId: 81, isCreatingProposal: false });
+		expect(visibleServerProposal({ id: 81 }, store.getState().dismissedServerProposalId)).toBeUndefined();
+	});
 });

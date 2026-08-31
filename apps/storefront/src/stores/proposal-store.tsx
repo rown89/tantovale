@@ -118,7 +118,6 @@ export const createProposalSlice: StateCreator<
 		set({
 			isCreatingProposal: true,
 			proposalRequestToken: requestToken,
-			dismissedServerProposalId: undefined,
 		});
 
 		try {

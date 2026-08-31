@@ -80,6 +80,20 @@ it('proves the complete authentication lifecycle through emailed links and real 
 	expectJsonResponse(verificationResponse, 200);
 	expect(await verificationResponse.json()).toEqual({ message: 'Email verified successfully!' });
 	expect(hasCookie(session, 'email_activation_token')).toBe(false);
+	expect(hasCookie(session, 'access_token')).toBe(false);
+	expect(hasCookie(session, 'refresh_token')).toBe(false);
+	expect(await db.select({ id: refreshTokens.id }).from(refreshTokens)).toEqual([]);
+
+	const loginResponse = await app.request(
+		'/login',
+		jsonRequest('POST', { email: credentials.email, password: credentials.password }),
+	);
+	captureCookies(loginResponse, session);
+	expectJsonResponse(loginResponse, 200);
+	expect(await loginResponse.json()).toMatchObject({
+		message: 'login successful',
+		user: { username: credentials.username, email_verified: true },
+	});
 	const initialAccessCookie = requiredCookie(session, 'access_token');
 	const initialRefreshCookie = requiredCookie(session, 'refresh_token');
 

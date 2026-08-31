@@ -1,17 +1,14 @@
-import { randomUUID } from 'node:crypto';
-
-import { sign, verify } from 'hono/jwt';
+import { verify } from 'hono/jwt';
 import { eq } from 'drizzle-orm';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { describeRoute } from 'hono-openapi';
 
-import { tokenPayload } from '../../lib/tokenPayload';
-import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES, getNodeEnvMode } from '../../utils/constants';
+import { getNodeEnvMode } from '../../utils/constants';
 import { createClient } from '../../database';
-import { profiles, refreshTokens, users } from '../../database/schemas/schema';
+import { profiles, users } from '../../database/schemas/schema';
 
-import { getAuthTokenDeleteOptions, getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
+import { getAuthTokenDeleteOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { hasLiveMatchingRefreshSession, verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
@@ -154,9 +151,7 @@ export const verifyRoute = createRouter()
 			},
 		}),
 		async (c) => {
-			const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, EMAIL_VERIFY_TOKEN_SECRET, NODE_ENV } = env<{
-				ACCESS_TOKEN_SECRET: string;
-				REFRESH_TOKEN_SECRET: string;
+			const { EMAIL_VERIFY_TOKEN_SECRET, NODE_ENV } = env<{
 				EMAIL_VERIFY_TOKEN_SECRET: string;
 				NODE_ENV: string;
 			}>(c);
@@ -181,7 +176,7 @@ export const verifyRoute = createRouter()
 				typeof tokenClaims.exp !== 'number' ||
 				!Number.isFinite(tokenClaims.exp) ||
 				tokenClaims.exp * 1_000 <= Date.now() ||
-				(tokenClaims.auth_epoch !== undefined && !Number.isSafeInteger(tokenClaims.auth_epoch))
+				!Number.isSafeInteger(tokenClaims.auth_epoch)
 			) {
 				return c.json({ message: 'Invalid token' }, 400);
 			}
@@ -200,7 +195,6 @@ export const verifyRoute = createRouter()
 							email_verified: users.email_verified,
 							phone_verified: users.phone_verified,
 							is_banned: users.is_banned,
-							created_at: users.created_at,
 							updated_at: users.updated_at,
 						})
 						.from(users)
@@ -212,45 +206,12 @@ export const verifyRoute = createRouter()
 					if (user.is_banned || user.username !== tokenClaims.username) {
 						return { state: 'invalid' as const };
 					}
+					if (tokenClaims.auth_epoch !== user.updated_at.getTime()) return { state: 'invalid' as const };
 					if (user.email_verified) return { state: 'already_verified' as const };
 
-					const tokenEpoch = tokenClaims.auth_epoch;
-					const epochMatches =
-						tokenEpoch === undefined
-							? user.created_at.getTime() === user.updated_at.getTime()
-							: tokenEpoch === user.updated_at.getTime();
-					if (!epochMatches) return { state: 'invalid' as const };
+					await tx.update(users).set({ email_verified: true }).where(eq(users.id, user.id));
 
-					const verifiedUser = { ...user, email_verified: true };
-					const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
-					const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
-					const accessTokenPayload = tokenPayload({
-						...verifiedUser,
-						exp: Math.floor(accessTokenExpires.getTime() / 1_000),
-					});
-					const refreshTokenPayload = tokenPayload({
-						...verifiedUser,
-						exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
-					});
-					const accessToken = await sign({ ...accessTokenPayload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
-					const refreshToken = await sign(
-						{ ...refreshTokenPayload, jti: randomUUID(), sid: randomUUID() },
-						REFRESH_TOKEN_SECRET,
-					);
-					await tx.update(users).set({ email_verified: true, updated_at: new Date() }).where(eq(users.id, user.id));
-					await tx.insert(refreshTokens).values({
-						username: user.username,
-						token: refreshToken,
-						expires_at: refreshTokenExpires,
-					});
-
-					return {
-						state: 'verified' as const,
-						accessToken,
-						refreshToken,
-						accessTokenExpires,
-						refreshTokenExpires,
-					};
+					return { state: 'verified' as const };
 				});
 
 				if (verification.state === 'not_found') return c.json({ error: 'User not found' }, 404);
@@ -261,19 +222,6 @@ export const verifyRoute = createRouter()
 				}
 
 				deleteCookie(c, 'email_activation_token', getAuthTokenDeleteOptions({ isProductionMode }));
-				setCookie(c, 'access_token', verification.accessToken, {
-					...getAuthTokenOptions({
-						isProductionMode,
-						expires: verification.accessTokenExpires,
-					}),
-				});
-				setCookie(c, 'refresh_token', verification.refreshToken, {
-					...getAuthTokenOptions({
-						isProductionMode,
-						expires: verification.refreshTokenExpires,
-					}),
-				});
-
 				return c.json({ message: 'Email verified successfully!' }, 200);
 			} catch {
 				return c.json({ message: 'Email verification failed' }, 500);
