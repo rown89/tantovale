@@ -51,6 +51,20 @@ export const shipping_label_purchases = pgTable(
 				AND ${table.provider_status} = 'SUCCESS'
 			)`,
 		),
+		check(
+			'shipping_label_purchases_provider_evidence_check',
+			sql`(
+				${table.provider_transaction_id} IS NULL
+				AND ${table.label_url} IS NULL
+				AND ${table.provider_status} IS NULL
+				AND ${table.tracking_number} IS NULL
+				AND ${table.tracking_url} IS NULL
+			) OR (
+				${table.provider_transaction_id} IS NOT NULL
+				AND ${table.label_url} IS NOT NULL
+				AND ${table.provider_status} = 'SUCCESS'
+			)`,
+		),
 	],
 );
 

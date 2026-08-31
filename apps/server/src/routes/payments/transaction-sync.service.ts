@@ -36,6 +36,10 @@ import {
 import type { TrustapId } from './trustap-int64';
 import { PaymentInvitationOutboxService } from './payment-invitation-outbox.service';
 import type { GetTransactionStatusResponse } from './types';
+import {
+	SHIPPING_LABEL_TRANSITION_DEFERRED,
+	shippingLabelPurchaseDefersOrderTransition,
+} from '#lib/shipping-label-transition-guard';
 
 type TransactionSyncResult = {
 	transactionId: TrustapId | null;
@@ -593,7 +597,7 @@ export class TransactionSyncService {
 		initial: PollingCorrelationSnapshot,
 		remote: GetTransactionStatusResponse,
 	): Promise<
-		| { outcome: 'ignored' | 'quarantined' }
+		| { outcome: 'deferred' | 'ignored' | 'quarantined' }
 		| { outcome: 'updated'; oldStatus: EntityTrustapTransactionStatus; newStatus: EntityTrustapTransactionStatus }
 	> {
 		const { db } = this.db;
@@ -713,6 +717,9 @@ export class TransactionSyncService {
 			) {
 				return { outcome: 'ignored' };
 			}
+			if (await shippingLabelPurchaseDefersOrderTransition(tx, current.orderId)) {
+				return { outcome: 'deferred' };
+			}
 
 			const updatedAt = new Date();
 			if (transition.apply) {
@@ -804,6 +811,14 @@ export class TransactionSyncService {
 					const outcome = await this.applyPolledTransaction(transaction, trustapStatus);
 					if (outcome.outcome === 'quarantined') {
 						throw new Error('Trustap transaction is not correlated to one local order and item');
+					}
+					if (outcome.outcome === 'deferred') {
+						syncResults.push({
+							transactionId: transaction.transactionId,
+							error: SHIPPING_LABEL_TRANSITION_DEFERRED,
+							success: false,
+						});
+						continue;
 					}
 					if (outcome.outcome === 'updated') {
 						syncResults.push({

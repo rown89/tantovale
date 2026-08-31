@@ -18,6 +18,7 @@ import {
 	orders,
 	payment_invitation_outbox,
 	profiles,
+	shipping_label_purchases,
 	shipping_quotes,
 } from '../../src/database/schemas/schema';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
@@ -317,6 +318,60 @@ describe('Trustap transaction polling state mapping', () => {
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAID);
 		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_CONFIRMED);
+	});
+
+	it('defers a terminal poll while a label intent is unresolved and applies it after purchase', async () => {
+		const { item, order, transactionId } = await createStaleProviderBackedOrder(
+			entityTrustapTransactionTypeValues.PAID,
+		);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.PAYMENT_CONFIRMED }).where(eq(orders.id, order.id));
+		await db.insert(shipping_label_purchases).values({
+			order_id: order.id,
+			item_id: item.id,
+			purchase_attempt_id: randomUUID(),
+			shippo_rate_id: 'rate-test',
+		});
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+		);
+
+		const deferred = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(deferred.results).toContainEqual({
+			transactionId,
+			success: false,
+			error: 'Shipping label purchase transition deferred',
+		});
+		const [duringOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [duringProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(duringOrder?.status).toBe(ORDER_PHASES.PAYMENT_CONFIRMED);
+		expect(duringProvider?.status).toBe(entityTrustapTransactionTypeValues.PAID);
+
+		await db
+			.update(shipping_label_purchases)
+			.set({
+				state: 'purchased',
+				provider_transaction_id: 'label-transaction-test',
+				provider_status: 'SUCCESS',
+				label_url: 'https://labels.test/label-transaction-test.pdf',
+			})
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		const applied = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(applied.results).toContainEqual({
+			transactionId,
+			oldStatus: entityTrustapTransactionTypeValues.PAID,
+			newStatus: entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+			success: true,
+		});
+		const [terminalOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(terminalOrder?.status).toBe(ORDER_PHASES.PAYMENT_REFUNDED);
 	});
 
 	it('fail-closes a polled complaint while preserving the current order phase', async () => {

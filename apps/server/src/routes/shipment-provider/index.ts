@@ -239,6 +239,37 @@ export const shipmentProviderRoute = createRouter()
 						);
 				});
 			};
+			const markClaimForReconciliation = async (
+				providerEvidence?: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>,
+			) => {
+				await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					const [stored] = await tx
+						.update(shipping_label_purchases)
+						.set({
+							state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED,
+							...(providerEvidence
+								? {
+										provider_transaction_id: providerEvidence.objectId,
+										provider_status: providerEvidence.status,
+										label_url: providerEvidence.labelUrl,
+										tracking_number: providerEvidence.trackingNumber ?? null,
+										tracking_url: providerEvidence.trackingUrlProvider ?? null,
+									}
+								: {}),
+							updated_at: new Date(),
+						})
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
+							),
+						)
+						.returning({ id: shipping_label_purchases.id });
+					if (!stored) throw new Error('Shipping label purchase claim was lost');
+				});
+			};
 
 			const shipmentService = new ShipmentService();
 			try {
@@ -256,23 +287,52 @@ export const shipmentProviderRoute = createRouter()
 				);
 			}
 
+			// Provider I/O above does not hold the item lock. Re-read the order and
+			// intent immediately before POST; after this point the durable CREATING
+			// intent makes webhook/poller transitions defer until finalization.
+			const mayPost = await db.transaction(async (tx) => {
+				await acquireItemCommerceLock(tx, claim.itemId);
+				const [order] = await tx
+					.select({ status: orders.status })
+					.from(orders)
+					.where(and(eq(orders.id, order_id), eq(orders.item_id, claim.itemId)))
+					.for('update')
+					.limit(1);
+				const [intent] = await tx
+					.select({ state: shipping_label_purchases.state })
+					.from(shipping_label_purchases)
+					.where(
+						and(
+							eq(shipping_label_purchases.id, claim.purchaseId),
+							eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+						),
+					)
+					.for('update')
+					.limit(1);
+				if (intent?.state !== SHIPPING_LABEL_PURCHASE_STATES.CREATING) return false;
+				if (order?.status === ORDER_PHASES.PAYMENT_CONFIRMED || order?.status === ORDER_PHASES.SHIPPING_PENDING) {
+					return true;
+				}
+				await tx
+					.update(shipping_label_purchases)
+					.set({ state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED, updated_at: new Date() })
+					.where(eq(shipping_label_purchases.id, claim.purchaseId));
+				return false;
+			});
+			if (!mayPost) return c.json({ message: 'Shipping label purchase requires reconciliation' }, 409);
+
 			let transaction: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>;
 			try {
 				transaction = await shipmentService.purchaseVerifiedLabel(claim.rateId);
-			} catch {
-				await db.transaction(async (tx) => {
-					await acquireItemCommerceLock(tx, claim.itemId);
-					await tx
-						.update(shipping_label_purchases)
-						.set({ state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED, updated_at: new Date() })
-						.where(
-							and(
-								eq(shipping_label_purchases.id, claim.purchaseId),
-								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
-								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
-							),
-						);
-				});
+			} catch (error) {
+				const definiteRejection =
+					error instanceof ShippoProviderError &&
+					error.category === 'http' &&
+					error.status !== undefined &&
+					error.status >= 400 &&
+					error.status < 500;
+				if (definiteRejection) await clearPrePostClaim();
+				else await markClaimForReconciliation();
 				return c.json({ message: 'Shipping provider request failed' }, 502);
 			}
 
@@ -303,6 +363,14 @@ export const shipmentProviderRoute = createRouter()
 					return purchase;
 				});
 			} catch {
+				// Shippo returned a known SUCCESS. Preserve that evidence even when
+				// the normal purchased finalization fails. If this compensation also
+				// fails, the original CREATING row remains a durable blocking claim.
+				try {
+					await markClaimForReconciliation(transaction);
+				} catch {
+					// The untouched durable claim is intentionally fail-closed.
+				}
 				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 502);
 			}
 

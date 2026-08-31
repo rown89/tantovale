@@ -406,7 +406,7 @@ export class ShipmentService {
 			responseValue.metadata !== `tvq1:${quoteId}` ||
 			!shipmentMatchesShippingState(responseValue, initial)
 		) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+			throw new ShippoProviderError('create_shipment', 'invalid_response');
 		}
 		const shipmentId = responseValue.objectId;
 		const validRates = responseValue.rates
@@ -433,7 +433,7 @@ export class ShipmentService {
 			!Number.isSafeInteger(amount) ||
 			amount <= 0
 		) {
-			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+			throw new ShippoProviderError('create_shipment', 'invalid_response');
 		}
 
 		const expiresAt = new Date(Date.now() + shippingQuoteTtlMs);

@@ -29,6 +29,7 @@ describe('shipping label purchase migration parity', () => {
 			'shipping_label_purchases_item_id_items_id_fkey',
 			'shipping_label_purchases_order_id_orders_id_fkey',
 			'shipping_label_purchases_pkey',
+			'shipping_label_purchases_provider_evidence_check',
 			'shipping_label_purchases_purchased_graph_check',
 			'shipping_label_purchases_state_check',
 		]);
@@ -48,7 +49,7 @@ describe('shipping label purchase migration parity', () => {
 		]);
 	});
 
-	it('database constraints reject duplicate claims and incomplete purchased graphs', async () => {
+	it('database constraints reject duplicate claims and partial provider evidence', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		const order = await createOrderFixture(actors, item);
@@ -70,5 +71,24 @@ describe('shipping label purchase migration parity', () => {
 		await expect(
 			client.query("UPDATE shipping_label_purchases SET state = 'purchased' WHERE order_id = $1", [order.id]),
 		).rejects.toMatchObject({ code: '23514' });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET state = 'reconciliation_required', provider_transaction_id = 'partial-provider-evidence'
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).rejects.toMatchObject({ code: '23514' });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET state = 'reconciliation_required',
+				     provider_transaction_id = 'known-provider-transaction',
+				     provider_status = 'SUCCESS',
+				     label_url = 'https://labels.test/known.pdf'
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).resolves.toMatchObject({ rowCount: 1 });
 	});
 });

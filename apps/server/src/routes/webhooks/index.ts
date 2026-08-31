@@ -20,6 +20,10 @@ import {
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { environment } from '#utils/constants';
 import { canonicalTrustapId, parseJsonWithTopLevelTrustapId } from '../payments/trustap-int64';
+import {
+	SHIPPING_LABEL_TRANSITION_DEFERRED,
+	shippingLabelPurchaseDefersOrderTransition,
+} from '#lib/shipping-label-transition-guard';
 
 // Trustap webhook payload schema
 const trustapWebhookSchema = z.object({
@@ -139,6 +143,9 @@ export const webhooksRoute = createRouter().post(
 					!resolvesCreationReconciliation
 				) {
 					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
+				}
+				if (await shippingLabelPurchaseDefersOrderTransition(tx, order.id)) {
+					return c.json({ error: SHIPPING_LABEL_TRANSITION_DEFERRED }, 503);
 				}
 
 				// Update transaction status

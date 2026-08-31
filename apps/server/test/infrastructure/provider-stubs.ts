@@ -53,10 +53,14 @@ export type StubScenario =
 	| 'shippo-rate-id-mismatch'
 	| 'shippo-rate-amount-mismatch'
 	| 'shippo-rate-currency-mismatch'
+	| 'shippo-rate-barrier'
 	| 'shippo-label-invalid-body'
 	| 'shippo-label-malformed-json'
 	| 'shippo-label-delay'
 	| 'shippo-label-disconnect'
+	| 'shippo-label-client-error'
+	| 'shippo-label-unprocessable'
+	| 'shippo-label-provider-error'
 	| 'shippo-label-status-error'
 	| 'shippo-label-rate-mismatch'
 	| 'shippo-label-without-tracking'
@@ -201,10 +205,14 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'shippo-rate-id-mismatch',
 	'shippo-rate-amount-mismatch',
 	'shippo-rate-currency-mismatch',
+	'shippo-rate-barrier',
 	'shippo-label-invalid-body',
 	'shippo-label-malformed-json',
 	'shippo-label-delay',
 	'shippo-label-disconnect',
+	'shippo-label-client-error',
+	'shippo-label-unprocessable',
+	'shippo-label-provider-error',
 	'shippo-label-status-error',
 	'shippo-label-rate-mismatch',
 	'shippo-label-without-tracking',
@@ -587,10 +595,14 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'shippo-rate-id-mismatch':
 		case 'shippo-rate-amount-mismatch':
 		case 'shippo-rate-currency-mismatch':
+		case 'shippo-rate-barrier':
 		case 'shippo-label-invalid-body':
 		case 'shippo-label-malformed-json':
 		case 'shippo-label-delay':
 		case 'shippo-label-disconnect':
+		case 'shippo-label-client-error':
+		case 'shippo-label-unprocessable':
+		case 'shippo-label-provider-error':
 		case 'shippo-label-status-error':
 		case 'shippo-label-rate-mismatch':
 		case 'shippo-label-without-tracking':
@@ -644,6 +656,11 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 	const shippoRates = new Map<string, typeof shippoRateFixture>();
 	let nextShippoShipmentOrdinal = 1;
 	let nextShippoTransactionOrdinal = 1;
+	let shippoRateBarrierReached = 0;
+	let releaseShippoRateBarrier: (() => void) | undefined;
+	let shippoRateBarrier = new Promise<void>((resolve) => {
+		releaseShippoRateBarrier = resolve;
+	});
 	let shippoLabelBarrierReached = 0;
 	let releaseShippoLabelBarrier: (() => void) | undefined;
 	let shippoLabelBarrier = new Promise<void>((resolve) => {
@@ -654,6 +671,12 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		shippoLabelBarrierReached = 0;
 		shippoLabelBarrier = new Promise<void>((resolve) => {
 			releaseShippoLabelBarrier = resolve;
+		});
+	};
+	const resetShippoRateBarrier = () => {
+		shippoRateBarrierReached = 0;
+		shippoRateBarrier = new Promise<void>((resolve) => {
+			releaseShippoRateBarrier = resolve;
 		});
 	};
 
@@ -670,6 +693,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		shippoRates.clear();
 		nextShippoShipmentOrdinal = 1;
 		nextShippoTransactionOrdinal = 1;
+		resetShippoRateBarrier();
 		resetShippoLabelBarrier();
 	};
 
@@ -699,6 +723,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						return;
 					}
 					scenario = nextScenario as StubScenario;
+					if (scenario === 'shippo-rate-barrier') resetShippoRateBarrier();
 					if (scenario === 'shippo-label-barrier') resetShippoLabelBarrier();
 					sendJson(response, 200, { scenario });
 					return;
@@ -706,6 +731,17 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 
 				if (kind === 'shippo' && method === 'GET' && requestUrl.pathname === '/__test/label-barrier') {
 					sendJson(response, 200, { reached: shippoLabelBarrierReached });
+					return;
+				}
+
+				if (kind === 'shippo' && method === 'GET' && requestUrl.pathname === '/__test/rate-barrier') {
+					sendJson(response, 200, { reached: shippoRateBarrierReached });
+					return;
+				}
+
+				if (kind === 'shippo' && method === 'POST' && requestUrl.pathname === '/__test/rate-barrier/release') {
+					releaseShippoRateBarrier?.();
+					sendJson(response, 200, { released: true });
 					return;
 				}
 
@@ -1240,6 +1276,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 				case 'shippo-get-rate': {
 					const rate = shippoRates.get(route.rateId);
 					if (!rate) throw new Error('Known Shippo rate is missing');
+					if (scenario === 'shippo-rate-barrier') {
+						shippoRateBarrierReached += 1;
+						await shippoRateBarrier;
+					}
 					if (scenario === 'shippo-rate-invalid-body') {
 						sendJson(response, 200, { ...rate, shipment: '' });
 						return;
@@ -1291,6 +1331,18 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					if (scenario === 'shippo-label-disconnect-after-create') {
 						response.destroy();
+						return;
+					}
+					if (scenario === 'shippo-label-client-error') {
+						sendJson(response, 400, { error: 'invalid_rate', message: 'The requested rate cannot be purchased' });
+						return;
+					}
+					if (scenario === 'shippo-label-unprocessable') {
+						sendJson(response, 422, { error: 'unprocessable', message: 'The requested label is invalid' });
+						return;
+					}
+					if (scenario === 'shippo-label-provider-error') {
+						sendJson(response, 500, { error: 'provider_error', message: 'Shippo provider error' });
 						return;
 					}
 					if (scenario === 'shippo-label-invalid-body') {
