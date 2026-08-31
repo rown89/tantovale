@@ -19,6 +19,8 @@ import { getTestDatabase } from '../helpers/database';
 import { getProviderRequests, setProviderScenario, setTrustapTransactionStatus } from '../helpers/providers';
 import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { app } from '../../src/app';
+import { environment } from '../../src/utils/constants';
+import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
 
 function providerUrl(name: 'PAYMENT_PROVIDER_API_URL'): string {
 	const value = process.env[name];
@@ -54,6 +56,14 @@ describe('scheduled job authentication', () => {
 		expect(response.status).toBe(401);
 	});
 
+	it.each(cronRoutes)('rejects %s when the key query parameter is duplicated in either order', async (route, key) => {
+		for (const query of [`key=${key}&key=wrong-job-key`, `key=wrong-job-key&key=${key}`]) {
+			const response = await app.request(`/cron/auth/${route}?${query}`);
+
+			expect(response.status).toBe(401);
+		}
+	});
+
 	it.each(cronRoutes)('rejects %s when its job key is wrong even with a valid user cookie', async (route) => {
 		const actors = await createCommerceActors();
 		const response = await authenticatedRequest(`/cron/auth/${route}?key=wrong-job-key`, 'GET', actors.seller.jar);
@@ -77,6 +87,7 @@ function useFixedUtcClock(): void {
 
 afterEach(() => {
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 });
 
 async function createPayableExpiredCandidate(createdAt = new Date(Date.now() - 7 * 24 * hourInMilliseconds)) {
@@ -110,10 +121,13 @@ async function createPayableExpiredCandidate(createdAt = new Date(Date.now() - 7
 		chargeSeller: trustapTransactionFixture.charge_seller,
 		entityTitle: item.title,
 	});
+	await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'created', {
+		description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
+	});
 	return { actors, item, order };
 }
 
-async function createStaleProviderBackedOrder() {
+async function createStaleProviderBackedOrder(updatedAt = new Date(0)) {
 	const actors = await createCommerceActors();
 	const item = await createItemFixture(actors);
 	const { db } = getTestDatabase();
@@ -143,7 +157,7 @@ async function createStaleProviderBackedOrder() {
 		charge: trustapTransactionFixture.charge,
 		chargeSeller: trustapTransactionFixture.charge_seller,
 		entityTitle: item.title,
-		updated_at: new Date(0),
+		updated_at: updatedAt,
 	});
 	await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'created', {
 		description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
@@ -241,6 +255,125 @@ describe('commerce expiry cron routes', () => {
 			expect(cancellationRequests).toHaveLength(1);
 		},
 	);
+
+	it.each([
+		['strictly stale', -1, PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED],
+		['exactly at the lease', 0, PAYMENT_CANCELLATION_STATES.CANCELLING],
+		['still fresh', 1, PAYMENT_CANCELLATION_STATES.CANCELLING],
+	] as const)(
+		'handles a %s CANCELLING lease boundary without another provider call',
+		async (_case, deltaMilliseconds, expectedState) => {
+			useFixedUtcClock();
+			const { order } = await createPayableExpiredCandidate(new Date(fixedNow.getTime() - 49 * hourInMilliseconds));
+			const leaseMilliseconds = environment.PROVIDER_REQUEST_TIMEOUT_MS * 2;
+			const { db } = getTestDatabase();
+			await db
+				.update(orders)
+				.set({
+					payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING,
+					updated_at: new Date(fixedNow.getTime() - leaseMilliseconds + deltaMilliseconds),
+				})
+				.where(eq(orders.id, order.id));
+
+			const response = await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+			expect(response.status).toBe(200);
+			const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(stored?.payment_cancellation_state).toBe(expectedState);
+			const cancellations = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
+				path.includes('/cancel_with_guest_user'),
+			);
+			expect(cancellations).toHaveLength(0);
+		},
+	);
+
+	it('lets the sync fallback resolve a stale cancellation claim from authoritative remote state', async () => {
+		useFixedUtcClock();
+		const { item, order } = await createPayableExpiredCandidate(new Date(fixedNow.getTime() - 49 * hourInMilliseconds));
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING,
+				updated_at: new Date(fixedNow.getTime() - environment.PROVIDER_REQUEST_TIMEOUT_MS * 2 - 1),
+			})
+			.where(eq(orders.id, order.id));
+		await db
+			.update(entityTrustapTransactions)
+			.set({ updated_at: new Date(fixedNow.getTime() - hourInMilliseconds - 1) })
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			trustapTransactionFixture.id,
+			'cancelled',
+			{
+				description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
+			},
+		);
+
+		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		const [afterRecovery] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(afterRecovery?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED);
+
+		const syncResponse = await app.request('/cron/auth/sync-transactions?key=transactions-cron-test-key');
+
+		expect(syncResponse.status).toBe(200);
+		const [afterSync] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(afterSync).toMatchObject({
+			status: ORDER_PHASES.CANCELLED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
+		});
+	});
+
+	it('preserves an authoritative webhook cancellation that wins after the remote cancel and before cron finalize', async () => {
+		const { actors, order } = await createPayableExpiredCandidate();
+		let releaseProvider!: () => void;
+		const providerReleased = new Promise<void>((resolve) => {
+			releaseProvider = resolve;
+		});
+		let providerStarted!: () => void;
+		const providerWasCalled = new Promise<void>((resolve) => {
+			providerStarted = resolve;
+		});
+		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+			providerStarted();
+			await providerReleased;
+			return trustapTransactionFixture as never;
+		});
+
+		const cronResponsePromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		await providerWasCalled;
+		const webhookResponse = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: {
+				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: trustapTransactionFixture.id,
+				status: 'cancelled',
+			}),
+		});
+		expect(webhookResponse.status).toBe(200);
+		releaseProvider();
+		const cronResponse = await cronResponsePromise;
+		expect(cronResponse.status).toBe(200);
+
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.CANCELLED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
+		});
+		expect(storedProvider?.status).toBe('cancelled');
+		const buyerOrder = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
+		expect(buyerOrder.status).toBe(200);
+	});
 	it('fails closed for a created order without a cancellable transaction and preserves in-flight payment creation', async () => {
 		const actors = await createCommerceActors();
 		const { db } = getTestDatabase();
@@ -325,6 +458,72 @@ describe('commerce expiry cron routes', () => {
 		);
 		expect(cancellationRequests).toHaveLength(0);
 	});
+
+	it('marks the order for reconciliation when the provider cancellation response breaks the durable snapshot', async () => {
+		const { order } = await createPayableExpiredCandidate();
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'transaction-cancel-description-mismatch');
+
+		const response = await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+		expect(response.status).toBe(200);
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider?.status).toBe('created');
+	});
+
+	it.each(['created', 'joined'] as const)('cancels only a %s provider source state', async (sourceStatus) => {
+		const { order } = await createPayableExpiredCandidate();
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ status: sourceStatus })
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			trustapTransactionFixture.id,
+			sourceStatus,
+		);
+
+		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+		const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(stored).toMatchObject({
+			status: ORDER_PHASES.EXPIRED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
+		});
+	});
+
+	it.each(['paid', 'rejected', 'cancelled'] as const)(
+		'never calls cancel from the non-cancellable local provider state %s',
+		async (sourceStatus) => {
+			const { order } = await createPayableExpiredCandidate();
+			const { db } = getTestDatabase();
+			await db
+				.update(entityTrustapTransactions)
+				.set({ status: sourceStatus })
+				.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+
+			await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+			const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(stored).toMatchObject({
+				status: ORDER_PHASES.PAYMENT_PENDING,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			});
+			const cancellations = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
+				path.includes('/cancel_with_guest_user'),
+			);
+			expect(cancellations).toHaveLength(0);
+		},
+	);
 
 	it('does not regress a terminal order even when it is older than the payment cutoff', async () => {
 		useFixedUtcClock();
@@ -444,6 +643,30 @@ describe('commerce expiry cron routes', () => {
 });
 
 describe('transaction sync cron route', () => {
+	it.each([
+		['strictly before', -1, 1, ORDER_PHASES.PAYMENT_CONFIRMED],
+		['exactly at', 0, 0, ORDER_PHASES.PAYMENT_PENDING],
+		['strictly after', 1, 0, ORDER_PHASES.PAYMENT_PENDING],
+	] as const)(
+		'synchronizes provider rows %s the strict one-hour cutoff',
+		async (_case, deltaMilliseconds, expectedTotal, expectedOrderStatus) => {
+			useFixedUtcClock();
+			const cutoff = fixedNow.getTime() - hourInMilliseconds;
+			const { order } = await createStaleProviderBackedOrder(new Date(cutoff + deltaMilliseconds));
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'paid', {
+				description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
+			});
+
+			const response = await app.request('/cron/auth/sync-transactions?key=transactions-cron-test-key');
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ totalTransactions: expectedTotal });
+			const { db } = getTestDatabase();
+			const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(stored?.status).toBe(expectedOrderStatus);
+		},
+	);
+
 	it('reports and applies a changed Trustap transaction, then skips the fresh row on repetition', async () => {
 		const { order } = await createStaleProviderBackedOrder();
 		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'paid', {

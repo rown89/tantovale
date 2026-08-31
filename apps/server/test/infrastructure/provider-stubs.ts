@@ -99,6 +99,14 @@ export type StubScenario =
 	| 'transaction-rate-limit'
 	| 'transaction-cancel-error'
 	| 'transaction-cancel-delay'
+	| 'transaction-cancel-id-mismatch'
+	| 'transaction-cancel-buyer-mismatch'
+	| 'transaction-cancel-seller-mismatch'
+	| 'transaction-cancel-price-mismatch'
+	| 'transaction-cancel-charge-mismatch'
+	| 'transaction-cancel-charge-seller-mismatch'
+	| 'transaction-cancel-currency-mismatch'
+	| 'transaction-cancel-description-mismatch'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
 	| 'transaction-buyer-missing'
@@ -266,6 +274,14 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'transaction-rate-limit',
 	'transaction-cancel-error',
 	'transaction-cancel-delay',
+	'transaction-cancel-id-mismatch',
+	'transaction-cancel-buyer-mismatch',
+	'transaction-cancel-seller-mismatch',
+	'transaction-cancel-price-mismatch',
+	'transaction-cancel-charge-mismatch',
+	'transaction-cancel-charge-seller-mismatch',
+	'transaction-cancel-currency-mismatch',
+	'transaction-cancel-description-mismatch',
 	'transaction-invalid-json',
 	'transaction-invalid-body',
 	'transaction-buyer-missing',
@@ -575,6 +591,23 @@ function trustapTransactionResponse(
 	return transaction;
 }
 
+function trustapCancellationResponse(
+	transaction: TrustapTransactionResource,
+	scenario: StubScenario,
+): Record<string, unknown> {
+	const mutations: Partial<Record<StubScenario, Record<string, unknown>>> = {
+		'transaction-cancel-id-mismatch': { id: transaction.id + 1 },
+		'transaction-cancel-buyer-mismatch': { buyer_id: 'unrelated-cancel-buyer' },
+		'transaction-cancel-seller-mismatch': { seller_id: 'unrelated-cancel-seller' },
+		'transaction-cancel-price-mismatch': { price: transaction.price + 1 },
+		'transaction-cancel-charge-mismatch': { charge: transaction.charge + 1 },
+		'transaction-cancel-charge-seller-mismatch': { charge_seller: transaction.charge_seller + 1 },
+		'transaction-cancel-currency-mismatch': { currency: 'usd' },
+		'transaction-cancel-description-mismatch': { description: `${transaction.description} changed` },
+	};
+	return { ...trustapTransactionResponse(transaction, scenario), ...mutations[scenario] };
+}
+
 function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario, response: ServerResponse): boolean {
 	switch (scenario) {
 		case 'success':
@@ -672,6 +705,14 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'transaction-rate-limit':
 		case 'transaction-cancel-error':
 		case 'transaction-cancel-delay':
+		case 'transaction-cancel-id-mismatch':
+		case 'transaction-cancel-buyer-mismatch':
+		case 'transaction-cancel-seller-mismatch':
+		case 'transaction-cancel-price-mismatch':
+		case 'transaction-cancel-charge-mismatch':
+		case 'transaction-cancel-charge-seller-mismatch':
+		case 'transaction-cancel-currency-mismatch':
+		case 'transaction-cancel-description-mismatch':
 		case 'transaction-invalid-json':
 		case 'transaction-invalid-body':
 		case 'transaction-buyer-missing':
@@ -1158,7 +1199,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					const cancelled: TrustapTransactionResource = { ...transaction, status: 'cancelled' };
 					trustapTransactions.set(route.transactionId, cancelled);
-					const responseBody = trustapTransactionResponse(cancelled, scenario);
+					const responseBody = trustapCancellationResponse(cancelled, scenario);
 					if (scenario === 'transaction-cancel-delay') {
 						setTimeout(() => sendJson(response, 200, responseBody), 500);
 						return;

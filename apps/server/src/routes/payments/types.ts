@@ -1,4 +1,5 @@
 import type { TrustapChargeResponse, TrustapGuestUserResponse, TrustapTransactionResponse } from './provider.schemas';
+import type { TrustapId } from './trustap-int64';
 
 export interface CreateGuestUserProps {
 	id: number;
@@ -41,3 +42,15 @@ export interface CreateTransactionWithBothUsersProps {
 export type CreateTransactionResponse = TrustapTransactionResponse;
 
 export type GetTransactionStatusResponse = TrustapTransactionResponse;
+
+export interface CancelGuestTransactionProps {
+	transaction_id: TrustapId;
+	acting_provider_user_id: string;
+	buyer_id: string;
+	seller_id: string;
+	currency: 'eur';
+	description: string;
+	price: number;
+	charge: number;
+	charge_seller: number;
+}

@@ -76,6 +76,23 @@ describe('local service configuration', () => {
 			for (const field of ['PAYMENT_PROVIDER_WEBHOOK_USERNAME', 'PAYMENT_PROVIDER_WEBHOOK_SECRET'] as const) {
 				expect(() => parseEnv({ ...testEnvironment, [field]: '' })).toThrow(/Invalid env/);
 			}
+			const cronSecretFields = [
+				'DAILY_ORDER_CHECK_SECRET_KEY',
+				'DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY',
+				'TRANSACTIONS_SYNC_SECRET_KEY',
+			] as const;
+			for (const field of cronSecretFields) {
+				expect(() => parseEnv({ ...testEnvironment, [field]: '' })).toThrow(/Invalid env/);
+			}
+			for (let left = 0; left < cronSecretFields.length; left += 1) {
+				for (let right = left + 1; right < cronSecretFields.length; right += 1) {
+					const leftField = cronSecretFields[left]!;
+					const rightField = cronSecretFields[right]!;
+					expect(() => parseEnv({ ...testEnvironment, [rightField]: testEnvironment[leftField] })).toThrow(
+						/Invalid env/,
+					);
+				}
+			}
 
 			expect(environment).toMatchObject({
 				AWS_ENDPOINT: runtime.minio.endpoint,

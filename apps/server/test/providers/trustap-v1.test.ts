@@ -15,6 +15,7 @@ import type { CreateGuestUserProps, CreateTransactionWithBothUsersProps } from '
 import { environment } from '../../src/utils/constants';
 import type { StubScenario } from '../infrastructure/provider-stubs';
 import { getProviderRequests, setProviderScenario } from '../helpers/providers';
+import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 
 const guestInput = {
 	id: 101,
@@ -38,6 +39,18 @@ const transactionInput = {
 } satisfies CreateTransactionWithBothUsersProps;
 
 const existingTransactionId = '91001';
+
+const cancellationInput = {
+	transaction_id: existingTransactionId,
+	acting_provider_user_id: trustapTransactionFixture.buyer_id,
+	buyer_id: trustapTransactionFixture.buyer_id,
+	seller_id: trustapTransactionFixture.seller_id,
+	currency: trustapTransactionFixture.currency,
+	description: trustapTransactionFixture.description,
+	price: trustapTransactionFixture.price,
+	charge: trustapTransactionFixture.charge,
+	charge_seller: trustapTransactionFixture.charge_seller,
+} as const;
 
 type OperationName = 'create_guest_user' | 'calculate_charge' | 'create_transaction' | 'fetch_transaction';
 
@@ -574,10 +587,33 @@ describe('Trustap v1 provider boundary', () => {
 			const service = new PaymentProviderService();
 			const scenario = `transaction-${identity}-missing` as StubScenario;
 			await setProviderScenario(paymentProviderUrl(), scenario);
-			const cancelError = await service
-				.cancelGuestTransaction(existingTransactionId, transactionInput.buyer_id)
-				.catch((error: unknown) => error);
+			const cancelError = await service.cancelGuestTransaction(cancellationInput).catch((error: unknown) => error);
 			expect(cancelError).toMatchObject({
+				name: 'PaymentProviderAmbiguousError',
+				operation: 'cancel_transaction',
+				category: 'ambiguous',
+			});
+		},
+	);
+
+	it.each([
+		'transaction-cancel-id-mismatch',
+		'transaction-cancel-buyer-mismatch',
+		'transaction-cancel-seller-mismatch',
+		'transaction-cancel-price-mismatch',
+		'transaction-cancel-charge-mismatch',
+		'transaction-cancel-charge-seller-mismatch',
+		'transaction-cancel-currency-mismatch',
+		'transaction-cancel-description-mismatch',
+	] satisfies StubScenario[])(
+		'treats a %s response as an ambiguous cancellation rather than accepting partial correlation',
+		async (scenario) => {
+			await setProviderScenario(paymentProviderUrl(), scenario);
+			const error = await new PaymentProviderService()
+				.cancelGuestTransaction(cancellationInput)
+				.catch((cause: unknown) => cause);
+
+			expect(error).toMatchObject({
 				name: 'PaymentProviderAmbiguousError',
 				operation: 'cancel_transaction',
 				category: 'ambiguous',

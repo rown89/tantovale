@@ -9,7 +9,8 @@ function isExactSecret(candidate: string, expected: string): boolean {
 
 export function authenticateCronSecret(expected: string): MiddlewareHandler {
 	return async (context, next) => {
-		const key = context.req.query('key');
+		const keys = context.req.queries('key') ?? [];
+		const key = keys.length === 1 ? keys[0] : undefined;
 		if (key === undefined || key.length === 0 || !isExactSecret(key, expected)) {
 			return context.json({ error: 'Invalid key' }, 401);
 		}

@@ -7,6 +7,7 @@ import {
 	CreateGuestUserProps,
 	GetTransactionStatusResponse,
 	CreateTransactionWithBothUsersProps,
+	CancelGuestTransactionProps,
 } from './types';
 import {
 	trustapChargeResponseSchema,
@@ -307,18 +308,25 @@ export class PaymentProviderService {
 		return parsed.data;
 	}
 
-	async cancelGuestTransaction(
-		transactionId: TrustapId,
-		actingProviderUserId: string,
-	): Promise<CreateTransactionResponse> {
+	async cancelGuestTransaction({
+		transaction_id,
+		acting_provider_user_id,
+		buyer_id,
+		seller_id,
+		currency,
+		description,
+		price,
+		charge,
+		charge_seller,
+	}: CancelGuestTransactionProps): Promise<CreateTransactionResponse> {
 		let response: Response;
 		try {
 			response = await fetch(
-				`${this.api_url}/${this.api_version}/transactions/${transactionId}/cancel_with_guest_user`,
+				`${this.api_url}/${this.api_version}/transactions/${transaction_id}/cancel_with_guest_user`,
 				{
 					method: 'POST',
 					headers: {
-						'Trustap-User': actingProviderUserId,
+						'Trustap-User': acting_provider_user_id,
 						'Content-Type': 'application/json',
 						Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 					},
@@ -349,9 +357,15 @@ export class PaymentProviderService {
 		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
 		if (
 			!parsed.success ||
-			parsed.data.id !== transactionId ||
+			parsed.data.id !== transaction_id ||
 			parsed.data.status !== 'cancelled' ||
-			(parsed.data.buyer_id !== actingProviderUserId && parsed.data.seller_id !== actingProviderUserId)
+			parsed.data.buyer_id !== buyer_id ||
+			parsed.data.seller_id !== seller_id ||
+			parsed.data.currency !== currency ||
+			parsed.data.description !== description ||
+			parsed.data.price !== price ||
+			parsed.data.charge !== charge ||
+			parsed.data.charge_seller !== charge_seller
 		) {
 			throw new PaymentProviderAmbiguousError(
 				'Payment provider cancellation outcome requires reconciliation',

@@ -1,5 +1,4 @@
-import { and, eq } from 'drizzle-orm';
-import type { PoolClient } from 'pg';
+import { and, eq, lt } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
@@ -14,6 +13,7 @@ import {
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
 import { PaymentInvitationOutboxService } from '../../src/routes/payments/payment-invitation-outbox.service';
+import { environment } from '../../src/utils/constants';
 import {
 	addresses,
 	categories,
@@ -168,23 +168,24 @@ async function waitForProviderRequest(url: string, method: string, path: string)
 	throw new Error(`Timed out waiting for ${method} ${path}`);
 }
 
-async function waitForBlockedRequests(
-	blocker: PoolClient,
-	blockingProcessId: number,
-	expectedCount: number,
-): Promise<void> {
-	const deadline = Date.now() + 3_000;
-	do {
-		const { rows } = await blocker.query<{ blocked_count: number }>(
-			`SELECT count(*)::int AS blocked_count
-			 FROM pg_stat_activity
-			 WHERE $1 = ANY(pg_blocking_pids(pid))`,
-			[blockingProcessId],
-		);
-		if ((rows[0]?.blocked_count ?? 0) >= expectedCount) return;
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	} while (Date.now() < deadline);
-	throw new Error(`Timed out waiting for ${expectedCount} item-commerce lock waiters`);
+async function waitForBlockedRequests(blockingProcessId: number, expectedCount: number): Promise<void> {
+	const observer = await getTestDatabase().client.connect();
+	try {
+		const deadline = Date.now() + 3_000;
+		do {
+			const { rows } = await observer.query<{ blockers: number[] }>(
+				`SELECT pg_blocking_pids(pid) AS blockers
+				 FROM pg_stat_activity
+				 WHERE datname = current_database()`,
+			);
+			const blockedCount = rows.filter(({ blockers }) => blockers.includes(blockingProcessId)).length;
+			if (blockedCount >= expectedCount) return;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		} while (Date.now() < deadline);
+		throw new Error(`Timed out waiting for ${expectedCount} item-commerce lock waiters`);
+	} finally {
+		observer.release();
+	}
 }
 
 describe('proposal routes', () => {
@@ -377,7 +378,7 @@ describe('proposal routes', () => {
 				authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload),
 				authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload),
 			]);
-			await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+			await waitForBlockedRequests(processResult.rows[0]!.process_id, 2);
 			await blocker.query('COMMIT');
 		} finally {
 			if (!responsesPromise) await blocker.query('ROLLBACK');
@@ -1181,7 +1182,7 @@ describe('proposal routes', () => {
 				updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted'),
 				authenticatedRequest('/item/auth/buy_now', 'POST', actors.buyer.jar, { item_id: item.id }),
 			]);
-			await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+			await waitForBlockedRequests(processResult.rows[0]!.process_id, 2);
 			await blocker.query('COMMIT');
 		} finally {
 			if (!responsesPromise) await blocker.query('ROLLBACK');
@@ -1204,6 +1205,84 @@ describe('proposal routes', () => {
 			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
 		);
 		expect(transactionRequests).toHaveLength(1);
+	});
+
+	it('serializes proposal acceptance against cron expiry under the exact item lock', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
+			created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000),
+			proposal_price: 10_000,
+			platform_charge: 90,
+			payment_provider_charge: 505,
+		});
+		const { client, db } = getTestDatabase();
+		const [eligible] = await db
+			.select({ id: orders_proposals.id })
+			.from(orders_proposals)
+			.where(
+				and(
+					eq(orders_proposals.id, proposal.id),
+					eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
+					lt(
+						orders_proposals.created_at,
+						new Date(Date.now() - environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS * 60 * 60 * 1_000),
+					),
+				),
+			);
+		expect(eligible).toEqual({ id: proposal.id });
+		const blocker = await client.connect();
+		let requests: Promise<[Response, Response]> | undefined;
+		try {
+			await blocker.query('BEGIN');
+			const processResult = await blocker.query<{ process_id: number }>('SELECT pg_backend_pid() AS process_id');
+			const blockingProcessId = Number(processResult.rows[0]!.process_id);
+			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+				itemCommerceLockScope,
+				item.id,
+			]);
+			const cronRequest = app.request('/cron/auth/expired-proposals-check?key=proposals-cron-test-key');
+			await waitForBlockedRequests(blockingProcessId, 1);
+			const acceptRequest = updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
+			requests = Promise.all([acceptRequest, cronRequest]);
+			await waitForBlockedRequests(blockingProcessId, 2);
+			await blocker.query('COMMIT');
+		} finally {
+			if (!requests) await blocker.query('ROLLBACK');
+			blocker.release();
+		}
+		if (!requests) throw new Error('Proposal accept/expiry requests were not started');
+		const [acceptResponse, cronResponse] = await requests;
+		expect(cronResponse.status).toBe(200);
+
+		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		const storedOrders = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		const proposalMessages = await rowsForProposal(proposal.id);
+		const acceptedMessages = proposalMessages.filter(
+			(message) =>
+				message.message_type === 'system' &&
+				message.metadata !== null &&
+				typeof message.metadata === 'object' &&
+				'type' in message.metadata &&
+				message.metadata.type === 'proposal_accepted',
+		);
+		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+		);
+		if (storedProposal?.status === ORDER_PROPOSAL_PHASES.accepted) {
+			expect(acceptResponse.status).toBe(200);
+			expect(storedOrders).toHaveLength(1);
+			expect(storedOrders[0]?.order_proposal_id).toBe(proposal.id);
+			expect(acceptedMessages).toHaveLength(1);
+			expect(transactionRequests).toHaveLength(1);
+		} else {
+			expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.expired);
+			expect([400, 404, 409]).toContain(acceptResponse.status);
+			expect(storedOrders).toHaveLength(0);
+			expect(acceptedMessages).toHaveLength(0);
+			expect(transactionRequests).toHaveLength(0);
+		}
 	});
 
 	it.each(['edit', 'unpublish', 'delete'] as const)(
@@ -1238,7 +1317,7 @@ describe('proposal routes', () => {
 								actors.seller.jar,
 								mutation === 'delete' ? { id: item.id } : { id: item.id, published: false },
 							);
-				await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+				await waitForBlockedRequests(processResult.rows[0]!.process_id, 2);
 				await blocker.query('COMMIT');
 				released = true;
 				const [acceptResponse, mutationResponse] = await Promise.all([acceptPromise, mutationPromise]);
