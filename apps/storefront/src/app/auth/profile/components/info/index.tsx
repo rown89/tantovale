@@ -32,13 +32,15 @@ import useAddressForm from '#components/forms/address-form/use-address-form';
 import { useProfileInfoForm } from './use-profile-info';
 import { UserProfileSchema } from '@workspace/server/extended_schemas';
 import z from 'zod/v4';
+import { useAuth } from '#providers/auth-providers';
 
 type ProfileSchema = Pick<z.infer<typeof UserProfileSchema>, 'name' | 'surname' | 'gender' | 'username' | 'email'>;
 
 export default function UserInfoComponent({ profile }: { profile: ProfileSchema }) {
+	const { user } = useAuth();
 	const { profileForm, isSubmittingProfileForm } = useProfileInfoForm(profile);
 
-	const { userAddress } = useAddressesRetrieval();
+	const { userAddress } = useAddressesRetrieval({ profileId: user?.profile_id });
 
 	const {
 		deleteAddress,

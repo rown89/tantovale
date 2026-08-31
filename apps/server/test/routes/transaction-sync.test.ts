@@ -273,6 +273,59 @@ describe('Trustap transaction polling state mapping', () => {
 		});
 	});
 
+	it('closes polled complaint reconciliation when the complaint period authoritatively ends', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder(
+			entityTrustapTransactionTypeValues.COMPLAINED,
+		);
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.SHIPPING_CONFIRMED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+		});
+	});
+
+	it('does not reopen polled reconciliation for an unreachable delayed complaint after funds release', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder(
+			entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+		);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, order.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.COMPLAINED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+		});
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.FUNDS_RELEASED);
+	});
+
 	it('polls a stale complaint before draining its pending payment invitation', async () => {
 		const { actors, item, order, transactionId } = await createStaleProviderBackedOrder();
 		const proposal = await createProposalFixture(actors, item, { status: ORDER_PROPOSAL_PHASES.accepted });

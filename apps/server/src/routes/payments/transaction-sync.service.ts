@@ -757,6 +757,7 @@ export class TransactionSyncService {
 						isAuthoritativeCancellationStatus(remoteStatus) &&
 						transaction.orderCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
 					const complaintRequiresReconciliation =
+						transition.apply &&
 						remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
 						transaction.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 					const resolvesCreationReconciliation =

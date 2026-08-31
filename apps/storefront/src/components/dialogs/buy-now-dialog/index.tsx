@@ -21,11 +21,13 @@ import {
 import { Label } from '@workspace/ui/components/label';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { toast } from 'sonner';
+import { isCommerceActionReady, platformCostsQueryKey, shippingQuoteQueryKey } from '#utils/commerce-query-state';
 
 export function BuyNowDialog() {
 	const { user } = useAuth();
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
 	const { userAddress, isUserAddressLoading, isUserAddressError } = useAddressesRetrieval({
+		profileId: user?.profile_id,
 		status: 'active',
 		enabled: isBuyNowModalOpen && !!user,
 	});
@@ -42,7 +44,12 @@ export function BuyNowDialog() {
 		isLoading: isLoadingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_quote', 'buy_now', itemId, user?.profile_id, activeAddressId],
+		queryKey: shippingQuoteQueryKey({
+			flow: 'buy_now',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
+			itemId,
+		}),
 		queryFn: async () => {
 			if (!itemId) return null;
 
@@ -60,16 +67,15 @@ export function BuyNowDialog() {
 		isLoading: isLoadingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: [
-			'platforms_costs',
-			'buy_now',
-			shippingCost?.shipping_quote_id,
-			shippingCost?.amount,
+		queryKey: platformCostsQueryKey({
+			flow: 'buy_now',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
 			itemId,
-			itemPrice,
-			user?.profile_id,
-			activeAddressId,
-		],
+			price: itemPrice,
+			shippingQuoteId: shippingCost?.shipping_quote_id,
+			shippingAmount: shippingCost?.amount,
+		}),
 		queryFn: async () => {
 			if (!itemPrice) return null;
 
@@ -81,6 +87,18 @@ export function BuyNowDialog() {
 		},
 		enabled: isBuyNowModalOpen && canQuoteShipping && !!shippingCost,
 		staleTime: 10 * 60 * 1_000,
+	});
+	const canCreateOrder = isCommerceActionReady({
+		hasMandatoryArguments,
+		canQuoteShipping,
+		activeAddressId,
+		hasShippingQuote: !!shippingCost,
+		hasPlatformCosts: !!platformsCosts,
+		isShippingLoading: isLoadingShippingCost,
+		isPlatformLoading: isLoadingPlatformsCosts,
+		hasShippingError: !!errorShippingCost,
+		hasPlatformError: !!errorPlatformsCosts,
+		isMutating: isCreatingOrder,
 	});
 
 	if (!item) return null;
@@ -168,7 +186,7 @@ export function BuyNowDialog() {
 				</div>
 				<DialogFooter>
 					<Button
-						disabled={isLoadingPlatformsCosts || isLoadingShippingCost || !!errorShippingCost || !!errorPlatformsCosts}
+						disabled={!canCreateOrder}
 						onClick={async () => {
 							try {
 								const response = await handleBuyNow(item.id);

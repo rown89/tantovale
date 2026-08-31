@@ -126,6 +126,7 @@ export const webhooksRoute = createRouter().post(
 					isAuthoritativeCancellationStatus(payload.status) &&
 					order.paymentCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
 				const complaintRequiresReconciliation =
+					transition.apply &&
 					payload.status === entityTrustapTransactionTypeValues.COMPLAINED &&
 					order.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 				const resolvesCreationReconciliation =

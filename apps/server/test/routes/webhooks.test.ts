@@ -180,6 +180,41 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.COMPLAINED);
 	});
 
+	it('closes complaint reconciliation when the complaint period authoritatively ends', async () => {
+		const { order, transactionId } = await createProviderBackedOrder();
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.COMPLAINED)).status).toBe(200);
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED)).status).toBe(
+			200,
+		);
+
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+		});
+	});
+
+	it('does not reopen reconciliation for an unreachable delayed complaint after funds release', async () => {
+		const { order, transactionId } = await createProviderBackedOrder(entityTrustapTransactionTypeValues.FUNDS_RELEASED);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.COMPLAINED)).status).toBe(200);
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+		});
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.FUNDS_RELEASED);
+	});
+
 	it.each([
 		['complaint then refund', true],
 		['missed complaint then refund', false],

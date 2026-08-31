@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { client } from '@workspace/server/client-rpc';
+import { bridgeAuthCookies } from '#utils/auth-cookie-bridge';
 
 export async function GET(request: NextRequest) {
 	const token = request.nextUrl.searchParams.get('token');
@@ -17,27 +18,10 @@ export async function GET(request: NextRequest) {
 		return NextResponse.json({ error: 'Invalid verify email token provided' });
 	}
 
-	const cookieHeader = response.headers.get('Set-Cookie');
-
-	if (!cookieHeader) {
+	const cookieReader = await cookies();
+	if (bridgeAuthCookies(response.headers, cookieReader, { requireCompletePair: true }) !== 2) {
 		return NextResponse.json({ error: 'Invalid token provided' });
 	}
-
-	const cookieReader = await cookies();
-
-	cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-		const [pair] = cookie.split(';');
-		const [name, value] = pair?.split('=') ?? [];
-		const trimmedName = name?.trim();
-		const trimmedValue = value?.trim();
-
-		if (trimmedName === 'access_token' || trimmedName === 'refresh_token') {
-			console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
-			if (trimmedValue) {
-				cookieReader.set(trimmedName, trimmedValue);
-			}
-		}
-	});
 
 	return NextResponse.redirect(new URL('/', request.url));
 }

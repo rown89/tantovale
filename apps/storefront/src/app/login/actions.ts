@@ -4,6 +4,7 @@ import { client } from '@workspace/server/client-rpc';
 import { LoginActionResponse, LoginFormData } from './types';
 import { cookies } from 'next/headers';
 import { UserProfileSchema } from '@workspace/server/extended_schemas';
+import { bridgeAuthCookies } from '#utils/auth-cookie-bridge';
 
 export async function submitLogin(
 	prevState: LoginActionResponse | null,
@@ -40,31 +41,14 @@ export async function submitLogin(
 			};
 		}
 
-		const cookieHeader = loginResponse.headers.get('Set-Cookie');
-
-		if (!cookieHeader) {
+		const cookieReader = await cookies();
+		if (bridgeAuthCookies(loginResponse.headers, cookieReader, { requireCompletePair: true }) !== 2) {
 			return {
 				success: false,
 				inputs: rawData,
 				message: 'No cookie set',
 			};
 		}
-
-		const cookieReader = await cookies();
-
-		cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-			const [pair] = cookie.split(';');
-			const [name, value] = pair?.split('=') ?? [];
-			const trimmedName = name?.trim();
-			const trimmedValue = value?.trim();
-
-			if (trimmedName === 'access_token' || trimmedName === 'refresh_token') {
-				console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
-				if (trimmedValue) {
-					cookieReader.set(trimmedName, trimmedValue);
-				}
-			}
-		});
 
 		const loginData = await loginResponse.json();
 		const { user } = loginData;
@@ -79,9 +63,7 @@ export async function submitLogin(
 		};
 
 		return result;
-	} catch (error) {
-		console.error(error);
-
+	} catch {
 		const result = {
 			success: false,
 			inputs: rawData,

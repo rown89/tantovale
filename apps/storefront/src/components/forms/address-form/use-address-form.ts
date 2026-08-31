@@ -5,6 +5,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { addAddressSchema } from '@workspace/server/extended_schemas';
 import { client } from '@workspace/server/client-rpc';
+import { addressDependentQueryRoots } from '#utils/commerce-query-state';
+import { useAuth } from '#providers/auth-providers';
 
 const addSchema = addAddressSchema.omit({ address_id: true }).extend({
 	mode: z.literal('add'),
@@ -19,6 +21,7 @@ const schema = z.union([addSchema, editSchema]);
 type schemaType = z.infer<typeof schema>;
 
 export default function useAddressForm(onComplete?: (e?: { id: number }) => void) {
+	const { user } = useAuth();
 	const [searchedCityName, setSearchedCityName] = useState('');
 	const [selectedCity, setSelectedCity] = useState(0);
 	const [isCityPopoverOpen, setIsCityPopoverOpen] = useState(false);
@@ -76,7 +79,10 @@ export default function useAddressForm(onComplete?: (e?: { id: number }) => void
 	});
 
 	function invalidateAddresses() {
-		queryClient.invalidateQueries({ queryKey: ['userAddress'] });
+		if (!user) return;
+		for (const queryKey of addressDependentQueryRoots(user.profile_id)) {
+			queryClient.invalidateQueries({ queryKey });
+		}
 	}
 
 	const {
