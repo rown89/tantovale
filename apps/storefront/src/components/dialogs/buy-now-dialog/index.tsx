@@ -26,7 +26,7 @@ import { isCommerceActionReady, platformCostsQueryKey, shippingQuoteQueryKey } f
 export function BuyNowDialog() {
 	const { user } = useAuth();
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
-	const { userAddress, isUserAddressLoading, isUserAddressError } = useAddressesRetrieval({
+	const { userAddress, isUserAddressLoading, isUserAddressError, isUserAddressFetching } = useAddressesRetrieval({
 		profileId: user?.profile_id,
 		status: 'active',
 		enabled: isBuyNowModalOpen && !!user,
@@ -42,6 +42,7 @@ export function BuyNowDialog() {
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
+		isFetching: isFetchingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
 		queryKey: shippingQuoteQueryKey({
@@ -65,6 +66,7 @@ export function BuyNowDialog() {
 	const {
 		data: platformsCosts,
 		isLoading: isLoadingPlatformsCosts,
+		isFetching: isFetchingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
 		queryKey: platformCostsQueryKey({
@@ -96,6 +98,9 @@ export function BuyNowDialog() {
 		hasPlatformCosts: !!platformsCosts,
 		isShippingLoading: isLoadingShippingCost,
 		isPlatformLoading: isLoadingPlatformsCosts,
+		isAddressFetching: isUserAddressFetching,
+		isShippingFetching: isFetchingShippingCost,
+		isPlatformFetching: isFetchingPlatformsCosts,
 		hasShippingError: !!errorShippingCost,
 		hasPlatformError: !!errorPlatformsCosts,
 		isMutating: isCreatingOrder,

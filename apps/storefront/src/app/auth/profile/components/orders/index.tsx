@@ -9,15 +9,19 @@ import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index'
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
 
 export default function UserSellingItemsComponent() {
+	const { user } = useAuth();
 	const statusFilter: (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all' = 'all';
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
 
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
 
 	const { data: orders = [] } = useQuery({
-		queryKey: ['orders', statusFilter],
+		queryKey: privateQueryKeys.orders(user?.profile_id, statusFilter),
+		enabled: user !== null,
 		queryFn: async () => {
 			const userOrderListResponse = await client.orders.auth.status[':status'].$get({
 				param: {

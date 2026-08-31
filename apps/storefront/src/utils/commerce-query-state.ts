@@ -1,7 +1,9 @@
+import { privateQueryRoot } from '@workspace/shared/utils/private-query-keys';
+
 type CommerceFlow = 'buy_now' | 'proposal';
 
 export function shippingQuoteQueryRoot(profileId: number | undefined) {
-	return ['shipping_quote', profileId] as const;
+	return [...privateQueryRoot(profileId), 'shipping_quote'] as const;
 }
 
 export function shippingQuoteQueryKey(input: {
@@ -14,7 +16,7 @@ export function shippingQuoteQueryKey(input: {
 }
 
 export function platformCostsQueryRoot(profileId: number | undefined) {
-	return ['platforms_costs', profileId] as const;
+	return [...privateQueryRoot(profileId), 'platforms_costs'] as const;
 }
 
 export function platformCostsQueryKey(input: {
@@ -39,7 +41,7 @@ export function platformCostsQueryKey(input: {
 
 export function addressDependentQueryRoots(profileId: number) {
 	return [
-		['userAddress', profileId] as const,
+		[...privateQueryRoot(profileId), 'userAddress'] as const,
 		shippingQuoteQueryRoot(profileId),
 		platformCostsQueryRoot(profileId),
 	] as const;
@@ -53,6 +55,9 @@ export function isCommerceActionReady(input: {
 	hasPlatformCosts: boolean;
 	isShippingLoading: boolean;
 	isPlatformLoading: boolean;
+	isAddressFetching: boolean;
+	isShippingFetching: boolean;
+	isPlatformFetching: boolean;
 	hasShippingError: boolean;
 	hasPlatformError: boolean;
 	isMutating: boolean;
@@ -65,6 +70,9 @@ export function isCommerceActionReady(input: {
 		input.hasPlatformCosts &&
 		!input.isShippingLoading &&
 		!input.isPlatformLoading &&
+		!input.isAddressFetching &&
+		!input.isShippingFetching &&
+		!input.isPlatformFetching &&
 		!input.hasShippingError &&
 		!input.hasPlatformError &&
 		!input.isMutating

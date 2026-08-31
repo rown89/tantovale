@@ -591,11 +591,16 @@ export class TransactionSyncService {
 		return results;
 	}
 
-	private async quarantinePollingMismatch(
+	private async applyPolledTransaction(
 		initial: PollingCorrelationSnapshot,
 		remote: GetTransactionStatusResponse,
-	): Promise<boolean> {
+	): Promise<
+		| { outcome: 'ignored' | 'quarantined' }
+		| { outcome: 'updated'; oldStatus: EntityTrustapTransactionStatus; newStatus: EntityTrustapTransactionStatus }
+	> {
 		const { db } = this.db;
+		if (!isTrustapStatus(remote.status)) throw new Error('Unknown Trustap transaction status');
+		const remoteStatus = remote.status;
 		return db.transaction(async (tx) => {
 			const itemIds = [
 				...new Set([initial.entityId, initial.orderItemId].filter((id): id is number => id !== null)),
@@ -608,7 +613,11 @@ export class TransactionSyncService {
 				.where(eq(entityTrustapTransactions.id, initial.id))
 				.for('update')
 				.limit(1);
-			if (!lockedProvider || lockedProvider.quarantined) return false;
+			if (!lockedProvider || lockedProvider.quarantined) return { outcome: 'ignored' };
+
+			if (initial.orderId !== null) {
+				await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, initial.orderId)).for('update').limit(1);
+			}
 
 			const buyerProfiles = alias(profiles, 'poll_mismatch_buyer_profiles');
 			const sellerProfiles = alias(profiles, 'poll_mismatch_seller_profiles');
@@ -617,6 +626,7 @@ export class TransactionSyncService {
 					id: entityTrustapTransactions.id,
 					entityId: entityTrustapTransactions.entityId,
 					transactionId: entityTrustapTransactions.transactionId,
+					status: entityTrustapTransactions.status,
 					providerBuyerId: entityTrustapTransactions.buyerId,
 					providerSellerId: entityTrustapTransactions.sellerId,
 					providerCurrency: entityTrustapTransactions.currency,
@@ -625,6 +635,9 @@ export class TransactionSyncService {
 					providerChargeSeller: entityTrustapTransactions.chargeSeller,
 					orderId: orders.id,
 					orderItemId: orders.item_id,
+					orderStatus: orders.status,
+					orderCreationState: orders.payment_creation_state,
+					orderCancellationState: orders.payment_cancellation_state,
 					orderItemPrice: orders.item_price,
 					orderPlatformCharge: orders.platform_charge,
 					orderProviderCharge: orders.payment_provider_charge,
@@ -639,44 +652,93 @@ export class TransactionSyncService {
 				.leftJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
 				.where(eq(entityTrustapTransactions.id, initial.id))
 				.limit(1);
-			if (!current || isPollingCorrelationValid(current, remote)) return false;
+			if (!current) return { outcome: 'ignored' };
 
-			await tx.insert(commerce_reconciliation_audit).values([
-				{
-					conflict_type: 'runtime_polling_correlation_mismatch',
-					source_table: 'entity_trustap_transactions',
-					source_row_id: current.id,
-					canonical_row_id: current.orderId,
-					original_reference: current.transactionId,
-					snapshot: { local: current, remote },
-				},
-				...(current.orderId === null
-					? []
-					: [
-							{
-								conflict_type: 'runtime_polling_correlation_mismatch',
-								source_table: 'orders',
-								source_row_id: current.orderId,
-								canonical_row_id: current.id,
-								original_reference: current.transactionId,
-								snapshot: { local: current, remote },
-							},
-						]),
-			]);
-			await tx
-				.update(entityTrustapTransactions)
-				.set({ quarantined: true, updated_at: new Date() })
-				.where(eq(entityTrustapTransactions.id, current.id));
-			if (current.orderId !== null) {
+			if (!isPollingCorrelationValid(current, remote)) {
+				await tx.insert(commerce_reconciliation_audit).values([
+					{
+						conflict_type: 'runtime_polling_correlation_mismatch',
+						source_table: 'entity_trustap_transactions',
+						source_row_id: current.id,
+						canonical_row_id: current.orderId,
+						original_reference: current.transactionId,
+						snapshot: { local: current, remote },
+					},
+					...(current.orderId === null
+						? []
+						: [
+								{
+									conflict_type: 'runtime_polling_correlation_mismatch',
+									source_table: 'orders',
+									source_row_id: current.orderId,
+									canonical_row_id: current.id,
+									original_reference: current.transactionId,
+									snapshot: { local: current, remote },
+								},
+							]),
+				]);
 				await tx
-					.update(orders)
-					.set({
-						payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
-						updated_at: new Date(),
-					})
-					.where(eq(orders.id, current.orderId));
+					.update(entityTrustapTransactions)
+					.set({ quarantined: true, updated_at: new Date() })
+					.where(eq(entityTrustapTransactions.id, current.id));
+				if (current.orderId !== null) {
+					await tx
+						.update(orders)
+						.set({
+							payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+							updated_at: new Date(),
+						})
+						.where(eq(orders.id, current.orderId));
+				}
+				return { outcome: 'quarantined' };
 			}
-			return true;
+
+			if (current.entityId === null || current.orderId === null || current.orderStatus === null) {
+				throw new Error('Trustap transaction lost its local graph after correlation');
+			}
+			const transition = resolveTrustapOrderTransition(current.status, current.orderStatus, remoteStatus);
+			const resolvesCancellation =
+				isAuthoritativeCancellationStatus(remoteStatus) &&
+				current.orderCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+			const complaintRequiresReconciliation =
+				transition.apply &&
+				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
+				current.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
+			const resolvesCreationReconciliation =
+				current.orderCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
+				isAuthoritativeCreationResolutionStatus(remoteStatus);
+			if (
+				!transition.apply &&
+				!resolvesCancellation &&
+				!complaintRequiresReconciliation &&
+				!resolvesCreationReconciliation
+			) {
+				return { outcome: 'ignored' };
+			}
+
+			const updatedAt = new Date();
+			if (transition.apply) {
+				await tx
+					.update(entityTrustapTransactions)
+					.set({ status: transition.providerStatus, updated_at: updatedAt })
+					.where(eq(entityTrustapTransactions.id, current.id));
+			}
+			await tx
+				.update(orders)
+				.set({
+					status: transition.orderStatus,
+					...(remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED
+						? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
+						: resolvesCreationReconciliation
+							? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }
+							: {}),
+					...(isAuthoritativeCancellationStatus(remoteStatus)
+						? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+						: {}),
+					updated_at: updatedAt,
+				})
+				.where(eq(orders.id, current.orderId));
+			return { outcome: 'updated', oldStatus: current.status, newStatus: transition.providerStatus };
 		});
 	}
 
@@ -741,75 +803,18 @@ export class TransactionSyncService {
 					if (!isTrustapStatus(trustapStatus.status)) {
 						throw new Error('Unknown Trustap transaction status');
 					}
-					const remoteStatus = trustapStatus.status;
-					if (!isPollingCorrelationValid(transaction, trustapStatus)) {
-						await this.quarantinePollingMismatch(transaction, trustapStatus);
+					const outcome = await this.applyPolledTransaction(transaction, trustapStatus);
+					if (outcome.outcome === 'quarantined') {
 						throw new Error('Trustap transaction is not correlated to one local order and item');
 					}
-					if (transaction.entityId === null || transaction.orderId === null || transaction.orderStatus === null) {
-						throw new Error('Trustap transaction lost its local graph after correlation');
-					}
-					const itemId = transaction.entityId;
-					const orderId = transaction.orderId;
-					const orderStatus = transaction.orderStatus;
-					const transition = resolveTrustapOrderTransition(transaction.status, orderStatus, remoteStatus);
-					const resolvesCancellation =
-						isAuthoritativeCancellationStatus(remoteStatus) &&
-						transaction.orderCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
-					const complaintRequiresReconciliation =
-						transition.apply &&
-						remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
-						transaction.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
-					const resolvesCreationReconciliation =
-						transaction.orderCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
-						isAuthoritativeCreationResolutionStatus(remoteStatus);
-					if (
-						transition.apply ||
-						resolvesCancellation ||
-						complaintRequiresReconciliation ||
-						resolvesCreationReconciliation
-					) {
-						await db.transaction(async (tx) => {
-							await acquireItemCommerceLock(tx, itemId);
-							if (transition.apply) {
-								await tx
-									.update(entityTrustapTransactions)
-									.set({
-										status: transition.providerStatus,
-										updated_at: new Date(),
-									})
-									.where(
-										and(
-											eq(entityTrustapTransactions.transactionId, transaction.transactionId),
-											eq(entityTrustapTransactions.status, transaction.status),
-										),
-									);
-							}
-							await tx
-								.update(orders)
-								.set({
-									status: transition.orderStatus,
-									...(remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED
-										? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
-										: resolvesCreationReconciliation
-											? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }
-											: {}),
-									...(isAuthoritativeCancellationStatus(remoteStatus)
-										? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
-										: {}),
-									updated_at: new Date(),
-								})
-								.where(and(eq(orders.id, orderId), eq(orders.status, orderStatus)));
-						});
+					if (outcome.outcome === 'updated') {
 						syncResults.push({
 							transactionId: transaction.transactionId,
-							oldStatus: transaction.status,
-							newStatus: transition.providerStatus,
+							oldStatus: outcome.oldStatus,
+							newStatus: outcome.newStatus,
 							success: true,
 						});
-						console.log(
-							`Synced transaction ${transaction.transactionId}: ${transaction.status} → ${transition.providerStatus}`,
-						);
+						console.log(`Synced transaction ${transaction.transactionId}: ${outcome.oldStatus} → ${outcome.newStatus}`);
 					}
 				} catch (error) {
 					console.error(`Error syncing transaction ${transaction.transactionId}:`, error);

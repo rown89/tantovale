@@ -35,36 +35,40 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 			isCreatingOrder: true,
 		});
 
-		const responseCreateOrder = await client.item.auth.buy_now.$post({
-			json: {
-				item_id,
-			},
-		});
+		try {
+			const responseCreateOrder = await client.item.auth.buy_now.$post({
+				json: {
+					item_id,
+				},
+			});
 
-		if (!responseCreateOrder.ok) {
-			return {
-				success: false,
-				error: 'Failed to create order',
-			};
-		}
+			if (!responseCreateOrder.ok) {
+				return {
+					success: false,
+					error: 'Failed to create order',
+				};
+			}
 
-		const { success, order, payment_url, message } = await responseCreateOrder.json();
+			const { success, order, payment_url, message } = await responseCreateOrder.json();
 
-		if (!success) {
+			if (!success) {
+				return {
+					success,
+					error: message,
+				};
+			}
+
+			set({ clientBuyNowOrderId: order.id, clientBuyNowOrderStatus: order.status });
+
 			return {
 				success,
-				error: message,
+				order,
+				payment_url,
+				message,
 			};
+		} finally {
+			set({ isCreatingOrder: false });
 		}
-
-		set({ isCreatingOrder: false, clientBuyNowOrderId: order.id, clientBuyNowOrderStatus: order.status });
-
-		return {
-			success,
-			order,
-			payment_url,
-			message,
-		};
 	},
 	resetBuyNowStore: () => set({ clientBuyNowOrderId: 0, isBuyNowModalOpen: false }),
 });

@@ -5,9 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 
 import { client } from '@workspace/server/client-rpc';
 import { Chat } from '#components/chat';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
 
 export default function ChatRoomPage() {
 	const params = useParams<{ id: string }>();
+	const { user } = useAuth();
 	const { id } = params;
 
 	const chatRoomId = Number.parseInt(id);
@@ -15,7 +18,8 @@ export default function ChatRoomPage() {
 	if (isNaN(chatRoomId)) notFound();
 
 	const { data: currentUser } = useQuery({
-		queryKey: ['currentUser'],
+		queryKey: privateQueryKeys.currentUser(user?.profile_id),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.user.auth.$get();
 
@@ -29,7 +33,8 @@ export default function ChatRoomPage() {
 	});
 
 	const { data: chatRooms, isError: isChatRoomsError } = useQuery({
-		queryKey: ['chatRooms'],
+		queryKey: privateQueryKeys.chatRooms(user?.profile_id),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.chat.auth.rooms.$get();
 
@@ -43,7 +48,8 @@ export default function ChatRoomPage() {
 	});
 
 	const { data: messages, isError: isMessagesError } = useQuery({
-		queryKey: ['chat-messages', id],
+		queryKey: privateQueryKeys.chatMessages(user?.profile_id, id),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.chat.auth.rooms[':roomId'].messages.$get({
 				param: { roomId: id },

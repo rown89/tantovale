@@ -6,9 +6,20 @@ import { cookies } from 'next/headers';
 import { UserProfileSchema } from '@workspace/server/extended_schemas';
 import { bridgeAuthCookies } from '#utils/auth-cookie-bridge';
 
+type LoginDependencies = {
+	loginPost(input: { json: LoginFormData }): Promise<Response>;
+	getCookieStore(): ReturnType<typeof cookies>;
+};
+
+const defaultLoginDependencies: LoginDependencies = {
+	loginPost: (input) => client.login.$post(input),
+	getCookieStore: cookies,
+};
+
 export async function submitLogin(
 	prevState: LoginActionResponse | null,
 	formData: FormData,
+	dependencies: LoginDependencies = defaultLoginDependencies,
 ): Promise<LoginActionResponse> {
 	const rawData: LoginFormData = {
 		email: formData.get('email') as string,
@@ -30,7 +41,7 @@ export async function submitLogin(
 			};
 		}
 
-		const loginResponse = await client?.login.$post({ json: rawData });
+		const loginResponse = await dependencies.loginPost({ json: rawData });
 
 		if (!loginResponse.ok) {
 			const data = await loginResponse?.json();
@@ -41,7 +52,7 @@ export async function submitLogin(
 			};
 		}
 
-		const cookieReader = await cookies();
+		const cookieReader = await dependencies.getCookieStore();
 		if (bridgeAuthCookies(loginResponse.headers, cookieReader, { requireCompletePair: true }) !== 2) {
 			return {
 				success: false,

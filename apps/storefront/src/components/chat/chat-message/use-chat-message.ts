@@ -4,16 +4,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import { client } from '@workspace/server/client-rpc';
 
 import { ChatMessageType } from '../types';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys, privateQueryRoot } from '@workspace/shared/utils/private-query-keys';
 
 export const useChatMessageHook = (chatMessageProps: ChatMessageType) => {
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 
 	const {
 		data: orderProposal,
 		isLoading: isOrderProposalLoading,
 		error: orderProposalError,
 	} = useQuery({
-		queryKey: ['orderProposal', chatMessageProps.order_proposal_id],
+		queryKey: privateQueryKeys.orderProposal(user?.profile_id, chatMessageProps.order_proposal_id ?? undefined),
+		enabled: user !== null && !!chatMessageProps.order_proposal_id,
 		queryFn: async () => {
 			if (!chatMessageProps.order_proposal_id) return null;
 
@@ -42,9 +46,9 @@ export const useChatMessageHook = (chatMessageProps: ChatMessageType) => {
 			return response.json();
 		},
 		onSuccess: (data, variables) => {
-			queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+			queryClient.invalidateQueries({ queryKey: [...privateQueryRoot(user?.profile_id), 'chat-messages'] });
 			queryClient.invalidateQueries({
-				queryKey: ['orderProposal', variables.orderProposalId],
+				queryKey: privateQueryKeys.orderProposal(user?.profile_id, variables.orderProposalId),
 			});
 		},
 	});

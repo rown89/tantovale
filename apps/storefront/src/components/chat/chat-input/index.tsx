@@ -10,6 +10,8 @@ import { client } from '@workspace/server/client-rpc';
 import { ChatMessageSchema } from '@workspace/server/extended_schemas';
 
 import { FieldInfo } from '../../forms/utils/field-info';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
 
 interface ChatInputProps {
 	chatRoomId: number;
@@ -17,6 +19,7 @@ interface ChatInputProps {
 
 export function ChatInput({ chatRoomId }: ChatInputProps) {
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 
 	const sendMessage = useMutation({
 		mutationFn: async (message: string) => {
@@ -30,7 +33,7 @@ export function ChatInput({ chatRoomId }: ChatInputProps) {
 		onSuccess: () => {
 			form.reset();
 
-			queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+			queryClient.invalidateQueries({ queryKey: privateQueryKeys.chatMessages(user?.profile_id, chatRoomId) });
 		},
 		onError: (error) => {
 			console.error('Failed to send message:', error);

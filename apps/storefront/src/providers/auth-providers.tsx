@@ -4,6 +4,8 @@ import { client } from '@workspace/server/client-rpc';
 import refreshTokens from '../utils/refreshTokens';
 import { useRouter } from 'next/navigation';
 import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { shouldRemovePrivateQuery } from '@workspace/shared/utils/private-query-keys';
 
 export interface User {
 	id: number;
@@ -26,13 +28,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; children: ReactNode }) => {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const [user, setUser] = useState<User | null>(null);
 	const [loadingUser, setLoadingUser] = useState(true);
 
 	const logout = useCallback(() => {
+		queryClient.removeQueries({ predicate: ({ queryKey }) => shouldRemovePrivateQuery(queryKey) });
 		setUser(null);
 		router.push('/api/logout');
-	}, [router]);
+	}, [queryClient, router]);
+
+	useEffect(() => {
+		queryClient.removeQueries({
+			predicate: ({ queryKey }) => shouldRemovePrivateQuery(queryKey, user?.profile_id),
+		});
+	}, [queryClient, user?.profile_id]);
 
 	const initializeAuth = useCallback(async () => {
 		try {

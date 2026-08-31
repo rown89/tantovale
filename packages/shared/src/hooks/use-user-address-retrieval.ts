@@ -11,6 +11,7 @@ export function useAddressesRetrieval({
 		data: userAddress,
 		isLoading: isUserAddressLoading,
 		isError: isUserAddressError,
+		isFetching: isUserAddressFetching,
 	} = useQuery({
 		queryKey: userAddressQueryKey(profileId, status),
 		enabled: enabled && profileId !== undefined,
@@ -35,5 +36,6 @@ export function useAddressesRetrieval({
 		userAddress,
 		isUserAddressLoading,
 		isUserAddressError,
+		isUserAddressFetching,
 	};
 }

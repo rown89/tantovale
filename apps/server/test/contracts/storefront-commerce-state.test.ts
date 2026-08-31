@@ -22,10 +22,11 @@ describe('storefront commerce query identity and action gating', () => {
 	it('scopes address and commerce queries to the authenticated profile and active address', async () => {
 		const { addressDependentQueryRoots, platformCostsQueryKey, shippingQuoteQueryKey } = await loadCommerceHelpers();
 		const { userAddressQueryKey } = await loadAddressHelpers();
-		expect(userAddressQueryKey(17, 'active')).toEqual(['userAddress', 17, 'active']);
+		expect(userAddressQueryKey(17, 'active')).toEqual(['private', 17, 'userAddress', 'active']);
 		expect(shippingQuoteQueryKey({ flow: 'buy_now', profileId: 17, addressId: 29, itemId: 41 })).toEqual([
-			'shipping_quote',
+			'private',
 			17,
+			'shipping_quote',
 			29,
 			'buy_now',
 			41,
@@ -40,11 +41,11 @@ describe('storefront commerce query identity and action gating', () => {
 				shippingQuoteId: 'quote-1',
 				shippingAmount: 7.5,
 			}),
-		).toEqual(['platforms_costs', 17, 29, 'proposal', 41, 10000, 'quote-1', 7.5]);
+		).toEqual(['private', 17, 'platforms_costs', 29, 'proposal', 41, 10000, 'quote-1', 7.5]);
 		expect(addressDependentQueryRoots(17)).toEqual([
-			['userAddress', 17],
-			['shipping_quote', 17],
-			['platforms_costs', 17],
+			['private', 17, 'userAddress'],
+			['private', 17, 'shipping_quote'],
+			['private', 17, 'platforms_costs'],
 		]);
 	});
 
@@ -58,12 +59,18 @@ describe('storefront commerce query identity and action gating', () => {
 			hasPlatformCosts: true,
 			isShippingLoading: false,
 			isPlatformLoading: false,
+			isAddressFetching: false,
+			isShippingFetching: false,
+			isPlatformFetching: false,
 			hasShippingError: false,
 			hasPlatformError: false,
 			isMutating: false,
 		};
 
 		expect(isCommerceActionReady(ready)).toBe(true);
+		// Cached successful data remains present during a background refetch; submission must still stay disabled.
+		expect(isCommerceActionReady({ ...ready, hasShippingQuote: true, isShippingFetching: true })).toBe(false);
+		expect(isCommerceActionReady({ ...ready, hasPlatformCosts: true, isPlatformFetching: true })).toBe(false);
 		for (const key of Object.keys(ready) as Array<keyof typeof ready>) {
 			if (key === 'activeAddressId') {
 				expect(isCommerceActionReady({ ...ready, activeAddressId: undefined })).toBe(false);

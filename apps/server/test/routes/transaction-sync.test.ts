@@ -31,6 +31,8 @@ import { getTestDatabase } from '../helpers/database';
 import { setTrustapTransactionStatus } from '../helpers/providers';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
+import { app } from '../../src/app';
+import type { GetTransactionStatusResponse } from '../../src/routes/payments/types';
 
 const mappedStatuses = [
 	[entityTrustapTransactionTypeValues.CREATED, ORDER_PHASES.PAYMENT_PENDING],
@@ -83,6 +85,17 @@ async function waitForBlockedRequests(blocker: PoolClient, blockingProcessId: nu
 		await new Promise<void>((resolve) => setImmediate(resolve));
 	} while (Date.now() < deadline);
 	throw new Error(`Expected ${expected} polling request(s) to wait on blocker ${blockingProcessId}`);
+}
+
+async function postTrustapStatus(transactionId: string, status: EntityTrustapTransactionStatus): Promise<Response> {
+	return app.request('/webhooks/trustap/transaction-update', {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+			authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+		},
+		body: JSON.stringify({ event: 'transaction_status_updated', transaction_id: transactionId, status }),
+	});
 }
 
 async function createStaleProviderBackedOrder(
@@ -253,6 +266,57 @@ describe('Trustap transaction polling state mapping', () => {
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder?.status).toBe(expectedOrderStatus);
 		expect(storedProvider?.status).toBe(remoteStatus);
+	});
+
+	it('re-reads provider and order state under the item lock after polling I/O', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder();
+		let releaseProvider!: () => void;
+		let providerRequestStarted!: () => void;
+		const providerGate = new Promise<void>((resolve) => {
+			releaseProvider = resolve;
+		});
+		const requestStarted = new Promise<void>((resolve) => {
+			providerRequestStarted = resolve;
+		});
+		const remotePaid = {
+			...trustapTransactionFixture,
+			id: transactionId,
+			status: entityTrustapTransactionTypeValues.PAID,
+			description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
+			funds_released: '',
+			joined: '',
+			paid: new Date().toISOString(),
+		} satisfies GetTransactionStatusResponse;
+		const service = new TransactionSyncService();
+		Object.assign(service, {
+			paymentProviderService: {
+				getTransactionStatus: async () => {
+					providerRequestStarted();
+					await providerGate;
+					return remotePaid;
+				},
+			},
+		});
+
+		const syncPromise = service.syncTransactionStatuses();
+		await requestStarted;
+		let webhookResponse: Response;
+		try {
+			webhookResponse = await postTrustapStatus(transactionId, entityTrustapTransactionTypeValues.JOINED);
+		} finally {
+			releaseProvider();
+		}
+		expect(webhookResponse.status).toBe(200);
+		await syncPromise;
+
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAID);
+		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_CONFIRMED);
 	});
 
 	it('fail-closes a polled complaint while preserving the current order phase', async () => {
