@@ -1,10 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, integer, timestamp, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
 import { ordersProposalStatusEnum } from './enumerated_types';
 import { profiles } from './profiles';
+import { shipping_quotes } from './shipping_quotes';
 import { ORDER_PROPOSAL_PHASES } from './enumerated_values';
 
 export const orders_proposals = pgTable(
@@ -24,6 +25,11 @@ export const orders_proposals = pgTable(
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
 		shipping_label_id: text('shipping_label_id').notNull(),
+		shipping_quote_id: uuid('shipping_quote_id').references(() => shipping_quotes.id, {
+			onDelete: 'restrict',
+			onUpdate: 'cascade',
+		}),
+		shipping_price: integer('shipping_price'),
 		status: ordersProposalStatusEnum('status').notNull().default(ORDER_PROPOSAL_PHASES.pending),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),

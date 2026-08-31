@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { env } from 'hono/adapter';
 import { getCookie } from 'hono/cookie';
+import { randomUUID } from 'node:crypto';
 
 import { createClient, type DrizzleClient } from '#database/index';
 import {
@@ -21,10 +22,10 @@ import {
 	entityTrustapTransactions,
 	orders,
 	orders_proposals,
+	shipping_quotes,
 } from '#db-schema';
 import { items_properties_values } from '#database/schemas/items_properties_values';
 import { createRouter } from '#lib/create-app';
-import type { User } from '#lib/types';
 import { authPath } from '#utils/constants';
 import { createItemSchema, updateItemSchema, type createItemTypes, type updateItemTypes } from '#extended_schemas';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
@@ -33,20 +34,23 @@ import {
 	addressStatus,
 	EntityTrustapTransactionStatus,
 	itemStatus,
-	newOrderBlockedStates,
 	ORDER_PROPOSAL_PHASES,
+	PAYMENT_CREATION_STATES,
 } from '#database/schemas/enumerated_values';
 import { calculatePlatformCosts } from '#utils/platform-costs';
 import { ORDER_PHASES } from '#utils/order-phases';
-import { environment } from '#utils/constants';
 import { formatPriceToCents } from '#utils/price-formatter';
 import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
 import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
-import { acquirePaymentProviderIdentityLock } from '#lib/payment-provider-identity-lock';
-import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
+import { ensurePaymentProviderIdentity } from '#lib/payment-provider-identity';
+import { acquireItemCommerceLock, itemCommerceOrderBlockingPredicate } from '#lib/item-commerce-lock';
 
-import { ShipmentService } from '../shipment-provider/shipment.service';
-import { PaymentProviderHttpError, PaymentProviderService } from '../payments/payment-provider.service';
+import { ShipmentService, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
+import {
+	buildGuestPaymentUrl,
+	PaymentProviderHttpError,
+	PaymentProviderService,
+} from '../payments/payment-provider.service';
 
 type ItemTransaction = Parameters<Parameters<DrizzleClient['db']['transaction']>[0]>[0];
 type ItemProperties = NonNullable<createItemTypes['properties']>;
@@ -62,6 +66,16 @@ const postgresIntegerMin = -2_147_483_648;
 const postgresIntegerMax = 2_147_483_647;
 const scalarIdPropertyTypes = new Set(['select', 'radio']);
 const multipleIdPropertyTypes = new Set(['select_multi', 'checkbox']);
+
+async function assertItemCommerceMutationAllowed(tx: ItemTransaction, itemId: number): Promise<void> {
+	await acquireItemCommerceLock(tx, itemId);
+	const [activeOrder] = await tx
+		.select({ id: orders.id })
+		.from(orders)
+		.where(and(eq(orders.item_id, itemId), itemCommerceOrderBlockingPredicate()))
+		.limit(1);
+	if (activeOrder) throw new Error('Item has an active order and cannot be changed');
+}
 
 async function validatePropertiesForSubcategory(
 	tx: ItemTransaction,
@@ -351,56 +365,6 @@ async function validateEditItemState(
 	return { effectiveEasyPay, validatedProperties };
 }
 
-async function ensurePaymentProviderIdentity(
-	db: DrizzleClient['db'],
-	user: Pick<User, 'profile_id' | 'email'>,
-	requestIp: string,
-): Promise<void> {
-	await db.transaction(async (identityTx) => {
-		await acquirePaymentProviderIdentityLock(identityTx, user.profile_id);
-
-		const [profile] = await identityTx
-			.select({
-				name: profiles.name,
-				surname: profiles.surname,
-				payment_provider_id: profiles.payment_provider_id,
-			})
-			.from(profiles)
-			.where(eq(profiles.id, user.profile_id))
-			.limit(1);
-		if (!profile) throw new Error('Profile not found');
-		if (profile.payment_provider_id) return;
-
-		const [address] = await identityTx
-			.select({ country_code: addresses.country_code })
-			.from(addresses)
-			.where(and(eq(addresses.profile_id, user.profile_id), eq(addresses.status, addressStatus.ACTIVE)))
-			.limit(1);
-		if (!address) throw new Error('Active address not found');
-
-		const paymentProviderService = new PaymentProviderService();
-		const paymentProviderId = await paymentProviderService.createGuestUser({
-			id: user.profile_id,
-			email: user.email,
-			first_name: profile.name,
-			last_name: profile.surname,
-			country_code: address.country_code,
-			tos_acceptance: {
-				unix_timestamp: Math.floor(Date.now() / 1_000),
-				ip: requestIp,
-			},
-		});
-		if (!paymentProviderId) throw new Error('Failed to create payment provider guest user');
-
-		const [updatedProfile] = await identityTx
-			.update(profiles)
-			.set({ payment_provider_id: paymentProviderId.id })
-			.where(and(eq(profiles.id, user.profile_id), isNull(profiles.payment_provider_id)))
-			.returning({ id: profiles.id });
-		if (!updatedProfile) throw new Error('Failed to persist payment provider guest user');
-	});
-}
-
 export const itemRoute = createRouter()
 	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
 	.get('/:id', async (c) => {
@@ -662,9 +626,10 @@ export const itemRoute = createRouter()
 
 		const { db } = createClient();
 		try {
-			const preflight = await db.transaction((tx) =>
-				validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping),
-			);
+			const preflight = await db.transaction(async (tx) => {
+				await assertItemCommerceMutationAllowed(tx, id);
+				return validateEditItemState(tx, id, user.profile_id, commons, requestedProperties, shipping);
+			});
 			if (!preflight) return c.json({ message: 'Item not found' }, 404);
 			if (preflight.effectiveEasyPay) {
 				// No item transaction is held here: the remote identity and its local ID form an intentional durable boundary.
@@ -672,6 +637,7 @@ export const itemRoute = createRouter()
 			}
 
 			const result = await db.transaction(async (tx) => {
+				await assertItemCommerceMutationAllowed(tx, id);
 				const validation = await validateEditItemState(
 					tx,
 					id,
@@ -803,7 +769,8 @@ export const itemRoute = createRouter()
 				};
 
 				const { db } = createClient();
-				const reservation = await db.transaction(async (tx) => {
+				const paymentAttemptId = randomUUID();
+				const preparation = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, item_id);
 					const current = await loadPurchaseContext(tx);
 					if (!current.item || !current.item.payment_provider_id) {
@@ -818,30 +785,9 @@ export const itemRoute = createRouter()
 					const [activeOrder] = await tx
 						.select({ id: orders.id })
 						.from(orders)
-						.where(and(eq(orders.item_id, item_id), inArray(orders.status, newOrderBlockedStates)))
+						.where(and(eq(orders.item_id, item_id), itemCommerceOrderBlockingPredicate()))
 						.limit(1);
 					if (activeOrder) return { error: 'An active order already exists for this item', status: 400 as const };
-
-					// Reuse the lock-owning transaction for shipment reads. ShipmentService otherwise
-					// opens a nested transaction, which can starve the pool when requests queue here.
-					const { rates } = await new ShipmentService().calculateShippingCostWithRates(
-						item_id,
-						user.profile_id,
-						user.email,
-						tx,
-					);
-					const labelPreview = rates[0];
-					const shippingLabelId = labelPreview?.shipment;
-					const shippingPrice = labelPreview?.amount ? formatPriceToCents(Number(labelPreview.amount)) : undefined;
-					if (
-						!shippingLabelId ||
-						shippingPrice === undefined ||
-						!Number.isSafeInteger(shippingPrice) ||
-						shippingPrice <= 0 ||
-						shippingPrice > postgresIntegerMax
-					) {
-						throw new Error('Failed to generate a label preview');
-					}
 
 					const { platform_charge_amount: platformCharge } = await calculatePlatformCosts(
 						{ price: current.item.price },
@@ -852,18 +798,7 @@ export const itemRoute = createRouter()
 					if (!Number.isSafeInteger(transactionPrice) || transactionPrice > postgresIntegerMax) {
 						return { error: 'Item price exceeds the supported range', status: 400 as const };
 					}
-					const {
-						payment_provider_charge: paymentProviderCharge,
-						payment_provider_charge_calculator_version: calculatorVersion,
-					} = await calculatePlatformCosts(
-						{ price: transactionPrice, postage_fee: shippingPrice },
-						{ payment_provider_charge: true },
-					);
-					if (paymentProviderCharge === undefined || calculatorVersion === undefined) {
-						throw new Error('Failed to calculate payment provider charge');
-					}
-
-					const [reservedOrder] = await tx
+					const [preparingOrder] = await tx
 						.insert(orders)
 						.values({
 							item_id,
@@ -871,22 +806,25 @@ export const itemRoute = createRouter()
 							seller_id: current.item.profile_id,
 							buyer_address: current.buyerInfo.address_id,
 							seller_address: current.item.seller_address_id,
-							shipping_price: shippingPrice,
-							payment_provider_charge: paymentProviderCharge,
+							shipping_price: 0,
+							payment_provider_charge: 0,
 							platform_charge: platformCharge,
-							shipping_label_id: shippingLabelId,
+							shipping_label_id: 'preparing',
+							item_price: current.item.price,
+							payment_attempt_id: paymentAttemptId,
+							payment_creation_state: PAYMENT_CREATION_STATES.PREPARING,
 						})
 						.returning();
-					if (!reservedOrder) throw new Error('Failed to reserve order');
+					if (!preparingOrder) throw new Error('Failed to reserve order');
 					return {
-						reservedOrder,
+						preparingOrder,
 						buyerProviderId: current.buyerInfo.payment_provider_id,
 						sellerProviderId: current.item.payment_provider_id,
 						itemTitle: current.item.title,
 						transactionPrice,
-						shippingPrice,
-						paymentProviderCharge,
-						calculatorVersion,
+						buyerAddressId: current.buyerInfo.address_id,
+						sellerAddressId: current.item.seller_address_id,
+						itemPrice: current.item.price,
 						mail: {
 							to: current.buyerInfo.email,
 							seller_username: current.item.seller_username,
@@ -895,6 +833,110 @@ export const itemRoute = createRouter()
 					};
 				});
 
+				if ('error' in preparation) return c.json({ error: preparation.error }, preparation.status);
+
+				let quote: Awaited<ReturnType<ShipmentService['createShippingQuote']>>;
+				let paymentProviderCharge: number;
+				let calculatorVersion: number;
+				try {
+					quote = await new ShipmentService().createShippingQuote(item_id, user.profile_id, user.email);
+					const costs = await calculatePlatformCosts(
+						{ price: preparation.transactionPrice, postage_fee: formatPriceToCents(Number(quote.amount)) },
+						{ payment_provider_charge: true },
+					);
+					if (
+						costs.payment_provider_charge === undefined ||
+						costs.payment_provider_charge_calculator_version === undefined
+					) {
+						throw new Error('Failed to calculate payment provider charge');
+					}
+					paymentProviderCharge = costs.payment_provider_charge;
+					calculatorVersion = costs.payment_provider_charge_calculator_version;
+				} catch (providerError) {
+					await db.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+					throw providerError;
+				}
+
+				const reservation = await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, item_id);
+					const current = await loadPurchaseContext(tx);
+					if (
+						!current.item ||
+						!current.buyerInfo?.payment_provider_id ||
+						current.item.price !== preparation.itemPrice ||
+						current.item.profile_id !== preparation.preparingOrder.seller_id ||
+						current.item.payment_provider_id !== preparation.sellerProviderId ||
+						current.buyerInfo.payment_provider_id !== preparation.buyerProviderId ||
+						current.item.seller_address_id !== preparation.sellerAddressId ||
+						current.buyerInfo.address_id !== preparation.buyerAddressId
+					) {
+						await tx.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+						return { error: 'Item or checkout terms changed', status: 409 as const };
+					}
+					const [storedQuote] = await tx
+						.select()
+						.from(shipping_quotes)
+						.where(
+							and(
+								eq(shipping_quotes.id, quote.shipping_quote_id),
+								eq(shipping_quotes.item_id, item_id),
+								eq(shipping_quotes.buyer_profile_id, user.profile_id),
+								isNull(shipping_quotes.consumed_at),
+							),
+						)
+						.for('update')
+						.limit(1);
+					const shippingState = storedQuote
+						? {
+								itemData: await new ShipmentService().getItemData(tx, item_id),
+								buyerProfile: await new ShipmentService().getBuyerProfile(tx, user.profile_id),
+							}
+						: undefined;
+					if (
+						!storedQuote ||
+						storedQuote.expires_at <= new Date() ||
+						!shippingState ||
+						shippingSnapshotFingerprint(shippingState) !== storedQuote.snapshot_fingerprint
+					) {
+						await tx.delete(orders).where(eq(orders.id, preparation.preparingOrder.id));
+						return { error: 'Shipping quote is no longer valid', status: 409 as const };
+					}
+					const [consumed] = await tx
+						.update(shipping_quotes)
+						.set({ consumed_at: new Date() })
+						.where(and(eq(shipping_quotes.id, storedQuote.id), isNull(shipping_quotes.consumed_at)))
+						.returning({ id: shipping_quotes.id });
+					if (!consumed) throw new Error('Shipping quote was already consumed');
+					const [reservedOrder] = await tx
+						.update(orders)
+						.set({
+							shipping_price: storedQuote.amount,
+							payment_provider_charge: paymentProviderCharge,
+							shipping_label_id: storedQuote.shippo_shipment_id,
+							shipping_quote_id: storedQuote.id,
+							payment_creation_state: PAYMENT_CREATION_STATES.CREATING,
+							updated_at: new Date(),
+						})
+						.where(
+							and(
+								eq(orders.id, preparation.preparingOrder.id),
+								eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.PREPARING),
+							),
+						)
+						.returning();
+					if (!reservedOrder) throw new Error('Failed to complete checkout preparation');
+					return {
+						reservedOrder,
+						buyerProviderId: preparation.buyerProviderId,
+						sellerProviderId: preparation.sellerProviderId,
+						itemTitle: preparation.itemTitle,
+						transactionPrice: preparation.transactionPrice,
+						shippingPrice: storedQuote.amount,
+						paymentProviderCharge,
+						calculatorVersion,
+						mail: preparation.mail,
+					};
+				});
 				if ('error' in reservation) return c.json({ error: reservation.error }, reservation.status);
 
 				let transaction: Awaited<ReturnType<PaymentProviderService['createTransactionWithBothUsers']>>;
@@ -904,7 +946,7 @@ export const itemRoute = createRouter()
 						seller_id: reservation.sellerProviderId,
 						creator_role: 'buyer',
 						currency: 'eur',
-						description: `Transaction for ${reservation.itemTitle} - (Buy Now)`,
+						description: `Transaction for ${reservation.itemTitle} - (Buy Now, ref ${paymentAttemptId.slice(0, 8)})`,
 						price: reservation.transactionPrice,
 						postage_fee: reservation.shippingPrice,
 						charge: reservation.paymentProviderCharge,
@@ -925,49 +967,85 @@ export const itemRoute = createRouter()
 									),
 								);
 						});
+					} else {
+						await db
+							.update(orders)
+							.set({
+								payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+								updated_at: new Date(),
+							})
+							.where(eq(orders.id, reservation.reservedOrder.id));
 					}
 					throw providerError;
 				}
 
-				const completedOrder = await db.transaction(async (tx) => {
-					await acquireItemCommerceLock(tx, item_id);
-					const [storedReservation] = await tx
-						.select({ id: orders.id })
-						.from(orders)
-						.where(
-							and(
-								eq(orders.id, reservation.reservedOrder.id),
-								eq(orders.item_id, item_id),
-								eq(orders.buyer_id, user.profile_id),
-								isNull(orders.payment_transaction_id),
-							),
-						)
-						.limit(1);
-					if (!storedReservation) throw new Error('Order reservation not found');
-					await tx.insert(entityTrustapTransactions).values({
-						entityId: item_id,
-						sellerId: transaction.seller_id,
-						buyerId: transaction.buyer_id,
-						transactionId: transaction.id,
-						transactionType: 'online_payment',
-						status: transaction.status as EntityTrustapTransactionStatus,
-						price: reservation.transactionPrice,
-						charge: reservation.paymentProviderCharge,
-						chargeSeller: transaction.charge_seller || 0,
-						currency: 'eur',
-						entityTitle: reservation.itemTitle,
-						claimedBySeller: false,
-						claimedByBuyer: false,
-						complaintPeriodDeadline: null,
+				let completedOrder: typeof reservation.reservedOrder;
+				try {
+					completedOrder = await db.transaction(async (tx) => {
+						await acquireItemCommerceLock(tx, item_id);
+						const [storedReservation] = await tx
+							.select({ id: orders.id })
+							.from(orders)
+							.where(
+								and(
+									eq(orders.id, reservation.reservedOrder.id),
+									eq(orders.item_id, item_id),
+									eq(orders.buyer_id, user.profile_id),
+									isNull(orders.payment_transaction_id),
+								),
+							)
+							.limit(1);
+						if (!storedReservation) throw new Error('Order reservation not found');
+						await tx.insert(entityTrustapTransactions).values({
+							entityId: item_id,
+							sellerId: transaction.seller_id,
+							buyerId: transaction.buyer_id,
+							transactionId: transaction.id,
+							transactionType: 'online_payment',
+							status: transaction.status as EntityTrustapTransactionStatus,
+							price: reservation.transactionPrice,
+							charge: reservation.paymentProviderCharge,
+							chargeSeller: transaction.charge_seller || 0,
+							currency: 'eur',
+							entityTitle: reservation.itemTitle,
+							claimedBySeller: false,
+							claimedByBuyer: false,
+							complaintPeriodDeadline: null,
+						});
+						const [updatedOrder] = await tx
+							.update(orders)
+							.set({
+								payment_transaction_id: transaction.id,
+								payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+								updated_at: new Date(),
+							})
+							.where(and(eq(orders.id, storedReservation.id), isNull(orders.payment_transaction_id)))
+							.returning();
+						if (!updatedOrder) throw new Error('Failed to complete order reservation');
+						return updatedOrder;
 					});
-					const [updatedOrder] = await tx
-						.update(orders)
-						.set({ payment_transaction_id: transaction.id, updated_at: new Date() })
-						.where(and(eq(orders.id, storedReservation.id), isNull(orders.payment_transaction_id)))
-						.returning();
-					if (!updatedOrder) throw new Error('Failed to complete order reservation');
-					return updatedOrder;
-				});
+				} catch (finalizationError) {
+					try {
+						await db
+							.update(orders)
+							.set({
+								payment_transaction_id: transaction.id,
+								payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+								updated_at: new Date(),
+							})
+							.where(eq(orders.id, reservation.reservedOrder.id));
+					} catch {
+						await db
+							.update(orders)
+							.set({
+								legacy_payment_transaction_id: transaction.id,
+								payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+								updated_at: new Date(),
+							})
+							.where(eq(orders.id, reservation.reservedOrder.id));
+					}
+					throw finalizationError;
+				}
 
 				try {
 					await sendBuyNowOrderCreatedBuyer(reservation.mail);
@@ -978,7 +1056,7 @@ export const itemRoute = createRouter()
 					{
 						success: true,
 						order: { id: completedOrder.id, status: completedOrder.status },
-						payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${completedOrder.id}`,
+						payment_url: buildGuestPaymentUrl(transaction.id, completedOrder.id),
 						message: 'Order created, complete the payment for the next step',
 					},
 					200,
@@ -1004,11 +1082,14 @@ export const itemRoute = createRouter()
 			const { db } = createClient();
 
 			try {
-				const [updatedItem] = await db
-					.update(items)
-					.set({ published: false, deleted_at: new Date(), updated_at: new Date() })
-					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
-					.returning({ id: items.id });
+				const [updatedItem] = await db.transaction(async (tx) => {
+					await assertItemCommerceMutationAllowed(tx, id);
+					return tx
+						.update(items)
+						.set({ published: false, deleted_at: new Date(), updated_at: new Date() })
+						.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+						.returning({ id: items.id });
+				});
 
 				if (!updatedItem) {
 					return c.json({ message: "Item not found or you don't have permission to delete it" }, 404);
@@ -1022,6 +1103,9 @@ export const itemRoute = createRouter()
 					200,
 				);
 			} catch (error) {
+				if (error instanceof Error && error.message === 'Item has an active order and cannot be changed') {
+					return c.json({ message: error.message }, 400);
+				}
 				return c.json(
 					{
 						message: error instanceof Error ? error.message : `Failed to delete item ${id}`,
@@ -1067,11 +1151,14 @@ export const itemRoute = createRouter()
 					}
 				}
 
-				const [updatedItem] = await db
-					.update(items)
-					.set({ published, updated_at: new Date() })
-					.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
-					.returning({ id: items.id });
+				const [updatedItem] = await db.transaction(async (tx) => {
+					await assertItemCommerceMutationAllowed(tx, id);
+					return tx
+						.update(items)
+						.set({ published, updated_at: new Date() })
+						.where(and(eq(items.id, id), eq(items.profile_id, user.profile_id), isNull(items.deleted_at)))
+						.returning({ id: items.id });
+				});
 
 				if (!updatedItem) {
 					return c.json({ message: "Item not found or you don't have permission to update it" }, 404);
@@ -1085,6 +1172,9 @@ export const itemRoute = createRouter()
 					200,
 				);
 			} catch (error) {
+				if (error instanceof Error && error.message === 'Item has an active order and cannot be changed') {
+					return c.json({ message: error.message }, 400);
+				}
 				return c.json(
 					{
 						message: error instanceof Error ? error.message : `Failed to delete item ${id}`,

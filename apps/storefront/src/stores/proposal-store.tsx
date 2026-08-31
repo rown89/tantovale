@@ -4,7 +4,13 @@ import { SelectOrderProposal } from '@workspace/server/database';
 
 type OrderProposalProps = Omit<
 	SelectOrderProposal,
-	'created_at' | 'updated_at' | 'payment_provider_charge' | 'platform_charge' | 'shipping_price' | 'original_price'
+	| 'created_at'
+	| 'updated_at'
+	| 'payment_provider_charge'
+	| 'platform_charge'
+	| 'shipping_price'
+	| 'shipping_quote_id'
+	| 'original_price'
 > & {
 	created_at: string;
 	updated_at: string;

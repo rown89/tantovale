@@ -67,21 +67,15 @@ const validTrustapTransactionBody = {
 	postage_fee: 750,
 	charge: 500,
 	charge_calculator_version: 1,
+	features: ['use_custom_postage_fee'] as const,
 };
 
 const validShippoShipmentBody = {
-	address_from: { country: 'IT' },
-	address_to: { country: 'IT' },
-	parcels: [
-		{
-			distance_unit: 'cm',
-			height: '10',
-			length: '20',
-			mass_unit: 'g',
-			weight: '1',
-			width: '15',
-		},
-	],
+	async: false,
+	metadata: shippoShipmentFixture.metadata,
+	address_from: shippoShipmentFixture.address_from,
+	address_to: shippoShipmentFixture.address_to,
+	parcels: shippoShipmentFixture.parcels,
 };
 
 async function startStub(kind: 'trustap' | 'shippo'): Promise<StartedProviderStub> {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
 import { ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
-import { orders } from '../../src/database/schemas/schema';
+import { items, orders } from '../../src/database/schemas/schema';
 import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
@@ -81,6 +81,41 @@ describe('order routes', () => {
 		expect(body.map(({ id }) => id).sort((left, right) => left - right)).toEqual(
 			[pending.id, completed.id].sort((left, right) => left - right),
 		);
+	});
+
+	it('exposes a correctly encoded payment action and immutable sale price only to the buyer', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const order = await createOrderFixture(actors, item, {
+			item_price: 9_000,
+			payment_transaction_id: 91_337,
+			payment_creation_state: 'created',
+		});
+		const { db } = getTestDatabase();
+		await db.update(items).set({ price: 42_000 }).where(eq(items.id, item.id));
+
+		const buyerResponse = await authenticatedRequest('/orders/auth/status/all', 'GET', actors.buyer.jar);
+		const [buyerOrder] = (await buyerResponse.json()) as Array<Record<string, unknown>>;
+		expect(buyerOrder).toMatchObject({
+			id: order.id,
+			original_price: 9_000,
+			payment_transaction_id: 91_337,
+			payment_url:
+				'http://trustap.test/online/transactions/91337/guest_pay?redirect_uri=http%3A%2F%2Fstorefront.test%2Fauth%2Fprofile%2Forders%3Fhighlight%3D1',
+		});
+
+		const sellerResponse = await authenticatedRequest('/orders/auth/status/all', 'GET', actors.seller.jar);
+		const [sellerOrder] = (await sellerResponse.json()) as Array<Record<string, unknown>>;
+		expect(sellerOrder).not.toHaveProperty('payment_url');
+
+		const buyerDetail = (await (
+			await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar)
+		).json()) as Record<string, unknown>;
+		expect(buyerDetail.payment_url).toBe(buyerOrder?.payment_url);
+		const sellerDetail = (await (
+			await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.seller.jar)
+		).json()) as Record<string, unknown>;
+		expect(sellerDetail).not.toHaveProperty('payment_url');
 	});
 
 	it.each(['unknown', 'PAYMENT_PENDING'])('rejects invalid status %j', async (status) => {

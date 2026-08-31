@@ -17,6 +17,13 @@ export const ORDER_PHASES = {
 	EXPIRED: 'expired',
 } as const;
 
+export const PAYMENT_CREATION_STATES = {
+	PREPARING: 'preparing',
+	CREATING: 'creating',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CREATED: 'created',
+} as const;
+
 /**
  * States that are blocked for the user to place a new order
  */

@@ -72,6 +72,19 @@ export const relations = defineRelations(schema, (r) => ({
 			to: r.chat_messages.chat_room_id,
 		}),
 	},
+	shipping_quotes: {
+		item: r.one.items({ from: r.shipping_quotes.item_id, to: r.items.id }),
+		buyer: r.one.profiles({
+			from: r.shipping_quotes.buyer_profile_id,
+			to: r.profiles.id,
+			alias: 'shipping_quotes_buyer_profile_id_profiles_id',
+		}),
+		seller: r.one.profiles({
+			from: r.shipping_quotes.seller_profile_id,
+			to: r.profiles.id,
+			alias: 'shipping_quotes_seller_profile_id_profiles_id',
+		}),
+	},
 	cities: {
 		addressesCityId: r.many.addresses({
 			from: r.cities.id,

@@ -1,6 +1,7 @@
 export * from './addresses';
 export * from './categories';
 export * from './chat_messages';
+export * from './commerce_reconciliation_audit';
 export * from './chat_rooms';
 export * from './cities';
 export * from './countries';
@@ -18,6 +19,7 @@ export * from './properties';
 export * from './refreshTokens';
 export * from './regions';
 export * from './shippings';
+export * from './shipping_quotes';
 export * from './states';
 export * from './subcategories';
 export * from './subcategory_properties';

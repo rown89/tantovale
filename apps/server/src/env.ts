@@ -51,6 +51,7 @@ const EnvSchemaObject = z.object({
 	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
 	PAYMENT_PROVIDER_PAY_PAGE_URL: z.string(),
 	POST_PAYMENT_REDIRECT_URL: z.string(),
+	PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 	// SHIPPPING
 	SHIPPING_PROVIDER_API_KEY: z.string(),
 	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),

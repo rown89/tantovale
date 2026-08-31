@@ -8,7 +8,8 @@ import { addresses, entityTrustapTransactions, items, orders, profiles } from '.
 import { calculatePlatformFee } from '../../src/utils/platform-costs';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
-import { createCommerceActors, createItemFixture } from '../fixtures/commerce';
+import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
+import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { getProviderRequests, setProviderScenario } from '../helpers/providers';
@@ -41,7 +42,17 @@ async function mailCount(recipient: string): Promise<number> {
 	return body.messages.filter(({ To }) => To.some(({ Address }) => Address === recipient)).length;
 }
 
-async function setTrustapTransactionScenario(scenario: 'transaction-error' | 'transaction-disconnect'): Promise<void> {
+type TrustapTransactionScenario =
+	| 'transaction-client-error'
+	| 'transaction-conflict'
+	| 'transaction-error'
+	| 'transaction-commit-error'
+	| 'transaction-invalid-json'
+	| 'transaction-invalid-body'
+	| 'transaction-delay'
+	| 'transaction-disconnect';
+
+async function setTrustapTransactionScenario(scenario: TrustapTransactionScenario): Promise<void> {
 	const response = await fetch(`${providerUrl('PAYMENT_PROVIDER_API_URL')}/__test/scenario`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
@@ -68,7 +79,46 @@ async function waitForBlockedRequests(blocker: PoolClient, blockingProcessId: nu
 	throw new Error('Concurrent buy-now requests never waited on the item commerce lock');
 }
 
+async function waitForProviderRequest(url: string): Promise<void> {
+	const deadline = Date.now() + 1_000;
+	while (Date.now() < deadline) {
+		if ((await getProviderRequests(url)).length > 0) return;
+		await new Promise((resolve) => setTimeout(resolve, 5));
+	}
+	throw new Error('Provider request did not start');
+}
+
 describe('platform costs route', () => {
+	it.each([
+		[999, 0.01],
+		[1_000, 0.01],
+		[1_001, 0.0095],
+		[4_999, 0.0095],
+		[5_000, 0.0095],
+		[5_001, 0.009],
+		[9_999, 0.009],
+		[10_000, 0.009],
+		[10_001, 0.0085],
+		[19_999, 0.0085],
+		[20_000, 0.0085],
+		[20_001, 0.008],
+		[49_999, 0.008],
+		[50_000, 0.008],
+		[50_001, 0.0075],
+		[99_999, 0.0075],
+		[100_000, 0.0075],
+		[100_001, 0.007],
+		[199_999, 0.007],
+		[200_000, 0.007],
+		[200_001, 0.0065],
+		[499_999, 0.0065],
+		[500_000, 0.0065],
+		[500_001, 0.006],
+	] as const)('uses cent-denominated fee boundaries for %i cents', (price, expectedRate) => {
+		expect(calculatePlatformFee(price)).toBe(expectedRate);
+		expect(Math.round(price * calculatePlatformFee(price))).toBe(Math.round(price * expectedRate));
+	});
+
 	it('requires authentication', async () => {
 		const response = await app.request('/platforms_costs/auth/calculate_platform_costs', {
 			method: 'POST',
@@ -125,6 +175,18 @@ describe('platform costs route', () => {
 			path: `/api/v1/charge?price=${transactionPrice}&currency=eur&postage_fee=${shippingPrice}&use_hr_post=false`,
 		});
 	});
+
+	it('rejects a price whose platform fee would overflow int4 before contacting Trustap', async () => {
+		const actors = await createCommerceActors();
+		const response = await authenticatedRequest(
+			'/platforms_costs/auth/calculate_platform_costs',
+			'POST',
+			actors.buyer.jar,
+			{ price: 2_147_483_647, shipping_price: 750 },
+		);
+		expect(response.status).toBe(400);
+		expect(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).toEqual([]);
+	});
 });
 
 describe('buy-now route', () => {
@@ -167,6 +229,8 @@ describe('buy-now route', () => {
 			shipping_label_id: 'shipment-test',
 			shipping_price: 750,
 			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_creation_state: 'created',
+			payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
 		});
 		expect(order?.payment_transaction_id).toEqual(expect.any(Number));
 
@@ -187,11 +251,13 @@ describe('buy-now route', () => {
 		expect(shippoRequests).toHaveLength(1);
 		expect(shippoRequests[0]).toMatchObject({ method: 'POST', path: '/shipments' });
 		const shippoBody = shippoRequests[0]?.body as {
-			address_from: { metadata: string };
-			address_to: { metadata: string };
+			metadata: string;
+			address_from: { metadata?: string };
+			address_to: { metadata?: string };
 		};
-		expect(shippoBody.address_from.metadata).toBe(`profile_id: ${actors.seller.profile.id}`);
-		expect(shippoBody.address_to.metadata).toBe(`profile_id: ${actors.buyer.profile.id}`);
+		expect(shippoBody.metadata).toMatch(/^tvq1:[0-9a-f-]{36}$/);
+		expect(shippoBody.address_from.metadata).toBeUndefined();
+		expect(shippoBody.address_to.metadata).toBeUndefined();
 
 		const trustapRequests = await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'));
 		expect(trustapRequests.map(({ method, path }) => `${method} ${path.split('?')[0]}`)).toEqual([
@@ -205,6 +271,7 @@ describe('buy-now route', () => {
 			price: item.price + (order?.platform_charge ?? 0),
 			postage_fee: 750,
 			charge: order?.payment_provider_charge,
+			features: ['use_custom_postage_fee'],
 		});
 		expect(trustapRequests[1]?.headers['trustap-user']).toBe(actors.buyer.profile.payment_provider_id);
 		expect(await mailCount(actors.buyer.user.email)).toBe(1);
@@ -310,7 +377,7 @@ describe('buy-now route', () => {
 		},
 	);
 
-	it('removes its local reservation when Trustap transaction creation fails after a successful charge', async () => {
+	it('retains a reconciliation reservation when Trustap returns an ambiguous 5xx after a successful charge', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		await setTrustapTransactionScenario('transaction-error');
@@ -323,11 +390,84 @@ describe('buy-now route', () => {
 			'POST /api/v1/me/transactions/create_with_guest_user',
 		]);
 		const { db } = getTestDatabase();
-		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
+		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([
+			expect.objectContaining({
+				payment_creation_state: 'reconciliation_required',
+				payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+				payment_transaction_id: null,
+			}),
+		]);
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
 		).toEqual([]);
 		expect(await mailCount(actors.buyer.user.email)).toBe(0);
+		const syncResult = await new TransactionSyncService().syncTransactionStatuses();
+		expect(syncResult.results).toContainEqual(
+			expect.objectContaining({
+				orderId: expect.any(Number),
+				transactionId: null,
+				localAttemptId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+				requiresManualReconciliation: true,
+				success: false,
+			}),
+		);
+		expect(
+			(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+			),
+		).toHaveLength(1);
+	});
+
+	it('removes the reservation after a deterministic Trustap 4xx and permits a safe retry', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setTrustapTransactionScenario('transaction-client-error');
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(500);
+		const { db } = getTestDatabase();
+		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'success');
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(200);
+	});
+
+	it('blocks checkout retry after interruption leaves a transaction-creation reservation', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createOrderFixture(actors, item, {
+			payment_attempt_id: '00000000-0000-4000-8000-000000000001',
+			payment_creation_state: 'creating',
+		});
+
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(400);
+		expect(await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'))).toEqual([]);
+		expect(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).toEqual([]);
+	});
+
+	it.each([
+		'transaction-conflict',
+		'transaction-error',
+		'transaction-commit-error',
+		'transaction-invalid-json',
+		'transaction-invalid-body',
+		'transaction-delay',
+		'transaction-disconnect',
+	] as const)('never retries an ambiguous Trustap outcome: %s', async (scenario) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setTrustapTransactionScenario(scenario);
+		const startedAt = Date.now();
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(500);
+		if (scenario === 'transaction-delay') expect(Date.now() - startedAt).toBeLessThan(1_000);
+		const { db } = getTestDatabase();
+		const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		expect(reservation).toMatchObject({
+			payment_creation_state: 'reconciliation_required',
+			payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+		});
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(400);
+		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+		);
+		expect(transactionRequests).toHaveLength(1);
 	});
 
 	it('keeps a durable reservation when Trustap creates remotely but the response is lost', async () => {
@@ -340,7 +480,11 @@ describe('buy-now route', () => {
 		const { db } = getTestDatabase();
 		const reservations = await db.select().from(orders).where(eq(orders.item_id, item.id));
 		expect(reservations).toHaveLength(1);
-		expect(reservations[0]?.payment_transaction_id).toBeNull();
+		expect(reservations[0]).toMatchObject({
+			payment_transaction_id: null,
+			payment_creation_state: 'reconciliation_required',
+			payment_attempt_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+		});
 		expect(await new PaymentProviderService().getTransactionStatus(trustapTransactionFixture.id + 1)).toMatchObject({
 			id: trustapTransactionFixture.id + 1,
 			buyer_id: actors.buyer.profile.payment_provider_id,
@@ -381,12 +525,36 @@ describe('buy-now route', () => {
 			buyer_id: actors.buyer.profile.id,
 			seller_id: actors.seller.profile.id,
 			status: ORDER_PHASES.PAYMENT_PENDING,
-			payment_transaction_id: null,
+			payment_transaction_id: expectedTransactionId,
+			payment_creation_state: 'reconciliation_required',
 		});
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
 		).toEqual([]);
 		expect(await mailCount(actors.buyer.user.email)).toBe(0);
+		const ordersResponse = await authenticatedRequest('/orders/auth/status/all', 'GET', actors.buyer.jar);
+		const visibleOrders = (await ordersResponse.json()) as Array<{ id: number; payment_url?: string }>;
+		expect(visibleOrders.find(({ id }) => id === reservations[0]!.id)?.payment_url).toContain(
+			`/online/transactions/${expectedTransactionId}/guest_pay`,
+		);
+
+		await db
+			.delete(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, expectedTransactionId));
+		const syncResult = await new TransactionSyncService().syncTransactionStatuses();
+		expect(syncResult.results).toContainEqual(
+			expect.objectContaining({
+				orderId: reservations[0]!.id,
+				transactionId: expectedTransactionId,
+				recovered: true,
+				success: true,
+			}),
+		);
+		const [recoveredOrder] = await db.select().from(orders).where(eq(orders.id, reservations[0]!.id));
+		expect(recoveredOrder?.payment_creation_state).toBe('created');
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
+		).toEqual([expect.objectContaining({ transactionId: expectedTransactionId, status: 'created' })]);
 
 		const retry = await buyNow(actors.buyer.jar, item.id);
 		expect(retry.status).toBe(400);
@@ -394,6 +562,97 @@ describe('buy-now route', () => {
 			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
 		);
 		expect(transactionRequests).toHaveLength(1);
+	});
+
+	it('preserves a known Trustap id in legacy recovery storage when its live order reference conflicts', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const conflictingItem = await createItemFixture(actors, { commons: { title: 'Order transaction conflict item' } });
+		const expectedTransactionId = trustapTransactionFixture.id + 1;
+		const conflictingOrder = await createOrderFixture(actors, conflictingItem, {
+			status: ORDER_PHASES.CANCELLED,
+			payment_transaction_id: expectedTransactionId,
+		});
+
+		expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(500);
+		const { db } = getTestDatabase();
+		const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		expect(reservation).toMatchObject({
+			payment_transaction_id: null,
+			legacy_payment_transaction_id: expectedTransactionId,
+			payment_creation_state: 'reconciliation_required',
+		});
+		const ordersResponse = await authenticatedRequest('/orders/auth/status/all', 'GET', actors.buyer.jar);
+		const visibleOrders = (await ordersResponse.json()) as Array<{
+			id: number;
+			payment_transaction_id?: number;
+			payment_url?: string;
+		}>;
+		expect(visibleOrders.find(({ id }) => id === reservation!.id)).toMatchObject({
+			payment_transaction_id: expectedTransactionId,
+			payment_url: expect.stringContaining(`/online/transactions/${expectedTransactionId}/guest_pay`),
+		});
+
+		const blockedSync = await new TransactionSyncService().syncTransactionStatuses();
+		expect(blockedSync.results).toContainEqual(
+			expect.objectContaining({
+				orderId: reservation!.id,
+				transactionId: expectedTransactionId,
+				requiresManualReconciliation: true,
+				success: false,
+			}),
+		);
+		await db.update(orders).set({ payment_transaction_id: null }).where(eq(orders.id, conflictingOrder.id));
+		const recoveredSync = await new TransactionSyncService().syncTransactionStatuses();
+		expect(recoveredSync.results).toContainEqual(
+			expect.objectContaining({ orderId: reservation!.id, recovered: true, success: true }),
+		);
+		const [recovered] = await db.select().from(orders).where(eq(orders.id, reservation!.id));
+		expect(recovered).toMatchObject({
+			payment_transaction_id: expectedTransactionId,
+			legacy_payment_transaction_id: null,
+			payment_creation_state: 'created',
+		});
+	});
+
+	it('bounds delayed Trustap reconciliation reads without holding the item commerce lock', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const reservation = await createOrderFixture(actors, item, {
+			item_price: trustapTransactionFixture.price - 600,
+			payment_transaction_id: trustapTransactionFixture.id,
+			payment_creation_state: 'reconciliation_required',
+		});
+		await setTrustapTransactionScenario('transaction-delay');
+
+		const startedAt = Date.now();
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		await waitForProviderRequest(providerUrl('PAYMENT_PROVIDER_API_URL'));
+		const { client, db } = getTestDatabase();
+		const probe = await client.connect();
+		try {
+			const { rows } = await probe.query<{ acquired: boolean }>(
+				'SELECT pg_try_advisory_lock(hashtext(current_database() || $1), $2) AS acquired',
+				[itemCommerceLockScope, item.id],
+			);
+			expect(rows[0]?.acquired).toBe(true);
+			if (rows[0]?.acquired) {
+				await probe.query('SELECT pg_advisory_unlock(hashtext(current_database() || $1), $2)', [
+					itemCommerceLockScope,
+					item.id,
+				]);
+			}
+		} finally {
+			probe.release();
+		}
+		const result = await syncPromise;
+		expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+		expect(Date.now() - startedAt).toBeLessThan(1_000);
+		expect(result.results).toContainEqual(
+			expect.objectContaining({ orderId: reservation.id, success: false, requiresManualReconciliation: true }),
+		);
+		const [stored] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		expect(stored?.payment_creation_state).toBe('reconciliation_required');
 	});
 
 	it('serializes concurrent purchases to one order and one Trustap transaction without pool starvation', async () => {
@@ -442,6 +701,29 @@ describe('buy-now route', () => {
 			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
 		);
 		expect(transactionRequests).toHaveLength(1);
+	});
+
+	it('does not hold the item commerce lock while waiting on a delayed shipping provider', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-delay');
+		const responsePromise = buyNow(actors.buyer.jar, item.id);
+		await waitForProviderRequest(providerUrl('SHIPPING_PROVIDER_API_URL'));
+
+		const { client } = getTestDatabase();
+		const contender = await client.connect();
+		try {
+			await contender.query('BEGIN');
+			const result = await contender.query<{ acquired: boolean }>(
+				'SELECT pg_try_advisory_xact_lock(hashtext(current_database() || $1), $2) AS acquired',
+				[itemCommerceLockScope, item.id],
+			);
+			expect(result.rows[0]?.acquired).toBe(true);
+		} finally {
+			await contender.query('ROLLBACK');
+			contender.release();
+		}
+		expect((await responsePromise).status).toBe(500);
 	});
 
 	it('persists a successful order even when buyer email delivery fails', async () => {

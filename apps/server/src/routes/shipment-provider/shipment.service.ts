@@ -1,4 +1,5 @@
-import { eq, and } from 'drizzle-orm';
+import { createHash, randomUUID } from 'node:crypto';
+import { eq, and, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
@@ -6,13 +7,25 @@ import { shipmentsGet } from 'shippo/funcs/shipmentsGet.js';
 
 import { createClient } from '#create-client';
 import { SHIPPING_UNITS, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
-import { profiles, addresses, items, cities, users, shippings } from '#db-schema';
+import {
+	profiles,
+	addresses,
+	items,
+	cities,
+	users,
+	shippings,
+	categories,
+	subcategories,
+	shipping_quotes,
+} from '#db-schema';
 
 import { shippoClient } from '#lib/shippo-client';
 
-import type { Rate, ShipmentCreateRequest } from 'shippo/models/components/index.js';
+import type { Rate, Shipment, ShipmentCreateRequest } from 'shippo/models/components/index.js';
 import type { ShipmentCalculationData } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
+import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
+import { formatPriceToCents } from '#utils/price-formatter';
 
 const ERROR_MESSAGES = {
 	ITEM_NOT_FOUND: 'Item not found or not available',
@@ -20,7 +33,79 @@ const ERROR_MESSAGES = {
 	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
 } as const;
 
+export class ShippingProviderOperationalError extends Error {
+	constructor() {
+		super('Shipping provider request failed');
+		this.name = 'ShippingProviderOperationalError';
+	}
+}
+
 type DatabaseQuery = Pick<ReturnType<typeof createClient>['db'], 'select'>;
+
+const shippingQuoteTtlMs = 15 * 60 * 1_000;
+
+export function shippingSnapshotFingerprint({ itemData, buyerProfile }: ShipmentCalculationData): string {
+	const canonical = [
+		'v1',
+		itemData.item_id,
+		itemData.item_profile_id,
+		itemData.item_address_id,
+		itemData.item_status,
+		itemData.item_published,
+		itemData.item_easy_pay,
+		itemData.item_subcategory_id,
+		itemData.category_id,
+		itemData.seller_address_id,
+		itemData.seller_city_id,
+		itemData.seller_province_id,
+		itemData.seller_street_address,
+		itemData.seller_civic_number,
+		itemData.seller_city_name,
+		itemData.seller_province_name,
+		itemData.seller_country_code,
+		itemData.seller_postal_code,
+		itemData.seller_phone,
+		itemData.item_weight,
+		itemData.item_length,
+		itemData.item_width,
+		itemData.item_height,
+		buyerProfile.id,
+		buyerProfile.address_id,
+		buyerProfile.city_id,
+		buyerProfile.province_id,
+		buyerProfile.street_address,
+		buyerProfile.civic_number,
+		buyerProfile.city_name,
+		buyerProfile.province_name,
+		buyerProfile.country_code,
+		buyerProfile.postal_code,
+		buyerProfile.phone,
+	];
+	return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+export function shipmentMatchesShippingState(shipment: Shipment, state: ShipmentCalculationData): boolean {
+	const { itemData, buyerProfile } = state;
+	const [parcel] = shipment.parcels;
+	return (
+		shipment.addressFrom.street1 === `${itemData.seller_street_address} ${itemData.seller_civic_number}` &&
+		shipment.addressFrom.city === itemData.seller_province_name &&
+		shipment.addressFrom.zip === itemData.seller_postal_code.toString() &&
+		shipment.addressFrom.country === itemData.seller_country_code &&
+		shipment.addressFrom.phone === itemData.seller_phone &&
+		shipment.addressTo.street1 === `${buyerProfile.street_address} ${buyerProfile.civic_number}` &&
+		shipment.addressTo.city === buyerProfile.province_name &&
+		shipment.addressTo.zip === buyerProfile.postal_code.toString() &&
+		shipment.addressTo.country === buyerProfile.country_code &&
+		shipment.addressTo.phone === buyerProfile.phone &&
+		parcel?.massUnit === SHIPPING_UNITS.MASS &&
+		parcel.distanceUnit === SHIPPING_UNITS.DISTANCE &&
+		parcel.weight === String(itemData.item_weight) &&
+		parcel.height === String(itemData.item_height) &&
+		parcel.length === String(itemData.item_length) &&
+		parcel.width === String(itemData.item_width)
+	);
+}
 
 export class ShipmentService {
 	private db = createClient().db;
@@ -40,6 +125,9 @@ export class ShipmentService {
 				item_address_id: items.address_id,
 				item_status: items.status,
 				item_published: items.published,
+				item_easy_pay: items.easy_pay,
+				item_subcategory_id: items.subcategory_id,
+				category_id: subcategories.category_id,
 
 				// Seller profile info
 				seller_profile_id: profiles.id,
@@ -49,6 +137,9 @@ export class ShipmentService {
 
 				// Seller address info
 				seller_street_address: addresses.street_address,
+				seller_address_id: addresses.id,
+				seller_city_id: addresses.city_id,
+				seller_province_id: addresses.province_id,
 				seller_civic_number: addresses.civic_number,
 				seller_city_name: cityTable.name,
 				seller_province_name: provinceTable.name,
@@ -67,11 +158,22 @@ export class ShipmentService {
 			.innerJoin(users, eq(profiles.user_id, users.id))
 			// Get the seller address that is associated with the item
 			.innerJoin(addresses, and(eq(addresses.profile_id, profiles.id), eq(addresses.id, items.address_id)))
+			.innerJoin(subcategories, and(eq(subcategories.id, items.subcategory_id), eq(subcategories.published, true)))
+			.innerJoin(categories, and(eq(categories.id, subcategories.category_id), eq(categories.published, true)))
 			.innerJoin(cityTable, eq(cityTable.id, addresses.city_id))
 			.innerJoin(provinceTable, eq(provinceTable.id, addresses.province_id))
 			.leftJoin(shippings, eq(shippings.item_id, items.id))
 			// Get the item that is available and published
-			.where(and(eq(items.id, itemId), eq(items.status, itemStatus.AVAILABLE), eq(items.published, true)));
+			.where(
+				and(
+					eq(items.id, itemId),
+					eq(items.status, itemStatus.AVAILABLE),
+					eq(items.published, true),
+					eq(items.easy_pay, true),
+					isNull(items.deleted_at),
+					eq(addresses.status, 'active'),
+				),
+			);
 
 		if (!itemData) {
 			throw new Error(ERROR_MESSAGES.ITEM_NOT_FOUND);
@@ -95,6 +197,9 @@ export class ShipmentService {
 		const [buyerProfile] = await tx
 			.select({
 				id: profiles.id,
+				address_id: addresses.id,
+				city_id: addresses.city_id,
+				province_id: addresses.province_id,
 				name: profiles.name,
 				surname: profiles.surname,
 				street_address: addresses.street_address,
@@ -125,9 +230,11 @@ export class ShipmentService {
 		itemData: ShipmentCalculationData['itemData'],
 		buyerProfile: ShipmentCalculationData['buyerProfile'],
 		buyerEmail: string,
+		metadata?: string,
 	): ShipmentCreateRequest {
 		return {
-			metadata: `seller_id: ${itemData.seller_profile_id}, buyer_id: ${buyerProfile.id}`,
+			async: false,
+			metadata: metadata ?? 'Tantovale shipping preview',
 			shipmentDate: new Date().toISOString(),
 			addressFrom: {
 				name: `${itemData.seller_name} ${itemData.seller_surname}`,
@@ -139,7 +246,6 @@ export class ShipmentService {
 				phone: itemData.seller_phone,
 				email: itemData.seller_email,
 				isResidential: true,
-				metadata: `profile_id: ${itemData.seller_profile_id}`,
 				validate: false,
 			},
 			addressTo: {
@@ -152,12 +258,10 @@ export class ShipmentService {
 				phone: buyerProfile.phone,
 				email: buyerEmail,
 				isResidential: true,
-				metadata: `profile_id: ${buyerProfile.id}`,
 				validate: false,
 			},
 			parcels: [
 				{
-					metadata: `item_id: ${itemData.item_id}`,
 					massUnit: SHIPPING_UNITS.MASS,
 					distanceUnit: SHIPPING_UNITS.DISTANCE,
 					weight: String(itemData.item_weight),
@@ -167,6 +271,63 @@ export class ShipmentService {
 				},
 			],
 		};
+	}
+
+	async createShippingQuote(itemId: number, buyerProfileId: number, buyerEmail: string) {
+		const quoteId = randomUUID();
+		const initial = await this.getShipmentCalculationData(itemId, buyerProfileId);
+		if (initial.itemData.seller_profile_id === buyerProfileId) throw new Error(ERROR_MESSAGES.ITEM_NOT_FOUND);
+		const fingerprint = shippingSnapshotFingerprint(initial);
+		const response = await shipmentsCreate(
+			shippoClient,
+			this.createShipmentOptions(initial.itemData, initial.buyerProfile, buyerEmail, `tvq1:${quoteId}`),
+		);
+		if (!response.ok) throw new ShippingProviderOperationalError();
+		if (response.value?.status !== 'SUCCESS') {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+		const shipmentId = response.value.objectId;
+		const rate = response.value.rates?.[0];
+		const amount = rate?.amount ? formatPriceToCents(Number(rate.amount)) : undefined;
+		if (
+			!shipmentId ||
+			!rate?.objectId ||
+			rate.shipment !== shipmentId ||
+			rate.currency !== 'EUR' ||
+			amount === undefined ||
+			!Number.isSafeInteger(amount) ||
+			amount <= 0
+		) {
+			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
+		}
+
+		const expiresAt = new Date(Date.now() + shippingQuoteTtlMs);
+		await this.db.transaction(async (tx) => {
+			await acquireItemCommerceLock(tx, itemId);
+			const current = {
+				itemData: await this.getItemData(tx, itemId),
+				buyerProfile: await this.getBuyerProfile(tx, buyerProfileId),
+			};
+			if (shippingSnapshotFingerprint(current) !== fingerprint) {
+				throw new Error('Shipping inputs changed while calculating the quote');
+			}
+			await tx.insert(shipping_quotes).values({
+				id: quoteId,
+				item_id: itemId,
+				buyer_profile_id: buyerProfileId,
+				seller_profile_id: initial.itemData.seller_profile_id,
+				buyer_address_id: initial.buyerProfile.address_id,
+				seller_address_id: initial.itemData.seller_address_id,
+				shippo_shipment_id: shipmentId,
+				shippo_rate_id: rate.objectId,
+				amount,
+				currency: rate.currency,
+				snapshot_fingerprint: fingerprint,
+				expires_at: expiresAt,
+			});
+		});
+
+		return { amount: rate.amount, currency: rate.currency, shipment_label_id: shipmentId, shipping_quote_id: quoteId };
 	}
 
 	/**
@@ -207,7 +368,6 @@ export class ShipmentService {
 		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
 
 		if (!shipmentLabelCreateResponse.ok) {
-			console.error('Shippo API error:', shipmentLabelCreateResponse.error);
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 
@@ -258,7 +418,6 @@ export class ShipmentService {
 		const shipmentLabelCreateResponse = await shipmentsCreate(shippoClient, shipmentOptions);
 
 		if (!shipmentLabelCreateResponse.ok) {
-			console.error('Shippo API error:', shipmentLabelCreateResponse.error);
 			throw new Error(SHIPPING_ERROR_MESSAGES.SHIPPING_CALCULATION_FAILED);
 		}
 

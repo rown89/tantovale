@@ -27,6 +27,9 @@ export const platformsCostsRoute = createRouter().post(
 
 			// Calculate payment provider charge with the total amount (including platform charge)
 			const transactionPreviewPrice = price + platform_charge_amount!;
+			if (!Number.isSafeInteger(transactionPreviewPrice) || transactionPreviewPrice > 2_147_483_647) {
+				return c.json({ error: 'Price exceeds the supported range' }, 400);
+			}
 
 			const { payment_provider_charge } = await calculatePlatformCosts(
 				{

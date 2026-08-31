@@ -19,6 +19,48 @@ export class PaymentProviderHttpError extends Error {
 	}
 }
 
+export class PaymentProviderAmbiguousError extends Error {
+	constructor(message = 'Payment provider transaction outcome requires reconciliation') {
+		super(message);
+		this.name = 'PaymentProviderAmbiguousError';
+	}
+}
+
+function providerSignal(): AbortSignal {
+	return AbortSignal.timeout(environment.PROVIDER_REQUEST_TIMEOUT_MS);
+}
+
+function isTransactionResponse(value: unknown): value is CreateTransactionResponse {
+	if (typeof value !== 'object' || value === null) return false;
+	const candidate = value as Partial<CreateTransactionResponse>;
+	return (
+		Number.isSafeInteger(candidate.id) &&
+		(candidate.id ?? 0) > 0 &&
+		Number.isSafeInteger(candidate.price) &&
+		(candidate.price ?? 0) > 0 &&
+		Number.isSafeInteger(candidate.charge) &&
+		(candidate.charge ?? -1) >= 0 &&
+		Number.isSafeInteger(candidate.charge_seller) &&
+		(candidate.charge_seller ?? -1) >= 0 &&
+		typeof candidate.buyer_id === 'string' &&
+		typeof candidate.seller_id === 'string' &&
+		candidate.currency === 'eur' &&
+		typeof candidate.status === 'string'
+	);
+}
+
+export function buildGuestPaymentUrl(transactionId: number, orderId: number): string {
+	const base = new URL(environment.PAYMENT_PROVIDER_PAY_PAGE_URL);
+	const basePath = base.pathname.replace(/\/$/u, '');
+	const transactionBase = basePath.endsWith('/online/transactions') ? basePath : `${basePath}/online/transactions`;
+	base.pathname = `${transactionBase}/${encodeURIComponent(String(transactionId))}/guest_pay`;
+	base.search = '';
+	const redirect = new URL('/auth/profile/orders', environment.POST_PAYMENT_REDIRECT_URL);
+	redirect.searchParams.set('highlight', String(orderId));
+	base.searchParams.set('redirect_uri', redirect.toString());
+	return base.toString();
+}
+
 export class PaymentProviderService {
 	private api_url = environment.PAYMENT_PROVIDER_API_URL;
 	private api_version = environment.PAYMENT_PROVIDER_API_VERSION;
@@ -43,6 +85,7 @@ export class PaymentProviderService {
 				country_code,
 				tos_acceptance,
 			}),
+			signal: providerSignal(),
 		});
 
 		if (!response.ok) {
@@ -70,6 +113,7 @@ export class PaymentProviderService {
 					'Content-Type': 'application/json',
 					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 				},
+				signal: providerSignal(),
 			},
 		);
 
@@ -98,33 +142,59 @@ export class PaymentProviderService {
 			postage_fee,
 			charge,
 			charge_calculator_version,
+			features,
 		} = props;
 
-		const response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
-			method: 'POST',
-			headers: {
-				'Trustap-User': creator_role === 'buyer' ? buyer_id : seller_id,
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-			body: JSON.stringify({
-				seller_id,
-				buyer_id,
-				creator_role,
-				currency,
-				description,
-				price,
-				postage_fee,
-				charge,
-				charge_calculator_version,
-			}),
-		});
-
-		if (!response.ok) {
-			throw new PaymentProviderHttpError('Failed to create transaction', response.status);
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
+				method: 'POST',
+				headers: {
+					'Trustap-User': creator_role === 'buyer' ? buyer_id : seller_id,
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				body: JSON.stringify({
+					seller_id,
+					buyer_id,
+					creator_role,
+					currency,
+					description,
+					price,
+					postage_fee,
+					charge,
+					charge_calculator_version,
+					features: features ?? ['use_custom_postage_fee'],
+				}),
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderAmbiguousError();
 		}
 
-		const data = (await response.json()) as CreateTransactionResponse | undefined;
+		if (!response.ok) {
+			if (response.status >= 400 && response.status < 500 && response.status !== 409) {
+				throw new PaymentProviderHttpError('Failed to create transaction', response.status);
+			}
+			throw new PaymentProviderAmbiguousError();
+		}
+
+		let data: unknown;
+		try {
+			data = await response.json();
+		} catch {
+			throw new PaymentProviderAmbiguousError();
+		}
+		if (
+			!isTransactionResponse(data) ||
+			data.buyer_id !== buyer_id ||
+			data.seller_id !== seller_id ||
+			data.currency !== currency ||
+			data.price !== price ||
+			data.charge !== charge
+		) {
+			throw new PaymentProviderAmbiguousError();
+		}
 
 		return data;
 	}
@@ -139,6 +209,7 @@ export class PaymentProviderService {
 				'Content-Type': 'application/json',
 				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 			},
+			signal: providerSignal(),
 		});
 
 		if (!response.ok) {

@@ -19,7 +19,18 @@ export type StubScenario =
 	| 'unauthorized'
 	| 'invalid-payload'
 	| 'provider-error'
+	| 'charge-error'
+	| 'charge-delay'
+	| 'shippo-delay'
+	| 'shippo-reordered-rates'
+	| 'shippo-address-mismatch'
+	| 'transaction-client-error'
+	| 'transaction-conflict'
 	| 'transaction-error'
+	| 'transaction-commit-error'
+	| 'transaction-invalid-json'
+	| 'transaction-invalid-body'
+	| 'transaction-delay'
 	| 'transaction-disconnect';
 export type CapturedRequest = {
 	method: string;
@@ -59,6 +70,7 @@ type TrustapTransactionRequest = {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
+	features: ['use_custom_postage_fee'];
 };
 
 type TrustapTransactionResource = Omit<
@@ -90,7 +102,18 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'unauthorized',
 	'invalid-payload',
 	'provider-error',
+	'charge-error',
+	'charge-delay',
+	'shippo-delay',
+	'shippo-reordered-rates',
+	'shippo-address-mismatch',
 	'transaction-error',
+	'transaction-client-error',
+	'transaction-conflict',
+	'transaction-commit-error',
+	'transaction-invalid-json',
+	'transaction-invalid-body',
+	'transaction-delay',
 	'transaction-disconnect',
 ]);
 const shippoDistanceUnits: ReadonlySet<string> = new Set(Object.values(DistanceUnitEnum));
@@ -279,7 +302,10 @@ function parseTrustapTransaction(body: unknown): TrustapTransactionRequest | und
 		!isSafeInteger(body.price, 1) ||
 		!isSafeInteger(body.postage_fee, 0) ||
 		!isSafeInteger(body.charge, 0) ||
-		!isSafeInteger(body.charge_calculator_version, 1)
+		!isSafeInteger(body.charge_calculator_version, 1) ||
+		!Array.isArray(body.features) ||
+		body.features.length !== 1 ||
+		body.features[0] !== 'use_custom_postage_fee'
 	) {
 		return undefined;
 	}
@@ -294,12 +320,15 @@ function parseTrustapTransaction(body: unknown): TrustapTransactionRequest | und
 		postage_fee: body.postage_fee,
 		charge: body.charge,
 		charge_calculator_version: body.charge_calculator_version,
+		features: ['use_custom_postage_fee'],
 	};
 }
 
 function isValidShippoShipment(body: unknown): boolean {
 	if (!isRecord(body) || !isRecord(body.address_from) || !isRecord(body.address_to)) return false;
 	return (
+		body.async === false &&
+		isNonemptyString(body.metadata) &&
 		isNonemptyString(body.address_from.country) &&
 		isNonemptyString(body.address_to.country) &&
 		Array.isArray(body.parcels) &&
@@ -349,7 +378,20 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'provider-error':
 			sendProviderError(kind, response);
 			return true;
+		case 'charge-error':
+		case 'charge-delay':
+			return false;
+		case 'shippo-delay':
+		case 'shippo-reordered-rates':
+		case 'shippo-address-mismatch':
+			return false;
 		case 'transaction-error':
+		case 'transaction-client-error':
+		case 'transaction-conflict':
+		case 'transaction-commit-error':
+		case 'transaction-invalid-json':
+		case 'transaction-invalid-body':
+		case 'transaction-delay':
 		case 'transaction-disconnect':
 			return false;
 	}
@@ -363,8 +405,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		[trustapTransactionFixture.id, trustapTransactionFixture],
 	]);
 	let nextTrustapTransactionId = trustapTransactionFixture.id + 1;
-	const shippoShipmentIds = new Set<string>();
+	const shippoShipments = new Map<string, typeof shippoShipmentFixture>();
 	const shippoRateIds = new Set<string>();
+	let nextShippoShipmentOrdinal = 1;
 
 	const resetState = () => {
 		requests = [];
@@ -373,8 +416,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		trustapTransactions.clear();
 		trustapTransactions.set(trustapTransactionFixture.id, trustapTransactionFixture);
 		nextTrustapTransactionId = trustapTransactionFixture.id + 1;
-		shippoShipmentIds.clear();
+		shippoShipments.clear();
 		shippoRateIds.clear();
+		nextShippoShipmentOrdinal = 1;
 	};
 
 	const server = createServer(async (request, response) => {
@@ -486,7 +530,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					break;
 				case 'shippo-get-shipment':
-					if (!shippoShipmentIds.has(route.shipmentId)) {
+					if (!shippoShipments.has(route.shipmentId)) {
 						sendNotFound(kind, response);
 						return;
 					}
@@ -508,6 +552,18 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 
 			if (scenario === 'transaction-error' && route.name === 'trustap-create-transaction') {
 				sendProviderError(kind, response);
+				return;
+			}
+			if (scenario === 'charge-error' && route.name === 'trustap-charge') {
+				sendProviderError(kind, response);
+				return;
+			}
+			if (scenario === 'transaction-client-error' && route.name === 'trustap-create-transaction') {
+				sendValidationError(kind, response, 'Trustap deterministically rejected the transaction');
+				return;
+			}
+			if (scenario === 'transaction-conflict' && route.name === 'trustap-create-transaction') {
+				sendJson(response, 409, { error: 'conflict', message: 'Trustap transaction outcome is unknown' });
 				return;
 			}
 			if (injectedScenarioResponse(kind, scenario, response)) return;
@@ -538,6 +594,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						}),
 						{ charge, version: chargeResponse.charge_calculator_version },
 					);
+					if (scenario === 'charge-delay') {
+						setTimeout(() => sendJson(response, 200, chargeResponse), 500);
+						return;
+					}
 					sendJson(response, 200, chargeResponse);
 					return;
 				}
@@ -556,6 +616,28 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					};
 					nextTrustapTransactionId += 1;
 					trustapTransactions.set(transaction.id, transaction);
+					if (scenario === 'transaction-commit-error') {
+						sendProviderError(kind, response);
+						return;
+					}
+					if (scenario === 'transaction-invalid-json') {
+						response.writeHead(201, { 'content-type': 'application/json; charset=utf-8' });
+						response.end('{"id":');
+						return;
+					}
+					if (scenario === 'transaction-invalid-body') {
+						sendJson(response, 201, {
+							id: transaction.id,
+							buyer_id: transaction.buyer_id,
+							seller_id: transaction.seller_id,
+							status: transaction.status,
+						});
+						return;
+					}
+					if (scenario === 'transaction-delay') {
+						setTimeout(() => sendJson(response, 201, transaction), 500);
+						return;
+					}
 					if (scenario === 'transaction-disconnect') {
 						response.destroy();
 						return;
@@ -566,6 +648,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 				case 'trustap-get-transaction': {
 					const transaction = trustapTransactions.get(route.transactionId);
 					if (!transaction) throw new Error('Known Trustap transaction is missing');
+					if (scenario === 'transaction-delay') {
+						setTimeout(() => sendJson(response, 200, transaction), 500);
+						return;
+					}
 					sendJson(response, 200, transaction);
 					return;
 				}
@@ -573,12 +659,59 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					sendJson(response, 200, shippoCarrierAccountsFixture);
 					return;
 				case 'shippo-create-shipment':
-					shippoShipmentIds.add(shippoShipmentFixture.object_id);
-					shippoRateIds.add(shippoRateFixture.object_id);
-					sendJson(response, 201, shippoShipmentFixture);
+					if (!isRecord(body) || !isRecord(body.address_from) || !isRecord(body.address_to)) {
+						throw new Error('Validated Shippo shipment input is missing');
+					}
+					{
+						const suffix = nextShippoShipmentOrdinal === 1 ? '' : `-${nextShippoShipmentOrdinal}`;
+						const shipmentId = `${shippoShipmentFixture.object_id}${suffix}`;
+						const rateId = `${shippoRateFixture.object_id}${suffix}`;
+						nextShippoShipmentOrdinal += 1;
+						const shipment = {
+							...shippoShipmentFixture,
+							object_id: shipmentId,
+							metadata: String(body.metadata),
+							address_from: body.address_from as typeof shippoShipmentFixture.address_from,
+							address_to: body.address_to as typeof shippoShipmentFixture.address_to,
+							parcels: body.parcels as unknown as typeof shippoShipmentFixture.parcels,
+							rates: [{ ...shippoRateFixture, object_id: rateId, shipment: shipmentId }],
+						} as typeof shippoShipmentFixture;
+						shippoShipments.set(shipmentId, shipment);
+						shippoRateIds.add(rateId);
+						if (scenario === 'shippo-delay') {
+							setTimeout(() => sendJson(response, 201, shipment), 500);
+							return;
+						}
+						sendJson(response, 201, shipment);
+					}
 					return;
 				case 'shippo-get-shipment':
-					sendJson(response, 200, shippoShipmentFixture);
+					{
+						const shipment = shippoShipments.get(route.shipmentId);
+						if (!shipment) throw new Error('Known Shippo shipment is missing');
+						if (scenario === 'shippo-delay') {
+							setTimeout(() => sendJson(response, 200, shipment), 500);
+							return;
+						}
+						if (scenario === 'shippo-reordered-rates') {
+							sendJson(response, 200, {
+								...shipment,
+								rates: [
+									{ ...shippoRateFixture, object_id: 'rate-cheap-decoy', amount: '0.01', shipment: route.shipmentId },
+									...shipment.rates,
+								],
+							});
+							return;
+						}
+						if (scenario === 'shippo-address-mismatch') {
+							sendJson(response, 200, {
+								...shipment,
+								address_to: { ...shipment.address_to, street1: 'Tampered provider address' },
+							});
+							return;
+						}
+						sendJson(response, 200, shipment);
+					}
 					return;
 				case 'shippo-create-transaction':
 					sendJson(response, 201, shippoTransactionFixture);

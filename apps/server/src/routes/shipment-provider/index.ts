@@ -71,22 +71,8 @@ export const shipmentProviderRoute = createRouter()
 				// get profile_id from user
 				const profile_id = user.profile_id;
 
-				const shipmentService = new ShipmentService();
-
-				// Calculate shipping cost and get rates using the centralized function
-				const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, profile_id, user.email);
-
-				// exclude object_owner object from rates
-				const filteredRates = rates.map((rate) => {
-					const { amount, shipment } = rate;
-
-					return {
-						amount,
-						shipment_label_id: shipment,
-					};
-				});
-
-				return c.json({ rates: filteredRates }, 200);
+				const quote = await new ShipmentService().createShippingQuote(item_id, profile_id, user.email);
+				return c.json({ rates: [quote] }, 200);
 			} catch (error) {
 				console.error('Error calculating shipment cost:', error);
 

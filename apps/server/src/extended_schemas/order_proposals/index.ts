@@ -6,7 +6,22 @@ export const create_order_proposal_schema = z.object({
 	item_id: z.number().int().positive().max(2_147_483_647),
 	proposal_price: z.number().int().positive().max(2_147_483_647),
 	shipping_label_id: z.string().min(1),
-	message: z.string(),
+	shipping_quote_id: z.uuid().optional(),
+	message: z
+		.string()
+		.trim()
+		.min(1)
+		.max(600)
+		.refine(
+			(value) =>
+				Array.from(value).every((character) => {
+					const code = character.codePointAt(0) ?? 0;
+					return (code > 31 && code !== 127) || code === 9 || code === 10 || code === 13;
+				}),
+			{
+				message: 'Message contains unsupported control characters',
+			},
+		),
 });
 
 export const seller_update_order_proposal_schema = ordersProposalsSelectSchema

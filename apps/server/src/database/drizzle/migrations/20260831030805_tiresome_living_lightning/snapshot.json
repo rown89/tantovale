@@ -111,6 +111,12 @@
 		},
 		{
 			"isRlsEnabled": false,
+			"name": "commerce_reconciliation_audit",
+			"entityType": "tables",
+			"schema": "public"
+		},
+		{
+			"isRlsEnabled": false,
 			"name": "chat_rooms",
 			"entityType": "tables",
 			"schema": "public"
@@ -202,6 +208,12 @@
 		{
 			"isRlsEnabled": false,
 			"name": "shippings",
+			"entityType": "tables",
+			"schema": "public"
+		},
+		{
+			"isRlsEnabled": false,
+			"name": "shipping_quotes",
 			"entityType": "tables",
 			"schema": "public"
 		},
@@ -644,6 +656,119 @@
 			"entityType": "columns",
 			"schema": "public",
 			"table": "chat_messages"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": {
+				"type": "always",
+				"name": "commerce_reconciliation_audit_id_seq",
+				"increment": "1",
+				"startWith": "1",
+				"minValue": "1",
+				"maxValue": "2147483647",
+				"cache": 1,
+				"cycle": false
+			},
+			"name": "id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "conflict_type",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "source_table",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "source_row_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "canonical_row_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "original_reference",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "jsonb",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "snapshot",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "now()",
+			"generated": null,
+			"identity": null,
+			"name": "created_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
 		},
 		{
 			"type": "integer",
@@ -1883,6 +2008,32 @@
 			"table": "orders_proposals"
 		},
 		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "shipping_quote_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders_proposals"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "shipping_price",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders_proposals"
+		},
+		{
 			"type": "proposal_status_enum",
 			"typeSchema": "public",
 			"notNull": true,
@@ -2069,6 +2220,84 @@
 			"generated": null,
 			"identity": null,
 			"name": "payment_transaction_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "legacy_payment_transaction_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "payment_attempt_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "'created'",
+			"generated": null,
+			"identity": null,
+			"name": "payment_creation_state",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "item_price",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "order_proposal_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "shipping_quote_id",
 			"entityType": "columns",
 			"schema": "public",
 			"table": "orders"
@@ -2795,6 +3024,188 @@
 			"table": "shippings"
 		},
 		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "item_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "buyer_profile_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "seller_profile_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "buyer_address_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "seller_address_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "shippo_shipment_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "shippo_rate_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "amount",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "currency",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "snapshot_fingerprint",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "expires_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "consumed_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "now()",
+			"generated": null,
+			"identity": null,
+			"name": "created_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
 			"type": "integer",
 			"typeSchema": null,
 			"notNull": true,
@@ -3466,6 +3877,34 @@
 			"nameExplicit": true,
 			"columns": [
 				{
+					"value": "source_table",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				},
+				{
+					"value": "source_row_id",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				}
+			],
+			"isUnique": false,
+			"where": null,
+			"with": "",
+			"method": "btree",
+			"concurrently": false,
+			"name": "commerce_reconciliation_audit_source_idx",
+			"entityType": "indexes",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit"
+		},
+		{
+			"nameExplicit": true,
+			"columns": [
+				{
 					"value": "item_id",
 					"isExpression": false,
 					"asc": true,
@@ -3893,6 +4332,41 @@
 			"nameExplicit": true,
 			"columns": [
 				{
+					"value": "item_id",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				},
+				{
+					"value": "buyer_profile_id",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				},
+				{
+					"value": "expires_at",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				}
+			],
+			"isUnique": false,
+			"where": null,
+			"with": "",
+			"method": "btree",
+			"concurrently": false,
+			"name": "shipping_quotes_item_buyer_expiry_idx",
+			"entityType": "indexes",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"nameExplicit": true,
+			"columns": [
+				{
 					"value": "property_id",
 					"isExpression": false,
 					"asc": true,
@@ -4262,6 +4736,19 @@
 		},
 		{
 			"nameExplicit": false,
+			"columns": ["shipping_quote_id"],
+			"schemaTo": "public",
+			"tableTo": "shipping_quotes",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "RESTRICT",
+			"name": "orders_proposals_shipping_quote_id_shipping_quotes_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "orders_proposals"
+		},
+		{
+			"nameExplicit": false,
 			"columns": ["item_id"],
 			"schemaTo": "public",
 			"tableTo": "items",
@@ -4321,6 +4808,32 @@
 			"onUpdate": "CASCADE",
 			"onDelete": "CASCADE",
 			"name": "orders_seller_address_addresses_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["order_proposal_id"],
+			"schemaTo": "public",
+			"tableTo": "orders_proposals",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "RESTRICT",
+			"name": "orders_order_proposal_id_orders_proposals_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["shipping_quote_id"],
+			"schemaTo": "public",
+			"tableTo": "shipping_quotes",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "RESTRICT",
+			"name": "orders_shipping_quote_id_shipping_quotes_id_fkey",
 			"entityType": "fks",
 			"schema": "public",
 			"table": "orders"
@@ -4402,6 +4915,71 @@
 			"entityType": "fks",
 			"schema": "public",
 			"table": "shippings"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["item_id"],
+			"schemaTo": "public",
+			"tableTo": "items",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "shipping_quotes_item_id_items_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["buyer_profile_id"],
+			"schemaTo": "public",
+			"tableTo": "profiles",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "shipping_quotes_buyer_profile_id_profiles_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["seller_profile_id"],
+			"schemaTo": "public",
+			"tableTo": "profiles",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "shipping_quotes_seller_profile_id_profiles_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["buyer_address_id"],
+			"schemaTo": "public",
+			"tableTo": "addresses",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "shipping_quotes_buyer_address_id_addresses_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["seller_address_id"],
+			"schemaTo": "public",
+			"tableTo": "addresses",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "shipping_quotes_seller_address_id_addresses_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "shipping_quotes"
 		},
 		{
 			"nameExplicit": false,
@@ -4529,6 +5107,14 @@
 			"name": "chat_messages_pkey",
 			"schema": "public",
 			"table": "chat_messages",
+			"entityType": "pks"
+		},
+		{
+			"columns": ["id"],
+			"nameExplicit": false,
+			"name": "commerce_reconciliation_audit_pkey",
+			"schema": "public",
+			"table": "commerce_reconciliation_audit",
 			"entityType": "pks"
 		},
 		{
@@ -4662,6 +5248,14 @@
 		{
 			"columns": ["id"],
 			"nameExplicit": false,
+			"name": "shipping_quotes_pkey",
+			"schema": "public",
+			"table": "shipping_quotes",
+			"entityType": "pks"
+		},
+		{
+			"columns": ["id"],
+			"nameExplicit": false,
 			"name": "states_pkey",
 			"schema": "public",
 			"table": "states",
@@ -4718,6 +5312,24 @@
 		},
 		{
 			"nameExplicit": false,
+			"columns": ["payment_attempt_id"],
+			"nullsNotDistinct": false,
+			"name": "orders_payment_attempt_id_key",
+			"schema": "public",
+			"table": "orders",
+			"entityType": "uniques"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["order_proposal_id"],
+			"nullsNotDistinct": false,
+			"name": "orders_order_proposal_id_key",
+			"schema": "public",
+			"table": "orders",
+			"entityType": "uniques"
+		},
+		{
+			"nameExplicit": false,
 			"columns": ["user_id"],
 			"nullsNotDistinct": false,
 			"name": "profiles_user_id_key",
@@ -4741,6 +5353,15 @@
 			"name": "refresh_tokens_token_key",
 			"schema": "public",
 			"table": "refresh_tokens",
+			"entityType": "uniques"
+		},
+		{
+			"nameExplicit": false,
+			"columns": ["shippo_rate_id"],
+			"nullsNotDistinct": false,
+			"name": "shipping_quotes_shippo_rate_id_key",
+			"schema": "public",
+			"table": "shipping_quotes",
 			"entityType": "uniques"
 		},
 		{
@@ -4769,6 +5390,27 @@
 			"schema": "public",
 			"table": "users",
 			"entityType": "uniques"
+		},
+		{
+			"value": "\"payment_creation_state\" IN ('preparing', 'creating', 'reconciliation_required', 'created')",
+			"name": "orders_payment_creation_state_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"value": "\"amount\" > 0",
+			"name": "shipping_quotes_amount_positive",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "shipping_quotes"
+		},
+		{
+			"value": "\"currency\" = 'EUR'",
+			"name": "shipping_quotes_currency_eur",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "shipping_quotes"
 		}
 	],
 	"renames": []

@@ -41,6 +41,7 @@ export interface CreateTransactionWithBothUsersProps {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
+	features?: ['use_custom_postage_fee'];
 }
 
 export interface CreateTransactionResponse {
@@ -80,7 +81,7 @@ export interface GetTransactionStatusResponse {
 		barcode: string;
 		barcode_generated: string;
 	};
-	pirce: number;
+	price: number;
 	quantity: number;
 	seller_id: string;
 	status: string;

@@ -7,9 +7,16 @@ import { addresses, cities, items, orders, profiles, users } from '#db-schema';
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath } from '#utils/constants';
+import { PAYMENT_CREATION_STATES } from '#database/schemas/enumerated_values';
+
+import { buildGuestPaymentUrl } from '../payments/payment-provider.service';
 
 const postgresIntegerMax = 2_147_483_647;
 const orderStatuses = new Set<string>(Object.values(ORDER_PHASES));
+const paymentActionStates = new Set<string>([
+	PAYMENT_CREATION_STATES.CREATED,
+	PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+]);
 
 function parseResourceId(value: string): number | undefined {
 	if (!/^[1-9]\d*$/.test(value)) return undefined;
@@ -43,27 +50,38 @@ export const ordersRoute = createRouter()
 			.where(predicate);
 
 		return c.json(
-			userOrders.map((order) => ({
-				id: order.orders.id,
-				status: order.orders.status as (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES],
-				original_price: order.items.price,
-				payment_provider_charge: order.orders.payment_provider_charge,
-				platform_charge: order.orders.platform_charge,
-				shipping_price: order.orders.shipping_price,
-				shipping_label_id: order.orders.shipping_label_id,
-				item: { id: order.items.id, title: order.items.title },
-				seller: { id: order.users.id, username: order.users.username },
-				buyer: {
-					street_address: order.addresses.street_address,
-					civic_number: order.addresses.civic_number,
-					city: order.city.name,
-					province: order.province.name,
-					postal_code: order.addresses.postal_code,
-					country_code: order.addresses.country_code,
-				},
-				updated_at: order.orders.updated_at,
-				created_at: order.orders.created_at,
-			})),
+			userOrders.map((order) => {
+				const paymentTransactionId = order.orders.payment_transaction_id ?? order.orders.legacy_payment_transaction_id;
+				return {
+					id: order.orders.id,
+					status: order.orders.status as (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES],
+					original_price: order.orders.item_price ?? order.items.price,
+					payment_provider_charge: order.orders.payment_provider_charge,
+					platform_charge: order.orders.platform_charge,
+					shipping_price: order.orders.shipping_price,
+					shipping_label_id: order.orders.shipping_label_id,
+					item: { id: order.items.id, title: order.items.title },
+					seller: { id: order.users.id, username: order.users.username },
+					buyer: {
+						street_address: order.addresses.street_address,
+						civic_number: order.addresses.civic_number,
+						city: order.city.name,
+						province: order.province.name,
+						postal_code: order.addresses.postal_code,
+						country_code: order.addresses.country_code,
+					},
+					updated_at: order.orders.updated_at,
+					created_at: order.orders.created_at,
+					...(order.orders.buyer_id === user.profile_id &&
+					paymentActionStates.has(order.orders.payment_creation_state) &&
+					paymentTransactionId
+						? {
+								payment_transaction_id: paymentTransactionId,
+								payment_url: buildGuestPaymentUrl(paymentTransactionId, order.orders.id),
+							}
+						: {}),
+				};
+			}),
 			200,
 		);
 	})
@@ -80,5 +98,19 @@ export const ordersRoute = createRouter()
 			.limit(1);
 
 		if (!order) return c.json({ error: 'Order not found' }, 404);
-		return c.json(order, 200);
+		const paymentTransactionId = order.payment_transaction_id ?? order.legacy_payment_transaction_id;
+		return c.json(
+			{
+				...order,
+				...(order.buyer_id === user.profile_id &&
+				paymentActionStates.has(order.payment_creation_state) &&
+				paymentTransactionId
+					? {
+							payment_transaction_id: paymentTransactionId,
+							payment_url: buildGuestPaymentUrl(paymentTransactionId, order.id),
+						}
+					: {}),
+			},
+			200,
+		);
 	});

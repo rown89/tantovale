@@ -1,15 +1,22 @@
 import { and, eq } from 'drizzle-orm';
+import type { PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import { app } from '../../src/app';
 import { itemStatus, ORDER_PROPOSAL_PHASES, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
+import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
+import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
 import {
+	addresses,
+	categories,
 	chat_messages,
 	chat_rooms,
 	entityTrustapTransactions,
 	items,
 	orders,
 	orders_proposals,
+	profiles,
+	shipping_quotes,
 } from '../../src/database/schemas/schema';
 import {
 	createCommerceActors,
@@ -21,7 +28,7 @@ import {
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
-import { getProviderRequests } from '../helpers/providers';
+import { getProviderRequests, setProviderScenario } from '../helpers/providers';
 import type { CookieJar } from '../helpers/request';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 
@@ -33,7 +40,14 @@ function providerUrl(name: 'PAYMENT_PROVIDER_API_URL' | 'SHIPPING_PROVIDER_API_U
 	return value;
 }
 
-async function createShipment(actors: CommerceActorGraph, itemId: number): Promise<string> {
+type CreatedShippingQuote = {
+	amount: string;
+	currency: string;
+	shipment_label_id: string;
+	shipping_quote_id: string;
+};
+
+async function createShippingQuote(actors: CommerceActorGraph, itemId: number): Promise<CreatedShippingQuote> {
 	const response = await authenticatedRequest(
 		'/shipment_provider/auth/calculate_shipment_cost',
 		'POST',
@@ -41,9 +55,18 @@ async function createShipment(actors: CommerceActorGraph, itemId: number): Promi
 		{ item_id: itemId },
 	);
 	expect(response.status).toBe(200);
-	const body = (await response.json()) as { rates: Array<{ amount: string; shipment_label_id: string }> };
-	expect(body.rates[0]).toMatchObject({ amount: '7.50', shipment_label_id: 'shipment-test' });
-	return body.rates[0]!.shipment_label_id;
+	const body = (await response.json()) as { rates: CreatedShippingQuote[] };
+	expect(body.rates[0]).toMatchObject({
+		amount: '7.50',
+		currency: 'EUR',
+		shipment_label_id: expect.stringMatching(/^shipment-test(?:-\d+)?$/),
+		shipping_quote_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+	});
+	return body.rates[0]!;
+}
+
+async function createShipment(actors: CommerceActorGraph, itemId: number): Promise<string> {
+	return (await createShippingQuote(actors, itemId)).shipment_label_id;
 }
 
 async function createRoom(actors: CommerceActorGraph, itemId: number): Promise<number> {
@@ -55,14 +78,42 @@ async function createRoom(actors: CommerceActorGraph, itemId: number): Promise<n
 async function createProposal(
 	actors: CommerceActorGraph,
 	itemId: number,
-	overrides: Partial<{ item_id: number; proposal_price: number; shipping_label_id: string; message: string }> = {},
+	overrides: Partial<{
+		item_id: number;
+		proposal_price: number;
+		shipping_label_id: string;
+		shipping_quote_id: string;
+		message: string;
+	}> = {},
 ): Promise<Response> {
-	const shippingLabelId = overrides.shipping_label_id ?? (await createShipment(actors, itemId));
+	const generatedQuote =
+		overrides.shipping_label_id === undefined ? await createShippingQuote(actors, itemId) : undefined;
+	const shippingLabelId = overrides.shipping_label_id ?? generatedQuote!.shipment_label_id;
 	return authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
 		item_id: itemId,
 		proposal_price: 10_000,
 		shipping_label_id: shippingLabelId,
+		...(generatedQuote ? { shipping_quote_id: generatedQuote.shipping_quote_id } : {}),
 		message: 'Posso offrirti cento euro per questo articolo?',
+		...overrides,
+	});
+}
+
+async function createQuotedProposalFixture(
+	actors: CommerceActorGraph,
+	item: Awaited<ReturnType<typeof createItemFixture>>,
+	overrides: Partial<typeof orders_proposals.$inferInsert> = {},
+) {
+	const quote = await createShippingQuote(actors, item.id);
+	const { db } = getTestDatabase();
+	await db
+		.update(shipping_quotes)
+		.set({ consumed_at: new Date() })
+		.where(eq(shipping_quotes.id, quote.shipping_quote_id));
+	return createProposalFixture(actors, item, {
+		shipping_label_id: quote.shipment_label_id,
+		shipping_quote_id: quote.shipping_quote_id,
+		shipping_price: 750,
 		...overrides,
 	});
 }
@@ -83,6 +134,34 @@ async function updateProposal(
 async function rowsForProposal(proposalId: number) {
 	const { db } = getTestDatabase();
 	return db.select().from(chat_messages).where(eq(chat_messages.order_proposal_id, proposalId));
+}
+
+async function waitForProviderRequest(url: string, method: string, path: string): Promise<void> {
+	const deadline = Date.now() + 2_000;
+	do {
+		if ((await getProviderRequests(url)).some((request) => request.method === method && request.path === path)) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	} while (Date.now() < deadline);
+	throw new Error(`Timed out waiting for ${method} ${path}`);
+}
+
+async function waitForBlockedRequests(
+	blocker: PoolClient,
+	blockingProcessId: number,
+	expectedCount: number,
+): Promise<void> {
+	const deadline = Date.now() + 3_000;
+	do {
+		const { rows } = await blocker.query<{ blocked_count: number }>(
+			`SELECT count(*)::int AS blocked_count
+			 FROM pg_stat_activity
+			 WHERE $1 = ANY(pg_blocking_pids(pid))`,
+			[blockingProcessId],
+		);
+		if ((rows[0]?.blocked_count ?? 0) >= expectedCount) return;
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	} while (Date.now() < deadline);
+	throw new Error(`Timed out waiting for ${expectedCount} item-commerce lock waiters`);
 }
 
 describe('proposal routes', () => {
@@ -119,7 +198,8 @@ describe('proposal routes', () => {
 				status: string;
 				proposal_price: number;
 				shipping_label_id: string;
-				shipping_price?: number;
+				shipping_quote_id: string;
+				shipping_price: number;
 				platform_charge: number;
 				payment_provider_charge: number;
 			};
@@ -131,8 +211,10 @@ describe('proposal routes', () => {
 			status: ORDER_PROPOSAL_PHASES.pending,
 			proposal_price: 10_000,
 			shipping_label_id: 'shipment-test',
-			platform_charge: 60,
-			payment_provider_charge: 503,
+			shipping_quote_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+			shipping_price: 750,
+			platform_charge: 90,
+			payment_provider_charge: 505,
 		});
 		expect(body.chatRoomId).toEqual(expect.any(Number));
 
@@ -145,9 +227,16 @@ describe('proposal routes', () => {
 			status: body.proposal.status,
 			proposal_price: body.proposal.proposal_price,
 			shipping_label_id: body.proposal.shipping_label_id,
+			shipping_quote_id: body.proposal.shipping_quote_id,
+			shipping_price: body.proposal.shipping_price,
 			platform_charge: body.proposal.platform_charge,
 			payment_provider_charge: body.proposal.payment_provider_charge,
 		});
+		const [quote] = await db
+			.select()
+			.from(shipping_quotes)
+			.where(eq(shipping_quotes.id, body.proposal.shipping_quote_id));
+		expect(quote).toMatchObject({ consumed_at: expect.any(Date), amount: 750, currency: 'EUR' });
 		const [room] = await db.select().from(chat_rooms).where(eq(chat_rooms.id, body.chatRoomId));
 		expect(room).toMatchObject({ item_id: item.id, buyer_id: actors.buyer.profile.id });
 		const messages = await rowsForProposal(body.proposal.id);
@@ -165,12 +254,307 @@ describe('proposal routes', () => {
 
 		const trustapRequests = await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'));
 		expect(trustapRequests).toHaveLength(1);
-		expect(trustapRequests[0]?.path).toBe('/api/v1/charge?price=10060&currency=eur&postage_fee=750&use_hr_post=false');
+		expect(trustapRequests[0]?.path).toBe('/api/v1/charge?price=10090&currency=eur&postage_fee=750&use_hr_post=false');
 		const shippoRequests = await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'));
 		expect(shippoRequests.map(({ method, path }) => `${method} ${path}`)).toEqual([
 			'POST /shipments',
 			'GET /shipments/shipment-test',
 		]);
+	});
+
+	it('persists a newly provisioned buyer identity before downstream proposal failure and reuses it on retry', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		const { db } = getTestDatabase();
+		await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.buyer.profile.id));
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'charge-error');
+		const payload = {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Durable identity boundary',
+		};
+		expect(
+			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
+		).toBe(500);
+		const [afterFailure] = await db.select().from(profiles).where(eq(profiles.id, actors.buyer.profile.id));
+		expect(afterFailure?.payment_provider_id).toBe(`guest-${actors.buyer.profile.id}`);
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'success');
+		expect(
+			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
+		).toBe(200);
+		const guestRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/guest_users',
+		);
+		expect(guestRequests).toHaveLength(1);
+	});
+
+	it('does not hold the item commerce lock while waiting on proposal fee calculation', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'charge-delay');
+		const responsePromise = authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Provider boundary',
+		});
+		await waitForProviderRequest(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			'GET',
+			'/api/v1/charge?price=10090&currency=eur&postage_fee=750&use_hr_post=false',
+		);
+
+		const { client, db } = getTestDatabase();
+		const contender = await client.connect();
+		try {
+			await contender.query('BEGIN');
+			const result = await contender.query<{ acquired: boolean }>(
+				'SELECT pg_try_advisory_xact_lock(hashtext(current_database() || $1), $2) AS acquired',
+				[itemCommerceLockScope, item.id],
+			);
+			expect(result.rows[0]?.acquired).toBe(true);
+		} finally {
+			await contender.query('ROLLBACK');
+			contender.release();
+		}
+		expect((await responsePromise).status).toBe(500);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.item_id, item.id))).toEqual([]);
+	});
+
+	it('atomically consumes a shipping quote once under concurrent proposal creation', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		const payload = {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Consume this quote exactly once',
+		};
+		const { client, db } = getTestDatabase();
+		const blocker = await client.connect();
+		let responsesPromise: Promise<Response[]> | undefined;
+		try {
+			await blocker.query('BEGIN');
+			const processResult = await blocker.query<{ process_id: number }>('SELECT pg_backend_pid() AS process_id');
+			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+				itemCommerceLockScope,
+				item.id,
+			]);
+			responsesPromise = Promise.all([
+				authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload),
+				authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload),
+			]);
+			await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+			await blocker.query('COMMIT');
+		} finally {
+			if (!responsesPromise) await blocker.query('ROLLBACK');
+			blocker.release();
+		}
+		if (!responsesPromise) throw new Error('Concurrent proposal requests were not started');
+		const responses = await responsesPromise;
+		expect(responses.map(({ status }) => status).sort()).toEqual([200, 400]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.item_id, item.id))).toHaveLength(1);
+		const [storedQuote] = await db
+			.select()
+			.from(shipping_quotes)
+			.where(eq(shipping_quotes.id, quote.shipping_quote_id));
+		expect(storedQuote?.consumed_at).toEqual(expect.any(Date));
+	});
+
+	it('creates a synchronous opaque server-bound shipping quote', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		const [request] = await getProviderRequests(providerUrl('SHIPPING_PROVIDER_API_URL'));
+		expect(request).toMatchObject({ method: 'POST', path: '/shipments' });
+		expect(request?.body).toMatchObject({
+			async: false,
+			metadata: `tvq1:${quote.shipping_quote_id}`,
+		});
+	});
+
+	it('bounds a delayed Shippo quote request without persisting a quote', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-delay');
+		const startedAt = Date.now();
+		const response = await authenticatedRequest(
+			'/shipment_provider/auth/calculate_shipment_cost',
+			'POST',
+			actors.buyer.jar,
+			{ item_id: item.id },
+		);
+		expect(response.status).toBe(500);
+		expect(Date.now() - startedAt).toBeLessThan(1_000);
+		const { db } = getTestDatabase();
+		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
+	});
+
+	it('rejects a Shippo retrieval whose expanded address no longer matches the server snapshot', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-address-mismatch');
+		const response = await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Address-bound quote',
+		});
+		expect(response.status).toBe(400);
+		const { db } = getTestDatabase();
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.item_id, item.id))).toEqual([]);
+	});
+
+	it('selects the persisted Shippo rate by ID even when retrieval rates are reordered', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-reordered-rates');
+		const response = await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Persisted rate, not first rate',
+		});
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as { proposal: { shipping_price: number } };
+		expect(body.proposal.shipping_price).toBe(750);
+	});
+
+	it('rejects cross-buyer, cross-item, expired, mutated, and replayed shipping quotes', async () => {
+		const cases: Array<
+			(
+				actors: CommerceActorGraph,
+				item: Awaited<ReturnType<typeof createItemFixture>>,
+				quote: CreatedShippingQuote,
+			) => Promise<Response>
+		> = [
+			async (actors, item, quote) =>
+				authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.outsider.jar, {
+					item_id: item.id,
+					proposal_price: 10_000,
+					shipping_label_id: quote.shipment_label_id,
+					shipping_quote_id: quote.shipping_quote_id,
+					message: 'Cross buyer',
+				}),
+			async (actors, _item, quote) => {
+				const otherItem = await createItemFixture(actors, { commons: { title: 'Cross quote item' } });
+				return authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+					item_id: otherItem.id,
+					proposal_price: 10_000,
+					shipping_label_id: quote.shipment_label_id,
+					shipping_quote_id: quote.shipping_quote_id,
+					message: 'Cross item',
+				});
+			},
+			async (actors, item, quote) => {
+				const { db } = getTestDatabase();
+				await db
+					.update(shipping_quotes)
+					.set({ expires_at: new Date(0) })
+					.where(eq(shipping_quotes.id, quote.shipping_quote_id));
+				return authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+					item_id: item.id,
+					proposal_price: 10_000,
+					shipping_label_id: quote.shipment_label_id,
+					shipping_quote_id: quote.shipping_quote_id,
+					message: 'Expired',
+				});
+			},
+			async (actors, item, quote) => {
+				const { db } = getTestDatabase();
+				await db.update(items).set({ item_length: 99 }).where(eq(items.id, item.id));
+				return authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+					item_id: item.id,
+					proposal_price: 10_000,
+					shipping_label_id: quote.shipment_label_id,
+					shipping_quote_id: quote.shipping_quote_id,
+					message: 'Mutated dimensions',
+				});
+			},
+			async (actors, item, quote) => {
+				const { db } = getTestDatabase();
+				await db
+					.update(addresses)
+					.set({ street_address: 'A different active buyer address' })
+					.where(eq(addresses.id, actors.buyer.address.id));
+				return authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+					item_id: item.id,
+					proposal_price: 10_000,
+					shipping_label_id: quote.shipment_label_id,
+					shipping_quote_id: quote.shipping_quote_id,
+					message: 'Mutated buyer address',
+				});
+			},
+		];
+
+		for (const runCase of cases) {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const quote = await createShippingQuote(actors, item.id);
+			const response = await runCase(actors, item, quote);
+			expect(response.status).toBe(400);
+			const { db } = getTestDatabase();
+			expect(await db.select().from(orders_proposals).where(eq(orders_proposals.item_id, item.id))).toEqual([]);
+		}
+
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const quote = await createShippingQuote(actors, item.id);
+		const payload = {
+			item_id: item.id,
+			proposal_price: 10_000,
+			shipping_label_id: quote.shipment_label_id,
+			shipping_quote_id: quote.shipping_quote_id,
+			message: 'Replay once',
+		};
+		expect(
+			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
+		).toBe(200);
+		expect(
+			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
+		).toBe(400);
+	});
+
+	it.each(['', '   \t\n ', 'x'.repeat(601), 'unsafe\u0000message', 'unsafe\u001fmessage'])(
+		'rejects an empty, oversized, or unsafe proposal message',
+		async (message) => {
+			const actors = await createCommerceActors();
+			const response = await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, {
+				item_id: 1,
+				proposal_price: 10_000,
+				shipping_label_id: 'unused',
+				message,
+			});
+			expect(response.status).toBe(400);
+		},
+	);
+
+	it('trims safe proposal text, preserves internal whitespace, and HTML-escapes seller mail', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const safeText = '<script>alert("proposal")</script>\n\tOfferta valida';
+		const response = await createProposal(actors, item.id, { message: `  ${safeText}  ` });
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as { proposal: { id: number } };
+		const [stored] = await rowsForProposal(body.proposal.id);
+		expect(stored?.message).toBe(safeText);
+		const email = await waitForEmail(
+			actors.seller.user.email,
+			`Tantovale - Proposal received from ${actors.buyer.user.username}`,
+		);
+		expect(email.HTML).toContain('&lt;script&gt;alert(&quot;proposal&quot;)&lt;/script&gt;');
+		expect(email.HTML).not.toContain('<script>alert');
 	});
 
 	it.each([
@@ -344,6 +728,21 @@ describe('proposal routes', () => {
 		await waitForEmail(actors.buyer.user.email, 'Tantovale - Proposal rejected');
 	});
 
+	it('lets the seller reject without requiring the buyer active address or provider identity', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createProposalFixture(actors, item);
+		const { db } = getTestDatabase();
+		await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, actors.buyer.address.id));
+		await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.buyer.profile.id));
+
+		const response = await updateProposal(actors.seller.jar, proposal.id, item.id, 'rejected');
+		expect(response.status).toBe(200);
+		const [stored] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		expect(stored?.status).toBe(ORDER_PROPOSAL_PHASES.rejected);
+	});
+
 	it('binds seller updates to the proposal item and rejects non-pending transitions', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -364,16 +763,75 @@ describe('proposal routes', () => {
 		expect(terminal.status).toBe(404);
 	});
 
+	it.each([
+		['unavailable item', 400],
+		['unpublished item', 400],
+		['deleted item', 404],
+		['non-Easy-Pay item', 400],
+		['unpublished taxonomy', 400],
+		['inactive seller address', 404],
+		['inactive buyer address', 404],
+		['missing seller provider', 404],
+		['missing buyer provider', 404],
+	] as const)('revalidates %s before accepting a proposal', async (mutation, expectedStatus) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
+			proposal_price: 10_000,
+			platform_charge: 90,
+			payment_provider_charge: 505,
+		});
+		const { db } = getTestDatabase();
+		switch (mutation) {
+			case 'unavailable item':
+				await db.update(items).set({ status: itemStatus.SOLD }).where(eq(items.id, item.id));
+				break;
+			case 'unpublished item':
+				await db.update(items).set({ published: false }).where(eq(items.id, item.id));
+				break;
+			case 'deleted item':
+				await db.update(items).set({ deleted_at: new Date() }).where(eq(items.id, item.id));
+				break;
+			case 'non-Easy-Pay item':
+				await db.update(items).set({ easy_pay: false }).where(eq(items.id, item.id));
+				break;
+			case 'unpublished taxonomy':
+				await db
+					.update(categories)
+					.set({ published: false })
+					.where(eq(categories.id, actors.catalog.publishedCategory.id));
+				break;
+			case 'inactive seller address':
+				await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, actors.seller.address.id));
+				break;
+			case 'inactive buyer address':
+				await db.update(addresses).set({ status: 'inactive' }).where(eq(addresses.id, actors.buyer.address.id));
+				break;
+			case 'missing seller provider':
+				await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.seller.profile.id));
+				break;
+			case 'missing buyer provider':
+				await db.update(profiles).set({ payment_provider_id: null }).where(eq(profiles.id, actors.buyer.profile.id));
+				break;
+		}
+
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(expectedStatus);
+		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
+		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+		);
+		expect(transactionRequests).toEqual([]);
+	});
+
 	it('accepts once, creating one provider transaction, complete order graph, and accepted system message', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
-		const shippingLabelId = await createShipment(actors, item.id);
 		const roomId = await createRoom(actors, item.id);
-		const proposal = await createProposalFixture(actors, item, {
-			shipping_label_id: shippingLabelId,
+		const proposal = await createQuotedProposalFixture(actors, item, {
 			proposal_price: 10_000,
-			platform_charge: 60,
-			payment_provider_charge: 503,
+			platform_charge: 90,
+			payment_provider_charge: 505,
 		});
 
 		const response = await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
@@ -386,6 +844,7 @@ describe('proposal routes', () => {
 		expect(body.proposal).toMatchObject({ id: proposal.id, status: ORDER_PROPOSAL_PHASES.accepted });
 		expect(body.order.id).toEqual(expect.any(Number));
 		expect(body.transaction).toMatchObject({ id: expect.any(Number), status: 'created' });
+		expect(body).not.toHaveProperty('payment_url');
 
 		const { db } = getTestDatabase();
 		const [order] = await db.select().from(orders).where(eq(orders.id, body.order.id));
@@ -398,6 +857,10 @@ describe('proposal routes', () => {
 			status: ORDER_PHASES.PAYMENT_PENDING,
 			shipping_price: 750,
 			shipping_label_id: 'shipment-test',
+			shipping_quote_id: proposal.shipping_quote_id,
+			order_proposal_id: proposal.id,
+			item_price: 10_000,
+			payment_creation_state: 'created',
 		});
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
@@ -407,7 +870,9 @@ describe('proposal routes', () => {
 			.from(chat_messages)
 			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system')));
 		expect(systemMessage?.metadata).toEqual({ order_id: body.order.id, type: 'proposal_accepted' });
-		await waitForEmail(actors.buyer.user.email, 'Tantovale - Proposal accepted');
+		const acceptedEmail = await waitForEmail(actors.buyer.user.email, 'Tantovale - Proposal accepted');
+		expect(acceptedEmail.HTML).toContain(`/auth/profile/orders?highlight=${body.order.id}`);
+		expect(acceptedEmail.HTML).toContain(`/online/transactions/${body.transaction.id}/guest_pay`);
 
 		const second = await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
 		expect(second.status).toBe(404);
@@ -422,22 +887,21 @@ describe('proposal routes', () => {
 				buyer_id: actors.buyer.profile.payment_provider_id,
 				seller_id: actors.seller.profile.payment_provider_id,
 				creator_role: 'seller',
-				price: 10_060,
+				price: 10_090,
 				postage_fee: 750,
-				charge: 503,
+				charge: 505,
+				features: ['use_custom_postage_fee'],
 			},
 		});
 	});
 
-	it('leaves a proposal pending and no local payment graph when Trustap transaction creation fails', async () => {
+	it('keeps a reconciliation reservation after an ambiguous Trustap transaction failure', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
-		const shippingLabelId = await createShipment(actors, item.id);
 		await createRoom(actors, item.id);
-		const proposal = await createProposalFixture(actors, item, {
-			shipping_label_id: shippingLabelId,
+		const proposal = await createQuotedProposalFixture(actors, item, {
 			proposal_price: 10_000,
-			platform_charge: 60,
+			platform_charge: 90,
 		});
 		const scenarioResponse = await fetch(`${providerUrl('PAYMENT_PROVIDER_API_URL')}/__test/scenario`, {
 			method: 'POST',
@@ -452,28 +916,114 @@ describe('proposal routes', () => {
 		const { db } = getTestDatabase();
 		const [stored] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
 		expect(stored?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
-		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
+		const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		expect(reservation).toMatchObject({
+			order_proposal_id: proposal.id,
+			payment_transaction_id: null,
+			payment_creation_state: 'reconciliation_required',
+			status: ORDER_PHASES.PAYMENT_PENDING,
+		});
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
 		).toEqual([]);
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(400);
+		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+		);
+		expect(transactionRequests).toHaveLength(1);
+	});
+
+	it('cleans a deterministic Trustap rejection and permits one safe acceptance retry', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
+			proposal_price: 10_000,
+			platform_charge: 90,
+			payment_provider_charge: 505,
+		});
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'transaction-client-error');
+
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(500);
+		const { db } = getTestDatabase();
+		expect(await db.select().from(orders).where(eq(orders.item_id, item.id))).toEqual([]);
+		const [pending] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		expect(pending?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
+
+		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'success');
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(200);
+		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
+		);
+		expect(transactionRequests).toHaveLength(2);
+	});
+
+	it('does not hold the item commerce lock while retrieving the accepted proposal quote', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
+			proposal_price: 10_000,
+			platform_charge: 90,
+			payment_provider_charge: 505,
+		});
+		await setProviderScenario(providerUrl('SHIPPING_PROVIDER_API_URL'), 'shippo-delay');
+
+		const responsePromise = updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
+		await waitForProviderRequest(
+			providerUrl('SHIPPING_PROVIDER_API_URL'),
+			'GET',
+			`/shipments/${proposal.shipping_label_id}`,
+		);
+
+		const { client } = getTestDatabase();
+		const contender = await client.connect();
+		try {
+			await contender.query('BEGIN');
+			const result = await contender.query<{ acquired: boolean }>(
+				'SELECT pg_try_advisory_xact_lock(hashtext(current_database() || $1), $2) AS acquired',
+				[itemCommerceLockScope, item.id],
+			);
+			expect(result.rows[0]?.acquired).toBe(true);
+		} finally {
+			await contender.query('ROLLBACK');
+			contender.release();
+		}
+		expect((await responsePromise).status).toBe(500);
 	});
 
 	it('serializes proposal acceptance against buy-now into one order and one provider transaction', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
-		const shippingLabelId = await createShipment(actors, item.id);
 		await createRoom(actors, item.id);
-		const proposal = await createProposalFixture(actors, item, {
-			shipping_label_id: shippingLabelId,
+		const proposal = await createQuotedProposalFixture(actors, item, {
 			proposal_price: 10_000,
-			platform_charge: 60,
-			payment_provider_charge: 503,
+			platform_charge: 90,
+			payment_provider_charge: 505,
 		});
 
-		const [acceptResponse, buyNowResponse] = await Promise.all([
-			updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted'),
-			authenticatedRequest('/item/auth/buy_now', 'POST', actors.buyer.jar, { item_id: item.id }),
-		]);
+		const { client } = getTestDatabase();
+		const blocker = await client.connect();
+		let responsesPromise: Promise<[Response, Response]> | undefined;
+		try {
+			await blocker.query('BEGIN');
+			const processResult = await blocker.query<{ process_id: number }>('SELECT pg_backend_pid() AS process_id');
+			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+				itemCommerceLockScope,
+				item.id,
+			]);
+			responsesPromise = Promise.all([
+				updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted'),
+				authenticatedRequest('/item/auth/buy_now', 'POST', actors.buyer.jar, { item_id: item.id }),
+			]);
+			await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+			await blocker.query('COMMIT');
+		} finally {
+			if (!responsesPromise) await blocker.query('ROLLBACK');
+			blocker.release();
+		}
+		if (!responsesPromise) throw new Error('Accept-vs-buy requests were not started');
+		const [acceptResponse, buyNowResponse] = await responsesPromise;
 		expect([acceptResponse.status, buyNowResponse.status].sort()).toEqual([200, 400]);
 
 		const { db } = getTestDatabase();
@@ -491,18 +1041,69 @@ describe('proposal routes', () => {
 		expect(transactionRequests).toHaveLength(1);
 	});
 
+	it.each(['edit', 'unpublish', 'delete'] as const)(
+		'serializes proposal acceptance against %s so exactly one operation wins',
+		async (mutation) => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			await createRoom(actors, item.id);
+			const proposal = await createQuotedProposalFixture(actors, item, {
+				proposal_price: 10_000,
+				platform_charge: 90,
+			});
+			const { client, db } = getTestDatabase();
+			const blocker = await client.connect();
+			let released = false;
+			try {
+				await blocker.query('BEGIN');
+				const processResult = await blocker.query<{ process_id: number }>('SELECT pg_backend_pid() AS process_id');
+				await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+					itemCommerceLockScope,
+					item.id,
+				]);
+				const acceptPromise = updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
+				const mutationPromise =
+					mutation === 'edit'
+						? authenticatedRequest(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+								commons: { title: 'Serialized proposal edit' },
+							})
+						: authenticatedRequest(
+								mutation === 'delete' ? '/item/auth/user_delete_item' : '/item/auth/publish_state',
+								'POST',
+								actors.seller.jar,
+								mutation === 'delete' ? { id: item.id } : { id: item.id, published: false },
+							);
+				await waitForBlockedRequests(blocker, processResult.rows[0]!.process_id, 2);
+				await blocker.query('COMMIT');
+				released = true;
+				const [acceptResponse, mutationResponse] = await Promise.all([acceptPromise, mutationPromise]);
+				expect([acceptResponse.status, mutationResponse.status].filter((status) => status === 200)).toHaveLength(1);
+				const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+				if (acceptResponse.status === 200) {
+					expect(mutationResponse.status).toBe(400);
+					expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
+				} else {
+					expect([400, 404, 409]).toContain(acceptResponse.status);
+					expect(mutationResponse.status).toBe(200);
+					expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
+				}
+			} finally {
+				if (!released) await blocker.query('ROLLBACK');
+				blocker.release();
+			}
+		},
+	);
+
 	it('keeps an accepted-proposal reservation and blocks retry if final local persistence fails', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		const conflictingItem = await createItemFixture(actors, {
 			commons: { title: 'Proposal transaction conflict item' },
 		});
-		const shippingLabelId = await createShipment(actors, item.id);
-		await createRoom(actors, item.id);
-		const proposal = await createProposalFixture(actors, item, {
-			shipping_label_id: shippingLabelId,
+		const roomId = await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item, {
 			proposal_price: 10_000,
-			platform_charge: 60,
+			platform_charge: 90,
 		});
 		const expectedTransactionId = trustapTransactionFixture.id + 1;
 		const { db } = getTestDatabase();
@@ -528,7 +1129,8 @@ describe('proposal routes', () => {
 			buyer_id: actors.buyer.profile.id,
 			seller_id: actors.seller.profile.id,
 			status: ORDER_PHASES.PAYMENT_PENDING,
-			payment_transaction_id: null,
+			payment_transaction_id: expectedTransactionId,
+			payment_creation_state: 'reconciliation_required',
 		});
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
@@ -542,8 +1144,33 @@ describe('proposal routes', () => {
 		expect(abortWhileReconciling.status).toBe(400);
 		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'rejected')).status).toBe(400);
 
+		await db
+			.delete(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, expectedTransactionId));
+		const syncResult = await new TransactionSyncService().syncTransactionStatuses();
+		expect(syncResult.results).toContainEqual(
+			expect.objectContaining({
+				orderId: reservations[0]!.id,
+				transactionId: expectedTransactionId,
+				recovered: true,
+				success: true,
+			}),
+		);
+		const [recoveredProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		expect(recoveredProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.entityId, item.id)),
+		).toEqual([expect.objectContaining({ transactionId: expectedTransactionId, status: 'created' })]);
+		const recoveredMessages = await db
+			.select()
+			.from(chat_messages)
+			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system')));
+		expect(recoveredMessages).toEqual([
+			expect.objectContaining({ metadata: { order_id: reservations[0]!.id, type: 'proposal_accepted' } }),
+		]);
+
 		const retry = await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted');
-		expect(retry.status).toBe(400);
+		expect(retry.status).toBe(404);
 		const transactionRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
 			({ method, path }) => method === 'POST' && path === '/api/v1/me/transactions/create_with_guest_user',
 		);

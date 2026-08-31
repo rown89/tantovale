@@ -43,7 +43,13 @@ export default function UserSellingItemsComponent() {
 	type OrderType = (typeof orders)[number];
 
 	const handleCompletePayment = (order: OrderType) => {
-		setSelectedOrder(order);
+		if (!('payment_url' in order) || typeof order.payment_url !== 'string') {
+			toast.error('Payment link unavailable', {
+				description: 'Refresh the order or try again later.',
+			});
+			return;
+		}
+		window.open(order.payment_url, '_blank', 'noopener,noreferrer');
 	};
 
 	const handleShipping = (order: OrderType) => {
@@ -85,8 +91,6 @@ export default function UserSellingItemsComponent() {
 
 				{orders && orders.length && (
 					<>
-						{/* TODO: Add payment dialog or redirect to payment page */}
-
 						<ShippingDialog
 							isOpen={isShippingDialogOpen}
 							setIsOpen={setIsShippingDialogOpen}

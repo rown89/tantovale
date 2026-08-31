@@ -17,6 +17,7 @@ import {
 } from '../../src/database/schemas/schema';
 import { itemStatus, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
 import { createItemSchema, updateItemSchema } from '../../src/extended_schemas/item';
+import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { paymentProviderIdentityLockScope } from '../../src/lib/payment-provider-identity-lock';
 import { environment } from '../../src/utils/constants';
 import { createAddressFixture } from '../fixtures/addresses';
@@ -147,6 +148,37 @@ async function waitForBlockedItemLockWaiters(expectedCount: number): Promise<voi
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
 	throw new Error(`Timed out waiting for ${expectedCount} item row-lock waiter(s)`);
+}
+
+async function waitForCommerceLockWaiters(blockingProcessId: number, expectedCount: number): Promise<void> {
+	const { client } = getTestDatabase();
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const { rows } = await client.query<{ blocked: number }>(
+			`SELECT count(*)::int AS blocked
+			 FROM pg_stat_activity
+			 WHERE $1 = ANY(pg_blocking_pids(pid))`,
+			[blockingProcessId],
+		);
+		if ((rows[0]?.blocked ?? 0) >= expectedCount) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${expectedCount} item-commerce lock waiter(s)`);
+}
+
+async function waitForCommerceAdvisoryLockWaiters(expectedCount: number): Promise<void> {
+	const { client } = getTestDatabase();
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const { rows } = await client.query<{ waiting: number }>(`
+			SELECT count(*)::int AS waiting
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+				AND wait_event_type = 'Lock'
+				AND wait_event = 'advisory'
+		`);
+		if ((rows[0]?.waiting ?? 0) >= expectedCount) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${expectedCount} item-commerce advisory-lock waiter(s)`);
 }
 
 describe('item and listing routes', () => {
@@ -1162,7 +1194,7 @@ describe('item and listing routes', () => {
 				shippingResponsePromise = authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
 					shipping: { shipping_price: 4_321 },
 				});
-				await waitForBlockedItemLockWaiters(2);
+				await waitForCommerceAdvisoryLockWaiters(1);
 
 				await blocker.query('COMMIT');
 				transactionOpen = false;
@@ -1541,6 +1573,84 @@ describe('item and listing routes', () => {
 			expect(first.status).toBe(200);
 			expect(repeated.status).toBe(404);
 		});
+	});
+
+	describe('commerce mutation exclusion', () => {
+		it.each(['edit', 'unpublish', 'delete'] as const)(
+			'rejects %s while an active order reservation owns the item',
+			async (mutation) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				await createOrderFixture(actors, item, {
+					status: ORDER_PHASES.CANCELLED,
+					payment_creation_state: 'reconciliation_required',
+					payment_attempt_id: '00000000-0000-4000-8000-000000000001',
+				});
+				const response =
+					mutation === 'edit'
+						? await authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+								commons: { title: 'Forbidden reserved edit' },
+							})
+						: await authJson(
+								mutation === 'delete' ? '/item/auth/user_delete_item' : '/item/auth/publish_state',
+								'POST',
+								actors.seller.jar,
+								mutation === 'delete' ? { id: item.id } : { id: item.id, published: false },
+							);
+				expect(response.status).toBe(400);
+				const { db } = getTestDatabase();
+				const [stored] = await db.select().from(items).where(eq(items.id, item.id));
+				expect(stored).toMatchObject({ title: item.title, published: true, deleted_at: null });
+			},
+		);
+
+		it.each(['edit', 'unpublish', 'delete'] as const)(
+			'serializes %s against buy-now so exactly one operation wins',
+			async (mutation) => {
+				const actors = await createCommerceActors();
+				const item = await createItemFixture(actors);
+				const { client, db } = getTestDatabase();
+				const blocker = await client.connect();
+				let released = false;
+				try {
+					await blocker.query('BEGIN');
+					const processResult = await blocker.query<{ process_id: number }>('SELECT pg_backend_pid() AS process_id');
+					await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+						itemCommerceLockScope,
+						item.id,
+					]);
+					const checkoutPromise = authJson('/item/auth/buy_now', 'POST', actors.buyer.jar, { item_id: item.id });
+					const mutationPromise =
+						mutation === 'edit'
+							? authJson(`/item/auth/edit/${item.id}`, 'PUT', actors.seller.jar, {
+									commons: { title: 'Serialized commerce edit' },
+								})
+							: authJson(
+									mutation === 'delete' ? '/item/auth/user_delete_item' : '/item/auth/publish_state',
+									'POST',
+									actors.seller.jar,
+									mutation === 'delete' ? { id: item.id } : { id: item.id, published: false },
+								);
+					await waitForCommerceLockWaiters(processResult.rows[0]!.process_id, 2);
+					await blocker.query('COMMIT');
+					released = true;
+					const [checkoutResponse, mutationResponse] = await Promise.all([checkoutPromise, mutationPromise]);
+					expect([checkoutResponse.status, mutationResponse.status].filter((status) => status === 200)).toHaveLength(1);
+					const storedOrders = await db.select().from(orders).where(eq(orders.item_id, item.id));
+					if (checkoutResponse.status === 200) {
+						expect(mutationResponse.status).toBe(400);
+						expect(storedOrders).toHaveLength(1);
+					} else {
+						expect([400, 409]).toContain(checkoutResponse.status);
+						expect(mutationResponse.status).toBe(200);
+						expect(storedOrders).toEqual([]);
+					}
+				} finally {
+					if (!released) await blocker.query('ROLLBACK');
+					blocker.release();
+				}
+			},
+		);
 	});
 
 	describe('POST /item/auth/buy_now', () => {
