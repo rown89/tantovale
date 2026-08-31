@@ -6,6 +6,7 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
 import {
+	classifyTrustapStatusRelation,
 	isReachableOrSameTrustapTransition,
 	isTrustapTransitionCompatibleWithTerminalOrder,
 	resolveCronCancellationSettlement,
@@ -27,6 +28,13 @@ const exactMappings = [
 ] as const;
 
 describe('Trustap order transition policy', () => {
+	it('classifies forward, stale, same, and conflicting provider lineage independently', () => {
+		expect(classifyTrustapStatusRelation(TRUSTAP.CREATED, TRUSTAP.PAID)).toBe('forward');
+		expect(classifyTrustapStatusRelation(TRUSTAP.PAID, TRUSTAP.CREATED)).toBe('stale');
+		expect(classifyTrustapStatusRelation(TRUSTAP.PAID, TRUSTAP.PAID)).toBe('same');
+		expect(classifyTrustapStatusRelation(TRUSTAP.REJECTED, TRUSTAP.CANCELLED)).toBe('conflict');
+	});
+
 	it('accepts only a reachable transition or an exact persisted provider replay', () => {
 		expect(isReachableOrSameTrustapTransition(TRUSTAP.CREATED, TRUSTAP.PAID, { apply: true })).toBe(true);
 		expect(isReachableOrSameTrustapTransition(TRUSTAP.REJECTED, TRUSTAP.REJECTED, { apply: false })).toBe(true);

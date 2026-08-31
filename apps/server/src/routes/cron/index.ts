@@ -294,6 +294,7 @@ export const cronRoute = createRouter()
 							payment_transaction_id: orders.payment_transaction_id,
 							buyer_provider_id: profiles.payment_provider_id,
 							seller_provider_id: cronSellerProfiles.payment_provider_id,
+							provider_id: entityTrustapTransactions.id,
 							provider_buyer_id: entityTrustapTransactions.buyerId,
 							provider_seller_id: entityTrustapTransactions.sellerId,
 							provider_entity_id: entityTrustapTransactions.entityId,
@@ -327,6 +328,51 @@ export const cronRoute = createRouter()
 						current.provider_charge_seller === marked.provider_snapshot.charge_seller &&
 						current.provider_currency === marked.provider_snapshot.currency &&
 						current.provider_quarantined === false;
+					if (!graphMatchesSnapshot && current) {
+						const [existingAudit] = await tx
+							.select({ id: commerce_reconciliation_audit.id })
+							.from(commerce_reconciliation_audit)
+							.where(
+								and(
+									eq(commerce_reconciliation_audit.conflict_type, 'runtime_cron_cancellation_correlation_mismatch'),
+									eq(commerce_reconciliation_audit.source_table, 'orders'),
+									eq(commerce_reconciliation_audit.source_row_id, current.id),
+								),
+							)
+							.limit(1);
+						if (!existingAudit) {
+							const originalReference = current.payment_transaction_id ?? marked.provider_snapshot.transaction_id;
+							const snapshot = { order: current, expectedProvider: marked.provider_snapshot };
+							await tx.insert(commerce_reconciliation_audit).values([
+								...(current.provider_id === null
+									? []
+									: [
+											{
+												conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
+												source_table: 'entity_trustap_transactions',
+												source_row_id: current.provider_id,
+												canonical_row_id: current.id,
+												original_reference: originalReference,
+												snapshot,
+											},
+										]),
+								{
+									conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
+									source_table: 'orders',
+									source_row_id: current.id,
+									canonical_row_id: current.provider_id,
+									original_reference: originalReference,
+									snapshot,
+								},
+							]);
+						}
+						if (current.provider_id !== null) {
+							await tx
+								.update(entityTrustapTransactions)
+								.set({ quarantined: true, updated_at: new Date() })
+								.where(eq(entityTrustapTransactions.id, current.provider_id));
+						}
+					}
 					if (
 						graphMatchesSnapshot &&
 						(current?.status === ORDER_PHASES.CANCELLED || current?.status === ORDER_PHASES.EXPIRED) &&

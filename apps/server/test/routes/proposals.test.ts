@@ -681,6 +681,94 @@ describe('proposal routes', () => {
 		},
 	);
 
+	it('recovers correlated no-provider evidence that agrees with an already terminal order phase', async () => {
+		const { proposal, provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Terminal same phase recovery item',
+		);
+		const { db } = getTestDatabase();
+		await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id));
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, reservation.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.DELIVERED,
+		);
+
+		const sync = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(sync.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			recovered: true,
+			success: true,
+		});
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		expect(
+			await db
+				.select({ status: entityTrustapTransactions.status, quarantined: entityTrustapTransactions.quarantined })
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([{ status: entityTrustapTransactionTypeValues.DELIVERED, quarantined: false }]);
+	});
+
+	it('audits incompatible no-provider evidence for a terminal order and never refetches it', async () => {
+		const { proposal, provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Terminal incompatible recovery item',
+		);
+		const { db } = getTestDatabase();
+		await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id));
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, reservation.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.PAID,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+		const readsAfterAudit = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+		).length;
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(
+			(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+			),
+		).toHaveLength(readsAfterAudit);
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.pending }),
+		]);
+		expect(
+			await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([]);
+		expect(
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([{ conflictType: 'runtime_terminal_provider_status_conflict', sourceTable: 'orders' }]);
+	});
+
 	it('trims safe proposal text, preserves internal whitespace, and HTML-escapes seller mail', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -1621,6 +1709,66 @@ describe('proposal routes', () => {
 		]);
 	});
 
+	it('creates one durable audit when concurrent syncs observe the same no-provider mismatch', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Concurrent no provider mismatch item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const remote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!remote) throw new Error('Missing remote transaction for concurrent mismatch');
+		await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id));
+		let calls = 0;
+		let signalBothReads!: () => void;
+		let releaseReads!: () => void;
+		const bothReads = new Promise<void>((resolve) => {
+			signalBothReads = resolve;
+		});
+		const readsReleased = new Promise<void>((resolve) => {
+			releaseReads = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				calls += 1;
+				if (calls === 2) signalBothReads();
+				await readsReleased;
+				return { ...remote, buyer_id: 'concurrent-wrong-buyer' };
+			});
+
+		const first = new TransactionSyncService().syncTransactionStatuses();
+		const second = new TransactionSyncService().syncTransactionStatuses();
+		try {
+			await bothReads;
+			releaseReads();
+			await Promise.all([first, second]);
+		} finally {
+			releaseReads();
+			await Promise.allSettled([first, second]);
+			getTransactionStatus.mockRestore();
+		}
+
+		expect(calls).toBe(2);
+		expect(
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([
+			{
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: reservation.id,
+				canonicalRowId: null,
+			},
+		]);
+	});
+
 	it('finalizes a recovered proposal as rejected without inviting payment when Trustap is terminal', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
@@ -1695,34 +1843,55 @@ describe('proposal routes', () => {
 	});
 
 	it.each([
-		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'cancelled', ORDER_PHASES.EXPIRED, PAYMENT_CANCELLATION_STATES.CANCELLED],
 		[
-			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
-			'cancelled',
-			ORDER_PHASES.EXPIRED,
-			PAYMENT_CANCELLATION_STATES.CANCELLED,
-		],
-		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'paid', ORDER_PHASES.PAYMENT_CONFIRMED, PAYMENT_CANCELLATION_STATES.NONE],
-		[
-			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
-			'paid',
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			entityTrustapTransactionTypeValues.PAID,
 			ORDER_PHASES.PAYMENT_CONFIRMED,
 			PAYMENT_CANCELLATION_STATES.NONE,
 		],
-		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'delivered', ORDER_PHASES.COMPLETED, PAYMENT_CANCELLATION_STATES.NONE],
 		[
 			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
-			'delivered',
-			ORDER_PHASES.COMPLETED,
+			entityTrustapTransactionTypeValues.PAID,
+			ORDER_PHASES.PAYMENT_CONFIRMED,
 			PAYMENT_CANCELLATION_STATES.NONE,
 		],
+		...[PAYMENT_CANCELLATION_STATES.CANCELLING, PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED].flatMap(
+			(marker) =>
+				[
+					[
+						marker,
+						entityTrustapTransactionTypeValues.DELIVERED,
+						ORDER_PHASES.COMPLETED,
+						PAYMENT_CANCELLATION_STATES.NONE,
+					],
+					[
+						marker,
+						entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+						ORDER_PHASES.PAYMENT_REFUNDED,
+						PAYMENT_CANCELLATION_STATES.CANCELLED,
+					],
+					[
+						marker,
+						entityTrustapTransactionTypeValues.REJECTED,
+						ORDER_PHASES.PAYMENT_FAILED,
+						PAYMENT_CANCELLATION_STATES.CANCELLED,
+					],
+					[
+						marker,
+						entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+						ORDER_PHASES.COMPLETED,
+						PAYMENT_CANCELLATION_STATES.NONE,
+					],
+				] as const,
+		),
 	] as const)(
-		'settles known-ID recovery from cron marker %s with remote %s',
+		'settles no-provider known-ID recovery from cron marker %s with remote %s',
 		async (marker, remoteStatus, expectedOrderStatus, expectedMarker) => {
-			const { reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
 				`Known recovery ${marker.replaceAll('_', ' ')} ${remoteStatus.replaceAll('_', ' ')}`,
 			);
 			const { db } = getTestDatabase();
+			await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id));
 			await db.update(orders).set({ payment_cancellation_state: marker }).where(eq(orders.id, reservation.id));
 			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, remoteStatus);
 
@@ -1801,6 +1970,129 @@ describe('proposal routes', () => {
 				.from(commerce_reconciliation_audit)
 				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
 		).toEqual(expect.arrayContaining([{ sourceTable: 'entity_trustap_transactions' }, { sourceTable: 'orders' }]));
+	});
+
+	it('treats a provider GET as superseded when a webhook advances the durable row while it is in flight', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Provider advancement recovery race item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const staleRemote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!staleRemote) throw new Error('Missing remote transaction for provider advancement race');
+		let signalProviderRead!: () => void;
+		let releaseProviderRead!: () => void;
+		const providerRead = new Promise<void>((resolve) => {
+			signalProviderRead = resolve;
+		});
+		const providerRelease = new Promise<void>((resolve) => {
+			releaseProviderRead = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				signalProviderRead();
+				await providerRelease;
+				return staleRemote;
+			});
+
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		try {
+			await providerRead;
+			const webhook = await app.request('/webhooks/trustap/transaction-update', {
+				method: 'POST',
+				headers: {
+					Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					event: 'transaction_updated',
+					transaction_id: transactionId,
+					status: entityTrustapTransactionTypeValues.PAID,
+				}),
+			});
+			expect(webhook.status).toBe(200);
+			releaseProviderRead();
+			await syncPromise;
+		} finally {
+			releaseProviderRead();
+			await syncPromise.catch(() => undefined);
+			getTransactionStatus.mockRestore();
+		}
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.PAYMENT_CONFIRMED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.PAID, quarantined: false })]);
+		expect(
+			await db
+				.select()
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([]);
+	});
+
+	it('ignores a reverse-reachable stale provider response without quarantining current progress', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Reverse reachable recovery item',
+		);
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ status: entityTrustapTransactionTypeValues.PAID })
+			.where(eq(entityTrustapTransactions.id, provider.id));
+		await db.update(orders).set({ status: ORDER_PHASES.PAYMENT_CONFIRMED }).where(eq(orders.id, reservation.id));
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.PAYMENT_CONFIRMED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.PAID, quarantined: false })]);
+		expect(
+			await db
+				.select()
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([]);
+	});
+
+	it('keeps complaint reconciliation when known-ID recovery only observes delivered', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Complaint delivered recovery item',
+		);
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ status: entityTrustapTransactionTypeValues.COMPLAINED })
+			.where(eq(entityTrustapTransactions.id, provider.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.DELIVERED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.DELIVERED, quarantined: false })]);
 	});
 
 	it('does not let known-ID recovery cross the complained to rejected terminal branch', async () => {

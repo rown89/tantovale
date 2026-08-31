@@ -29,7 +29,7 @@ import {
 	createProposalFixture,
 } from '../fixtures/commerce';
 import { getTestDatabase } from '../helpers/database';
-import { setTrustapTransactionStatus } from '../helpers/providers';
+import { getProviderRequests, setTrustapTransactionStatus } from '../helpers/providers';
 import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { app } from '../../src/app';
@@ -604,12 +604,20 @@ describe('Trustap transaction polling state mapping', () => {
 			expect(storedProvider?.quarantined).toBe(true);
 			expect(audits.map(({ source_table }) => source_table).sort()).toEqual(['entity_trustap_transactions', 'orders']);
 
+			const providerReadsBeforeRetry = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+			).length;
 			await new TransactionSyncService().syncTransactionStatuses();
 			const repeatedAudits = await db
 				.select()
 				.from(commerce_reconciliation_audit)
 				.where(eq(commerce_reconciliation_audit.original_reference, transactionId));
 			expect(repeatedAudits).toHaveLength(2);
+			expect(
+				(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+					({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+				),
+			).toHaveLength(providerReadsBeforeRetry);
 		},
 	);
 

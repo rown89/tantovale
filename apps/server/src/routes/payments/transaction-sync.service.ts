@@ -28,6 +28,7 @@ import {
 } from '#database/schemas/enumerated_values';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import {
+	classifyTrustapStatusRelation,
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
 	isReachableOrSameTrustapTransition,
@@ -35,6 +36,7 @@ import {
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 	trustapToOrderPhase,
+	type TrustapOrderTransition,
 } from './trustap-order-state';
 import type { TrustapId } from './trustap-int64';
 import { PaymentInvitationOutboxService } from './payment-invitation-outbox.service';
@@ -81,6 +83,45 @@ type PollingCorrelationSnapshot = {
 	sellerProviderId: string | null;
 };
 
+type RecoveryProviderSnapshot = {
+	id: number;
+	entityId: number | null;
+	sellerId: string | null;
+	buyerId: string | null;
+	currency: string;
+	price: number;
+	charge: number;
+	chargeSeller: number;
+	quarantined: boolean;
+	status: EntityTrustapTransactionStatus;
+};
+
+const durableRecoveryConflictTypes = [
+	'runtime_transaction_correlation_mismatch',
+	'runtime_transaction_lineage_mismatch',
+	'runtime_terminal_provider_status_conflict',
+	'runtime_polling_correlation_mismatch',
+] as const;
+
+function recoveryProviderSnapshotIsEqual(
+	initial: RecoveryProviderSnapshot | undefined,
+	current: RecoveryProviderSnapshot | undefined,
+): boolean {
+	if (!initial || !current) return initial === current;
+	return (
+		initial.id === current.id &&
+		initial.entityId === current.entityId &&
+		initial.sellerId === current.sellerId &&
+		initial.buyerId === current.buyerId &&
+		initial.currency === current.currency &&
+		initial.price === current.price &&
+		initial.charge === current.charge &&
+		initial.chargeSeller === current.chargeSeller &&
+		initial.quarantined === current.quarantined &&
+		initial.status === current.status
+	);
+}
+
 function isPollingCorrelationValid(
 	transaction: PollingCorrelationSnapshot,
 	remote: GetTransactionStatusResponse,
@@ -121,6 +162,22 @@ function proposalStatusForRecoveredTransaction(status: EntityTrustapTransactionS
 function orderStatusForRecoveredTransaction(status: EntityTrustapTransactionStatus, currentStatus: string) {
 	if (status === 'complained') return currentStatus;
 	return trustapToOrderPhase[status as keyof typeof trustapToOrderPhase] ?? ORDER_PHASES.PAYMENT_PENDING;
+}
+
+function resolveKnownRecoveryTransition(
+	currentProviderStatus: EntityTrustapTransactionStatus | undefined,
+	currentOrderStatus: string,
+	remoteStatus: EntityTrustapTransactionStatus,
+): TrustapOrderTransition {
+	if (currentProviderStatus) {
+		return resolveTrustapOrderTransition(currentProviderStatus, currentOrderStatus, remoteStatus);
+	}
+	const orderStatus = orderStatusForRecoveredTransaction(remoteStatus, currentOrderStatus);
+	return {
+		apply: orderStatus !== currentOrderStatus,
+		orderStatus,
+		providerStatus: remoteStatus,
+	};
 }
 
 function recoverySystemMessage(proposalId: number, status: EntityTrustapTransactionStatus): string {
@@ -299,11 +356,7 @@ export class TransactionSyncService {
 								and(
 									eq(commerce_reconciliation_audit.source_table, 'orders'),
 									eq(commerce_reconciliation_audit.source_row_id, orders.id),
-									inArray(commerce_reconciliation_audit.conflict_type, [
-										'runtime_transaction_correlation_mismatch',
-										'runtime_transaction_lineage_mismatch',
-										'runtime_terminal_provider_status_conflict',
-									]),
+									inArray(commerce_reconciliation_audit.conflict_type, durableRecoveryConflictTypes),
 								),
 							),
 					),
@@ -313,17 +366,6 @@ export class TransactionSyncService {
 		const results: TransactionSyncResult[] = [];
 		for (const candidate of candidates) {
 			const transactionId = candidate.paymentTransactionId ?? candidate.legacyTransactionId;
-			if (candidate.orderStatus !== ORDER_PHASES.PAYMENT_PENDING) {
-				results.push({
-					transactionId,
-					orderId: candidate.orderId,
-					localAttemptId: candidate.paymentAttemptId ?? undefined,
-					requiresManualReconciliation: true,
-					success: false,
-					error: 'A terminal order cannot be reopened automatically',
-				});
-				continue;
-			}
 			if (
 				transactionId === null ||
 				candidate.itemId === null ||
@@ -353,6 +395,22 @@ export class TransactionSyncService {
 				continue;
 			}
 			const itemId = candidate.itemId;
+			const [initialProvider] = await db
+				.select({
+					id: entityTrustapTransactions.id,
+					entityId: entityTrustapTransactions.entityId,
+					sellerId: entityTrustapTransactions.sellerId,
+					buyerId: entityTrustapTransactions.buyerId,
+					currency: entityTrustapTransactions.currency,
+					price: entityTrustapTransactions.price,
+					charge: entityTrustapTransactions.charge,
+					chargeSeller: entityTrustapTransactions.chargeSeller,
+					quarantined: entityTrustapTransactions.quarantined,
+					status: entityTrustapTransactions.status,
+				})
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId))
+				.limit(1);
 
 			try {
 				// The provider request intentionally happens before opening a database transaction or taking the item lock.
@@ -444,6 +502,9 @@ export class TransactionSyncService {
 						.where(eq(entityTrustapTransactions.transactionId, transactionId))
 						.limit(1)
 						.for('update');
+					if (!recoveryProviderSnapshotIsEqual(initialProvider, existingTransaction)) {
+						return 'superseded' as const;
+					}
 					if (existingTransaction?.quarantined) return 'quarantined' as const;
 					const recoverySnapshot = {
 						order: {
@@ -470,7 +531,19 @@ export class TransactionSyncService {
 						provider: existingTransaction ?? null,
 						remote,
 					};
-					const auditRecoveryConflict = async (conflictType: string) => {
+					const auditRecoveryConflict = async (conflictType: (typeof durableRecoveryConflictTypes)[number]) => {
+						const [existingAudit] = await tx
+							.select({ id: commerce_reconciliation_audit.id })
+							.from(commerce_reconciliation_audit)
+							.where(
+								and(
+									eq(commerce_reconciliation_audit.source_table, 'orders'),
+									eq(commerce_reconciliation_audit.source_row_id, reservation.id),
+									inArray(commerce_reconciliation_audit.conflict_type, durableRecoveryConflictTypes),
+								),
+							)
+							.limit(1);
+						if (existingAudit) return false;
 						await tx.insert(commerce_reconciliation_audit).values([
 							...(existingTransaction
 								? [
@@ -499,6 +572,7 @@ export class TransactionSyncService {
 								.set({ quarantined: true, updated_at: new Date() })
 								.where(eq(entityTrustapTransactions.id, existingTransaction.id));
 						}
+						return true;
 					};
 					const refreshedExpectedPrice = reservation.itemPrice + reservation.platformCharge;
 					if (
@@ -527,22 +601,22 @@ export class TransactionSyncService {
 						await auditRecoveryConflict('runtime_transaction_correlation_mismatch');
 						return 'quarantined' as const;
 					}
-					const recoveryTransition = existingTransaction
-						? resolveTrustapOrderTransition(existingTransaction.status, reservation.orderStatus, remoteStatus)
+					const recoveryTransition = resolveKnownRecoveryTransition(
+						existingTransaction?.status,
+						reservation.orderStatus,
+						remoteStatus,
+					);
+					const statusRelation = existingTransaction
+						? classifyTrustapStatusRelation(existingTransaction.status, remoteStatus)
 						: undefined;
-					if (
-						existingTransaction &&
-						recoveryTransition &&
-						!isReachableOrSameTrustapTransition(existingTransaction.status, remoteStatus, recoveryTransition)
-					) {
+					if (statusRelation === 'stale') return 'superseded' as const;
+					if (statusRelation === 'conflict') {
 						await auditRecoveryConflict('runtime_transaction_lineage_mismatch');
 						return 'unreachable' as const;
 					}
 					if (
-						existingTransaction &&
-						recoveryTransition &&
 						!isTrustapTransitionCompatibleWithTerminalOrder(
-							existingTransaction.status,
+							existingTransaction?.status ?? remoteStatus,
 							reservation.orderStatus,
 							remoteStatus,
 							reservation.paymentCancellationState,
@@ -550,19 +624,15 @@ export class TransactionSyncService {
 						)
 					) {
 						await auditRecoveryConflict('runtime_terminal_provider_status_conflict');
-						return 'quarantined' as const;
+						return existingTransaction ? ('quarantined' as const) : ('audited' as const);
 					}
-					if (reservation.orderStatus !== ORDER_PHASES.PAYMENT_PENDING) return 'terminal' as const;
 					const cancellationSettlement = resolveCronCancellationSettlement(
 						reservation.paymentCancellationState,
 						existingTransaction?.status ?? remoteStatus,
 						remoteStatus,
-						recoveryTransition ?? { apply: false, orderStatus: reservation.orderStatus },
+						recoveryTransition,
 					);
-					const recoveredOrderStatus =
-						cancellationSettlement?.orderStatus ??
-						recoveryTransition?.orderStatus ??
-						orderStatusForRecoveredTransaction(remoteStatus, reservation.orderStatus);
+					const recoveredOrderStatus = cancellationSettlement?.orderStatus ?? recoveryTransition.orderStatus;
 					if (!existingTransaction) {
 						await tx.insert(entityTrustapTransactions).values({
 							entityId: itemId,
@@ -649,7 +719,9 @@ export class TransactionSyncService {
 							payment_transaction_id: transactionId,
 							legacy_payment_transaction_id: null,
 							payment_creation_state:
-								remoteStatus === 'complained'
+								remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED ||
+								(existingTransaction?.status === entityTrustapTransactionTypeValues.COMPLAINED &&
+									!isAuthoritativeCreationResolutionStatus(remoteStatus))
 									? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 									: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredOrderStatus,
@@ -700,14 +772,8 @@ export class TransactionSyncService {
 					});
 					continue;
 				}
-				if (recoveryOutcome === 'terminal') {
-					results.push({
-						transactionId,
-						orderId: candidate.orderId,
-						requiresManualReconciliation: true,
-						success: false,
-						error: 'A terminal order cannot be reopened automatically',
-					});
+				if (recoveryOutcome === 'superseded') {
+					results.push({ transactionId, orderId: candidate.orderId, success: true });
 					continue;
 				}
 				results.push({ transactionId, orderId: candidate.orderId, recovered: true, success: true });

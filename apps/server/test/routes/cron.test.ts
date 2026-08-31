@@ -765,6 +765,102 @@ describe('commerce expiry cron routes', () => {
 		expect(storedProvider).toMatchObject({ quarantined: true, status: 'created' });
 	});
 
+	it('audits and quarantines immutable graph drift that occurs while provider cancellation is in flight', async () => {
+		const { order } = await createPayableExpiredCandidate();
+		const { db } = getTestDatabase();
+		const transactionId = String(trustapTransactionFixture.id);
+		let signalCancellationStarted!: () => void;
+		let releaseCancellation!: () => void;
+		const cancellationStarted = new Promise<void>((resolve) => {
+			signalCancellationStarted = resolve;
+		});
+		const cancellationReleased = new Promise<void>((resolve) => {
+			releaseCancellation = resolve;
+		});
+		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+			signalCancellationStarted();
+			await cancellationReleased;
+			return trustapTransactionFixture as never;
+		});
+
+		const cronPromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		try {
+			await cancellationStarted;
+			await db
+				.update(entityTrustapTransactions)
+				.set({ price: trustapTransactionFixture.price + 1 })
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			releaseCancellation();
+			expect((await cronPromise).status).toBe(200);
+		} finally {
+			releaseCancellation();
+			await Promise.resolve(cronPromise).catch(() => undefined);
+		}
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider).toMatchObject({ status: 'created', quarantined: true });
+		expect(
+			(
+				await db
+					.select({
+						conflictType: commerce_reconciliation_audit.conflict_type,
+						sourceTable: commerce_reconciliation_audit.source_table,
+						sourceRowId: commerce_reconciliation_audit.source_row_id,
+						canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					})
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+			).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable)),
+		).toEqual([
+			{
+				conflictType: 'runtime_cron_cancellation_correlation_mismatch',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: storedProvider!.id,
+				canonicalRowId: order.id,
+			},
+			{
+				conflictType: 'runtime_cron_cancellation_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				canonicalRowId: storedProvider!.id,
+			},
+		]);
+
+		const webhookResponse = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: {
+				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: transactionId,
+				status: entityTrustapTransactionTypeValues.PAID,
+			}),
+		});
+		expect(webhookResponse.status).toBe(200);
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.PAYMENT_PENDING,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(
+			await db
+				.select({ status: entityTrustapTransactions.status, quarantined: entityTrustapTransactions.quarantined })
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([{ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true }]);
+	});
+
 	it('marks the order for reconciliation when the provider cancellation response breaks the durable snapshot', async () => {
 		const { order } = await createPayableExpiredCandidate();
 		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'transaction-cancel-description-mismatch');

@@ -94,6 +94,18 @@ function isReachable(current: EntityTrustapTransactionStatus, incoming: EntityTr
 	return false;
 }
 
+export type TrustapStatusRelation = 'same' | 'forward' | 'stale' | 'conflict';
+
+export function classifyTrustapStatusRelation(
+	current: EntityTrustapTransactionStatus,
+	incoming: EntityTrustapTransactionStatus,
+): TrustapStatusRelation {
+	if (current === incoming) return 'same';
+	if (isReachable(current, incoming)) return 'forward';
+	if (isReachable(incoming, current)) return 'stale';
+	return 'conflict';
+}
+
 export type TrustapOrderTransition = {
 	apply: boolean;
 	orderStatus: OrderPhase | string;
@@ -121,6 +133,7 @@ const refundEligibleProviderStatuses = new Set<EntityTrustapTransactionStatus>([
 	TRUSTAP.COMPLAINED,
 	TRUSTAP.COMPLAINT_PERIOD_ENDED,
 	TRUSTAP.CANCELLED_WITH_PAYMENT,
+	TRUSTAP.PAYMENT_REFUNDED,
 ]);
 
 export function isAuthoritativeCancellationStatus(status: EntityTrustapTransactionStatus): boolean {
