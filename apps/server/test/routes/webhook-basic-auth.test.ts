@@ -11,8 +11,9 @@ describe('Trustap webhook Basic credential comparison', () => {
 	});
 
 	it('rejects canonical Base64 that does not decode as valid UTF-8', () => {
-		const validate = createTrustapBasicAuthorizationValidator({ username: 'expected', password: 'password' });
-		const authorization = `Basic ${Buffer.from([0xc3, 0x28]).toString('base64')}`;
+		const validate = createTrustapBasicAuthorizationValidator({ username: '\uFFFD(', password: 'password' });
+		const invalidUtf8Credentials = Buffer.concat([Buffer.from([0xc3, 0x28]), Buffer.from(':password')]);
+		const authorization = `Basic ${invalidUtf8Credentials.toString('base64')}`;
 
 		expect(validate(authorization)).toBe(false);
 	});
