@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, context: VerifyEmailRouteContext
 	const token = request.nextUrl.searchParams.get('token');
 
 	if (!token) {
-		return NextResponse.json({ error: 'No token provided' });
+		return NextResponse.json({ error: 'No token provided' }, { status: 400 });
 	}
 
 	let response: Response;
@@ -32,8 +32,12 @@ export async function GET(request: NextRequest, context: VerifyEmailRouteContext
 		return NextResponse.json({ error: 'Unable to verify email' }, { status: 502 });
 	}
 
+	if (response.status >= 400 && response.status < 500) {
+		return NextResponse.json({ error: 'Invalid verify email token provided' }, { status: response.status });
+	}
+
 	if (response.status !== 200) {
-		return NextResponse.json({ error: 'Invalid verify email token provided' });
+		return NextResponse.json({ error: 'Unable to verify email' }, { status: 502 });
 	}
 
 	const cookieReader = await dependencies.getCookieStore();
