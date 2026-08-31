@@ -136,6 +136,26 @@ describe('order routes', () => {
 		}
 	});
 
+	it('keeps signed-int64 payment identifiers lossless while preserving safe-number compatibility', async () => {
+		const actors = await createCommerceActors();
+		const safeItem = await createItemFixture(actors);
+		const largeItem = await createItemFixture(actors, { commons: { title: 'Large transaction ID item' } });
+		await createOrderFixture(actors, safeItem, {
+			payment_transaction_id: '91337',
+			payment_creation_state: 'created',
+		});
+		await createOrderFixture(actors, largeItem, {
+			payment_transaction_id: '9223372036854775807',
+			payment_creation_state: 'created',
+		});
+
+		const response = await authenticatedRequest('/orders/auth/status/payment_pending', 'GET', actors.buyer.jar);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as Array<{ item: { id: number }; payment_transaction_id: number | string }>;
+		expect(body.find(({ item }) => item.id === safeItem.id)?.payment_transaction_id).toBe(91_337);
+		expect(body.find(({ item }) => item.id === largeItem.id)?.payment_transaction_id).toBe('9223372036854775807');
+	});
+
 	it.each([
 		{ payment_creation_state: 'reconciliation_required' },
 		{ payment_cancellation_state: 'reconciliation_required' },
