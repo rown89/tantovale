@@ -9,6 +9,16 @@ import {
 	CreateTransactionWithBothUsersProps,
 } from './types';
 
+export class PaymentProviderHttpError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+		this.name = 'PaymentProviderHttpError';
+	}
+}
+
 export class PaymentProviderService {
 	private api_url = environment.PAYMENT_PROVIDER_API_URL;
 	private api_version = environment.PAYMENT_PROVIDER_API_VERSION;
@@ -93,7 +103,7 @@ export class PaymentProviderService {
 		const response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
 			method: 'POST',
 			headers: {
-				'Trustap-User': seller_id,
+				'Trustap-User': creator_role === 'buyer' ? buyer_id : seller_id,
 				'Content-Type': 'application/json',
 				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 			},
@@ -111,7 +121,7 @@ export class PaymentProviderService {
 		});
 
 		if (!response.ok) {
-			throw new Error('Failed to create transaction');
+			throw new PaymentProviderHttpError('Failed to create transaction', response.status);
 		}
 
 		const data = (await response.json()) as CreateTransactionResponse | undefined;

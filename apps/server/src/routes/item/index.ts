@@ -1,4 +1,4 @@
-import { eq, and, not, desc, inArray, isNull } from 'drizzle-orm';
+import { eq, and, desc, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
@@ -43,9 +43,10 @@ import { formatPriceToCents } from '#utils/price-formatter';
 import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-now-order-created-buyer';
 import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
 import { acquirePaymentProviderIdentityLock } from '#lib/payment-provider-identity-lock';
+import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 
 import { ShipmentService } from '../shipment-provider/shipment.service';
-import { PaymentProviderService } from '../payments/payment-provider.service';
+import { PaymentProviderHttpError, PaymentProviderService } from '../payments/payment-provider.service';
 
 type ItemTransaction = Parameters<Parameters<DrizzleClient['db']['transaction']>[0]>[0];
 type ItemProperties = NonNullable<createItemTypes['properties']>;
@@ -745,22 +746,16 @@ export const itemRoute = createRouter()
 		),
 		async (c) => {
 			const user = c.var.user;
-
 			const { item_id } = c.req.valid('json');
 
-			const { db } = createClient();
-
 			try {
-				return await db.transaction(async (tx) => {
-					//  Validate item availability and get seller info
-					const [item] = await tx
+				const loadPurchaseContext = async (query: Pick<DrizzleClient['db'], 'select'>) => {
+					const [item] = await query
 						.select({
 							id: items.id,
 							title: items.title,
 							profile_id: items.profile_id,
 							price: items.price,
-							status: items.status,
-							published: items.published,
 							payment_provider_id: profiles.payment_provider_id,
 							seller_address_id: items.address_id,
 							seller_username: users.username,
@@ -768,56 +763,29 @@ export const itemRoute = createRouter()
 						.from(items)
 						.innerJoin(profiles, eq(profiles.id, items.profile_id))
 						.innerJoin(users, eq(users.id, profiles.user_id))
+						.innerJoin(
+							addresses,
+							and(
+								eq(addresses.id, items.address_id),
+								eq(addresses.profile_id, items.profile_id),
+								eq(addresses.status, addressStatus.ACTIVE),
+							),
+						)
+						.innerJoin(subcategories, eq(items.subcategory_id, subcategories.id))
+						.innerJoin(categories, eq(subcategories.category_id, categories.id))
 						.where(
 							and(
 								eq(items.id, item_id),
 								eq(items.status, itemStatus.AVAILABLE),
 								eq(items.published, true),
+								eq(items.easy_pay, true),
 								isNull(items.deleted_at),
+								eq(subcategories.published, true),
+								eq(categories.published, true),
 							),
 						)
 						.limit(1);
-
-					if (!item || !item.payment_provider_id) {
-						return c.json({ error: 'Item not available' }, 400);
-					}
-					if (item.profile_id === user.profile_id) {
-						return c.json({ error: 'You cannot buy your own item' }, 400);
-					}
-
-					/* Protection against multiple orders for the same item in specific states.
-					 */
-
-					// Check if user has placed already an order for this item
-					const [userHasAnOrder] = await tx
-						.select({ id: orders.id })
-						.from(orders)
-						.where(
-							and(
-								eq(orders.item_id, item_id),
-								eq(orders.buyer_id, user.profile_id),
-								inArray(orders.status, newOrderBlockedStates),
-							),
-						)
-						.limit(1);
-
-					if (userHasAnOrder) {
-						return c.json({ error: 'You have already placed an order for this item' }, 400);
-					}
-
-					// Check if an order already exists in a different status than PAYMENT_PENDING
-					const [existingOrders] = await tx
-						.select({ id: orders.id })
-						.from(orders)
-						.where(and(eq(orders.item_id, item_id), not(eq(orders.status, ORDER_PHASES.PAYMENT_PENDING))))
-						.limit(1);
-
-					if (existingOrders) {
-						return c.json({ error: 'An order already exists for this item' }, 400);
-					}
-
-					// Get buyer payment provider id
-					const [buyerInfo] = await tx
+					const [buyerInfo] = await query
 						.select({
 							payment_provider_id: profiles.payment_provider_id,
 							address_id: addresses.id,
@@ -831,133 +799,190 @@ export const itemRoute = createRouter()
 						.innerJoin(users, eq(users.id, profiles.user_id))
 						.where(eq(profiles.id, user.profile_id))
 						.limit(1);
+					return { item, buyerInfo };
+				};
 
-					if (!buyerInfo || !buyerInfo.payment_provider_id) {
-						return c.json({ error: 'Buyer information not found or buyer has no payment provider id' }, 404);
+				const { db } = createClient();
+				const reservation = await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, item_id);
+					const current = await loadPurchaseContext(tx);
+					if (!current.item || !current.item.payment_provider_id) {
+						return { error: 'Item not available', status: 400 as const };
 					}
+					if (current.item.profile_id === user.profile_id) {
+						return { error: 'You cannot buy your own item', status: 400 as const };
+					}
+					if (!current.buyerInfo?.payment_provider_id) {
+						return { error: 'Buyer information not found or buyer has no payment provider id', status: 404 as const };
+					}
+					const [activeOrder] = await tx
+						.select({ id: orders.id })
+						.from(orders)
+						.where(and(eq(orders.item_id, item_id), inArray(orders.status, newOrderBlockedStates)))
+						.limit(1);
+					if (activeOrder) return { error: 'An active order already exists for this item', status: 400 as const };
 
-					// Create a shipping label
-					const shipmentService = new ShipmentService();
-					const { rates } = await shipmentService.calculateShippingCostWithRates(item_id, user.profile_id, user.email);
+					// Reuse the lock-owning transaction for shipment reads. ShipmentService otherwise
+					// opens a nested transaction, which can starve the pool when requests queue here.
+					const { rates } = await new ShipmentService().calculateShippingCostWithRates(
+						item_id,
+						user.profile_id,
+						user.email,
+						tx,
+					);
 					const labelPreview = rates[0];
-
-					const shipping_label_id = labelPreview?.shipment;
-					const shipping_price = labelPreview?.amount ? formatPriceToCents(parseFloat(labelPreview.amount)) : 0;
-
-					if (!labelPreview || !shipping_label_id || !shipping_price) {
-						return c.json({ error: 'Failed to generate a label preview' }, 500);
+					const shippingLabelId = labelPreview?.shipment;
+					const shippingPrice = labelPreview?.amount ? formatPriceToCents(Number(labelPreview.amount)) : undefined;
+					if (
+						!shippingLabelId ||
+						shippingPrice === undefined ||
+						!Number.isSafeInteger(shippingPrice) ||
+						shippingPrice <= 0 ||
+						shippingPrice > postgresIntegerMax
+					) {
+						throw new Error('Failed to generate a label preview');
 					}
 
-					// Calculate platform charge amount
-					const { platform_charge_amount } = await calculatePlatformCosts(
-						{ price: item.price },
+					const { platform_charge_amount: platformCharge } = await calculatePlatformCosts(
+						{ price: current.item.price },
 						{ platform_charge_amount: true },
 					);
-
-					if (!platform_charge_amount) {
-						return c.json({ error: 'Failed to calculate platform charge amount' }, 500);
+					if (platformCharge === undefined) throw new Error('Failed to calculate platform charge amount');
+					const transactionPrice = current.item.price + platformCharge;
+					if (!Number.isSafeInteger(transactionPrice) || transactionPrice > postgresIntegerMax) {
+						return { error: 'Item price exceeds the supported range', status: 400 as const };
 					}
-
-					// Total price to pay for the transaction
-					const transactionPreviewPrice = item.price + platform_charge_amount;
-
-					// Calculate payment provider charge
-					const { payment_provider_charge, payment_provider_charge_calculator_version } = await calculatePlatformCosts(
-						{
-							price: transactionPreviewPrice,
-							postage_fee: shipping_price,
-						},
-						{
-							payment_provider_charge: true,
-						},
+					const {
+						payment_provider_charge: paymentProviderCharge,
+						payment_provider_charge_calculator_version: calculatorVersion,
+					} = await calculatePlatformCosts(
+						{ price: transactionPrice, postage_fee: shippingPrice },
+						{ payment_provider_charge: true },
 					);
-
-					if (!payment_provider_charge || !payment_provider_charge_calculator_version) {
-						return c.json({ error: 'Failed to calculate payment provider charge' }, 500);
+					if (paymentProviderCharge === undefined || calculatorVersion === undefined) {
+						throw new Error('Failed to calculate payment provider charge');
 					}
 
-					const paymentProviderService = new PaymentProviderService();
-
-					const transaction = await paymentProviderService.createTransactionWithBothUsers({
-						buyer_id: buyerInfo.payment_provider_id,
-						seller_id: item.payment_provider_id,
-						creator_role: 'buyer',
-						currency: 'eur',
-						description: `Transaction for ${item.title} - (Buy Now)`,
-						price: transactionPreviewPrice,
-						postage_fee: shipping_price,
-						charge: payment_provider_charge,
-						charge_calculator_version: payment_provider_charge_calculator_version,
-					});
-
-					if (!transaction) {
-						return c.json({ error: 'Failed to create Trustap transaction' }, 500);
-					}
-
-					// Store transaction details
-					const [trustapTransaction] = await tx
-						.insert(entityTrustapTransactions)
-						.values({
-							entityId: item_id,
-							sellerId: transaction.seller_id,
-							buyerId: transaction.buyer_id,
-							transactionId: transaction.id,
-							transactionType: 'online_payment',
-							status: transaction.status as EntityTrustapTransactionStatus,
-							price: transaction.price,
-							charge: transaction.charge,
-							chargeSeller: transaction.charge_seller || 0,
-							currency: 'eur',
-							entityTitle: item.title,
-							claimedBySeller: false,
-							claimedByBuyer: false,
-							complaintPeriodDeadline: null, // Will be set by webhook
-						})
-						.returning();
-
-					if (!trustapTransaction) {
-						return c.json({ error: 'Failed to store Trustap transaction' }, 500);
-					}
-
-					// Create new order
-					const [newOrder] = await tx
+					const [reservedOrder] = await tx
 						.insert(orders)
 						.values({
 							item_id,
 							buyer_id: user.profile_id,
-							seller_id: item.profile_id,
-							buyer_address: buyerInfo.address_id,
-							seller_address: item.seller_address_id,
-							shipping_price,
-							payment_provider_charge,
-							platform_charge: platform_charge_amount!,
-							payment_transaction_id: transaction.id,
-							shipping_label_id,
+							seller_id: current.item.profile_id,
+							buyer_address: current.buyerInfo.address_id,
+							seller_address: current.item.seller_address_id,
+							shipping_price: shippingPrice,
+							payment_provider_charge: paymentProviderCharge,
+							platform_charge: platformCharge,
+							shipping_label_id: shippingLabelId,
 						})
 						.returning();
-
-					if (!newOrder) {
-						return c.json({ error: 'Failed to create order' }, 500);
-					}
-
-					// send email to the buyer
-					await sendBuyNowOrderCreatedBuyer({
-						to: buyerInfo.email,
-						seller_username: item.seller_username,
-						itemName: item.title,
-					});
-
-					return c.json(
-						{
-							success: true,
-							order: { id: newOrder.id, status: newOrder.status },
-							// Return payment URL
-							payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${newOrder.id}`,
-							message: 'Order created, complete the payment for the next step',
+					if (!reservedOrder) throw new Error('Failed to reserve order');
+					return {
+						reservedOrder,
+						buyerProviderId: current.buyerInfo.payment_provider_id,
+						sellerProviderId: current.item.payment_provider_id,
+						itemTitle: current.item.title,
+						transactionPrice,
+						shippingPrice,
+						paymentProviderCharge,
+						calculatorVersion,
+						mail: {
+							to: current.buyerInfo.email,
+							seller_username: current.item.seller_username,
+							itemName: current.item.title,
 						},
-						200,
-					);
+					};
 				});
+
+				if ('error' in reservation) return c.json({ error: reservation.error }, reservation.status);
+
+				let transaction: Awaited<ReturnType<PaymentProviderService['createTransactionWithBothUsers']>>;
+				try {
+					transaction = await new PaymentProviderService().createTransactionWithBothUsers({
+						buyer_id: reservation.buyerProviderId,
+						seller_id: reservation.sellerProviderId,
+						creator_role: 'buyer',
+						currency: 'eur',
+						description: `Transaction for ${reservation.itemTitle} - (Buy Now)`,
+						price: reservation.transactionPrice,
+						postage_fee: reservation.shippingPrice,
+						charge: reservation.paymentProviderCharge,
+						charge_calculator_version: reservation.calculatorVersion,
+					});
+					if (!transaction) throw new Error('Failed to create Trustap transaction');
+				} catch (providerError) {
+					if (providerError instanceof PaymentProviderHttpError) {
+						await db.transaction(async (tx) => {
+							await acquireItemCommerceLock(tx, item_id);
+							await tx
+								.delete(orders)
+								.where(
+									and(
+										eq(orders.id, reservation.reservedOrder.id),
+										eq(orders.item_id, item_id),
+										isNull(orders.payment_transaction_id),
+									),
+								);
+						});
+					}
+					throw providerError;
+				}
+
+				const completedOrder = await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, item_id);
+					const [storedReservation] = await tx
+						.select({ id: orders.id })
+						.from(orders)
+						.where(
+							and(
+								eq(orders.id, reservation.reservedOrder.id),
+								eq(orders.item_id, item_id),
+								eq(orders.buyer_id, user.profile_id),
+								isNull(orders.payment_transaction_id),
+							),
+						)
+						.limit(1);
+					if (!storedReservation) throw new Error('Order reservation not found');
+					await tx.insert(entityTrustapTransactions).values({
+						entityId: item_id,
+						sellerId: transaction.seller_id,
+						buyerId: transaction.buyer_id,
+						transactionId: transaction.id,
+						transactionType: 'online_payment',
+						status: transaction.status as EntityTrustapTransactionStatus,
+						price: reservation.transactionPrice,
+						charge: reservation.paymentProviderCharge,
+						chargeSeller: transaction.charge_seller || 0,
+						currency: 'eur',
+						entityTitle: reservation.itemTitle,
+						claimedBySeller: false,
+						claimedByBuyer: false,
+						complaintPeriodDeadline: null,
+					});
+					const [updatedOrder] = await tx
+						.update(orders)
+						.set({ payment_transaction_id: transaction.id, updated_at: new Date() })
+						.where(and(eq(orders.id, storedReservation.id), isNull(orders.payment_transaction_id)))
+						.returning();
+					if (!updatedOrder) throw new Error('Failed to complete order reservation');
+					return updatedOrder;
+				});
+
+				try {
+					await sendBuyNowOrderCreatedBuyer(reservation.mail);
+				} catch (error) {
+					console.error('Failed to send buy-now notification:', error);
+				}
+				return c.json(
+					{
+						success: true,
+						order: { id: completedOrder.id, status: completedOrder.status },
+						payment_url: `${environment.PAYMENT_PROVIDER_PAY_PAGE_URL}/${transaction.id}/guest_pay?redirect_uri=${environment.POST_PAYMENT_REDIRECT_URL}/auth/profile/orders?highlight=${completedOrder.id}`,
+						message: 'Order created, complete the payment for the next step',
+					},
+					200,
+				);
 			} catch (error) {
 				console.error('Buy now error:', error);
 				return c.json({ success: false, error: 'Failed to process purchase' }, 500);

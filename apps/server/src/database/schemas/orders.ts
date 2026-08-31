@@ -1,4 +1,5 @@
-import { pgTable, integer, timestamp, text, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, integer, timestamp, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
@@ -39,7 +40,17 @@ export const orders = pgTable(
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
-	(table) => [index('orders_status_idx').on(table.status)],
+	(table) => [
+		index('orders_status_idx').on(table.status),
+		uniqueIndex('orders_payment_transaction_id_idx')
+			.on(table.payment_transaction_id)
+			.where(sql`${table.payment_transaction_id} IS NOT NULL`),
+		uniqueIndex('orders_active_item_idx')
+			.on(table.item_id)
+			.where(
+				sql`${table.status} IN ('payment_pending', 'payment_confirmed', 'shipping_pending', 'shipping_confirmed', 'completed')`,
+			),
+	],
 );
 
 export type SelectOrder = typeof orders.$inferSelect;

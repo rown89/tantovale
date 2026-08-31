@@ -14,7 +14,13 @@ import {
 } from '../fixtures/providers/trustap-v1';
 
 export type ProviderStubKind = 'trustap' | 'shippo';
-export type StubScenario = 'success' | 'unauthorized' | 'invalid-payload' | 'provider-error';
+export type StubScenario =
+	| 'success'
+	| 'unauthorized'
+	| 'invalid-payload'
+	| 'provider-error'
+	| 'transaction-error'
+	| 'transaction-disconnect';
 export type CapturedRequest = {
 	method: string;
 	path: string;
@@ -79,7 +85,14 @@ type ProviderRoute =
 	| { name: 'shippo-create-transaction' };
 
 const JSON_BODY_LIMIT_BYTES = 64 * 1024;
-const scenarios: ReadonlySet<StubScenario> = new Set(['success', 'unauthorized', 'invalid-payload', 'provider-error']);
+const scenarios: ReadonlySet<StubScenario> = new Set([
+	'success',
+	'unauthorized',
+	'invalid-payload',
+	'provider-error',
+	'transaction-error',
+	'transaction-disconnect',
+]);
 const shippoDistanceUnits: ReadonlySet<string> = new Set(Object.values(DistanceUnitEnum));
 const shippoMassUnits: ReadonlySet<string> = new Set(Object.values(WeightUnitEnum));
 
@@ -336,6 +349,9 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'provider-error':
 			sendProviderError(kind, response);
 			return true;
+		case 'transaction-error':
+		case 'transaction-disconnect':
+			return false;
 	}
 }
 
@@ -490,6 +506,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					break;
 			}
 
+			if (scenario === 'transaction-error' && route.name === 'trustap-create-transaction') {
+				sendProviderError(kind, response);
+				return;
+			}
 			if (injectedScenarioResponse(kind, scenario, response)) return;
 
 			switch (route.name) {
@@ -536,6 +556,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					};
 					nextTrustapTransactionId += 1;
 					trustapTransactions.set(transaction.id, transaction);
+					if (scenario === 'transaction-disconnect') {
+						response.destroy();
+						return;
+					}
 					sendJson(response, 201, transaction);
 					return;
 				}

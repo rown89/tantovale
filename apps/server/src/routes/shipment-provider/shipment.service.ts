@@ -241,9 +241,15 @@ export class ShipmentService {
 		itemId: number,
 		buyerProfileId: number,
 		buyerEmail: string,
+		query?: DatabaseQuery,
 	): Promise<{ cost: number; rates: Rate[] }> {
 		// Get shipment calculation data
-		const { itemData, buyerProfile } = await this.getShipmentCalculationData(itemId, buyerProfileId);
+		const { itemData, buyerProfile } = query
+			? {
+					itemData: await this.getItemData(query, itemId),
+					buyerProfile: await this.getBuyerProfile(query, buyerProfileId),
+				}
+			: await this.getShipmentCalculationData(itemId, buyerProfileId);
 
 		// Create shipment options
 		const shipmentOptions = this.createShipmentOptions(itemData, buyerProfile, buyerEmail);

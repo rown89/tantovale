@@ -1,4 +1,5 @@
-import { pgTable, integer, timestamp, text, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, integer, timestamp, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
@@ -27,7 +28,12 @@ export const orders_proposals = pgTable(
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
-	(table) => [index('orders_proposals_status_idx').on(table.status)],
+	(table) => [
+		index('orders_proposals_status_idx').on(table.status),
+		uniqueIndex('orders_proposals_pending_item_buyer_idx')
+			.on(table.item_id, table.profile_id)
+			.where(sql`${table.status} = 'pending'`),
+	],
 );
 
 export type SelectOrderProposal = typeof orders_proposals.$inferSelect;

@@ -1,0 +1,4 @@
+CREATE UNIQUE INDEX "entity_trustap_transactions_transaction_id_idx" ON "entity_trustap_transactions" ("transaction_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "orders_proposals_pending_item_buyer_idx" ON "orders_proposals" ("item_id","profile_id") WHERE "status" = 'pending';--> statement-breakpoint
+CREATE UNIQUE INDEX "orders_payment_transaction_id_idx" ON "orders" ("payment_transaction_id") WHERE "payment_transaction_id" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "orders_active_item_idx" ON "orders" ("item_id") WHERE "status" IN ('payment_pending', 'payment_confirmed', 'shipping_pending', 'shipping_confirmed', 'completed');

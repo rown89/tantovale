@@ -98,6 +98,7 @@ export async function calculatePlatformCosts(
 				const transactionFee = await paymentProviderService.calculateTransactionFee({
 					price,
 					currency: 'eur',
+					postage_fee,
 				});
 				result.payment_provider_charge = transactionFee?.charge ?? undefined;
 				result.payment_provider_charge_calculator_version = transactionFee?.charge_calculator_version ?? undefined;
