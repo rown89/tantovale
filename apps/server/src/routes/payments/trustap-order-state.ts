@@ -90,6 +90,17 @@ export type TrustapOrderTransition = {
 	providerStatus: EntityTrustapTransactionStatus;
 };
 
+const authoritativeCancellationStatuses = new Set<EntityTrustapTransactionStatus>([
+	TRUSTAP.REJECTED,
+	TRUSTAP.CANCELLED,
+	TRUSTAP.CANCELLED_WITH_PAYMENT,
+	TRUSTAP.PAYMENT_REFUNDED,
+]);
+
+export function isAuthoritativeCancellationStatus(status: EntityTrustapTransactionStatus): boolean {
+	return authoritativeCancellationStatuses.has(status);
+}
+
 export function resolveTrustapOrderTransition(
 	currentProviderStatus: EntityTrustapTransactionStatus,
 	currentOrderStatus: string,

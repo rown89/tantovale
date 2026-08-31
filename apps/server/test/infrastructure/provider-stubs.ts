@@ -550,6 +550,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					const body = await readJsonBody(request);
 					const transactionId = isRecord(body) ? body.transaction_id : undefined;
 					const status = isRecord(body) ? body.status : undefined;
+					const description = isRecord(body) ? body.description : undefined;
 					const transaction =
 						typeof transactionId === 'number' && Number.isSafeInteger(transactionId)
 							? trustapTransactions.get(transactionId)
@@ -558,7 +559,15 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendJson(response, 404, { error: 'Trustap transaction control target not found' });
 						return;
 					}
-					trustapTransactions.set(transaction.id, { ...transaction, status });
+					if (description !== undefined && !isNonemptyString(description)) {
+						sendJson(response, 400, { error: 'Invalid Trustap transaction description' });
+						return;
+					}
+					trustapTransactions.set(transaction.id, {
+						...transaction,
+						status,
+						...(typeof description === 'string' ? { description } : {}),
+					});
 					sendJson(response, 200, { transaction_id: transactionId, status });
 					return;
 				}

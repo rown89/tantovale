@@ -12,6 +12,7 @@ export * from './items_properties_values';
 export * from './items';
 export * from './orders_proposals';
 export * from './orders';
+export * from './payment_invitation_outbox';
 export * from './password_reset_tokens';
 export * from './profiles';
 export * from './properties_values';

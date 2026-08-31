@@ -21,7 +21,7 @@ async function waitForBlockedWriter(client: Client): Promise<void> {
 			) AS blocked
 		`);
 		if (result.rows[0]?.blocked) return;
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await new Promise<void>((resolve) => setImmediate(resolve));
 	} while (Date.now() < deadline);
 	throw new Error('Concurrent writer was not blocked by the migration table lock');
 }
@@ -45,6 +45,7 @@ describe('M07 commerce migration', () => {
 			await writer.connect();
 
 			await migrationClient.query(`
+				DROP TABLE payment_invitation_outbox;
 				DROP INDEX entity_trustap_transactions_transaction_id_idx;
 				DROP INDEX orders_proposals_pending_item_buyer_idx;
 				DROP INDEX orders_payment_transaction_id_idx;
@@ -56,13 +57,14 @@ describe('M07 commerce migration', () => {
 				ALTER TABLE orders DROP CONSTRAINT orders_payment_creation_state_check;
 					ALTER TABLE orders DROP CONSTRAINT orders_payment_cancellation_state_check;
 					ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
-					ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_item_price_positive;
+				ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_item_price_positive;
+				ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_operational_graph_check;
+				ALTER TABLE entity_trustap_transactions DROP CONSTRAINT IF EXISTS entity_trustap_transactions_active_graph_check;
 					ALTER TABLE orders_proposals DROP CONSTRAINT IF EXISTS orders_proposals_pending_quote_check;
 				ALTER TABLE orders DROP COLUMN legacy_payment_transaction_id;
 				ALTER TABLE orders DROP COLUMN payment_attempt_id;
 				ALTER TABLE orders DROP COLUMN payment_creation_state;
 				ALTER TABLE orders DROP COLUMN payment_cancellation_state;
-				ALTER TABLE orders DROP COLUMN payment_recovery_notification_claimed_at;
 				ALTER TABLE orders DROP COLUMN item_price;
 				ALTER TABLE orders DROP COLUMN order_proposal_id;
 				ALTER TABLE orders DROP COLUMN shipping_quote_id;
@@ -74,7 +76,8 @@ describe('M07 commerce migration', () => {
 				ALTER TABLE profiles DROP CONSTRAINT profiles_payment_provider_identity_attempt_id_key;
 				ALTER TABLE profiles DROP CONSTRAINT profiles_payment_provider_identity_state_check;
 				ALTER TABLE profiles DROP COLUMN payment_provider_identity_attempt_id;
-					ALTER TABLE profiles DROP COLUMN payment_provider_identity_state;
+				ALTER TABLE profiles DROP COLUMN payment_provider_identity_state;
+				ALTER TABLE entity_trustap_transactions DROP COLUMN reconciliation_required;
 					ALTER TABLE entity_trustap_transactions ALTER COLUMN transaction_id TYPE integer USING transaction_id::integer;
 					ALTER TABLE orders ALTER COLUMN payment_transaction_id TYPE integer USING payment_transaction_id::integer;
 			`);
@@ -97,14 +100,21 @@ describe('M07 commerce migration', () => {
 						(1, 1, 1, 1, 'Item one', 'Description', true, 10000, true),
 						(2, 1, 1, 1, 'Item two', 'Description', true, 20000, true),
 						(3, 1, 1, 1, 'Raw paid item', 'Description', true, 30000, true),
-						(4, 1, 1, 1, 'Unknown state item', 'Description', true, 40000, true);
+						(4, 1, 1, 1, 'Unknown state item', 'Description', true, 40000, true),
+						(5, 1, 1, 1, 'Changed proposal item', 'Description', true, 50000, true),
+						(6, 1, 1, 1, 'Provider evidence item', 'Description', true, 60000, true),
+						(7, 1, 1, 1, 'Identity mismatch item', 'Description', true, 70000, true),
+						(8, 1, 1, 1, 'Amount mismatch item', 'Description', true, 80000, true),
+						(9, 1, 1, 1, 'Incomplete graph item', 'Description', true, 90000, true);
 				INSERT INTO orders_proposals
 					(id, item_id, profile_id, original_price, proposal_price, payment_provider_charge, platform_charge, shipping_label_id, status, created_at)
 					OVERRIDING SYSTEM VALUE VALUES
 					(1, 1, 2, 10000, 9000, 450, 90, 'shipment-1', 'pending', now() - interval '2 hours'),
-					(2, 1, 2, 10000, 8000, 400, 80, 'shipment-2', 'pending', now() - interval '1 hour');
+					(2, 1, 2, 10000, 8000, 400, 80, 'shipment-2', 'pending', now() - interval '1 hour'),
+					(3, 5, 2, 40000, 30000, 500, 90, 'shipment-9', 'accepted', now() - interval '30 minutes'),
+					(4, 8, 2, 80000, 75000, 500, 80, 'shipment-12', 'accepted', now() - interval '20 minutes');
 				INSERT INTO chat_rooms (id, item_id, buyer_id) OVERRIDING SYSTEM VALUE VALUES (1, 1, 2);
-				SELECT setval(pg_get_serial_sequence('orders_proposals', 'id'), 2, true);
+				SELECT setval(pg_get_serial_sequence('orders_proposals', 'id'), 4, true);
 				INSERT INTO chat_messages (id, chat_room_id, sender_id, message, message_type, order_proposal_id)
 					OVERRIDING SYSTEM VALUE VALUES (1, 1, 2, 'Preserve duplicate proposal history', 'proposal', 2);
 					INSERT INTO entity_trustap_transactions
@@ -112,7 +122,10 @@ describe('M07 commerce migration', () => {
 						OVERRIDING SYSTEM VALUE VALUES
 						(1, 2, 'legacy-seller', 'legacy-buyer', 500, 'created', 20180, 1000, 0, 'Item two ambiguous oldest', now() - interval '2 hours'),
 						(2, 1, 'legacy-seller', 'legacy-buyer', 500, 'created', 10090, 500, 0, 'Item one ambiguous duplicate', now() - interval '1 hour'),
-						(3, 1, 'legacy-seller', 'legacy-buyer', 700, 'created', 10090, 500, 0, 'Item one correlated', now() - interval '30 minutes');
+						(3, 1, 'legacy-seller', 'legacy-buyer', 700, 'created', 10090, 500, 0, 'Item one correlated', now() - interval '30 minutes'),
+						(4, 6, 'legacy-seller', 'legacy-buyer', 800, 'created', 45090, 500, 0, 'Provider evidence', now() - interval '20 minutes'),
+						(5, 7, 'legacy-seller', 'wrong-buyer', 900, 'created', 70090, 500, 0, 'Identity mismatch', now() - interval '15 minutes'),
+						(6, 8, 'legacy-seller', 'legacy-buyer', 901, 'created', 99999, 500, 0, 'Amount mismatch', now() - interval '10 minutes');
 				INSERT INTO orders
 					(id, item_id, payment_provider_charge, platform_charge, shipping_label_id, shipping_price, buyer_id, seller_id, buyer_address, seller_address, payment_transaction_id, status, created_at)
 					OVERRIDING SYSTEM VALUE VALUES
@@ -123,7 +136,13 @@ describe('M07 commerce migration', () => {
 					(5, 1, 500, 90, 'shipment-5', 750, 2, 1, 2, 1, 700, 'payment_pending', now() - interval '30 minutes'),
 						(6, 1, 500, 90, 'shipment-6', 750, 2, 1, 2, 1, 700, 'payment_pending', now() - interval '20 minutes'),
 						(7, 3, 500, 90, 'shipment-7', 750, 2, 1, 2, 1, NULL, 'paid', now() - interval '10 minutes'),
-						(8, 4, 500, 90, 'shipment-8', 750, 2, 1, 2, 1, NULL, 'provider_future_state', now() - interval '5 minutes');
+						(8, 4, 500, 90, 'shipment-8', 750, 2, 1, 2, 1, NULL, 'provider_future_state', now() - interval '5 minutes'),
+						(9, 5, 500, 90, 'shipment-9', 750, 2, 1, 2, 1, NULL, 'created', now() - interval '4 minutes'),
+						(10, 6, 500, 90, 'shipment-10', 750, 2, 1, 2, 1, 800, 'payment_pending', now() - interval '3 minutes'),
+						(11, 7, 500, 90, 'shipment-11', 750, 2, 1, 2, 1, 900, 'payment_pending', now() - interval '2 minutes'),
+						(12, 8, 500, 80, 'shipment-12', 750, 2, 1, 2, 1, 901, 'payment_pending', now() - interval '1 minute'),
+						(13, 9, 500, 90, 'shipment-13', 750, NULL, 1, NULL, 1, NULL, 'payment_pending', now()),
+						(14, 3, 500, 90, 'shipment-14', 750, 2, 1, 2, 1, NULL, 'tracked', now());
 				SET session_replication_role = DEFAULT;
 			`);
 
@@ -168,12 +187,23 @@ describe('M07 commerce migration', () => {
 			);
 			expect(history.rows[0]?.order_proposal_id).toBe(2);
 
-			const providerRows = await migrationClient.query<{ id: number; entity_id: number; transaction_id: string }>(
-				'SELECT id, entity_id, transaction_id FROM entity_trustap_transactions ORDER BY id',
-			);
-			expect(providerRows.rows).toEqual([
-				{ id: 1, entity_id: 2, transaction_id: '500' },
-				{ id: 3, entity_id: 1, transaction_id: '700' },
+			const providerRows = await migrationClient.query<{
+				id: number;
+				entity_id: number;
+				transaction_id: string;
+				reconciliation_required: boolean;
+			}>('SELECT id, entity_id, transaction_id, reconciliation_required FROM entity_trustap_transactions ORDER BY id');
+			expect(
+				providerRows.rows.map(({ transaction_id, reconciliation_required }) => ({
+					transaction_id,
+					reconciliation_required,
+				})),
+			).toEqual([
+				{ transaction_id: '500', reconciliation_required: true },
+				{ transaction_id: '700', reconciliation_required: true },
+				{ transaction_id: '800', reconciliation_required: true },
+				{ transaction_id: '900', reconciliation_required: true },
+				{ transaction_id: '901', reconciliation_required: true },
 			]);
 			const reconciledOrders = await migrationClient.query<{
 				id: number;
@@ -184,19 +214,13 @@ describe('M07 commerce migration', () => {
 			}>(
 				'SELECT id, status, payment_creation_state, payment_transaction_id, legacy_payment_transaction_id FROM orders ORDER BY id',
 			);
-			for (const conflict of reconciledOrders.rows.slice(0, 4)) {
+			for (const conflict of reconciledOrders.rows) {
 				expect(conflict).toMatchObject({
 					status: 'cancelled',
 					payment_creation_state: 'reconciliation_required',
 					payment_transaction_id: null,
 				});
 			}
-			expect(reconciledOrders.rows[4]).toMatchObject({
-				id: 5,
-				status: 'payment_pending',
-				payment_creation_state: 'created',
-				payment_transaction_id: '700',
-			});
 			expect(
 				reconciledOrders.rows.filter(({ legacy_payment_transaction_id }) => legacy_payment_transaction_id === '500'),
 			).toHaveLength(3);
@@ -207,32 +231,40 @@ describe('M07 commerce migration', () => {
 				payment_transaction_id: null,
 				legacy_payment_transaction_id: '700',
 			});
-			expect(reconciledOrders.rows[6]).toMatchObject({
-				id: 7,
-				status: 'payment_confirmed',
-				payment_creation_state: 'created',
+			const frozenPrices = await migrationClient.query<{
+				id: number;
+				item_price: number;
+				order_proposal_id: number | null;
+			}>('SELECT id, item_price, order_proposal_id FROM orders ORDER BY id');
+			expect(frozenPrices.rows.find(({ id }) => id === 9)).toEqual({ id: 9, item_price: 30000, order_proposal_id: 3 });
+			expect(frozenPrices.rows.find(({ id }) => id === 10)).toEqual({
+				id: 10,
+				item_price: 45000,
+				order_proposal_id: null,
 			});
-			expect(reconciledOrders.rows[7]).toMatchObject({
-				id: 8,
-				status: 'payment_pending',
-				payment_creation_state: 'reconciliation_required',
+			expect(frozenPrices.rows.find(({ id }) => id === 11)).toEqual({
+				id: 11,
+				item_price: 70000,
+				order_proposal_id: null,
 			});
-			const frozenPrices = await migrationClient.query<{ id: number; item_price: number }>(
-				'SELECT id, item_price FROM orders ORDER BY id',
-			);
-			expect(frozenPrices.rows).toEqual([
-				{ id: 1, item_price: 10000 },
-				{ id: 2, item_price: 10000 },
-				{ id: 3, item_price: 20000 },
-				{ id: 4, item_price: 20000 },
-				{ id: 5, item_price: 10000 },
-				{ id: 6, item_price: 10000 },
-				{ id: 7, item_price: 30000 },
-				{ id: 8, item_price: 40000 },
-			]);
+			expect(frozenPrices.rows.find(({ id }) => id === 12)).toEqual({
+				id: 12,
+				item_price: 75000,
+				order_proposal_id: 4,
+			});
 			await expect(
 				migrationClient.query(
 					"INSERT INTO orders (payment_provider_charge, platform_charge, shipping_label_id, shipping_price, status, item_price) VALUES (1, 1, 'x', 1, 'paid', 1)",
+				),
+			).rejects.toMatchObject({ code: '23514' });
+			await expect(
+				migrationClient.query(
+					"INSERT INTO orders (payment_provider_charge, platform_charge, shipping_label_id, shipping_price, status, item_price, payment_creation_state) VALUES (1, 1, 'x', 1, 'payment_pending', 1, 'created')",
+				),
+			).rejects.toMatchObject({ code: '23514' });
+			await expect(
+				migrationClient.query(
+					"INSERT INTO entity_trustap_transactions (transaction_id, status, price, charge, charge_seller, entity_title) VALUES (99001, 'created', 1, 0, 0, 'incomplete')",
 				),
 			).rejects.toMatchObject({ code: '23514' });
 			await expect(
@@ -258,8 +290,10 @@ describe('M07 commerce migration', () => {
 					'duplicate_pending_proposal',
 					'duplicate_active_order',
 					'duplicate_order_transaction',
-					'legacy_order_item_price_backfill',
+					'audited_item_price_fallback',
 					'legacy_order_provider_status',
+					'legacy_status_missing_transaction',
+					'quarantined_provider_transaction',
 				]),
 			);
 			expect(audit.rows.every(({ snapshot }) => typeof snapshot.id === 'number')).toBe(true);

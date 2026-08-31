@@ -2,6 +2,8 @@ LOCK TABLE "addresses", "entity_trustap_transactions", "items", "orders", "order
 --> statement-breakpoint
 ALTER TABLE "entity_trustap_transactions" ALTER COLUMN "transaction_id" TYPE bigint USING "transaction_id"::bigint;
 --> statement-breakpoint
+ALTER TABLE "entity_trustap_transactions" ADD COLUMN "reconciliation_required" boolean DEFAULT false NOT NULL;
+--> statement-breakpoint
 ALTER TABLE "orders" ALTER COLUMN "payment_transaction_id" TYPE bigint USING "payment_transaction_id"::bigint;
 --> statement-breakpoint
 CREATE TABLE "commerce_reconciliation_audit" (
@@ -75,34 +77,11 @@ ALTER TABLE "orders" ADD COLUMN "payment_creation_state" text DEFAULT 'created' 
 --> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "payment_cancellation_state" text DEFAULT 'none' NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "payment_recovery_notification_claimed_at" timestamp with time zone;
---> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "item_price" integer;
 --> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "order_proposal_id" integer;
 --> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "shipping_quote_id" uuid;
---> statement-breakpoint
-INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
-SELECT 'legacy_order_item_price_backfill', 'orders', target.id, 'items.price', to_jsonb(target)
-FROM orders AS target
-WHERE target.item_price IS NULL;
---> statement-breakpoint
-UPDATE orders AS target
-SET item_price = item.price
-FROM items AS item
-WHERE target.item_price IS NULL AND target.item_id = item.id AND item.price > 0;
---> statement-breakpoint
-DO $$
-BEGIN
-	IF EXISTS (SELECT 1 FROM orders WHERE item_price IS NULL OR item_price <= 0) THEN
-		RAISE EXCEPTION 'M07 cannot safely backfill immutable item_price for every legacy order';
-	END IF;
-END $$;
---> statement-breakpoint
-ALTER TABLE "orders" ALTER COLUMN "item_price" SET NOT NULL;
---> statement-breakpoint
-ALTER TABLE "orders" ADD CONSTRAINT "orders_item_price_positive" CHECK ("item_price" > 0);
 --> statement-breakpoint
 INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
 SELECT 'legacy_order_provider_status', 'orders', target.id, target.status, to_jsonb(target)
@@ -125,7 +104,9 @@ SET status = CASE status
 	ELSE 'payment_pending'
 END,
 payment_creation_state = CASE
-	WHEN status = 'complained' OR status NOT IN ('created', 'joined', 'paid', 'rejected', 'cancelled', 'tracked', 'cancelled_with_payment', 'payment_refunded', 'delivered', 'complaint_period_ended', 'funds_released', 'payment_pending', 'payment_confirmed', 'payment_failed', 'shipping_pending', 'shipping_confirmed', 'completed', 'expired')
+	WHEN payment_transaction_id IS NULL
+		OR status = 'complained'
+		OR status NOT IN ('created', 'joined', 'paid', 'rejected', 'cancelled', 'tracked', 'cancelled_with_payment', 'payment_refunded', 'delivered', 'complaint_period_ended', 'funds_released', 'payment_pending', 'payment_confirmed', 'payment_failed', 'shipping_pending', 'shipping_confirmed', 'completed', 'expired')
 		THEN 'reconciliation_required'
 	ELSE payment_creation_state
 END,
@@ -145,6 +126,69 @@ ALTER TABLE "orders" ADD CONSTRAINT "orders_shipping_quote_id_shipping_quotes_id
 ALTER TABLE "orders" ADD CONSTRAINT "orders_payment_creation_state_check" CHECK ("payment_creation_state" IN ('preparing', 'creating', 'reconciliation_required', 'created'));
 --> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_payment_cancellation_state_check" CHECK ("payment_cancellation_state" IN ('none', 'cancelling', 'reconciliation_required', 'cancelled'));
+--> statement-breakpoint
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
+SELECT 'legacy_status_missing_transaction', 'orders', target.id, target.status, to_jsonb(target)
+FROM orders AS target
+WHERE target.payment_transaction_id IS NULL;
+--> statement-breakpoint
+WITH candidate AS (
+	SELECT target.id AS order_id, min(proposal.id) AS proposal_id, count(*) AS candidate_count
+	FROM orders AS target
+	JOIN orders_proposals AS proposal
+		ON proposal.item_id = target.item_id
+		AND proposal.profile_id = target.buyer_id
+		AND proposal.status = 'accepted'
+	GROUP BY target.id
+)
+UPDATE orders AS target
+SET order_proposal_id = candidate.proposal_id
+FROM candidate
+WHERE target.id = candidate.order_id AND candidate.candidate_count = 1;
+--> statement-breakpoint
+UPDATE orders AS target
+SET item_price = proposal.proposal_price
+FROM orders_proposals AS proposal
+WHERE target.order_proposal_id = proposal.id AND proposal.proposal_price > 0;
+--> statement-breakpoint
+UPDATE orders AS target
+SET item_price = transaction.price - target.platform_charge
+FROM entity_trustap_transactions AS transaction
+JOIN profiles AS buyer_profile ON buyer_profile.payment_provider_id = transaction.buyer_id
+JOIN profiles AS seller_profile ON seller_profile.payment_provider_id = transaction.seller_id
+WHERE target.item_price IS NULL
+	AND target.payment_transaction_id IS NOT NULL
+	AND transaction.transaction_id = target.payment_transaction_id
+	AND transaction.entity_id = target.item_id
+	AND buyer_profile.id = target.buyer_id
+	AND seller_profile.id = target.seller_id
+	AND transaction.currency = 'eur'
+	AND transaction.price - target.platform_charge > 0
+	AND transaction.charge = target.payment_provider_charge
+	AND transaction.charge_seller = 0;
+--> statement-breakpoint
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
+SELECT 'audited_item_price_fallback', 'orders', target.id, 'items.price', to_jsonb(target)
+FROM orders AS target
+WHERE target.item_price IS NULL;
+--> statement-breakpoint
+UPDATE orders AS target
+SET item_price = item.price,
+	payment_creation_state = 'reconciliation_required',
+	updated_at = now()
+FROM items AS item
+WHERE target.item_price IS NULL AND target.item_id = item.id AND item.price > 0;
+--> statement-breakpoint
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM orders WHERE item_price IS NULL OR item_price <= 0) THEN
+		RAISE EXCEPTION 'M07 cannot safely backfill immutable item_price for every legacy order';
+	END IF;
+END $$;
+--> statement-breakpoint
+ALTER TABLE "orders" ALTER COLUMN "item_price" SET NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "orders" ADD CONSTRAINT "orders_item_price_positive" CHECK ("item_price" > 0);
 --> statement-breakpoint
 WITH ambiguous AS (
 	SELECT transaction_id, min(id) AS canonical_id
@@ -178,65 +222,88 @@ DELETE FROM entity_trustap_transactions AS transaction
 USING ranked
 WHERE transaction.id = ranked.id AND ranked.duplicate_rank > 1;
 --> statement-breakpoint
-WITH conflicted_references AS (
-	SELECT DISTINCT target.payment_transaction_id AS transaction_id
-	FROM orders AS target
-		LEFT JOIN entity_trustap_transactions AS transaction
-			ON transaction.transaction_id = target.payment_transaction_id
-		LEFT JOIN profiles AS buyer_profile ON buyer_profile.id = target.buyer_id
-		LEFT JOIN profiles AS seller_profile ON seller_profile.id = target.seller_id
-		WHERE target.payment_transaction_id IS NOT NULL
-			AND (
-				transaction.id IS NULL
-				OR transaction.entity_id IS DISTINCT FROM target.item_id
-				OR transaction.buyer_id IS DISTINCT FROM buyer_profile.payment_provider_id
-				OR transaction.seller_id IS DISTINCT FROM seller_profile.payment_provider_id
-				OR transaction.currency IS DISTINCT FROM 'eur'
-				OR transaction.price IS DISTINCT FROM target.item_price + target.platform_charge
-				OR transaction.charge IS DISTINCT FROM target.payment_provider_charge
-				OR transaction.charge_seller IS DISTINCT FROM 0
-			)
-		UNION
-		SELECT DISTINCT original_reference::bigint
-	FROM commerce_reconciliation_audit
-	WHERE conflict_type = 'ambiguous_provider_transaction'
-)
+CREATE TEMP TABLE m07_conflicted_transactions (transaction_id bigint PRIMARY KEY) ON COMMIT DROP;
+--> statement-breakpoint
+INSERT INTO m07_conflicted_transactions (transaction_id)
+SELECT DISTINCT original_reference::bigint
+FROM commerce_reconciliation_audit
+WHERE conflict_type = 'ambiguous_provider_transaction';
+--> statement-breakpoint
+INSERT INTO m07_conflicted_transactions (transaction_id)
+SELECT DISTINCT target.payment_transaction_id
+FROM orders AS target
+LEFT JOIN entity_trustap_transactions AS transaction ON transaction.transaction_id = target.payment_transaction_id
+LEFT JOIN profiles AS buyer_profile ON buyer_profile.id = target.buyer_id
+LEFT JOIN profiles AS seller_profile ON seller_profile.id = target.seller_id
+WHERE target.payment_transaction_id IS NOT NULL
+	AND (
+		transaction.id IS NULL
+		OR target.item_id IS NULL OR target.buyer_id IS NULL OR target.seller_id IS NULL
+		OR target.buyer_address IS NULL OR target.seller_address IS NULL
+		OR target.payment_attempt_id IS NULL OR target.item_price IS NULL
+		OR target.shipping_price <= 0 OR target.platform_charge < 0 OR target.payment_provider_charge < 0
+		OR transaction.entity_id IS DISTINCT FROM target.item_id
+		OR transaction.buyer_id IS DISTINCT FROM buyer_profile.payment_provider_id
+		OR transaction.seller_id IS DISTINCT FROM seller_profile.payment_provider_id
+		OR transaction.currency IS DISTINCT FROM 'eur'
+		OR transaction.price IS DISTINCT FROM target.item_price + target.platform_charge
+		OR transaction.charge IS DISTINCT FROM target.payment_provider_charge
+		OR transaction.charge_seller IS DISTINCT FROM 0
+	)
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
 INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
 SELECT 'financial_graph_mismatch', 'orders', target.id, target.payment_transaction_id::text, to_jsonb(target)
 FROM orders AS target
-JOIN conflicted_references ON conflicted_references.transaction_id = target.payment_transaction_id;
+WHERE target.payment_transaction_id IN (SELECT transaction_id FROM m07_conflicted_transactions)
+	OR target.payment_transaction_id IS NULL
+	OR target.item_id IS NULL OR target.buyer_id IS NULL OR target.seller_id IS NULL
+	OR target.buyer_address IS NULL OR target.seller_address IS NULL OR target.payment_attempt_id IS NULL;
 --> statement-breakpoint
-WITH conflicted_references AS (
-	SELECT DISTINCT target.payment_transaction_id AS transaction_id
-	FROM orders AS target
-		LEFT JOIN entity_trustap_transactions AS transaction
-			ON transaction.transaction_id = target.payment_transaction_id
-		LEFT JOIN profiles AS buyer_profile ON buyer_profile.id = target.buyer_id
-		LEFT JOIN profiles AS seller_profile ON seller_profile.id = target.seller_id
-		WHERE target.payment_transaction_id IS NOT NULL
-			AND (
-				transaction.id IS NULL
-				OR transaction.entity_id IS DISTINCT FROM target.item_id
-				OR transaction.buyer_id IS DISTINCT FROM buyer_profile.payment_provider_id
-				OR transaction.seller_id IS DISTINCT FROM seller_profile.payment_provider_id
-				OR transaction.currency IS DISTINCT FROM 'eur'
-				OR transaction.price IS DISTINCT FROM target.item_price + target.platform_charge
-				OR transaction.charge IS DISTINCT FROM target.payment_provider_charge
-				OR transaction.charge_seller IS DISTINCT FROM 0
-			)
-		UNION
-		SELECT DISTINCT original_reference::bigint
-	FROM commerce_reconciliation_audit
-	WHERE conflict_type = 'ambiguous_provider_transaction'
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, original_reference, snapshot)
+SELECT 'quarantined_provider_transaction', 'entity_trustap_transactions', transaction.id,
+	transaction.transaction_id::text, to_jsonb(transaction)
+FROM entity_trustap_transactions AS transaction
+WHERE transaction.transaction_id IN (SELECT transaction_id FROM m07_conflicted_transactions);
+--> statement-breakpoint
+WITH ranked AS (
+	SELECT id, first_value(id) OVER (PARTITION BY item_id ORDER BY created_at, id) AS canonical_id,
+		row_number() OVER (PARTITION BY item_id ORDER BY created_at, id) AS duplicate_rank
+	FROM orders
+	WHERE status IN ('payment_pending', 'payment_confirmed', 'shipping_pending', 'shipping_confirmed', 'completed')
 )
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, canonical_row_id, original_reference, snapshot)
+SELECT 'duplicate_active_order', 'orders', target.id, ranked.canonical_id, target.payment_transaction_id::text, to_jsonb(target)
+FROM ranked
+JOIN orders AS target ON target.id = ranked.id
+WHERE ranked.duplicate_rank > 1;
+--> statement-breakpoint
+WITH ranked AS (
+	SELECT id, first_value(id) OVER (PARTITION BY payment_transaction_id ORDER BY created_at, id) AS canonical_id,
+		row_number() OVER (PARTITION BY payment_transaction_id ORDER BY created_at, id) AS duplicate_rank
+	FROM orders
+	WHERE payment_transaction_id IS NOT NULL
+)
+INSERT INTO commerce_reconciliation_audit (conflict_type, source_table, source_row_id, canonical_row_id, original_reference, snapshot)
+SELECT 'duplicate_order_transaction', 'orders', target.id, ranked.canonical_id, target.payment_transaction_id::text, to_jsonb(target)
+FROM ranked
+JOIN orders AS target ON target.id = ranked.id
+WHERE ranked.duplicate_rank > 1;
+--> statement-breakpoint
+UPDATE entity_trustap_transactions
+SET reconciliation_required = true, updated_at = now()
+WHERE transaction_id IN (SELECT transaction_id FROM m07_conflicted_transactions);
+--> statement-breakpoint
 UPDATE orders AS target
 SET legacy_payment_transaction_id = target.payment_transaction_id,
 	payment_transaction_id = NULL,
 	status = 'cancelled',
 	payment_creation_state = 'reconciliation_required',
 	updated_at = now()
-FROM conflicted_references
-WHERE target.payment_transaction_id = conflicted_references.transaction_id;
+WHERE target.payment_transaction_id IN (SELECT transaction_id FROM m07_conflicted_transactions)
+	OR target.payment_transaction_id IS NULL
+	OR target.item_id IS NULL OR target.buyer_id IS NULL OR target.seller_id IS NULL
+	OR target.buyer_address IS NULL OR target.seller_address IS NULL OR target.payment_attempt_id IS NULL;
 --> statement-breakpoint
 WITH ranked AS (
 	SELECT id, first_value(id) OVER (PARTITION BY item_id, profile_id ORDER BY created_at, id) AS canonical_id,
@@ -319,6 +386,18 @@ SET legacy_payment_transaction_id = target.payment_transaction_id,
 FROM ranked
 WHERE target.id = ranked.id AND ranked.duplicate_rank > 1;
 --> statement-breakpoint
+ALTER TABLE "entity_trustap_transactions" ADD CONSTRAINT "entity_trustap_transactions_active_graph_check" CHECK ("reconciliation_required" OR ("entity_id" IS NOT NULL AND "seller_id" IS NOT NULL AND "buyer_id" IS NOT NULL AND "currency" = 'eur' AND "price" > 0 AND "charge" >= 0 AND "charge_seller" = 0));
+--> statement-breakpoint
+ALTER TABLE "orders" ADD CONSTRAINT "orders_operational_graph_check" CHECK (
+	"payment_creation_state" = 'reconciliation_required' OR (
+		"item_id" IS NOT NULL AND "buyer_id" IS NOT NULL AND "seller_id" IS NOT NULL
+		AND "buyer_address" IS NOT NULL AND "seller_address" IS NOT NULL
+		AND "payment_attempt_id" IS NOT NULL
+		AND (("payment_creation_state" = 'created' AND "payment_transaction_id" IS NOT NULL)
+			OR ("payment_creation_state" IN ('preparing', 'creating') AND "payment_transaction_id" IS NULL))
+	)
+);
+--> statement-breakpoint
 CREATE UNIQUE INDEX "entity_trustap_transactions_transaction_id_idx" ON "entity_trustap_transactions" ("transaction_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "orders_proposals_pending_item_buyer_idx" ON "orders_proposals" ("item_id","profile_id") WHERE "status" = 'pending';
@@ -326,3 +405,30 @@ CREATE UNIQUE INDEX "orders_proposals_pending_item_buyer_idx" ON "orders_proposa
 CREATE UNIQUE INDEX "orders_payment_transaction_id_idx" ON "orders" ("payment_transaction_id") WHERE "payment_transaction_id" IS NOT NULL;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "orders_active_item_idx" ON "orders" ("item_id") WHERE "status" IN ('payment_pending', 'payment_confirmed', 'shipping_pending', 'shipping_confirmed', 'completed');
+--> statement-breakpoint
+CREATE TABLE "payment_invitation_outbox" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+	"order_id" integer NOT NULL,
+	"transaction_id" bigint NOT NULL,
+	"recipient_email" text NOT NULL,
+	"merchant_username" text NOT NULL,
+	"item_name" text NOT NULL,
+	"state" text DEFAULT 'pending' NOT NULL,
+	"attempt_count" integer DEFAULT 0 NOT NULL,
+	"lease_token" uuid,
+	"lease_expires_at" timestamp with time zone,
+	"last_attempt_at" timestamp with time zone,
+	"sent_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_invitation_outbox_order_id_orders_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE cascade,
+	CONSTRAINT "payment_invitation_outbox_state_check" CHECK ("state" IN ('pending', 'sending', 'sent')),
+	CONSTRAINT "payment_invitation_outbox_attempt_count_check" CHECK ("attempt_count" >= 0),
+	CONSTRAINT "payment_invitation_outbox_lease_check" CHECK (
+		("state" = 'pending' AND "lease_token" IS NULL AND "lease_expires_at" IS NULL AND "sent_at" IS NULL)
+		OR ("state" = 'sending' AND "lease_token" IS NOT NULL AND "lease_expires_at" IS NOT NULL AND "last_attempt_at" IS NOT NULL AND "lease_expires_at" > "last_attempt_at" AND "sent_at" IS NULL)
+		OR ("state" = 'sent' AND "lease_token" IS NULL AND "lease_expires_at" IS NULL AND "sent_at" IS NOT NULL)
+	)
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_invitation_outbox_order_idx" ON "payment_invitation_outbox" ("order_id");

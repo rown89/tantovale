@@ -22,6 +22,7 @@ import {
 	items,
 	orders,
 	orders_proposals,
+	payment_invitation_outbox,
 	profiles,
 	shipping_quotes,
 	subcategories,
@@ -44,7 +45,7 @@ import { calculatePlatformCosts } from '#utils/platform-costs';
 
 import { PaymentProviderHttpError, PaymentProviderService } from '../payments/payment-provider.service';
 import { publicTrustapId } from '../payments/trustap-int64';
-import { TransactionSyncService } from '../payments/transaction-sync.service';
+import { PaymentInvitationOutboxService } from '../payments/payment-invitation-outbox.service';
 import { parseProviderDecimalToCents, ShipmentService } from '../shipment-provider/shipment.service';
 import { shipmentMatchesShippingState, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
 
@@ -843,6 +844,13 @@ export const ordersProposalsRoute = createRouter()
 							message_type: 'system',
 							metadata: { order_id: updatedOrder.id, type: 'proposal_accepted' },
 						});
+						await tx.insert(payment_invitation_outbox).values({
+							order_id: updatedOrder.id,
+							transaction_id: transaction.id,
+							recipient_email: result.mail.to,
+							merchant_username: user.username,
+							item_name: result.itemTitle,
+						});
 						return { updatedOrder, updatedProposal };
 					});
 				} catch (finalizationError) {
@@ -868,7 +876,7 @@ export const ordersProposalsRoute = createRouter()
 					throw finalizationError;
 				}
 
-				await new TransactionSyncService().dispatchPendingRecoveryNotifications();
+				await new PaymentInvitationOutboxService().dispatchPending();
 				return c.json(
 					{
 						message: 'Proposal updated successfully',

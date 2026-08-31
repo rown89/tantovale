@@ -31,6 +31,12 @@ export const PAYMENT_CANCELLATION_STATES = {
 	CANCELLED: 'cancelled',
 } as const;
 
+export const PAYMENT_INVITATION_STATES = {
+	PENDING: 'pending',
+	SENDING: 'sending',
+	SENT: 'sent',
+} as const;
+
 export const PAYMENT_PROVIDER_IDENTITY_STATES = {
 	UNINITIALIZED: 'uninitialized',
 	CREATING: 'creating',

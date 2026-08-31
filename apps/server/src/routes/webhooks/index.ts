@@ -7,7 +7,7 @@ import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { entityTrustapTransactions, orders } from '#db-schema';
 import { entityTrustapTransactionStatusValues, PAYMENT_CANCELLATION_STATES } from '#database/schemas/enumerated_values';
-import { resolveTrustapOrderTransition } from '../payments/trustap-order-state';
+import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { environment } from '#utils/constants';
 import { canonicalTrustapId, parseJsonWithTopLevelTrustapId } from '../payments/trustap-int64';
@@ -73,24 +73,37 @@ export const webhooksRoute = createRouter().post(
 
 		try {
 			return await db.transaction(async (tx) => {
-				// Find the transaction in our database
+				const [identity] = await tx
+					.select({ entityId: entityTrustapTransactions.entityId })
+					.from(entityTrustapTransactions)
+					.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))
+					.limit(1);
+				if (!identity) {
+					console.error(`Transaction ${payload.transaction_id} not found in database`);
+					return c.json({ error: 'Transaction not found' }, 404);
+				}
+				if (identity.entityId === null) {
+					return c.json({ error: 'Transaction item not found' }, 404);
+				}
+				await acquireItemCommerceLock(tx, identity.entityId);
 				const [trustapTransaction] = await tx
 					.select()
 					.from(entityTrustapTransactions)
 					.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))
 					.for('update')
 					.limit(1);
-
-				if (!trustapTransaction) {
-					console.error(`Transaction ${payload.transaction_id} not found in database`);
+				if (!trustapTransaction || trustapTransaction.entityId !== identity.entityId) {
 					return c.json({ error: 'Transaction not found' }, 404);
 				}
-				if (trustapTransaction.entityId === null) {
-					return c.json({ error: 'Transaction item not found' }, 404);
+				if (trustapTransaction.reconciliationRequired) {
+					return c.json({ success: true, message: 'Quarantined transaction update ignored' }, 200);
 				}
-				await acquireItemCommerceLock(tx, trustapTransaction.entityId);
 				const [order] = await tx
-					.select({ id: orders.id, status: orders.status })
+					.select({
+						id: orders.id,
+						status: orders.status,
+						paymentCancellationState: orders.payment_cancellation_state,
+					})
 					.from(orders)
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))
 					.limit(1);
@@ -99,25 +112,27 @@ export const webhooksRoute = createRouter().post(
 					return c.json({ error: 'Order not found' }, 404);
 				}
 				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
-				if (!transition.apply) {
+				const resolvesCancellation =
+					isAuthoritativeCancellationStatus(payload.status) &&
+					order.paymentCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+				if (!transition.apply && !resolvesCancellation) {
 					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
 				}
 
 				// Update transaction status
-				const [updatedTransaction] = await tx
-					.update(entityTrustapTransactions)
-					.set({
-						status: transition.providerStatus,
-						updated_at: new Date(),
-						...(payload.complaint_period_deadline && {
-							complaintPeriodDeadline: new Date(payload.complaint_period_deadline),
-						}),
-					})
-					.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))
-					.returning();
-
-				if (!updatedTransaction) {
-					throw new Error('Failed to update transaction status');
+				if (transition.apply) {
+					const [updatedTransaction] = await tx
+						.update(entityTrustapTransactions)
+						.set({
+							status: transition.providerStatus,
+							updated_at: new Date(),
+							...(payload.complaint_period_deadline && {
+								complaintPeriodDeadline: new Date(payload.complaint_period_deadline),
+							}),
+						})
+						.where(eq(entityTrustapTransactions.transactionId, payload.transaction_id))
+						.returning();
+					if (!updatedTransaction) throw new Error('Failed to update transaction status');
 				}
 
 				// Update corresponding order status
@@ -125,7 +140,7 @@ export const webhooksRoute = createRouter().post(
 					.update(orders)
 					.set({
 						status: transition.orderStatus,
-						...(['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(payload.status)
+						...(isAuthoritativeCancellationStatus(payload.status)
 							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
 							: {}),
 						updated_at: new Date(),

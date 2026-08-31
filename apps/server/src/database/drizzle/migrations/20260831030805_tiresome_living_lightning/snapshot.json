@@ -171,6 +171,12 @@
 		},
 		{
 			"isRlsEnabled": false,
+			"name": "payment_invitation_outbox",
+			"entityType": "tables",
+			"schema": "public"
+		},
+		{
+			"isRlsEnabled": false,
 			"name": "password_reset_tokens",
 			"entityType": "tables",
 			"schema": "public"
@@ -1478,6 +1484,19 @@
 			"table": "entity_trustap_transactions"
 		},
 		{
+			"type": "boolean",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "false",
+			"generated": null,
+			"identity": null,
+			"name": "reconciliation_required",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "entity_trustap_transactions"
+		},
+		{
 			"type": "timestamp",
 			"typeSchema": null,
 			"notNull": true,
@@ -2277,19 +2296,6 @@
 			"table": "orders"
 		},
 		{
-			"type": "timestamp with time zone",
-			"typeSchema": null,
-			"notNull": false,
-			"dimensions": 0,
-			"default": null,
-			"generated": null,
-			"identity": null,
-			"name": "payment_recovery_notification_claimed_at",
-			"entityType": "columns",
-			"schema": "public",
-			"table": "orders"
-		},
-		{
 			"type": "integer",
 			"typeSchema": null,
 			"notNull": true,
@@ -2366,6 +2372,197 @@
 			"entityType": "columns",
 			"schema": "public",
 			"table": "orders"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": {
+				"type": "always",
+				"name": "payment_invitation_outbox_id_seq",
+				"increment": "1",
+				"startWith": "1",
+				"minValue": "1",
+				"maxValue": "2147483647",
+				"cache": 1,
+				"cycle": false
+			},
+			"name": "id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "order_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "bigint",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "transaction_id",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "recipient_email",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "merchant_username",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "item_name",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "text",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "'pending'",
+			"generated": null,
+			"identity": null,
+			"name": "state",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "integer",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "0",
+			"generated": null,
+			"identity": null,
+			"name": "attempt_count",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "uuid",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "lease_token",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "lease_expires_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "last_attempt_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": false,
+			"dimensions": 0,
+			"default": null,
+			"generated": null,
+			"identity": null,
+			"name": "sent_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "now()",
+			"generated": null,
+			"identity": null,
+			"name": "created_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"type": "timestamp with time zone",
+			"typeSchema": null,
+			"notNull": true,
+			"dimensions": 0,
+			"default": "now()",
+			"generated": null,
+			"identity": null,
+			"name": "updated_at",
+			"entityType": "columns",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
 		},
 		{
 			"type": "integer",
@@ -4320,6 +4517,27 @@
 			"nameExplicit": true,
 			"columns": [
 				{
+					"value": "order_id",
+					"isExpression": false,
+					"asc": true,
+					"nullsFirst": false,
+					"opclass": null
+				}
+			],
+			"isUnique": true,
+			"where": null,
+			"with": "",
+			"method": "btree",
+			"concurrently": false,
+			"name": "payment_invitation_outbox_order_idx",
+			"entityType": "indexes",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"nameExplicit": true,
+			"columns": [
+				{
 					"value": "name",
 					"isExpression": false,
 					"asc": true,
@@ -4905,6 +5123,19 @@
 		},
 		{
 			"nameExplicit": false,
+			"columns": ["order_id"],
+			"schemaTo": "public",
+			"tableTo": "orders",
+			"columnsTo": ["id"],
+			"onUpdate": "CASCADE",
+			"onDelete": "CASCADE",
+			"name": "payment_invitation_outbox_order_id_orders_id_fkey",
+			"entityType": "fks",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"nameExplicit": false,
 			"columns": ["user_id"],
 			"schemaTo": "public",
 			"tableTo": "users",
@@ -5257,6 +5488,14 @@
 		{
 			"columns": ["id"],
 			"nameExplicit": false,
+			"name": "payment_invitation_outbox_pkey",
+			"schema": "public",
+			"table": "payment_invitation_outbox",
+			"entityType": "pks"
+		},
+		{
+			"columns": ["id"],
+			"nameExplicit": false,
 			"name": "password_reset_tokens_pkey",
 			"schema": "public",
 			"table": "password_reset_tokens",
@@ -5475,6 +5714,20 @@
 			"entityType": "uniques"
 		},
 		{
+			"value": "\"reconciliation_required\" OR (\"entity_id\" IS NOT NULL AND \"seller_id\" IS NOT NULL AND \"buyer_id\" IS NOT NULL AND \"currency\" = 'eur' AND \"price\" > 0 AND \"charge\" >= 0 AND \"charge_seller\" = 0)",
+			"name": "entity_trustap_transactions_active_graph_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "entity_trustap_transactions"
+		},
+		{
+			"value": "\"status\" <> 'pending' OR (\"shipping_quote_id\" IS NOT NULL AND \"shipping_price\" IS NOT NULL AND \"shipping_price\" > 0)",
+			"name": "orders_proposals_pending_quote_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders_proposals"
+		},
+		{
 			"value": "\"payment_creation_state\" IN ('preparing', 'creating', 'reconciliation_required', 'created')",
 			"name": "orders_payment_creation_state_check",
 			"entityType": "checks",
@@ -5489,13 +5742,6 @@
 			"table": "orders"
 		},
 		{
-			"value": "\"status\" <> 'pending' OR (\"shipping_quote_id\" IS NOT NULL AND \"shipping_price\" IS NOT NULL AND \"shipping_price\" > 0)",
-			"name": "orders_proposals_pending_quote_check",
-			"entityType": "checks",
-			"schema": "public",
-			"table": "orders_proposals"
-		},
-		{
 			"value": "\"status\" IN ('payment_pending', 'payment_confirmed', 'payment_failed', 'payment_refunded', 'shipping_pending', 'shipping_confirmed', 'completed', 'cancelled', 'expired')",
 			"name": "orders_status_check",
 			"entityType": "checks",
@@ -5508,6 +5754,34 @@
 			"entityType": "checks",
 			"schema": "public",
 			"table": "orders"
+		},
+		{
+			"value": "\"payment_creation_state\" = 'reconciliation_required' OR (\n\t\t\t\t\"item_id\" IS NOT NULL AND \"buyer_id\" IS NOT NULL AND \"seller_id\" IS NOT NULL\n\t\t\t\tAND \"buyer_address\" IS NOT NULL AND \"seller_address\" IS NOT NULL\n\t\t\t\tAND \"payment_attempt_id\" IS NOT NULL\n\t\t\t\tAND ((\"payment_creation_state\" = 'created' AND \"payment_transaction_id\" IS NOT NULL)\n\t\t\t\t\tOR (\"payment_creation_state\" IN ('preparing', 'creating') AND \"payment_transaction_id\" IS NULL))\n\t\t\t)",
+			"name": "orders_operational_graph_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "orders"
+		},
+		{
+			"value": "\"state\" IN ('pending', 'sending', 'sent')",
+			"name": "payment_invitation_outbox_state_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"value": "\"attempt_count\" >= 0",
+			"name": "payment_invitation_outbox_attempt_count_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
+		},
+		{
+			"value": "(\"state\" = 'pending' AND \"lease_token\" IS NULL AND \"lease_expires_at\" IS NULL AND \"sent_at\" IS NULL)\n\t\t\t\tOR (\"state\" = 'sending' AND \"lease_token\" IS NOT NULL AND \"lease_expires_at\" IS NOT NULL AND \"last_attempt_at\" IS NOT NULL AND \"lease_expires_at\" > \"last_attempt_at\" AND \"sent_at\" IS NULL)\n\t\t\t\tOR (\"state\" = 'sent' AND \"lease_token\" IS NULL AND \"lease_expires_at\" IS NULL AND \"sent_at\" IS NOT NULL)",
+			"name": "payment_invitation_outbox_lease_check",
+			"entityType": "checks",
+			"schema": "public",
+			"table": "payment_invitation_outbox"
 		},
 		{
 			"value": "\"payment_provider_identity_state\" IN ('uninitialized', 'creating', 'reconciliation_required', 'created')",

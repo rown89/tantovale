@@ -153,11 +153,15 @@ async function createItemWithPendingBuyerMetadata() {
 				item_id: item!.id,
 				buyer_id: buyer.profile.id,
 				seller_id: seller.profile.id,
+				buyer_address: buyerAddress!.id,
+				seller_address: address!.id,
 				payment_provider_charge: 100,
 				platform_charge: 200,
 				shipping_label_id: `order-${suffix}`,
 				shipping_price: 500,
 				item_price: item!.price,
+				payment_attempt_id: randomUUID(),
+				payment_transaction_id: '81001',
 			})
 			.returning();
 

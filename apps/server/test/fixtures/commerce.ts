@@ -549,6 +549,11 @@ export async function createOrderFixture(
 	overrides: Partial<InsertOrder> = {},
 ): Promise<SelectOrder> {
 	const { db } = getTestDatabase();
+	const creationState = overrides.payment_creation_state ?? 'created';
+	const hasExplicitTransactionId = Object.prototype.hasOwnProperty.call(overrides, 'payment_transaction_id');
+	const generatedTransactionId = String(
+		8_000_000_000_000_000n + BigInt(Number(uniqueValue('order').match(/-(\d+)$/)?.[1] ?? 1)),
+	);
 	const [orderRow] = await db
 		.insert(orders)
 		.values({
@@ -563,6 +568,13 @@ export async function createOrderFixture(
 			shipping_price: item.custom_shipping_price ?? 1_250,
 			item_price: item.price,
 			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_attempt_id: randomUUID(),
+			payment_creation_state: creationState,
+			payment_transaction_id: hasExplicitTransactionId
+				? overrides.payment_transaction_id
+				: creationState === 'created'
+					? generatedTransactionId
+					: null,
 			...overrides,
 		})
 		.returning();

@@ -227,6 +227,16 @@ export const relations = defineRelations(schema, (r) => ({
 			from: r.orders.id,
 			to: r.shippings.order_id,
 		}),
+		paymentInvitation: r.one.payment_invitation_outbox({
+			from: r.orders.id,
+			to: r.payment_invitation_outbox.order_id,
+		}),
+	},
+	payment_invitation_outbox: {
+		order: r.one.orders({
+			from: r.payment_invitation_outbox.order_id,
+			to: r.orders.id,
+		}),
 	},
 	orders_proposals: {
 		chatMessages: r.many.chat_messages({

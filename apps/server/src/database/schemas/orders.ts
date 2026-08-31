@@ -44,9 +44,6 @@ export const orders = pgTable(
 		payment_attempt_id: uuid('payment_attempt_id').unique(),
 		payment_creation_state: text('payment_creation_state').notNull().default(PAYMENT_CREATION_STATES.CREATED),
 		payment_cancellation_state: text('payment_cancellation_state').notNull().default(PAYMENT_CANCELLATION_STATES.NONE),
-		payment_recovery_notification_claimed_at: timestamp('payment_recovery_notification_claimed_at', {
-			withTimezone: true,
-		}),
 		item_price: integer('item_price').notNull(),
 		order_proposal_id: integer('order_proposal_id')
 			.unique()
@@ -76,6 +73,16 @@ export const orders = pgTable(
 			sql`${table.status} IN ('payment_pending', 'payment_confirmed', 'payment_failed', 'payment_refunded', 'shipping_pending', 'shipping_confirmed', 'completed', 'cancelled', 'expired')`,
 		),
 		check('orders_item_price_positive', sql`${table.item_price} > 0`),
+		check(
+			'orders_operational_graph_check',
+			sql`${table.payment_creation_state} = 'reconciliation_required' OR (
+				${table.item_id} IS NOT NULL AND ${table.buyer_id} IS NOT NULL AND ${table.seller_id} IS NOT NULL
+				AND ${table.buyer_address} IS NOT NULL AND ${table.seller_address} IS NOT NULL
+				AND ${table.payment_attempt_id} IS NOT NULL
+				AND ((${table.payment_creation_state} = 'created' AND ${table.payment_transaction_id} IS NOT NULL)
+					OR (${table.payment_creation_state} IN ('preparing', 'creating') AND ${table.payment_transaction_id} IS NULL))
+			)`,
+		),
 		index('orders_status_idx').on(table.status),
 		uniqueIndex('orders_payment_transaction_id_idx')
 			.on(table.payment_transaction_id)

@@ -7,6 +7,7 @@ import {
 	type EntityTrustapTransactionStatus,
 	entityTrustapTransactionTypeValues,
 	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
 import { entityTrustapTransactions, orders } from '../../src/database/schemas/schema';
 import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
@@ -53,7 +54,7 @@ async function createProviderBackedOrder(
 	return { item, order, transactionId };
 }
 
-async function waitForBlockedRequest(blocker: PoolClient, blockingProcessId: number): Promise<void> {
+async function waitForBlockedRequests(blocker: PoolClient, blockingProcessId: number, expected: number): Promise<void> {
 	const deadline = Date.now() + 3_000;
 	do {
 		const { rows } = await blocker.query<{ blocked_count: number }>(
@@ -68,10 +69,10 @@ async function waitForBlockedRequest(blocker: PoolClient, blockingProcessId: num
 			 WHERE NOT waiting.granted AND holding.granted AND holding.pid = $1`,
 			[blockingProcessId],
 		);
-		if ((rows[0]?.blocked_count ?? 0) > 0) return;
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		if ((rows[0]?.blocked_count ?? 0) >= expected) return;
+		await new Promise<void>((resolve) => setImmediate(resolve));
 	} while (Date.now() < deadline);
-	throw new Error('Webhook never waited on the item commerce lock');
+	throw new Error(`Expected ${expected} webhook request(s) to wait on blocker ${blockingProcessId}`);
 }
 
 async function postStatus(transactionId: string, status: string): Promise<Response> {
@@ -160,6 +161,30 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(storedProvider?.status).toBe(remoteStatus);
 	});
 
+	it.each([
+		entityTrustapTransactionTypeValues.REJECTED,
+		entityTrustapTransactionTypeValues.CANCELLED,
+		entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT,
+		entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+	])('resolves a same-status %s cancellation reconciliation marker', async (status) => {
+		const { order, transactionId } = await createProviderBackedOrder(status);
+		const { db } = getTestDatabase();
+		const expectedOrderStatus = mappedStatuses.find(([providerStatus]) => providerStatus === status)?.[1];
+		if (!expectedOrderStatus) throw new Error(`Missing expected order status for ${status}`);
+		await db
+			.update(orders)
+			.set({
+				status: expectedOrderStatus,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, status)).status).toBe(200);
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(storedOrder?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.CANCELLED);
+	});
+
 	it('ignores an out-of-order active regression and preserves the newest local phase', async () => {
 		const { order, transactionId } = await createProviderBackedOrder(entityTrustapTransactionTypeValues.DELIVERED);
 		const { db } = getTestDatabase();
@@ -175,6 +200,30 @@ describe('Trustap transaction webhook state mapping', () => {
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder?.status).toBe(ORDER_PHASES.SHIPPING_CONFIRMED);
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.DELIVERED);
+	});
+
+	it('does not reactivate a provider row that was permanently quarantined', async () => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ reconciliationRequired: true })
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		await db.update(orders).set({ payment_creation_state: 'reconciliation_required' }).where(eq(orders.id, order.id));
+
+		const response = await postStatus(transactionId, entityTrustapTransactionTypeValues.PAID);
+
+		expect(response.status).toBe(200);
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_PENDING);
+		expect(storedProvider).toMatchObject({
+			reconciliationRequired: true,
+			status: entityTrustapTransactionTypeValues.CREATED,
+		});
 	});
 
 	it('rejects an unknown provider state without corrupting the order or provider row', async () => {
@@ -193,28 +242,48 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.CREATED);
 	});
 
-	it('serializes payment updates on the same item commerce lock used by expiry and checkout', async () => {
+	it('serializes out-of-order updates through the exact item advisory lock and a re-read provider row lock', async () => {
 		const { item, transactionId } = await createProviderBackedOrder();
 		const { client } = getTestDatabase();
-		const blocker = await client.connect();
+		const advisoryBlocker = await client.connect();
+		const rowBlocker = await client.connect();
 		try {
-			await blocker.query('BEGIN');
-			const pidResult = await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
-			const blockerPid = pidResult.rows[0]?.pid;
-			if (!blockerPid) throw new Error('Missing blocker PID');
-			await blocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
+			await advisoryBlocker.query('BEGIN');
+			await rowBlocker.query('BEGIN');
+			const advisoryPid = (await advisoryBlocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid;
+			const rowPid = (await rowBlocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid;
+			if (!advisoryPid || !rowPid) throw new Error('Missing blocker PID');
+			await advisoryBlocker.query('SELECT pg_advisory_xact_lock(hashtext(current_database() || $1), $2)', [
 				itemCommerceLockScope,
 				item.id,
 			]);
+			await rowBlocker.query('SELECT id FROM entity_trustap_transactions WHERE transaction_id = $1 FOR UPDATE', [
+				transactionId,
+			]);
 
-			const responsePromise = postStatus(transactionId, entityTrustapTransactionTypeValues.PAID);
-			await waitForBlockedRequest(blocker, blockerPid);
-			await blocker.query('COMMIT');
+			const trackedPromise = postStatus(transactionId, entityTrustapTransactionTypeValues.TRACKED);
+			await waitForBlockedRequests(advisoryBlocker, advisoryPid, 1);
+			const paidPromise = postStatus(transactionId, entityTrustapTransactionTypeValues.PAID);
+			await waitForBlockedRequests(advisoryBlocker, advisoryPid, 2);
+			await advisoryBlocker.query('COMMIT');
+			await waitForBlockedRequests(rowBlocker, rowPid, 1);
+			await rowBlocker.query('COMMIT');
 
-			expect((await responsePromise).status).toBe(200);
+			expect((await trackedPromise).status).toBe(200);
+			expect((await paidPromise).status).toBe(200);
+			const { db } = getTestDatabase();
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.payment_transaction_id, transactionId));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(storedOrder?.status).toBe(ORDER_PHASES.SHIPPING_CONFIRMED);
+			expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.TRACKED);
 		} finally {
-			await blocker.query('ROLLBACK').catch(() => undefined);
-			blocker.release();
+			await advisoryBlocker.query('ROLLBACK').catch(() => undefined);
+			await rowBlocker.query('ROLLBACK').catch(() => undefined);
+			advisoryBlocker.release();
+			rowBlocker.release();
 		}
 	});
 });

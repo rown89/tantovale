@@ -76,6 +76,7 @@ export async function setTrustapTransactionStatus(
 	url: string,
 	transactionId: number | string,
 	status: string,
+	overrides: { description?: string } = {},
 ): Promise<void> {
 	const origin = assertLocalStubUrl(url).origin;
 	const numericId = typeof transactionId === 'string' ? Number(transactionId) : transactionId;
@@ -83,7 +84,7 @@ export async function setTrustapTransactionStatus(
 	const response = await fetch(`${origin}/__test/transaction-status`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ transaction_id: controlId, status }),
+		body: JSON.stringify({ transaction_id: controlId, status, ...overrides }),
 		signal: AbortSignal.timeout(5_000),
 	});
 	await expectControlResponse(response, 'Trustap transaction status update');

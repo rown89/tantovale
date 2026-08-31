@@ -671,7 +671,14 @@ describe('buy-now route', () => {
 				success: false,
 			}),
 		);
-		await db.update(orders).set({ payment_transaction_id: null }).where(eq(orders.id, conflictingOrder.id));
+		await db
+			.update(orders)
+			.set({
+				legacy_payment_transaction_id: expectedTransactionId,
+				payment_creation_state: 'reconciliation_required',
+				payment_transaction_id: null,
+			})
+			.where(eq(orders.id, conflictingOrder.id));
 		const recoveredSync = await new TransactionSyncService().syncTransactionStatuses();
 		expect(recoveredSync.results).toContainEqual(
 			expect.objectContaining({ orderId: reservation!.id, recovered: true, success: true }),
@@ -689,7 +696,7 @@ describe('buy-now route', () => {
 			payment_url?: string;
 		}>;
 		expect(recoveredVisibleOrders.find(({ id }) => id === reservation!.id)).toMatchObject({
-			payment_transaction_id: expectedTransactionId,
+			payment_transaction_id: Number(expectedTransactionId),
 			payment_url: expect.stringContaining(`/online/transactions/${expectedTransactionId}/guest_pay`),
 		});
 	});

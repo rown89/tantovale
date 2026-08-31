@@ -1,4 +1,4 @@
-import { eq, and, inArray, isNull, lt, notExists } from 'drizzle-orm';
+import { eq, and, inArray, lt, notExists } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { subHours } from 'date-fns';
 
@@ -6,26 +6,33 @@ import { createClient } from '#database/index';
 import {
 	chat_messages,
 	chat_rooms,
+	commerce_reconciliation_audit,
 	entityTrustapTransactions,
 	items,
 	orders,
 	orders_proposals,
+	payment_invitation_outbox,
 	profiles,
 	shipping_quotes,
 	users,
 } from '#db-schema';
-import { buildGuestPaymentUrl, PaymentProviderService } from './payment-provider.service';
-import { sendProposalAcceptedMessage } from '#mailer/templates/proposals/buyer/proposal-accepted';
+import { PaymentProviderService } from './payment-provider.service';
 import {
 	entityTrustapTransactionStatusValues,
 	type EntityTrustapTransactionStatus,
 	ORDER_PHASES,
 	ORDER_PROPOSAL_PHASES,
+	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '#database/schemas/enumerated_values';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
-import { resolveTrustapOrderTransition } from './trustap-order-state';
+import {
+	isAuthoritativeCancellationStatus,
+	resolveTrustapOrderTransition,
+	trustapToOrderPhase,
+} from './trustap-order-state';
 import type { TrustapId } from './trustap-int64';
+import { PaymentInvitationOutboxService } from './payment-invitation-outbox.service';
 
 type TransactionSyncResult = {
 	transactionId: TrustapId | null;
@@ -44,9 +51,24 @@ function isTrustapStatus(value: string): value is EntityTrustapTransactionStatus
 }
 
 function proposalStatusForRecoveredTransaction(status: EntityTrustapTransactionStatus) {
-	return ['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(status)
-		? ORDER_PROPOSAL_PHASES.rejected
-		: ORDER_PROPOSAL_PHASES.accepted;
+	return ['rejected', 'cancelled'].includes(status) ? ORDER_PROPOSAL_PHASES.rejected : ORDER_PROPOSAL_PHASES.accepted;
+}
+
+function orderStatusForRecoveredTransaction(status: EntityTrustapTransactionStatus) {
+	if (status === 'complained') return ORDER_PHASES.SHIPPING_CONFIRMED;
+	return trustapToOrderPhase[status as keyof typeof trustapToOrderPhase] ?? ORDER_PHASES.PAYMENT_PENDING;
+}
+
+function recoverySystemMessage(proposalId: number, status: EntityTrustapTransactionStatus): string {
+	if (status === 'complained') {
+		return `Proposal #${proposalId}, was accepted; payment is under complaint review.`;
+	}
+	if (status === 'cancelled_with_payment' || status === 'payment_refunded') {
+		return `Proposal #${proposalId}, was accepted, but payment was refunded.`;
+	}
+	return proposalStatusForRecoveredTransaction(status) === ORDER_PROPOSAL_PHASES.accepted
+		? `Proposal #${proposalId}, has been accepted by the seller.`
+		: `Proposal #${proposalId}, was not completed by the payment provider.`;
 }
 
 export class TransactionSyncService {
@@ -188,15 +210,19 @@ export class TransactionSyncService {
 				itemTitle: items.title,
 				buyerProfileId: orders.buyer_id,
 				sellerProfileId: orders.seller_id,
+				buyerAddressId: orders.buyer_address,
+				sellerAddressId: orders.seller_address,
 				buyerProviderId: buyerProfiles.payment_provider_id,
 				sellerProviderId: sellerProfiles.payment_provider_id,
+				buyerEmail: buyerUsers.email,
+				sellerUsername: sellerUsers.username,
 			})
 			.from(orders)
-			.innerJoin(items, eq(orders.item_id, items.id))
-			.innerJoin(buyerProfiles, eq(orders.buyer_id, buyerProfiles.id))
-			.innerJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
-			.innerJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
-			.innerJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
+			.leftJoin(items, eq(orders.item_id, items.id))
+			.leftJoin(buyerProfiles, eq(orders.buyer_id, buyerProfiles.id))
+			.leftJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
+			.leftJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
+			.leftJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
 			.where(eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED));
 
 		const results: TransactionSyncResult[] = [];
@@ -220,8 +246,13 @@ export class TransactionSyncService {
 				candidate.paymentAttemptId === null ||
 				candidate.buyerProfileId === null ||
 				candidate.sellerProfileId === null ||
+				candidate.buyerAddressId === null ||
+				candidate.sellerAddressId === null ||
 				!candidate.buyerProviderId ||
-				!candidate.sellerProviderId
+				!candidate.sellerProviderId ||
+				!candidate.itemTitle ||
+				!candidate.buyerEmail ||
+				!candidate.sellerUsername
 			) {
 				results.push({
 					transactionId,
@@ -242,6 +273,9 @@ export class TransactionSyncService {
 			const sellerProfileId = candidate.sellerProfileId;
 			const buyerProviderId = candidate.buyerProviderId;
 			const sellerProviderId = candidate.sellerProviderId;
+			const itemTitle = candidate.itemTitle;
+			const buyerEmail = candidate.buyerEmail;
+			const sellerUsername = candidate.sellerUsername;
 
 			try {
 				// The provider request intentionally happens before opening a database transaction or taking the item lock.
@@ -270,13 +304,9 @@ export class TransactionSyncService {
 					continue;
 				}
 				const remoteStatus = remote.status as EntityTrustapTransactionStatus;
-				const recoveredTransition = resolveTrustapOrderTransition(
-					entityTrustapTransactionStatusValues[0],
-					candidate.orderStatus,
-					remoteStatus,
-				);
+				const recoveredOrderStatus = orderStatusForRecoveredTransaction(remoteStatus);
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
-				await db.transaction(async (tx) => {
+				const recoveryOutcome = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, itemId);
 					const [reservation] = await tx
 						.select({
@@ -315,14 +345,63 @@ export class TransactionSyncService {
 
 					const [existingTransaction] = await tx
 						.select({
+							id: entityTrustapTransactions.id,
 							entityId: entityTrustapTransactions.entityId,
+							sellerId: entityTrustapTransactions.sellerId,
+							buyerId: entityTrustapTransactions.buyerId,
+							currency: entityTrustapTransactions.currency,
+							price: entityTrustapTransactions.price,
+							charge: entityTrustapTransactions.charge,
+							chargeSeller: entityTrustapTransactions.chargeSeller,
+							reconciliationRequired: entityTrustapTransactions.reconciliationRequired,
 							status: entityTrustapTransactions.status,
 						})
 						.from(entityTrustapTransactions)
 						.where(eq(entityTrustapTransactions.transactionId, transactionId))
-						.limit(1);
-					if (existingTransaction && existingTransaction.entityId !== itemId) {
-						throw new Error('The Trustap transaction id belongs to another local item');
+						.limit(1)
+						.for('update');
+					if (existingTransaction?.reconciliationRequired) return 'quarantined' as const;
+					if (
+						existingTransaction &&
+						(existingTransaction.entityId !== itemId ||
+							existingTransaction.sellerId !== remote.seller_id ||
+							existingTransaction.buyerId !== remote.buyer_id ||
+							existingTransaction.currency !== remote.currency ||
+							existingTransaction.price !== remote.price ||
+							existingTransaction.charge !== remote.charge ||
+							existingTransaction.chargeSeller !== remote.charge_seller)
+					) {
+						await tx.insert(commerce_reconciliation_audit).values([
+							{
+								conflict_type: 'runtime_transaction_correlation_mismatch',
+								source_table: 'entity_trustap_transactions',
+								source_row_id: existingTransaction.id,
+								canonical_row_id: reservation.id,
+								original_reference: transactionId,
+								snapshot: { localProvider: existingTransaction, remote },
+							},
+							{
+								conflict_type: 'runtime_transaction_correlation_mismatch',
+								source_table: 'orders',
+								source_row_id: reservation.id,
+								canonical_row_id: existingTransaction.id,
+								original_reference: transactionId,
+								snapshot: {
+									itemId,
+									buyerProfileId,
+									sellerProfileId,
+									itemPrice,
+									platformCharge: candidate.platformCharge,
+									providerCharge: candidate.providerCharge,
+									shippingPrice: candidate.shippingPrice,
+								},
+							},
+						]);
+						await tx
+							.update(entityTrustapTransactions)
+							.set({ reconciliationRequired: true, updated_at: new Date() })
+							.where(eq(entityTrustapTransactions.id, existingTransaction.id));
+						return 'quarantined' as const;
 					}
 					if (!existingTransaction) {
 						await tx.insert(entityTrustapTransactions).values({
@@ -336,11 +415,16 @@ export class TransactionSyncService {
 							charge: candidate.providerCharge,
 							chargeSeller: remote.charge_seller,
 							currency: 'eur',
-							entityTitle: candidate.itemTitle,
+							entityTitle: itemTitle,
 							claimedBySeller: false,
 							claimedByBuyer: false,
 							complaintPeriodDeadline: null,
 						});
+					} else if (existingTransaction.status !== remoteStatus) {
+						await tx
+							.update(entityTrustapTransactions)
+							.set({ status: remoteStatus, updated_at: new Date() })
+							.where(eq(entityTrustapTransactions.id, existingTransaction.id));
 					}
 
 					if (reservation.proposalId !== null) {
@@ -366,10 +450,7 @@ export class TransactionSyncService {
 						await tx.insert(chat_messages).values({
 							chat_room_id: room.id,
 							sender_id: sellerProfileId,
-							message:
-								recoveredProposalStatus === ORDER_PROPOSAL_PHASES.accepted
-									? `Proposal #${proposalId}, has been accepted by the seller.`
-									: `Proposal #${proposalId}, was not completed by the payment provider.`,
+							message: recoverySystemMessage(proposalId, remoteStatus),
 							message_type: 'system',
 							metadata: {
 								order_id: reservation.id,
@@ -379,6 +460,18 @@ export class TransactionSyncService {
 										: 'proposal_rejected',
 							},
 						});
+						if (remoteStatus === 'created' || remoteStatus === 'joined') {
+							await tx
+								.insert(payment_invitation_outbox)
+								.values({
+									order_id: reservation.id,
+									transaction_id: transactionId,
+									recipient_email: buyerEmail,
+									merchant_username: sellerUsername,
+									item_name: itemTitle,
+								})
+								.onConflictDoNothing({ target: payment_invitation_outbox.order_id });
+						}
 					}
 
 					const [recoveredOrder] = await tx
@@ -390,7 +483,10 @@ export class TransactionSyncService {
 								remoteStatus === 'complained'
 									? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 									: PAYMENT_CREATION_STATES.CREATED,
-							status: recoveredTransition.orderStatus,
+							status: recoveredOrderStatus,
+							...(['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(remoteStatus)
+								? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+								: {}),
 							updated_at: new Date(),
 						})
 						.where(
@@ -401,8 +497,18 @@ export class TransactionSyncService {
 						)
 						.returning({ id: orders.id });
 					if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
-					return undefined;
+					return 'recovered' as const;
 				});
+				if (recoveryOutcome === 'quarantined') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						requiresManualReconciliation: true,
+						success: false,
+						error: 'Existing provider evidence conflicts with the durable local and remote snapshots',
+					});
+					continue;
+				}
 				results.push({ transactionId, orderId: candidate.orderId, recovered: true, success: true });
 			} catch (error) {
 				results.push({
@@ -418,63 +524,6 @@ export class TransactionSyncService {
 		return results;
 	}
 
-	/** Retry mail delivery only for a successfully recovered, still-payable proposal. */
-	async dispatchPendingRecoveryNotifications(): Promise<void> {
-		const { db } = this.db;
-		const buyerProfiles = alias(profiles, 'recovery_mail_buyer_profiles');
-		const sellerProfiles = alias(profiles, 'recovery_mail_seller_profiles');
-		const buyerUsers = alias(users, 'recovery_mail_buyer_users');
-		const sellerUsers = alias(users, 'recovery_mail_seller_users');
-		const pending = await db
-			.select({
-				orderId: orders.id,
-				transactionId: orders.payment_transaction_id,
-				buyerEmail: buyerUsers.email,
-				sellerUsername: sellerUsers.username,
-				itemTitle: items.title,
-			})
-			.from(orders)
-			.innerJoin(orders_proposals, eq(orders.order_proposal_id, orders_proposals.id))
-			.innerJoin(items, eq(orders.item_id, items.id))
-			.innerJoin(buyerProfiles, eq(orders.buyer_id, buyerProfiles.id))
-			.innerJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
-			.innerJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
-			.innerJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
-			.where(
-				and(
-					eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
-					eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
-					eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.accepted),
-					isNull(orders.payment_recovery_notification_claimed_at),
-				),
-			);
-
-		for (const candidate of pending) {
-			if (candidate.transactionId === null) continue;
-			const [claimed] = await db
-				.update(orders)
-				.set({ payment_recovery_notification_claimed_at: new Date(), updated_at: new Date() })
-				.where(and(eq(orders.id, candidate.orderId), isNull(orders.payment_recovery_notification_claimed_at)))
-				.returning({ id: orders.id });
-			if (!claimed) continue;
-			try {
-				await sendProposalAcceptedMessage({
-					to: candidate.buyerEmail,
-					merchant_username: candidate.sellerUsername,
-					itemName: candidate.itemTitle,
-					orderId: candidate.orderId,
-					paymentUrl: buildGuestPaymentUrl(candidate.transactionId, candidate.orderId),
-				});
-			} catch (error) {
-				console.error('Failed to send recovered proposal notification:', error);
-				await db
-					.update(orders)
-					.set({ payment_recovery_notification_claimed_at: null, updated_at: new Date() })
-					.where(eq(orders.id, candidate.orderId));
-			}
-		}
-	}
-
 	/**
 	 * Sync transaction statuses with Trustap
 	 * This method can be called periodically to ensure our database is in sync
@@ -484,7 +533,7 @@ export class TransactionSyncService {
 
 		try {
 			const recoveryResults = await this.recoverKnownTransactions();
-			await this.dispatchPendingRecoveryNotifications();
+			await new PaymentInvitationOutboxService().dispatchPending();
 			const staleReservationResults = await this.recoverStalePaymentReservations();
 			const pollBuyerProfiles = alias(profiles, 'poll_buyer_profiles');
 			const pollSellerProfiles = alias(profiles, 'poll_seller_profiles');
@@ -504,6 +553,7 @@ export class TransactionSyncService {
 					orderId: orders.id,
 					orderItemId: orders.item_id,
 					orderStatus: orders.status,
+					orderCancellationState: orders.payment_cancellation_state,
 					orderItemPrice: orders.item_price,
 					orderPlatformCharge: orders.platform_charge,
 					orderProviderCharge: orders.payment_provider_charge,
@@ -516,7 +566,12 @@ export class TransactionSyncService {
 				.leftJoin(orders, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
 				.leftJoin(pollBuyerProfiles, eq(orders.buyer_id, pollBuyerProfiles.id))
 				.leftJoin(pollSellerProfiles, eq(orders.seller_id, pollSellerProfiles.id))
-				.where(lt(entityTrustapTransactions.updated_at, subHours(new Date(), 1)));
+				.where(
+					and(
+						eq(entityTrustapTransactions.reconciliationRequired, false),
+						lt(entityTrustapTransactions.updated_at, subHours(new Date(), 1)),
+					),
+				);
 			const syncResults: TransactionSyncResult[] = [...recoveryResults, ...staleReservationResults];
 
 			for (const transaction of staleTransactions) {
@@ -530,6 +585,7 @@ export class TransactionSyncService {
 					if (!isTrustapStatus(trustapStatus.status)) {
 						throw new Error('Unknown Trustap transaction status');
 					}
+					const remoteStatus = trustapStatus.status;
 					if (
 						trustapStatus.id !== transaction.transactionId ||
 						transaction.entityId === null ||
@@ -564,25 +620,36 @@ export class TransactionSyncService {
 					const itemId = transaction.entityId;
 					const orderId = transaction.orderId;
 					const orderStatus = transaction.orderStatus;
-					const transition = resolveTrustapOrderTransition(transaction.status, orderStatus, trustapStatus.status);
-					if (transition.apply) {
+					const transition = resolveTrustapOrderTransition(transaction.status, orderStatus, remoteStatus);
+					const resolvesCancellation =
+						isAuthoritativeCancellationStatus(remoteStatus) &&
+						transaction.orderCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+					if (transition.apply || resolvesCancellation) {
 						await db.transaction(async (tx) => {
 							await acquireItemCommerceLock(tx, itemId);
-							await tx
-								.update(entityTrustapTransactions)
-								.set({
-									status: transition.providerStatus,
-									updated_at: new Date(),
-								})
-								.where(
-									and(
-										eq(entityTrustapTransactions.transactionId, transaction.transactionId),
-										eq(entityTrustapTransactions.status, transaction.status),
-									),
-								);
+							if (transition.apply) {
+								await tx
+									.update(entityTrustapTransactions)
+									.set({
+										status: transition.providerStatus,
+										updated_at: new Date(),
+									})
+									.where(
+										and(
+											eq(entityTrustapTransactions.transactionId, transaction.transactionId),
+											eq(entityTrustapTransactions.status, transaction.status),
+										),
+									);
+							}
 							await tx
 								.update(orders)
-								.set({ status: transition.orderStatus, updated_at: new Date() })
+								.set({
+									status: transition.orderStatus,
+									...(isAuthoritativeCancellationStatus(remoteStatus)
+										? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+										: {}),
+									updated_at: new Date(),
+								})
 								.where(and(eq(orders.id, orderId), eq(orders.status, orderStatus)));
 						});
 						syncResults.push({
