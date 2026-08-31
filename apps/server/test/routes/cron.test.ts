@@ -8,7 +8,13 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
-import { entityTrustapTransactions, orders, orders_proposals, profiles } from '../../src/database/schemas/schema';
+import {
+	commerce_reconciliation_audit,
+	entityTrustapTransactions,
+	orders,
+	orders_proposals,
+	profiles,
+} from '../../src/database/schemas/schema';
 import {
 	createCommerceActors,
 	createItemFixture,
@@ -598,28 +604,108 @@ describe('commerce expiry cron routes', () => {
 		expect(cancellationRequests).toHaveLength(0);
 	});
 
-	it.each([
-		['seller identity', { sellerId: 'unrelated-provider-seller' }],
-		['transaction amount', { price: trustapTransactionFixture.price + 1 }],
-	] as const)('blocks cancellation when the local %s correlation is inconsistent', async (_case, mutation) => {
+	it.each(['seller identity', 'transaction amount', 'profile identity'] as const)(
+		'quarantines cancellation evidence when the local %s correlation is inconsistent',
+		async (mismatch) => {
+			const { actors, order } = await createPayableExpiredCandidate();
+			const { db } = getTestDatabase();
+			const transactionId = String(trustapTransactionFixture.id);
+			if (mismatch === 'profile identity') {
+				await db
+					.update(profiles)
+					.set({ payment_provider_id: 'unrelated-profile-seller' })
+					.where(eq(profiles.id, actors.seller.profile.id));
+			} else {
+				await db
+					.update(entityTrustapTransactions)
+					.set(
+						mismatch === 'seller identity'
+							? { sellerId: 'unrelated-provider-seller' }
+							: { price: trustapTransactionFixture.price + 1 },
+					)
+					.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			}
+
+			await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+
+			const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(stored).toMatchObject({
+				status: ORDER_PHASES.PAYMENT_PENDING,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			});
+			const cancellationRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ path }) => path.includes('/cancel_with_guest_user'),
+			);
+			expect(cancellationRequests).toHaveLength(0);
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			expect(storedProvider?.quarantined).toBe(true);
+			expect(
+				await db
+					.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+			).toContainEqual({ conflictType: 'runtime_cron_cancellation_correlation_mismatch' });
+		},
+	);
+
+	it('quarantines immutable graph mismatch so a later status-only webhook cannot erase reconciliation', async () => {
 		const { order } = await createPayableExpiredCandidate();
 		const { db } = getTestDatabase();
+		const transactionId = String(trustapTransactionFixture.id);
 		await db
 			.update(entityTrustapTransactions)
-			.set(mutation)
-			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+			.set({ price: trustapTransactionFixture.price + 1 })
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 
-		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		const cronResponse = await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
 
-		const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
-		expect(stored).toMatchObject({
+		expect(cronResponse.status).toBe(200);
+		const cronBody = (await cronResponse.json()) as { reconciliation_required: Array<{ id: number }> };
+		expect(cronBody.reconciliation_required).toEqual([{ id: order.id }]);
+		expect(
+			(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
+				path.includes('/cancel_with_guest_user'),
+			),
+		).toEqual([]);
+		const [quarantinedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(quarantinedProvider).toMatchObject({ quarantined: true, status: 'created' });
+		expect(
+			await db
+				.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toContainEqual({ conflictType: 'runtime_cron_cancellation_correlation_mismatch' });
+
+		const webhookResponse = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: {
+				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: transactionId,
+				status: entityTrustapTransactionTypeValues.PAID,
+			}),
+		});
+
+		expect(webhookResponse.status).toBe(200);
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
 			status: ORDER_PHASES.PAYMENT_PENDING,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
 		});
-		const cancellationRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
-			({ path }) => path.includes('/cancel_with_guest_user'),
-		);
-		expect(cancellationRequests).toHaveLength(0);
+		expect(storedProvider).toMatchObject({ quarantined: true, status: 'created' });
 	});
 
 	it('marks the order for reconciliation when the provider cancellation response breaks the durable snapshot', async () => {
@@ -686,10 +772,15 @@ describe('commerce expiry cron routes', () => {
 		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
 
 		const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
 		expect(stored).toMatchObject({
 			status: ORDER_PHASES.PAYMENT_PENDING,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
 		});
+		expect(storedProvider?.quarantined).toBe(false);
 		const cancellations = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
 			path.includes('/cancel_with_guest_user'),
 		);

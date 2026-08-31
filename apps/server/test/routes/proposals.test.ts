@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
 import {
+	entityTrustapTransactionTypeValues,
 	itemStatus,
 	ORDER_PROPOSAL_PHASES,
 	ORDER_PHASES,
@@ -13,6 +14,7 @@ import {
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { TransactionSyncService } from '../../src/routes/payments/transaction-sync.service';
 import { PaymentInvitationOutboxService } from '../../src/routes/payments/payment-invitation-outbox.service';
+import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
 import { environment } from '../../src/utils/constants';
 import {
 	addresses,
@@ -157,6 +159,52 @@ async function updateProposal(
 async function rowsForProposal(proposalId: number) {
 	const { db } = getTestDatabase();
 	return db.select().from(chat_messages).where(eq(chat_messages.order_proposal_id, proposalId));
+}
+
+async function createExistingCreatedRecoveryReservation(title: string) {
+	const actors = await createCommerceActors();
+	const item = await createItemFixture(actors, { commons: { title } });
+	const conflictingItem = await createItemFixture(actors, { commons: { title: `${title} conflict` } });
+	await createRoom(actors, item.id);
+	const proposal = await createQuotedProposalFixture(actors, item, {
+		proposal_price: 10_000,
+		platform_charge: 90,
+	});
+	const transactionId = String(trustapTransactionFixture.id + 1);
+	const { db } = getTestDatabase();
+	const [provider] = await db
+		.insert(entityTrustapTransactions)
+		.values({
+			entityId: conflictingItem.id,
+			sellerId: 'conflicting-seller',
+			buyerId: 'conflicting-buyer',
+			transactionId,
+			status: 'created',
+			price: 1,
+			charge: 0,
+			chargeSeller: 0,
+			entityTitle: conflictingItem.title,
+		})
+		.returning();
+	if ((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status !== 500) {
+		throw new Error('Expected a conflicting provider row to leave a known-ID recovery reservation');
+	}
+	const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+	if (!reservation || !provider) throw new Error('Missing same-status recovery graph');
+	await db
+		.update(entityTrustapTransactions)
+		.set({
+			entityId: item.id,
+			sellerId: actors.seller.profile.payment_provider_id,
+			buyerId: actors.buyer.profile.payment_provider_id,
+			price: reservation.item_price + reservation.platform_charge,
+			charge: reservation.payment_provider_charge,
+			chargeSeller: 0,
+			currency: 'eur',
+			entityTitle: item.title,
+		})
+		.where(eq(entityTrustapTransactions.id, provider.id));
+	return { actors, item, proposal, provider, reservation, transactionId };
 }
 
 async function waitForProviderRequest(url: string, method: string, path: string): Promise<void> {
@@ -1547,6 +1595,145 @@ describe('proposal routes', () => {
 				.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system'))),
 		).toEqual([expect.objectContaining({ metadata: { order_id: reservation!.id, type: 'proposal_rejected' } })]);
 		expect(await proposalAcceptedMailCount(actors.buyer.user.email)).toBe(0);
+	});
+
+	it('recovers a correlated existing transaction when the provider repeats the same status', async () => {
+		const { proposal, reservation, transactionId } =
+			await createExistingCreatedRecoveryReservation('Same status recovery item');
+		const { db } = getTestDatabase();
+
+		const sync = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(sync.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			recovered: true,
+			success: true,
+		});
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+		});
+		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
+	});
+
+	it('re-reads a known-ID recovery reservation after provider I/O and never reopens a terminal order', async () => {
+		const { proposal, reservation, transactionId } =
+			await createExistingCreatedRecoveryReservation('Terminal recovery race item');
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const remote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!remote) throw new Error('Missing remote transaction for terminal recovery race');
+		let signalProviderRead!: () => void;
+		let releaseProviderRead!: () => void;
+		const providerRead = new Promise<void>((resolve) => {
+			signalProviderRead = resolve;
+		});
+		const providerRelease = new Promise<void>((resolve) => {
+			releaseProviderRead = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				signalProviderRead();
+				await providerRelease;
+				return remote;
+			});
+
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		let sync: Awaited<typeof syncPromise> | undefined;
+		try {
+			await providerRead;
+			await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, reservation.id));
+			releaseProviderRead();
+			sync = await syncPromise;
+		} finally {
+			releaseProviderRead();
+			await syncPromise.catch(() => undefined);
+			getTransactionStatus.mockRestore();
+		}
+		if (!sync) throw new Error('Transaction sync did not complete');
+
+		expect(sync.results).toContainEqual(
+			expect.objectContaining({
+				transactionId,
+				orderId: reservation.id,
+				requiresManualReconciliation: true,
+				success: false,
+				error: 'A terminal order cannot be reopened automatically',
+			}),
+		);
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
+	});
+
+	it('does not let known-ID recovery cross the complained to rejected terminal branch', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors, { commons: { title: 'Illegal recovery lineage item' } });
+		const conflictingItem = await createItemFixture(actors, {
+			commons: { title: 'Illegal recovery lineage conflict' },
+		});
+		const roomId = await createRoom(actors, item.id);
+		const proposal = await createQuotedProposalFixture(actors, item);
+		const transactionId = String(trustapTransactionFixture.id + 1);
+		const { db } = getTestDatabase();
+		await db.insert(entityTrustapTransactions).values({
+			entityId: conflictingItem.id,
+			sellerId: actors.seller.profile.payment_provider_id,
+			buyerId: actors.buyer.profile.payment_provider_id,
+			transactionId,
+			status: 'created',
+			price: 1,
+			charge: 0,
+			chargeSeller: 0,
+			entityTitle: conflictingItem.title,
+		});
+		expect((await updateProposal(actors.seller.jar, proposal.id, item.id, 'accepted')).status).toBe(500);
+		const [reservation] = await db.select().from(orders).where(eq(orders.item_id, item.id));
+		if (!reservation) throw new Error('Missing illegal recovery reservation');
+		await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.transactionId, transactionId));
+		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, 'complained');
+		await new TransactionSyncService().syncTransactionStatuses();
+		const messagesBeforeIllegalEdge = await db
+			.select({ id: chat_messages.id })
+			.from(chat_messages)
+			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system')));
+		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, 'rejected');
+
+		const sync = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(sync.results).toContainEqual(
+			expect.objectContaining({
+				transactionId,
+				orderId: reservation.id,
+				requiresManualReconciliation: true,
+				success: false,
+			}),
+		);
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		const messagesAfterIllegalEdge = await db
+			.select({ id: chat_messages.id })
+			.from(chat_messages)
+			.where(and(eq(chat_messages.chat_room_id, roomId), eq(chat_messages.message_type, 'system')));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.COMPLAINED);
+		expect(messagesAfterIllegalEdge).toEqual(messagesBeforeIllegalEdge);
 	});
 
 	it('recovers every known Trustap state without a false proposal or payment invitation', async () => {

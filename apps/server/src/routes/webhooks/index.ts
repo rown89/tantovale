@@ -14,6 +14,7 @@ import {
 import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
+	isReachableOrSameTrustapTransition,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 } from '../payments/trustap-order-state';
@@ -138,6 +139,14 @@ export const webhooksRoute = createRouter().post(
 					return c.json({ error: 'Order transaction conflict' }, 409);
 				}
 				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
+				const providerLineageApplies = isReachableOrSameTrustapTransition(
+					trustapTransaction.status,
+					payload.status,
+					transition,
+				);
+				if (!providerLineageApplies) {
+					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
+				}
 				const cancellationSettlement = resolveCronCancellationSettlement(
 					order.paymentCancellationState,
 					trustapTransaction.status,
@@ -145,7 +154,6 @@ export const webhooksRoute = createRouter().post(
 					transition,
 				);
 				const complaintRequiresReconciliation =
-					transition.apply &&
 					payload.status === entityTrustapTransactionTypeValues.COMPLAINED &&
 					order.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 				const resolvesCreationReconciliation =

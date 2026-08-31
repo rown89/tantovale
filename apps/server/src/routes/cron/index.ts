@@ -15,7 +15,7 @@ import {
 	PAYMENT_CREATION_STATES,
 } from 'src/database/schemas/enumerated_values';
 import { acquireItemCommerceLock } from 'src/lib/item-commerce-lock';
-import { entityTrustapTransactions, profiles } from '#db-schema';
+import { commerce_reconciliation_audit, entityTrustapTransactions, profiles } from '#db-schema';
 import { PaymentProviderService } from '../payments/payment-provider.service';
 import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { authenticateCronSecret } from './secret-auth';
@@ -151,6 +151,7 @@ export const cronRoute = createRouter()
 				const [providerTransaction] = current.transaction_id
 					? await tx
 							.select({
+								id: entityTrustapTransactions.id,
 								buyer_id: entityTrustapTransactions.buyerId,
 								charge: entityTrustapTransactions.charge,
 								charge_seller: entityTrustapTransactions.chargeSeller,
@@ -167,7 +168,7 @@ export const cronRoute = createRouter()
 							.where(eq(entityTrustapTransactions.transactionId, current.transaction_id))
 							.limit(1)
 					: [];
-				const graphIsCancellable =
+				const graphIsCorrelated =
 					current.item_id === candidate.item_id &&
 					current.transaction_id !== null &&
 					current.buyer_provider_id !== null &&
@@ -183,9 +184,41 @@ export const cronRoute = createRouter()
 					providerTransaction.charge === current.provider_charge &&
 					providerTransaction.charge_seller === 0 &&
 					current.payment_attempt_id !== null &&
-					providerTransaction.entity_title.length > 0 &&
-					['created', 'joined'].includes(providerTransaction.status);
-				if (!graphIsCancellable) {
+					providerTransaction.entity_title.length > 0;
+				const sourceIsCancellable =
+					providerTransaction !== undefined && ['created', 'joined'].includes(providerTransaction.status);
+				if (!graphIsCorrelated || !sourceIsCancellable) {
+					if (!graphIsCorrelated) {
+						const auditSnapshot = { order: current, provider: providerTransaction ?? null };
+						await tx.insert(commerce_reconciliation_audit).values([
+							...(providerTransaction
+								? [
+										{
+											conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
+											source_table: 'entity_trustap_transactions',
+											source_row_id: providerTransaction.id,
+											canonical_row_id: current.id,
+											original_reference: current.transaction_id,
+											snapshot: auditSnapshot,
+										},
+									]
+								: []),
+							{
+								conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
+								source_table: 'orders',
+								source_row_id: current.id,
+								canonical_row_id: providerTransaction?.id ?? null,
+								original_reference: current.transaction_id,
+								snapshot: auditSnapshot,
+							},
+						]);
+						if (providerTransaction) {
+							await tx
+								.update(entityTrustapTransactions)
+								.set({ quarantined: true, updated_at: new Date() })
+								.where(eq(entityTrustapTransactions.id, providerTransaction.id));
+						}
+					}
 					await tx
 						.update(orders)
 						.set({

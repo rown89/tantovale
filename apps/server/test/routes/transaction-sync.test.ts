@@ -762,6 +762,7 @@ describe('Trustap transaction polling state mapping', () => {
 			.update(orders)
 			.set({
 				status: ORDER_PHASES.PAYMENT_FAILED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
 				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
 			})
 			.where(eq(orders.id, order.id));
@@ -781,6 +782,7 @@ describe('Trustap transaction polling state mapping', () => {
 		expect(result.syncedTransactions).toBe(0);
 		expect(storedOrder).toMatchObject({
 			status: ORDER_PHASES.PAYMENT_FAILED,
+			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
 		});
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.REJECTED);

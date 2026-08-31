@@ -6,6 +6,7 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
 import {
+	isReachableOrSameTrustapTransition,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 } from '../../src/routes/payments/trustap-order-state';
@@ -25,6 +26,12 @@ const exactMappings = [
 ] as const;
 
 describe('Trustap order transition policy', () => {
+	it('accepts only a reachable transition or an exact persisted provider replay', () => {
+		expect(isReachableOrSameTrustapTransition(TRUSTAP.CREATED, TRUSTAP.PAID, { apply: true })).toBe(true);
+		expect(isReachableOrSameTrustapTransition(TRUSTAP.REJECTED, TRUSTAP.REJECTED, { apply: false })).toBe(true);
+		expect(isReachableOrSameTrustapTransition(TRUSTAP.REJECTED, TRUSTAP.CANCELLED, { apply: false })).toBe(false);
+	});
+
 	const cronSettlementMatrix = [
 		[TRUSTAP.CREATED, undefined],
 		[TRUSTAP.JOINED, undefined],

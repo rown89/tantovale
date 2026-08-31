@@ -128,6 +128,14 @@ export type CronCancellationSettlement = {
 	paymentCancellationState: (typeof PAYMENT_CANCELLATION_STATES)[keyof typeof PAYMENT_CANCELLATION_STATES];
 };
 
+export function isReachableOrSameTrustapTransition(
+	currentProviderStatus: EntityTrustapTransactionStatus,
+	incomingProviderStatus: EntityTrustapTransactionStatus,
+	transition: Pick<TrustapOrderTransition, 'apply'>,
+): boolean {
+	return transition.apply || currentProviderStatus === incomingProviderStatus;
+}
+
 export function resolveCronCancellationSettlement(
 	currentCancellationState: string | null,
 	currentProviderStatus: EntityTrustapTransactionStatus,
@@ -144,7 +152,7 @@ export function resolveCronCancellationSettlement(
 	// A durable cron marker must not make an otherwise unreachable provider edge valid.
 	// Same-status replays are intentionally accepted so a webhook or poll can settle an
 	// intent left behind by a crash after the provider state was already persisted.
-	if (!transition.apply && currentProviderStatus !== incomingProviderStatus) return undefined;
+	if (!isReachableOrSameTrustapTransition(currentProviderStatus, incomingProviderStatus, transition)) return undefined;
 	if (incomingProviderStatus === TRUSTAP.CANCELLED) {
 		return {
 			orderStatus: ORDER_PHASES.EXPIRED,

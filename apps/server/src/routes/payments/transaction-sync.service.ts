@@ -30,6 +30,7 @@ import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
+	isReachableOrSameTrustapTransition,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 	trustapToOrderPhase,
@@ -365,7 +366,6 @@ export class TransactionSyncService {
 					continue;
 				}
 				const remoteStatus = remote.status as EntityTrustapTransactionStatus;
-				const recoveredOrderStatus = orderStatusForRecoveredTransaction(remoteStatus, candidate.orderStatus);
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
 				const recoveryOutcome = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, itemId);
@@ -375,6 +375,7 @@ export class TransactionSyncService {
 							paymentTransactionId: orders.payment_transaction_id,
 							legacyTransactionId: orders.legacy_payment_transaction_id,
 							proposalId: orders.order_proposal_id,
+							orderStatus: orders.status,
 							buyerProfileId: orders.buyer_id,
 							sellerProfileId: orders.seller_id,
 						})
@@ -395,6 +396,7 @@ export class TransactionSyncService {
 					) {
 						throw new Error('The recovery reservation changed before finalization');
 					}
+					if (reservation.orderStatus !== ORDER_PHASES.PAYMENT_PENDING) return 'terminal' as const;
 					const [conflictingOrderReference] = await tx
 						.select({ id: orders.id })
 						.from(orders)
@@ -464,6 +466,19 @@ export class TransactionSyncService {
 							.where(eq(entityTrustapTransactions.id, existingTransaction.id));
 						return 'quarantined' as const;
 					}
+					const recoveryTransition = existingTransaction
+						? resolveTrustapOrderTransition(existingTransaction.status, reservation.orderStatus, remoteStatus)
+						: undefined;
+					if (
+						existingTransaction &&
+						recoveryTransition &&
+						!isReachableOrSameTrustapTransition(existingTransaction.status, remoteStatus, recoveryTransition)
+					) {
+						return 'unreachable' as const;
+					}
+					const recoveredOrderStatus =
+						recoveryTransition?.orderStatus ??
+						orderStatusForRecoveredTransaction(remoteStatus, reservation.orderStatus);
 					if (!existingTransaction) {
 						await tx.insert(entityTrustapTransactions).values({
 							entityId: itemId,
@@ -576,6 +591,26 @@ export class TransactionSyncService {
 						requiresManualReconciliation: true,
 						success: false,
 						error: 'Existing provider evidence conflicts with the durable local and remote snapshots',
+					});
+					continue;
+				}
+				if (recoveryOutcome === 'unreachable') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						requiresManualReconciliation: true,
+						success: false,
+						error: 'Trustap transaction status is outside the persisted provider lineage',
+					});
+					continue;
+				}
+				if (recoveryOutcome === 'terminal') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						requiresManualReconciliation: true,
+						success: false,
+						error: 'A terminal order cannot be reopened automatically',
 					});
 					continue;
 				}
@@ -700,6 +735,8 @@ export class TransactionSyncService {
 				throw new Error('Trustap transaction lost its local graph after correlation');
 			}
 			const transition = resolveTrustapOrderTransition(current.status, current.orderStatus, remoteStatus);
+			const providerLineageApplies = isReachableOrSameTrustapTransition(current.status, remoteStatus, transition);
+			if (!providerLineageApplies) return { outcome: 'ignored' };
 			const cancellationSettlement = resolveCronCancellationSettlement(
 				current.orderCancellationState,
 				current.status,
@@ -707,7 +744,6 @@ export class TransactionSyncService {
 				transition,
 			);
 			const complaintRequiresReconciliation =
-				transition.apply &&
 				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
 				current.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 			const resolvesCreationReconciliation =
