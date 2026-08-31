@@ -673,6 +673,62 @@ describe('Trustap transaction polling state mapping', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.DELIVERED);
 	});
 
+	it('quarantines stale provider progress that contradicts an already terminal order', async () => {
+		const { order, transactionId } = await createStaleProviderBackedOrder(entityTrustapTransactionTypeValues.CREATED);
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.COMPLETED,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.PAID,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider).toMatchObject({ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true });
+		expect(
+			(
+				await db
+					.select({
+						conflictType: commerce_reconciliation_audit.conflict_type,
+						sourceTable: commerce_reconciliation_audit.source_table,
+						sourceRowId: commerce_reconciliation_audit.source_row_id,
+						canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					})
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+			).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable)),
+		).toEqual([
+			{
+				conflictType: 'runtime_terminal_provider_status_conflict',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: storedProvider!.id,
+				canonicalRowId: order.id,
+			},
+			{
+				conflictType: 'runtime_terminal_provider_status_conflict',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				canonicalRowId: storedProvider!.id,
+			},
+		]);
+	});
+
 	it('records payment_refunded after cancelled_with_payment without reopening the terminal order', async () => {
 		const { order, transactionId } = await createStaleProviderBackedOrder(
 			entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT,

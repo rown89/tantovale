@@ -114,6 +114,14 @@ const authoritativeCreationResolutionStatuses = new Set<EntityTrustapTransaction
 	TRUSTAP.COMPLAINT_PERIOD_ENDED,
 	TRUSTAP.FUNDS_RELEASED,
 ]);
+const refundEligibleProviderStatuses = new Set<EntityTrustapTransactionStatus>([
+	TRUSTAP.PAID,
+	TRUSTAP.TRACKED,
+	TRUSTAP.DELIVERED,
+	TRUSTAP.COMPLAINED,
+	TRUSTAP.COMPLAINT_PERIOD_ENDED,
+	TRUSTAP.CANCELLED_WITH_PAYMENT,
+]);
 
 export function isAuthoritativeCancellationStatus(status: EntityTrustapTransactionStatus): boolean {
 	return authoritativeCancellationStatuses.has(status);
@@ -134,6 +142,43 @@ export function isReachableOrSameTrustapTransition(
 	transition: Pick<TrustapOrderTransition, 'apply'>,
 ): boolean {
 	return transition.apply || currentProviderStatus === incomingProviderStatus;
+}
+
+/**
+ * A provider transition can be reachable while still contradicting an order that
+ * has already reached a terminal phase (for example a stale CREATED provider row
+ * next to a COMPLETED order receiving PAID). Keep terminal order truth closed
+ * unless the provider outcome maps to the same terminal phase, is the cron
+ * cancellation outcome for an expired order, or is an authoritative refund
+ * reached from a post-payment provider state.
+ */
+export function isTrustapTransitionCompatibleWithTerminalOrder(
+	currentProviderStatus: EntityTrustapTransactionStatus,
+	currentOrderStatus: string,
+	incomingProviderStatus: EntityTrustapTransactionStatus,
+	currentCancellationState: string | null,
+	transition: Pick<TrustapOrderTransition, 'apply' | 'orderStatus'>,
+): boolean {
+	if (!terminalOrderPhases.has(currentOrderStatus)) return true;
+	if (incomingProviderStatus === TRUSTAP.COMPLAINED) return transition.orderStatus === currentOrderStatus;
+
+	const incomingOrderStatus = trustapToOrderPhase[incomingProviderStatus as keyof typeof trustapToOrderPhase];
+	if (incomingOrderStatus === currentOrderStatus) return true;
+	if (
+		currentOrderStatus === ORDER_PHASES.EXPIRED &&
+		incomingProviderStatus === TRUSTAP.CANCELLED &&
+		currentCancellationState !== PAYMENT_CANCELLATION_STATES.NONE
+	) {
+		return true;
+	}
+	if (
+		incomingOrderStatus === ORDER_PHASES.PAYMENT_REFUNDED &&
+		transition.apply &&
+		refundEligibleProviderStatuses.has(currentProviderStatus)
+	) {
+		return true;
+	}
+	return false;
 }
 
 export function resolveCronCancellationSettlement(

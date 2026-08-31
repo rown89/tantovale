@@ -10,7 +10,7 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
-import { entityTrustapTransactions, orders } from '../../src/database/schemas/schema';
+import { commerce_reconciliation_audit, entityTrustapTransactions, orders } from '../../src/database/schemas/schema';
 import { createCommerceActors, createItemFixture, createOrderFixture } from '../fixtures/commerce';
 import { getTestDatabase } from '../helpers/database';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
@@ -553,6 +553,76 @@ describe('Trustap transaction webhook state mapping', () => {
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder?.updated_at).toEqual(stableTimestamp);
 		expect(storedProvider?.updated_at).toEqual(stableTimestamp);
+	});
+
+	it('quarantines a reachable provider update that contradicts an already terminal order', async () => {
+		const { order, transactionId } = await createProviderBackedOrder(entityTrustapTransactionTypeValues.CREATED);
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.PAID)).status).toBe(200);
+
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder).toMatchObject({
+			status: ORDER_PHASES.COMPLETED,
+			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		expect(storedProvider).toMatchObject({ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true });
+		expect(
+			(
+				await db
+					.select({
+						conflictType: commerce_reconciliation_audit.conflict_type,
+						sourceTable: commerce_reconciliation_audit.source_table,
+						sourceRowId: commerce_reconciliation_audit.source_row_id,
+						canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					})
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+			).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable)),
+		).toEqual([
+			{
+				conflictType: 'runtime_terminal_provider_status_conflict',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: storedProvider!.id,
+				canonicalRowId: order.id,
+			},
+			{
+				conflictType: 'runtime_terminal_provider_status_conflict',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				canonicalRowId: storedProvider!.id,
+			},
+		]);
+	});
+
+	it('accepts provider progress that maps to the same terminal order phase', async () => {
+		const { order, transactionId } = await createProviderBackedOrder(entityTrustapTransactionTypeValues.DELIVERED);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.COMPLETED }).where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.FUNDS_RELEASED)).status).toBe(200);
+
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedProvider).toMatchObject({
+			status: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+			quarantined: false,
+		});
 	});
 
 	it('rolls back the provider update when the corresponding order update fails', async () => {

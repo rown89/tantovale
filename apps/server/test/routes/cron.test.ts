@@ -586,6 +586,7 @@ describe('commerce expiry cron routes', () => {
 	it('requires the persisted provider transaction graph before attempting remote cancellation', async () => {
 		const { order } = await createPayableExpiredCandidate();
 		const { db } = getTestDatabase();
+		const transactionId = String(trustapTransactionFixture.id);
 		await db
 			.delete(entityTrustapTransactions)
 			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
@@ -602,6 +603,32 @@ describe('commerce expiry cron routes', () => {
 			({ path }) => path.includes('/cancel_with_guest_user'),
 		);
 		expect(cancellationRequests).toHaveLength(0);
+		const audits = await db
+			.select({
+				conflictType: commerce_reconciliation_audit.conflict_type,
+				sourceTable: commerce_reconciliation_audit.source_table,
+				sourceRowId: commerce_reconciliation_audit.source_row_id,
+				canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+				originalReference: commerce_reconciliation_audit.original_reference,
+			})
+			.from(commerce_reconciliation_audit)
+			.where(eq(commerce_reconciliation_audit.original_reference, transactionId));
+		expect(audits).toEqual([
+			{
+				conflictType: 'runtime_cron_cancellation_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				canonicalRowId: null,
+				originalReference: transactionId,
+			},
+		]);
+		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		expect(
+			await db
+				.select({ id: commerce_reconciliation_audit.id })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toHaveLength(1);
 	});
 
 	it.each(['seller identity', 'transaction amount', 'profile identity'] as const)(
@@ -642,12 +669,42 @@ describe('commerce expiry cron routes', () => {
 				.from(entityTrustapTransactions)
 				.where(eq(entityTrustapTransactions.transactionId, transactionId));
 			expect(storedProvider?.quarantined).toBe(true);
+			if (!storedProvider) throw new Error('Expected provider evidence');
+			const audits = (
+				await db
+					.select({
+						conflictType: commerce_reconciliation_audit.conflict_type,
+						sourceTable: commerce_reconciliation_audit.source_table,
+						sourceRowId: commerce_reconciliation_audit.source_row_id,
+						canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+						originalReference: commerce_reconciliation_audit.original_reference,
+					})
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+			).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable));
+			expect(audits).toEqual([
+				{
+					conflictType: 'runtime_cron_cancellation_correlation_mismatch',
+					sourceTable: 'entity_trustap_transactions',
+					sourceRowId: storedProvider.id,
+					canonicalRowId: order.id,
+					originalReference: transactionId,
+				},
+				{
+					conflictType: 'runtime_cron_cancellation_correlation_mismatch',
+					sourceTable: 'orders',
+					sourceRowId: order.id,
+					canonicalRowId: storedProvider.id,
+					originalReference: transactionId,
+				},
+			]);
+			await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
 			expect(
 				await db
-					.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+					.select({ id: commerce_reconciliation_audit.id })
 					.from(commerce_reconciliation_audit)
 					.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
-			).toContainEqual({ conflictType: 'runtime_cron_cancellation_correlation_mismatch' });
+			).toHaveLength(2);
 		},
 	);
 

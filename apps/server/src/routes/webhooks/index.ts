@@ -4,7 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
-import { entityTrustapTransactions, orders } from '#db-schema';
+import { commerce_reconciliation_audit, entityTrustapTransactions, orders } from '#db-schema';
 import {
 	entityTrustapTransactionStatusValues,
 	entityTrustapTransactionTypeValues,
@@ -15,6 +15,7 @@ import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
 	isReachableOrSameTrustapTransition,
+	isTrustapTransitionCompatibleWithTerminalOrder,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 } from '../payments/trustap-order-state';
@@ -146,6 +147,50 @@ export const webhooksRoute = createRouter().post(
 				);
 				if (!providerLineageApplies) {
 					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
+				}
+				if (
+					!isTrustapTransitionCompatibleWithTerminalOrder(
+						trustapTransaction.status,
+						order.status,
+						payload.status,
+						order.paymentCancellationState,
+						transition,
+					)
+				) {
+					const snapshot = {
+						order: {
+							id: order.id,
+							itemId: order.itemId,
+							status: order.status,
+							paymentCancellationState: order.paymentCancellationState,
+							paymentCreationState: order.paymentCreationState,
+						},
+						provider: trustapTransaction,
+						incomingStatus: payload.status,
+					};
+					await tx.insert(commerce_reconciliation_audit).values([
+						{
+							conflict_type: 'runtime_terminal_provider_status_conflict',
+							source_table: 'entity_trustap_transactions',
+							source_row_id: trustapTransaction.id,
+							canonical_row_id: order.id,
+							original_reference: payload.transaction_id,
+							snapshot,
+						},
+						{
+							conflict_type: 'runtime_terminal_provider_status_conflict',
+							source_table: 'orders',
+							source_row_id: order.id,
+							canonical_row_id: trustapTransaction.id,
+							original_reference: payload.transaction_id,
+							snapshot,
+						},
+					]);
+					await tx
+						.update(entityTrustapTransactions)
+						.set({ quarantined: true, updated_at: new Date() })
+						.where(eq(entityTrustapTransactions.id, trustapTransaction.id));
+					return c.json({ success: true, message: 'Conflicting terminal transaction update quarantined' }, 200);
 				}
 				const cancellationSettlement = resolveCronCancellationSettlement(
 					order.paymentCancellationState,

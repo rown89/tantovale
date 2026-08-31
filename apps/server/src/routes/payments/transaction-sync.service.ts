@@ -31,6 +31,7 @@ import {
 	isAuthoritativeCancellationStatus,
 	isAuthoritativeCreationResolutionStatus,
 	isReachableOrSameTrustapTransition,
+	isTrustapTransitionCompatibleWithTerminalOrder,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 	trustapToOrderPhase,
@@ -270,6 +271,7 @@ export class TransactionSyncService {
 				providerCharge: orders.payment_provider_charge,
 				shippingPrice: orders.shipping_price,
 				orderStatus: orders.status,
+				paymentCancellationState: orders.payment_cancellation_state,
 				itemTitle: items.title,
 				buyerProfileId: orders.buyer_id,
 				sellerProfileId: orders.seller_id,
@@ -286,7 +288,27 @@ export class TransactionSyncService {
 			.leftJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
 			.leftJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
 			.leftJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
-			.where(eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED));
+			.where(
+				and(
+					eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED),
+					notExists(
+						db
+							.select({ id: commerce_reconciliation_audit.id })
+							.from(commerce_reconciliation_audit)
+							.where(
+								and(
+									eq(commerce_reconciliation_audit.source_table, 'orders'),
+									eq(commerce_reconciliation_audit.source_row_id, orders.id),
+									inArray(commerce_reconciliation_audit.conflict_type, [
+										'runtime_transaction_correlation_mismatch',
+										'runtime_transaction_lineage_mismatch',
+										'runtime_terminal_provider_status_conflict',
+									]),
+								),
+							),
+					),
+				),
+			);
 
 		const results: TransactionSyncResult[] = [];
 		for (const candidate of candidates) {
@@ -331,40 +353,11 @@ export class TransactionSyncService {
 				continue;
 			}
 			const itemId = candidate.itemId;
-			const itemPrice = candidate.itemPrice;
-			const buyerProfileId = candidate.buyerProfileId;
-			const sellerProfileId = candidate.sellerProfileId;
-			const buyerProviderId = candidate.buyerProviderId;
-			const sellerProviderId = candidate.sellerProviderId;
-			const itemTitle = candidate.itemTitle;
-			const buyerEmail = candidate.buyerEmail;
-			const sellerUsername = candidate.sellerUsername;
 
 			try {
 				// The provider request intentionally happens before opening a database transaction or taking the item lock.
 				const remote = await this.paymentProviderService.getTransactionStatus(transactionId);
-				const expectedPrice = itemPrice + candidate.platformCharge;
-				if (
-					!remote ||
-					remote.id !== transactionId ||
-					remote.buyer_id !== buyerProviderId ||
-					remote.seller_id !== sellerProviderId ||
-					remote.currency !== 'eur' ||
-					remote.price !== expectedPrice ||
-					remote.charge !== candidate.providerCharge ||
-					remote.charge_seller !== 0 ||
-					!remote.description.includes(candidate.paymentAttemptId) ||
-					!isTrustapStatus(remote.status)
-				) {
-					results.push({
-						transactionId,
-						orderId: candidate.orderId,
-						requiresManualReconciliation: true,
-						success: false,
-						error: 'Trustap transaction does not match the durable local snapshot',
-					});
-					continue;
-				}
+				if (!remote || !isTrustapStatus(remote.status)) throw new Error('Invalid Trustap transaction response');
 				const remoteStatus = remote.status as EntityTrustapTransactionStatus;
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
 				const recoveryOutcome = await db.transaction(async (tx) => {
@@ -372,14 +365,33 @@ export class TransactionSyncService {
 					const [reservation] = await tx
 						.select({
 							id: orders.id,
+							itemId: orders.item_id,
 							paymentTransactionId: orders.payment_transaction_id,
 							legacyTransactionId: orders.legacy_payment_transaction_id,
 							proposalId: orders.order_proposal_id,
 							orderStatus: orders.status,
+							paymentCancellationState: orders.payment_cancellation_state,
+							paymentAttemptId: orders.payment_attempt_id,
+							itemPrice: orders.item_price,
+							platformCharge: orders.platform_charge,
+							providerCharge: orders.payment_provider_charge,
+							shippingPrice: orders.shipping_price,
+							buyerAddressId: orders.buyer_address,
+							sellerAddressId: orders.seller_address,
 							buyerProfileId: orders.buyer_id,
 							sellerProfileId: orders.seller_id,
+							itemTitle: items.title,
+							buyerProviderId: buyerProfiles.payment_provider_id,
+							sellerProviderId: sellerProfiles.payment_provider_id,
+							buyerEmail: buyerUsers.email,
+							sellerUsername: sellerUsers.username,
 						})
 						.from(orders)
+						.leftJoin(items, eq(orders.item_id, items.id))
+						.leftJoin(buyerProfiles, eq(orders.buyer_id, buyerProfiles.id))
+						.leftJoin(sellerProfiles, eq(orders.seller_id, sellerProfiles.id))
+						.leftJoin(buyerUsers, eq(buyerProfiles.user_id, buyerUsers.id))
+						.leftJoin(sellerUsers, eq(sellerProfiles.user_id, sellerUsers.id))
 						.where(
 							and(
 								eq(orders.id, candidate.orderId),
@@ -391,12 +403,21 @@ export class TransactionSyncService {
 					if (
 						!reservation ||
 						(reservation.paymentTransactionId ?? reservation.legacyTransactionId) !== transactionId ||
+						reservation.itemId !== itemId ||
+						reservation.paymentAttemptId === null ||
+						reservation.itemPrice === null ||
+						reservation.buyerAddressId === null ||
+						reservation.sellerAddressId === null ||
 						reservation.buyerProfileId === null ||
-						reservation.sellerProfileId === null
+						reservation.sellerProfileId === null ||
+						!reservation.buyerProviderId ||
+						!reservation.sellerProviderId ||
+						!reservation.itemTitle ||
+						!reservation.buyerEmail ||
+						!reservation.sellerUsername
 					) {
 						throw new Error('The recovery reservation changed before finalization');
 					}
-					if (reservation.orderStatus !== ORDER_PHASES.PAYMENT_PENDING) return 'terminal' as const;
 					const [conflictingOrderReference] = await tx
 						.select({ id: orders.id })
 						.from(orders)
@@ -424,6 +445,75 @@ export class TransactionSyncService {
 						.limit(1)
 						.for('update');
 					if (existingTransaction?.quarantined) return 'quarantined' as const;
+					const recoverySnapshot = {
+						order: {
+							id: reservation.id,
+							itemId: reservation.itemId,
+							proposalId: reservation.proposalId,
+							paymentTransactionId: reservation.paymentTransactionId,
+							legacyTransactionId: reservation.legacyTransactionId,
+							orderStatus: reservation.orderStatus,
+							paymentCancellationState: reservation.paymentCancellationState,
+							paymentAttemptId: reservation.paymentAttemptId,
+							itemPrice: reservation.itemPrice,
+							platformCharge: reservation.platformCharge,
+							providerCharge: reservation.providerCharge,
+							shippingPrice: reservation.shippingPrice,
+							buyerAddressId: reservation.buyerAddressId,
+							sellerAddressId: reservation.sellerAddressId,
+							buyerProfileId: reservation.buyerProfileId,
+							sellerProfileId: reservation.sellerProfileId,
+							buyerProviderId: reservation.buyerProviderId,
+							sellerProviderId: reservation.sellerProviderId,
+							itemTitle: reservation.itemTitle,
+						},
+						provider: existingTransaction ?? null,
+						remote,
+					};
+					const auditRecoveryConflict = async (conflictType: string) => {
+						await tx.insert(commerce_reconciliation_audit).values([
+							...(existingTransaction
+								? [
+										{
+											conflict_type: conflictType,
+											source_table: 'entity_trustap_transactions',
+											source_row_id: existingTransaction.id,
+											canonical_row_id: reservation.id,
+											original_reference: transactionId,
+											snapshot: recoverySnapshot,
+										},
+									]
+								: []),
+							{
+								conflict_type: conflictType,
+								source_table: 'orders',
+								source_row_id: reservation.id,
+								canonical_row_id: existingTransaction?.id ?? null,
+								original_reference: transactionId,
+								snapshot: recoverySnapshot,
+							},
+						]);
+						if (existingTransaction) {
+							await tx
+								.update(entityTrustapTransactions)
+								.set({ quarantined: true, updated_at: new Date() })
+								.where(eq(entityTrustapTransactions.id, existingTransaction.id));
+						}
+					};
+					const refreshedExpectedPrice = reservation.itemPrice + reservation.platformCharge;
+					if (
+						remote.id !== transactionId ||
+						remote.buyer_id !== reservation.buyerProviderId ||
+						remote.seller_id !== reservation.sellerProviderId ||
+						remote.currency !== 'eur' ||
+						remote.price !== refreshedExpectedPrice ||
+						remote.charge !== reservation.providerCharge ||
+						remote.charge_seller !== 0 ||
+						!remote.description.includes(reservation.paymentAttemptId)
+					) {
+						await auditRecoveryConflict('runtime_transaction_correlation_mismatch');
+						return existingTransaction ? ('quarantined' as const) : ('audited' as const);
+					}
 					if (
 						existingTransaction &&
 						(existingTransaction.entityId !== itemId ||
@@ -434,36 +524,7 @@ export class TransactionSyncService {
 							existingTransaction.charge !== remote.charge ||
 							existingTransaction.chargeSeller !== remote.charge_seller)
 					) {
-						await tx.insert(commerce_reconciliation_audit).values([
-							{
-								conflict_type: 'runtime_transaction_correlation_mismatch',
-								source_table: 'entity_trustap_transactions',
-								source_row_id: existingTransaction.id,
-								canonical_row_id: reservation.id,
-								original_reference: transactionId,
-								snapshot: { localProvider: existingTransaction, remote },
-							},
-							{
-								conflict_type: 'runtime_transaction_correlation_mismatch',
-								source_table: 'orders',
-								source_row_id: reservation.id,
-								canonical_row_id: existingTransaction.id,
-								original_reference: transactionId,
-								snapshot: {
-									itemId,
-									buyerProfileId,
-									sellerProfileId,
-									itemPrice,
-									platformCharge: candidate.platformCharge,
-									providerCharge: candidate.providerCharge,
-									shippingPrice: candidate.shippingPrice,
-								},
-							},
-						]);
-						await tx
-							.update(entityTrustapTransactions)
-							.set({ quarantined: true, updated_at: new Date() })
-							.where(eq(entityTrustapTransactions.id, existingTransaction.id));
+						await auditRecoveryConflict('runtime_transaction_correlation_mismatch');
 						return 'quarantined' as const;
 					}
 					const recoveryTransition = existingTransaction
@@ -474,9 +535,32 @@ export class TransactionSyncService {
 						recoveryTransition &&
 						!isReachableOrSameTrustapTransition(existingTransaction.status, remoteStatus, recoveryTransition)
 					) {
+						await auditRecoveryConflict('runtime_transaction_lineage_mismatch');
 						return 'unreachable' as const;
 					}
+					if (
+						existingTransaction &&
+						recoveryTransition &&
+						!isTrustapTransitionCompatibleWithTerminalOrder(
+							existingTransaction.status,
+							reservation.orderStatus,
+							remoteStatus,
+							reservation.paymentCancellationState,
+							recoveryTransition,
+						)
+					) {
+						await auditRecoveryConflict('runtime_terminal_provider_status_conflict');
+						return 'quarantined' as const;
+					}
+					if (reservation.orderStatus !== ORDER_PHASES.PAYMENT_PENDING) return 'terminal' as const;
+					const cancellationSettlement = resolveCronCancellationSettlement(
+						reservation.paymentCancellationState,
+						existingTransaction?.status ?? remoteStatus,
+						remoteStatus,
+						recoveryTransition ?? { apply: false, orderStatus: reservation.orderStatus },
+					);
 					const recoveredOrderStatus =
+						cancellationSettlement?.orderStatus ??
 						recoveryTransition?.orderStatus ??
 						orderStatusForRecoveredTransaction(remoteStatus, reservation.orderStatus);
 					if (!existingTransaction) {
@@ -487,11 +571,11 @@ export class TransactionSyncService {
 							transactionId,
 							transactionType: 'online_payment',
 							status: remoteStatus,
-							price: expectedPrice,
-							charge: candidate.providerCharge,
+							price: refreshedExpectedPrice,
+							charge: reservation.providerCharge,
 							chargeSeller: remote.charge_seller,
 							currency: 'eur',
-							entityTitle: itemTitle,
+							entityTitle: reservation.itemTitle,
 							claimedBySeller: false,
 							claimedByBuyer: false,
 							complaintPeriodDeadline: null,
@@ -520,12 +604,12 @@ export class TransactionSyncService {
 							const [room] = await tx
 								.select({ id: chat_rooms.id })
 								.from(chat_rooms)
-								.where(and(eq(chat_rooms.item_id, itemId), eq(chat_rooms.buyer_id, buyerProfileId)))
+								.where(and(eq(chat_rooms.item_id, itemId), eq(chat_rooms.buyer_id, reservation.buyerProfileId)))
 								.limit(1);
 							if (!room) throw new Error('The proposal chat room no longer exists');
 							await tx.insert(chat_messages).values({
 								chat_room_id: room.id,
-								sender_id: sellerProfileId,
+								sender_id: reservation.sellerProfileId,
 								message: recoverySystemMessage(proposalId, remoteStatus),
 								message_type: 'system',
 								metadata: {
@@ -542,9 +626,9 @@ export class TransactionSyncService {
 									.values({
 										order_id: reservation.id,
 										transaction_id: transactionId,
-										recipient_email: buyerEmail,
-										merchant_username: sellerUsername,
-										item_name: itemTitle,
+										recipient_email: reservation.buyerEmail,
+										merchant_username: reservation.sellerUsername,
+										item_name: reservation.itemTitle,
 									})
 									.onConflictDoNothing({ target: payment_invitation_outbox.order_id });
 							}
@@ -569,9 +653,11 @@ export class TransactionSyncService {
 									? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 									: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredOrderStatus,
-							...(['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(remoteStatus)
-								? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
-								: {}),
+							...(cancellationSettlement
+								? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
+								: ['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(remoteStatus)
+									? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
+									: {}),
 							updated_at: new Date(),
 						})
 						.where(
@@ -591,6 +677,16 @@ export class TransactionSyncService {
 						requiresManualReconciliation: true,
 						success: false,
 						error: 'Existing provider evidence conflicts with the durable local and remote snapshots',
+					});
+					continue;
+				}
+				if (recoveryOutcome === 'audited') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						requiresManualReconciliation: true,
+						success: false,
+						error: 'Trustap transaction does not match the durable local snapshot',
 					});
 					continue;
 				}
@@ -737,6 +833,40 @@ export class TransactionSyncService {
 			const transition = resolveTrustapOrderTransition(current.status, current.orderStatus, remoteStatus);
 			const providerLineageApplies = isReachableOrSameTrustapTransition(current.status, remoteStatus, transition);
 			if (!providerLineageApplies) return { outcome: 'ignored' };
+			if (
+				!isTrustapTransitionCompatibleWithTerminalOrder(
+					current.status,
+					current.orderStatus,
+					remoteStatus,
+					current.orderCancellationState,
+					transition,
+				)
+			) {
+				const snapshot = { local: current, remote };
+				await tx.insert(commerce_reconciliation_audit).values([
+					{
+						conflict_type: 'runtime_terminal_provider_status_conflict',
+						source_table: 'entity_trustap_transactions',
+						source_row_id: current.id,
+						canonical_row_id: current.orderId,
+						original_reference: current.transactionId,
+						snapshot,
+					},
+					{
+						conflict_type: 'runtime_terminal_provider_status_conflict',
+						source_table: 'orders',
+						source_row_id: current.orderId,
+						canonical_row_id: current.id,
+						original_reference: current.transactionId,
+						snapshot,
+					},
+				]);
+				await tx
+					.update(entityTrustapTransactions)
+					.set({ quarantined: true, updated_at: new Date() })
+					.where(eq(entityTrustapTransactions.id, current.id));
+				return { outcome: 'quarantined' };
+			}
 			const cancellationSettlement = resolveCronCancellationSettlement(
 				current.orderCancellationState,
 				current.status,

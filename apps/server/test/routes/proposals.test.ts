@@ -1528,21 +1528,96 @@ describe('proposal routes', () => {
 		expect(
 			await db.select().from(payment_invitation_outbox).where(eq(payment_invitation_outbox.order_id, reservation!.id)),
 		).toEqual([]);
+		const audits = (
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					originalReference: commerce_reconciliation_audit.original_reference,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+		).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable));
+		expect(audits).toEqual([
+			{
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: conflictingProviderRow!.id,
+				canonicalRowId: reservation!.id,
+				originalReference: transactionId,
+			},
+			{
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: reservation!.id,
+				canonicalRowId: conflictingProviderRow!.id,
+				originalReference: transactionId,
+			},
+		]);
+		const requestsBeforeRetry = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+		).length;
+		await new TransactionSyncService().syncTransactionStatuses();
+		expect(
+			(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+			),
+		).toHaveLength(requestsBeforeRetry);
+	});
+
+	it('durably audits a remote known-ID mismatch without local provider evidence and never refetches it', async () => {
+		const { proposal, reservation, provider, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Remote mismatch recovery item',
+		);
+		const { db } = getTestDatabase();
+		const service = new PaymentProviderService();
+		const remote = await service.getTransactionStatus(transactionId);
+		if (!remote) throw new Error('Missing remote recovery transaction');
+		await db.delete(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id));
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockResolvedValue({ ...remote, buyer_id: 'different-remote-buyer' });
+
+		try {
+			await new TransactionSyncService().syncTransactionStatuses();
+			expect(getTransactionStatus).toHaveBeenCalledTimes(1);
+			await new TransactionSyncService().syncTransactionStatuses();
+			expect(getTransactionStatus).toHaveBeenCalledTimes(1);
+		} finally {
+			getTransactionStatus.mockRestore();
+		}
+
+		const audits = await db
+			.select({
+				conflictType: commerce_reconciliation_audit.conflict_type,
+				sourceTable: commerce_reconciliation_audit.source_table,
+				sourceRowId: commerce_reconciliation_audit.source_row_id,
+				canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+				originalReference: commerce_reconciliation_audit.original_reference,
+				snapshot: commerce_reconciliation_audit.snapshot,
+			})
+			.from(commerce_reconciliation_audit)
+			.where(eq(commerce_reconciliation_audit.original_reference, transactionId));
+		expect(audits).toEqual([
+			expect.objectContaining({
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: reservation.id,
+				canonicalRowId: null,
+				originalReference: transactionId,
+				snapshot: expect.objectContaining({ provider: null }),
+			}),
+		]);
 		expect(
 			await db
 				.select()
-				.from(commerce_reconciliation_audit)
-				.where(
-					and(
-						eq(commerce_reconciliation_audit.source_table, 'entity_trustap_transactions'),
-						eq(commerce_reconciliation_audit.source_row_id, conflictingProviderRow!.id),
-					),
-				),
-		).toEqual([
-			expect.objectContaining({
-				conflict_type: 'runtime_transaction_correlation_mismatch',
-				source_table: 'entity_trustap_transactions',
-			}),
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
+		).toEqual([]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.pending }),
 		]);
 	});
 
@@ -1619,6 +1694,49 @@ describe('proposal routes', () => {
 		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
 	});
 
+	it.each([
+		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'cancelled', ORDER_PHASES.EXPIRED, PAYMENT_CANCELLATION_STATES.CANCELLED],
+		[
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			'cancelled',
+			ORDER_PHASES.EXPIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		],
+		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'paid', ORDER_PHASES.PAYMENT_CONFIRMED, PAYMENT_CANCELLATION_STATES.NONE],
+		[
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			'paid',
+			ORDER_PHASES.PAYMENT_CONFIRMED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+		[PAYMENT_CANCELLATION_STATES.CANCELLING, 'delivered', ORDER_PHASES.COMPLETED, PAYMENT_CANCELLATION_STATES.NONE],
+		[
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			'delivered',
+			ORDER_PHASES.COMPLETED,
+			PAYMENT_CANCELLATION_STATES.NONE,
+		],
+	] as const)(
+		'settles known-ID recovery from cron marker %s with remote %s',
+		async (marker, remoteStatus, expectedOrderStatus, expectedMarker) => {
+			const { reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+				`Known recovery ${marker.replaceAll('_', ' ')} ${remoteStatus.replaceAll('_', ' ')}`,
+			);
+			const { db } = getTestDatabase();
+			await db.update(orders).set({ payment_cancellation_state: marker }).where(eq(orders.id, reservation.id));
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, remoteStatus);
+
+			await new TransactionSyncService().syncTransactionStatuses();
+
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+			expect(storedOrder).toMatchObject({
+				status: expectedOrderStatus,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+				payment_cancellation_state: expectedMarker,
+			});
+		},
+	);
+
 	it('re-reads a known-ID recovery reservation after provider I/O and never reopens a terminal order', async () => {
 		const { proposal, reservation, transactionId } =
 			await createExistingCreatedRecoveryReservation('Terminal recovery race item');
@@ -1662,16 +1780,27 @@ describe('proposal routes', () => {
 				orderId: reservation.id,
 				requiresManualReconciliation: true,
 				success: false,
-				error: 'A terminal order cannot be reopened automatically',
+				error: 'Existing provider evidence conflicts with the durable local and remote snapshots',
 			}),
 		);
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, reservation.id));
 		const [storedProposal] = await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder).toMatchObject({
 			status: ORDER_PHASES.COMPLETED,
 			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
 		});
 		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.pending);
+		expect(storedProvider).toMatchObject({ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true });
+		expect(
+			await db
+				.select({ sourceTable: commerce_reconciliation_audit.source_table })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual(expect.arrayContaining([{ sourceTable: 'entity_trustap_transactions' }, { sourceTable: 'orders' }]));
 	});
 
 	it('does not let known-ID recovery cross the complained to rejected terminal branch', async () => {
@@ -1733,7 +1862,48 @@ describe('proposal routes', () => {
 		});
 		expect(storedProposal?.status).toBe(ORDER_PROPOSAL_PHASES.accepted);
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.COMPLAINED);
+		expect(storedProvider?.quarantined).toBe(true);
 		expect(messagesAfterIllegalEdge).toEqual(messagesBeforeIllegalEdge);
+		const audits = (
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+		).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable));
+		expect(audits).toEqual([
+			{
+				conflictType: 'runtime_transaction_lineage_mismatch',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: storedProvider!.id,
+				canonicalRowId: reservation.id,
+			},
+			{
+				conflictType: 'runtime_transaction_lineage_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: reservation.id,
+				canonicalRowId: storedProvider!.id,
+			},
+		]);
+		const fetchesBeforeRetry = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+			({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+		).length;
+		await new TransactionSyncService().syncTransactionStatuses();
+		expect(
+			(await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
+				({ method, path }) => method === 'GET' && path.endsWith(`/transactions/${transactionId}`),
+			),
+		).toHaveLength(fetchesBeforeRetry);
+		expect(
+			await db
+				.select({ id: commerce_reconciliation_audit.id })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toHaveLength(2);
 	});
 
 	it('recovers every known Trustap state without a false proposal or payment invitation', async () => {

@@ -7,6 +7,7 @@ import {
 } from '../../src/database/schemas/enumerated_values';
 import {
 	isReachableOrSameTrustapTransition,
+	isTrustapTransitionCompatibleWithTerminalOrder,
 	resolveCronCancellationSettlement,
 	resolveTrustapOrderTransition,
 } from '../../src/routes/payments/trustap-order-state';
@@ -214,4 +215,32 @@ describe('Trustap order transition policy', () => {
 			providerStatus: TRUSTAP.PAYMENT_REFUNDED,
 		});
 	});
+
+	it('rejects a reachable provider status that contradicts an already terminal order', () => {
+		const transition = resolveTrustapOrderTransition(TRUSTAP.CREATED, ORDER_PHASES.COMPLETED, TRUSTAP.PAID);
+
+		expect(
+			isTrustapTransitionCompatibleWithTerminalOrder(
+				TRUSTAP.CREATED,
+				ORDER_PHASES.COMPLETED,
+				TRUSTAP.PAID,
+				PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+				transition,
+			),
+		).toBe(false);
+	});
+
+	it.each([
+		[TRUSTAP.DELIVERED, TRUSTAP.FUNDS_RELEASED, ORDER_PHASES.COMPLETED, PAYMENT_CANCELLATION_STATES.NONE],
+		[TRUSTAP.CANCELLED, TRUSTAP.CANCELLED, ORDER_PHASES.EXPIRED, PAYMENT_CANCELLATION_STATES.CANCELLED],
+		[TRUSTAP.DELIVERED, TRUSTAP.PAYMENT_REFUNDED, ORDER_PHASES.COMPLETED, PAYMENT_CANCELLATION_STATES.NONE],
+	] as const)(
+		'permits compatible terminal provider evidence %s -> %s',
+		(current, incoming, orderStatus, cancellation) => {
+			const transition = resolveTrustapOrderTransition(current, orderStatus, incoming);
+			expect(
+				isTrustapTransitionCompatibleWithTerminalOrder(current, orderStatus, incoming, cancellation, transition),
+			).toBe(true);
+		},
+	);
 });
