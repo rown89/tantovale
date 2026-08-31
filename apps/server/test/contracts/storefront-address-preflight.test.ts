@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const preflightPath = '../../../storefront/src/utils/address-preflight-lifecycle';
+const addressProtectedPath = '../../../storefront/src/utils/address-protected';
+
+beforeEach(() => {
+	vi.resetModules();
+	vi.clearAllMocks();
+});
 
 async function loadController() {
 	return import(/* @vite-ignore */ preflightPath) as Promise<{
@@ -19,6 +25,49 @@ async function loadController() {
 }
 
 describe('storefront address preflight lifecycle', () => {
+	it.each([
+		['active address', new Response(JSON.stringify(41), { status: 200 }), 41],
+		['missing address', new Response(JSON.stringify(false), { status: 200 }), false],
+	] as const)('maps a successful real address lookup to %s', async (_label, response, expected) => {
+		vi.doMock('@workspace/server/client-rpc', () => ({
+			client: { profile: { auth: { profile_active_address_id: { $get: vi.fn().mockResolvedValue(response) } } } },
+		}));
+		const { default: addressProtectedRoute } = (await import(/* @vite-ignore */ addressProtectedPath)) as {
+			default(): Promise<number | false>;
+		};
+
+		await expect(addressProtectedRoute()).resolves.toBe(expected);
+	});
+
+	it.each([401, 500])('rejects a real non-ok address lookup with HTTP %s as an error, not missing', async (status) => {
+		vi.doMock('@workspace/server/client-rpc', () => ({
+			client: {
+				profile: {
+					auth: { profile_active_address_id: { $get: vi.fn().mockResolvedValue(new Response(null, { status })) } },
+				},
+			},
+		}));
+		const { default: addressProtectedRoute } = (await import(/* @vite-ignore */ addressProtectedPath)) as {
+			default(): Promise<number | false>;
+		};
+
+		await expect(addressProtectedRoute()).rejects.toMatchObject({ name: 'AddressLookupError', status });
+	});
+
+	it('propagates a real address lookup transport failure to the error lifecycle', async () => {
+		const failure = new Error('network unavailable');
+		vi.doMock('@workspace/server/client-rpc', () => ({
+			client: {
+				profile: { auth: { profile_active_address_id: { $get: vi.fn().mockRejectedValue(failure) } } },
+			},
+		}));
+		const { default: addressProtectedRoute } = (await import(/* @vite-ignore */ addressProtectedPath)) as {
+			default(): Promise<number | false>;
+		};
+
+		await expect(addressProtectedRoute()).rejects.toBe(failure);
+	});
+
 	it.each(['profile', 'item', 'logout'] as const)(
 		'ignores an old successful response after a %s context change',
 		async () => {

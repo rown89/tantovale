@@ -31,6 +31,7 @@ const privateCommerceResetState = {
 	buyNowRequestToken: 0,
 	clientProposalId: undefined,
 	clientProposalCreatedAt: undefined,
+	dismissedServerProposalId: undefined,
 	isProposalModalOpen: false,
 	isCreatingProposal: false,
 	proposalRequestToken: 0,

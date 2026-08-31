@@ -4,7 +4,7 @@ import pg from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
-import { profiles, refreshTokens, users } from '../../src/database/schemas/schema';
+import { password_reset_tokens, profiles, refreshTokens, users } from '../../src/database/schemas/schema';
 import { verifyPassword } from '../../src/lib/password';
 import * as verifyEmailMailer from '../../src/mailer/templates/verify-email';
 import { createUserFixture, uniqueValue } from '../fixtures/factories';
@@ -13,12 +13,49 @@ import { getTestDatabase } from '../helpers/database';
 import { extractTokenFromLink, waitForEmail } from '../helpers/mailpit';
 import { CookieJar, jsonRequest } from '../helpers/request';
 
-function requiredSecret(name: 'ACCESS_TOKEN_SECRET' | 'EMAIL_VERIFY_TOKEN_SECRET' | 'REFRESH_TOKEN_SECRET'): string {
+function requiredSecret(
+	name: 'ACCESS_TOKEN_SECRET' | 'EMAIL_VERIFY_TOKEN_SECRET' | 'REFRESH_TOKEN_SECRET' | 'RESET_TOKEN_SECRET',
+): string {
 	const value = process.env[name];
 	if (!value) {
 		throw new Error(`Missing test secret: ${name}`);
 	}
 	return value;
+}
+
+async function emailVerificationToken(
+	user: Pick<typeof users.$inferSelect, 'id' | 'username' | 'updated_at'>,
+	options: { legacy?: boolean } = {},
+): Promise<string> {
+	return sign(
+		{
+			id: user.id,
+			username: user.username,
+			type: 'email_verification',
+			exp: Math.floor(Date.now() / 1_000) + 60 * 60,
+			...(options.legacy ? {} : { auth_epoch: user.updated_at.getTime() }),
+		},
+		requiredSecret('EMAIL_VERIFY_TOKEN_SECRET'),
+	);
+}
+
+async function passwordResetToken(user: Pick<typeof users.$inferSelect, 'id' | 'email'>): Promise<string> {
+	const token = await sign(
+		{
+			id: user.id,
+			email: user.email,
+			exp: Math.floor(Date.now() / 1_000) + 15 * 60,
+			jti: uniqueValue('verify-reset'),
+		},
+		requiredSecret('RESET_TOKEN_SECRET'),
+	);
+	const { db } = getTestDatabase();
+	await db.insert(password_reset_tokens).values({
+		user_id: user.id,
+		token,
+		expires_at: new Date(Date.now() + 15 * 60 * 1_000),
+	});
+	return token;
 }
 
 function signupBody(suffix: string) {
@@ -135,6 +172,7 @@ describe('authentication routes', () => {
 		expect(await verifyPassword(user.password, body.password)).toBe(true);
 		expect(activationCookie).toBe(token);
 		expect(activationClaims).toMatchObject({ id: user.id, username: user.username, type: 'email_verification' });
+		expect(activationClaims.auth_epoch).toBe(user.updated_at.getTime());
 		expect(activationClaims).not.toHaveProperty('expiresIn');
 		expect(Number(activationClaims.exp)).toBeGreaterThanOrEqual(now + 60 * 60 - 5);
 		expect(Number(activationClaims.exp)).toBeLessThanOrEqual(now + 60 * 60 + 5);
@@ -403,6 +441,234 @@ describe('authentication routes', () => {
 		expect(activationCookie).toContain('Secure');
 		expect(activationCookie).toContain('SameSite=None');
 		expect(sessions).toHaveLength(1);
+	});
+
+	it('serializes double email verification so exactly one request creates a session family', async () => {
+		const fixture = await createUserFixture({ emailVerified: false });
+		const token = await emailVerificationToken(fixture.user);
+		const { client, db } = getTestDatabase();
+		const barrier = await openDedicatedTestConnection();
+		let lockHeld = false;
+		let firstRequest: Promise<Response> | undefined;
+		let secondRequest: Promise<Response> | undefined;
+
+		await client.query(`
+			CREATE FUNCTION test_hold_email_verify_session_insert() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(hashtext(current_database()), 71011);
+				RETURN NEW;
+			END;
+			$$;
+			CREATE TRIGGER test_hold_email_verify_session_insert
+				BEFORE INSERT ON refresh_tokens
+				FOR EACH ROW EXECUTE FUNCTION test_hold_email_verify_session_insert();
+		`);
+
+		try {
+			await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 71011)');
+			lockHeld = true;
+			const blocker = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+			const blockerPid = blocker.rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing email-verify barrier PID');
+
+			firstRequest = Promise.resolve(app.request(`/verify/email?token=${encodeURIComponent(token)}`));
+			await waitForBlockedStatements(barrier, blockerPid, 1, '%insert into "refresh_tokens"%');
+			secondRequest = Promise.resolve(app.request(`/verify/email?token=${encodeURIComponent(token)}`));
+			await waitForBlockedStatements(barrier, blockerPid, 2);
+
+			await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71011)');
+			lockHeld = false;
+		} finally {
+			if (lockHeld) await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71011)');
+			await Promise.allSettled([firstRequest, secondRequest].filter((request) => request !== undefined));
+			await client.query('DROP TRIGGER IF EXISTS test_hold_email_verify_session_insert ON refresh_tokens');
+			await client.query('DROP FUNCTION IF EXISTS test_hold_email_verify_session_insert()');
+			await barrier.end();
+		}
+
+		if (!firstRequest || !secondRequest) throw new Error('Email verification requests did not start');
+		const responses = await Promise.all([firstRequest, secondRequest]);
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+		expect(await Promise.all(responses.map((response) => response.clone().json()))).toEqual([
+			{ message: 'Email verified successfully!' },
+			{ message: 'User already verified' },
+		]);
+		expect(responses.filter((response) => responseCookie(response, 'refresh_token'))).toHaveLength(1);
+		expect(sessions).toHaveLength(1);
+	});
+
+	it('rejects email verification for a banned account without issuing cookies or sessions', async () => {
+		const fixture = await createUserFixture({ emailVerified: false, user: { is_banned: true } });
+		const token = await emailVerificationToken(fixture.user);
+		const response = await app.request(`/verify/email?token=${encodeURIComponent(token)}`);
+		const { db } = getTestDatabase();
+
+		expect(response.status).toBe(400);
+		expect(response.headers.getSetCookie()).toEqual([]);
+		expect(await db.select().from(refreshTokens)).toEqual([]);
+		expect((await db.select().from(users).where(eq(users.id, fixture.user.id)))[0]?.email_verified).toBe(false);
+	});
+
+	it('accepts a legacy verification token only while the account auth epoch is untouched', async () => {
+		const untouchedAt = new Date('2020-06-01T10:00:00.000Z');
+		const untouched = await createUserFixture({
+			emailVerified: false,
+			user: { created_at: untouchedAt, updated_at: untouchedAt },
+		});
+		const changedAt = new Date('2020-06-02T10:00:00.000Z');
+		const changed = await createUserFixture({
+			emailVerified: false,
+			user: { created_at: changedAt, updated_at: changedAt },
+		});
+		const untouchedToken = await emailVerificationToken(untouched.user, { legacy: true });
+		const changedToken = await emailVerificationToken(changed.user, { legacy: true });
+		const resetToken = await passwordResetToken(changed.user);
+
+		const reset = await app.request(
+			'/password/auth/reset',
+			jsonRequest('POST', { token: resetToken, newPassword: 'EpochChangingPass456!' }),
+		);
+		const accepted = await app.request(`/verify/email?token=${encodeURIComponent(untouchedToken)}`);
+		const rejected = await app.request(`/verify/email?token=${encodeURIComponent(changedToken)}`);
+		const { db } = getTestDatabase();
+		const changedSessions = await db
+			.select()
+			.from(refreshTokens)
+			.where(eq(refreshTokens.username, changed.user.username));
+
+		expect(reset.status).toBe(200);
+		expect(accepted.status).toBe(200);
+		expect(rejected.status).toBe(400);
+		expect(rejected.headers.getSetCookie()).toEqual([]);
+		expect(changedSessions).toEqual([]);
+	});
+
+	it('lets verify commit first but lets the following reset revoke the newly issued session', async () => {
+		const fixture = await createUserFixture({ emailVerified: false });
+		const verifyToken = await emailVerificationToken(fixture.user);
+		const resetToken = await passwordResetToken(fixture.user);
+		const { client, db } = getTestDatabase();
+		const barrier = await openDedicatedTestConnection();
+		let lockHeld = false;
+		let pendingVerify: Promise<Response> | undefined;
+		let pendingReset: Promise<Response> | undefined;
+
+		await client.query(`
+			CREATE FUNCTION test_hold_verify_before_reset() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(hashtext(current_database()), 71012);
+				RETURN NEW;
+			END;
+			$$;
+			CREATE TRIGGER test_hold_verify_before_reset
+				BEFORE INSERT ON refresh_tokens
+				FOR EACH ROW EXECUTE FUNCTION test_hold_verify_before_reset();
+		`);
+
+		try {
+			await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 71012)');
+			lockHeld = true;
+			const blocker = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+			const blockerPid = blocker.rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing verify-first barrier PID');
+
+			pendingVerify = Promise.resolve(app.request(`/verify/email?token=${encodeURIComponent(verifyToken)}`));
+			await waitForBlockedStatements(barrier, blockerPid, 1, '%insert into "refresh_tokens"%');
+			pendingReset = Promise.resolve(
+				app.request(
+					'/password/auth/reset',
+					jsonRequest('POST', { token: resetToken, newPassword: 'VerifyFirstResetPass456!' }),
+				),
+			);
+			await waitForBlockedStatements(barrier, blockerPid, 2);
+
+			await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71012)');
+			lockHeld = false;
+		} finally {
+			if (lockHeld) await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71012)');
+			await Promise.allSettled([pendingVerify, pendingReset].filter((request) => request !== undefined));
+			await client.query('DROP TRIGGER IF EXISTS test_hold_verify_before_reset ON refresh_tokens');
+			await client.query('DROP FUNCTION IF EXISTS test_hold_verify_before_reset()');
+			await barrier.end();
+		}
+
+		if (!pendingVerify || !pendingReset) throw new Error('Verify/reset requests did not start');
+		const [verifyResponse, resetResponse] = await Promise.all([pendingVerify, pendingReset]);
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+
+		expect(verifyResponse.status).toBe(200);
+		expect(resetResponse.status).toBe(200);
+		expect(sessions).toEqual([]);
+		const lateCookies = `access_token=${responseCookie(verifyResponse, 'access_token')}; refresh_token=${responseCookie(verifyResponse, 'refresh_token')}`;
+		expect((await app.request('/user/auth', { headers: { cookie: lateCookies } })).status).toBe(401);
+	});
+
+	it('lets reset commit first so the stale verification epoch cannot issue a session', async () => {
+		const fixture = await createUserFixture({ emailVerified: false });
+		const verifyToken = await emailVerificationToken(fixture.user);
+		const resetToken = await passwordResetToken(fixture.user);
+		const { client, db } = getTestDatabase();
+		const barrier = await openDedicatedTestConnection();
+		let lockHeld = false;
+		let pendingReset: Promise<Response> | undefined;
+		let pendingVerify: Promise<Response> | undefined;
+
+		await client.query(`
+			CREATE FUNCTION test_hold_reset_before_verify() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+			BEGIN
+				PERFORM pg_advisory_xact_lock(hashtext(current_database()), 71013);
+				RETURN NEW;
+			END;
+			$$;
+			CREATE TRIGGER test_hold_reset_before_verify
+				BEFORE UPDATE ON users
+				FOR EACH ROW WHEN (OLD.password IS DISTINCT FROM NEW.password)
+				EXECUTE FUNCTION test_hold_reset_before_verify();
+		`);
+
+		try {
+			await barrier.query('SELECT pg_advisory_lock(hashtext(current_database()), 71013)');
+			lockHeld = true;
+			const blocker = await barrier.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+			const blockerPid = blocker.rows[0]?.pid;
+			if (!blockerPid) throw new Error('Missing reset-first barrier PID');
+
+			pendingReset = Promise.resolve(
+				app.request(
+					'/password/auth/reset',
+					jsonRequest('POST', { token: resetToken, newPassword: 'ResetFirstVerifyPass456!' }),
+				),
+			);
+			await waitForBlockedStatements(barrier, blockerPid, 1, '%update "users"%');
+			pendingVerify = Promise.resolve(app.request(`/verify/email?token=${encodeURIComponent(verifyToken)}`));
+			await waitForBlockedStatements(barrier, blockerPid, 2);
+
+			await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71013)');
+			lockHeld = false;
+		} finally {
+			if (lockHeld) await barrier.query('SELECT pg_advisory_unlock(hashtext(current_database()), 71013)');
+			await Promise.allSettled([pendingReset, pendingVerify].filter((request) => request !== undefined));
+			await client.query('DROP TRIGGER IF EXISTS test_hold_reset_before_verify ON users');
+			await client.query('DROP FUNCTION IF EXISTS test_hold_reset_before_verify()');
+			await barrier.end();
+		}
+
+		if (!pendingReset || !pendingVerify) throw new Error('Reset/verify requests did not start');
+		const [resetResponse, verifyResponse] = await Promise.all([pendingReset, pendingVerify]);
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+		const [storedUser] = await db.select().from(users).where(eq(users.id, fixture.user.id));
+
+		expect(resetResponse.status).toBe(200);
+		expect(verifyResponse.status).toBe(400);
+		expect(verifyResponse.headers.getSetCookie()).toEqual([]);
+		expect(storedUser?.email_verified).toBe(false);
+		expect(storedUser?.updated_at.getTime()).toBeGreaterThan(fixture.user.updated_at.getTime());
+		expect(sessions).toEqual([]);
 	});
 
 	it('POST /login authenticates verified credentials with cookies and one matching refresh session', async () => {
@@ -1029,6 +1295,26 @@ describe('authentication routes', () => {
 				expect.stringMatching(/^refresh_token=;.*Max-Age=0/i),
 			]),
 		);
+	});
+
+	it('POST /logout/auth revokes the presented family while banned and unbanning cannot revive it', async () => {
+		const fixture = await createUserFixture({ emailVerified: true });
+		const [jar, siblingJar] = await Promise.all([loginAs(fixture), loginAs(fixture)]);
+		const presentedToken = cookieValue(jar.header(), 'refresh_token');
+		const siblingToken = cookieValue(siblingJar.header(), 'refresh_token');
+		const { db } = getTestDatabase();
+		await db.update(users).set({ is_banned: true }).where(eq(users.id, fixture.user.id));
+
+		const response = await authenticatedRequest('/logout/auth', 'POST', jar);
+		await db.update(users).set({ is_banned: false }).where(eq(users.id, fixture.user.id));
+		const sessions = await db.select().from(refreshTokens).where(eq(refreshTokens.username, fixture.user.username));
+		const replay = new CookieJar();
+		replay.capture([`refresh_token=${presentedToken}`]);
+
+		expect(response.status).toBe(200);
+		expect(sessions.map(({ token }) => token)).toEqual([siblingToken]);
+		expect((await refreshSession(replay)).status).toBe(401);
+		expect((await refreshSession(siblingJar)).status).toBe(200);
 	});
 
 	it('POST /logout/auth deletes production cookies with the original Domain and Path', async () => {

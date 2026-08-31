@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const storefrontStorePath = '../../../storefront/src/stores/index';
 const clientLogoutPath = '../../../storefront/src/utils/client-logout';
 const proposalAbortFeedbackPath = '../../../storefront/src/utils/proposal-abort-feedback';
+const proposalVisibilityPath = '../../../storefront/src/utils/proposal-visibility';
 
 type CommerceStoreState = {
 	commerceOwnerProfileId: number | null;
@@ -16,6 +17,7 @@ type CommerceStoreState = {
 	isCreatingOrder: boolean;
 	clientProposalId?: number;
 	clientProposalCreatedAt?: string;
+	dismissedServerProposalId?: number;
 	isProposalModalOpen: boolean;
 	isCreatingProposal: boolean;
 	orderProposal?: unknown;
@@ -72,6 +74,7 @@ function expectPrivateStateCleared(state: CommerceStoreState) {
 	});
 	expect(state.clientProposalId).toBeUndefined();
 	expect(state.clientProposalCreatedAt).toBeUndefined();
+	expect(state.dismissedServerProposalId).toBeUndefined();
 	expect(state.orderProposal).toBeUndefined();
 	expect(state.chatId).toBeUndefined();
 	expect(state.address_id).toBeUndefined();
@@ -83,6 +86,21 @@ beforeEach(() => {
 });
 
 describe('storefront commerce Zustand ownership', () => {
+	it('hides only the successfully dismissed canonical server proposal', async () => {
+		const { visibleServerProposal } = (await import(/* @vite-ignore */ proposalVisibilityPath)) as {
+			visibleServerProposal<T extends { id?: number | null }>(
+				proposal: T | undefined,
+				dismissedId?: number,
+			): T | undefined;
+		};
+		const dismissed = { id: 81, status: 'pending' };
+		const newProposal = { id: 82, status: 'pending' };
+
+		expect(visibleServerProposal(dismissed, 81)).toBeUndefined();
+		expect(visibleServerProposal(newProposal, 81)).toBe(newProposal);
+		expect(visibleServerProposal(dismissed, undefined)).toBe(dismissed);
+	});
+
 	it.each([
 		['cancelled', 1, 0],
 		['failed', 0, 1],
@@ -368,11 +386,22 @@ describe('storefront commerce Zustand ownership', () => {
 		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
 
 		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('failed');
+		const { visibleServerProposal } = (await import(/* @vite-ignore */ proposalVisibilityPath)) as {
+			visibleServerProposal<T extends { id?: number | null }>(
+				proposal: T | undefined,
+				dismissedId?: number,
+			): T | undefined;
+		};
+		const canonicalProposal = { id: 81, status: 'pending' };
 		expect(store.getState()).toMatchObject({
 			clientProposalId: 81,
 			clientProposalCreatedAt: '2037-10-21T07:28:00.000Z',
+			dismissedServerProposalId: undefined,
 			isCreatingProposal: false,
 		});
+		expect(visibleServerProposal(canonicalProposal, store.getState().dismissedServerProposalId)).toBe(
+			canonicalProposal,
+		);
 	});
 
 	it('fails closed when proposal abort throws', async () => {
@@ -424,10 +453,90 @@ describe('storefront commerce Zustand ownership', () => {
 		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
 
 		await expect(store.getState().handleBuyerAbortedProposal(81)).resolves.toBe('cancelled');
+		const { visibleServerProposal } = (await import(/* @vite-ignore */ proposalVisibilityPath)) as {
+			visibleServerProposal<T extends { id?: number | null }>(
+				proposal: T | undefined,
+				dismissedId?: number,
+			): T | undefined;
+		};
 		expect(store.getState()).toMatchObject({
 			clientProposalId: undefined,
 			clientProposalCreatedAt: undefined,
+			dismissedServerProposalId: 81,
 			isCreatingProposal: false,
 		});
+		expect(visibleServerProposal({ id: 81 }, store.getState().dismissedServerProposalId)).toBeUndefined();
+	});
+
+	it('deduplicates rapid proposal cancellation and emits one truthful success', async () => {
+		let release!: (response: Response) => void;
+		const post = vi.fn().mockReturnValue(new Promise<Response>((resolve) => (release = resolve)));
+		const store = await loadStore({
+			orders_proposals: { auth: { buyer_aborted_proposal: { $post: post } } },
+		});
+		store.getState().setCommerceContext(17, 101);
+		store.setState({ clientProposalId: 81, clientProposalCreatedAt: '2037-10-21T07:28:00.000Z' });
+		const first = store.getState().handleBuyerAbortedProposal(81);
+		const second = store.getState().handleBuyerAbortedProposal(81);
+		const { applyProposalAbortFeedback } = (await import(/* @vite-ignore */ proposalAbortFeedbackPath)) as {
+			applyProposalAbortFeedback(
+				result: 'cancelled' | 'failed' | 'stale',
+				actions: { onCancelled(): void; onFailed(): void },
+			): void;
+		};
+		const onCancelled = vi.fn();
+		const onFailed = vi.fn();
+
+		await expect(second).resolves.toBe('stale');
+		expect(post).toHaveBeenCalledOnce();
+		expect(store.getState().isCreatingProposal).toBe(true);
+		release(new Response(null, { status: 200 }));
+		const firstResult = await first;
+		applyProposalAbortFeedback(firstResult, { onCancelled, onFailed });
+		applyProposalAbortFeedback(await second, { onCancelled, onFailed });
+
+		expect(firstResult).toBe('cancelled');
+		expect(onCancelled).toHaveBeenCalledOnce();
+		expect(onFailed).not.toHaveBeenCalled();
+		expect(store.getState()).toMatchObject({ dismissedServerProposalId: 81, isCreatingProposal: false });
+	});
+
+	it('deduplicates rapid proposal creation without superseding the first request', async () => {
+		let release!: (response: Response) => void;
+		const post = vi.fn().mockReturnValue(new Promise<Response>((resolve) => (release = resolve)));
+		const store = await loadStore({ orders_proposals: { auth: { create: { $post: post } } } });
+		store.getState().setCommerceContext(17, 101);
+		const input = {
+			item_id: 101,
+			proposal_price: 10_000,
+			shipping_label_id: 'label-1',
+			shipping_quote_id: 'quote-1',
+			message: 'Offer',
+		};
+		const first = store.getState().handleProposal(input);
+		const second = store.getState().handleProposal(input);
+		release(
+			new Response(
+				JSON.stringify({
+					proposal: {
+						id: 81,
+						item_id: 101,
+						status: 'pending',
+						proposal_price: 10_000,
+						profile_id: 17,
+						created_at: '2037-10-21T07:28:00.000Z',
+						updated_at: '2037-10-21T07:28:00.000Z',
+						shipping_label_id: 'label-1',
+					},
+					chatRoomId: 91,
+				}),
+				{ status: 200 },
+			),
+		);
+
+		expect(post).toHaveBeenCalledOnce();
+		await expect(first).resolves.toMatchObject({ id: 81 });
+		await expect(second).resolves.toBeUndefined();
+		expect(store.getState()).toMatchObject({ clientProposalId: 81, isCreatingProposal: false });
 	});
 });

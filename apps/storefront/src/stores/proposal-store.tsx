@@ -35,6 +35,7 @@ interface handleProposalProps {
 export type OrderProposalStore = {
 	clientProposalId?: number;
 	clientProposalCreatedAt?: string;
+	dismissedServerProposalId?: number;
 	isProposalModalOpen: boolean;
 	isCreatingProposal: boolean;
 	proposalRequestToken: number;
@@ -60,12 +61,14 @@ export const createProposalSlice: StateCreator<
 > = (set, get) => ({
 	clientProposalId: undefined,
 	clientProposalCreatedAt: undefined,
+	dismissedServerProposalId: undefined,
 	isProposalModalOpen: false,
 	isCreatingProposal: false,
 	proposalRequestToken: 0,
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
 	setIsCreatingProposal: (isCreatingProposal: boolean) => set({ isCreatingProposal }),
 	handleBuyerAbortedProposal: async (proposal_id: number) => {
+		if (get().isCreatingProposal) return 'stale';
 		const requestOwner = captureCommerceOwner(get());
 		const requestToken = get().proposalRequestToken + 1;
 		const requestSnapshot = captureCommerceRequest(requestOwner, requestToken);
@@ -86,6 +89,7 @@ export const createProposalSlice: StateCreator<
 			set({
 				clientProposalId: undefined,
 				clientProposalCreatedAt: undefined,
+				dismissedServerProposalId: proposal_id,
 			});
 
 			return 'cancelled';
@@ -106,6 +110,7 @@ export const createProposalSlice: StateCreator<
 		shipping_quote_id,
 		message,
 	}: handleProposalProps) => {
+		if (get().isCreatingProposal) return undefined;
 		const requestOwner = captureCommerceOwner(get());
 		if (requestOwner.commerceOwnerItemId !== item_id) return undefined;
 		const requestToken = get().proposalRequestToken + 1;
@@ -113,6 +118,7 @@ export const createProposalSlice: StateCreator<
 		set({
 			isCreatingProposal: true,
 			proposalRequestToken: requestToken,
+			dismissedServerProposalId: undefined,
 		});
 
 		try {
@@ -165,6 +171,7 @@ export const createProposalSlice: StateCreator<
 		set({
 			clientProposalId: undefined,
 			clientProposalCreatedAt: undefined,
+			dismissedServerProposalId: undefined,
 			isProposalModalOpen: false,
 			isCreatingProposal: false,
 			proposalRequestToken: get().proposalRequestToken + 1,

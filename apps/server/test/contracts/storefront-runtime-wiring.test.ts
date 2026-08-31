@@ -21,6 +21,19 @@ function mutatedSource(source: ts.SourceFile, before: string, after: string): ts
 	);
 }
 
+function swappedSource(source: ts.SourceFile, first: string, second: string): ts.SourceFile {
+	const text = source.getFullText();
+	if (!text.includes(first) || !text.includes(second)) throw new Error('Swap target not found');
+	const placeholder = '__M07_AST_SWAP_PLACEHOLDER__';
+	return ts.createSourceFile(
+		source.fileName,
+		text.replace(first, placeholder).replace(second, first).replace(placeholder, second),
+		ts.ScriptTarget.Latest,
+		true,
+		ts.ScriptKind.TSX,
+	);
+}
+
 function descendants<T extends ts.Node>(root: ts.Node, guard: (node: ts.Node) => node is T): T[] {
 	const matches: T[] = [];
 	const visit = (node: ts.Node) => {
@@ -41,6 +54,127 @@ function objectProperty(object: ts.ObjectLiteralExpression, name: string): ts.Ob
 	return object.properties.find((property) => property.name?.getText() === name);
 }
 
+function jsxElementsNamed(root: ts.Node, name: string): ts.JsxElement[] {
+	return descendants(root, ts.isJsxElement).filter((element) => element.openingElement.tagName.getText() === name);
+}
+
+function jsxAttribute(element: ts.JsxElement, name: string): ts.JsxAttribute | undefined {
+	return element.openingElement.attributes.properties.find(
+		(attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute) && attribute.name.getText() === name,
+	);
+}
+
+function profileLogoutIsWired(source: ts.SourceFile): boolean {
+	return jsxElementsNamed(source, 'CommandItem').some((element) => {
+		const isLogoutItem = jsxElementsNamed(element, 'span').some((span) =>
+			span.children.some((child) => ts.isJsxText(child) && child.text.trim() === 'Logout'),
+		);
+		const handler = jsxAttribute(element, 'onClickCapture');
+		return (
+			isLogoutItem &&
+			handler?.initializer !== undefined &&
+			ts.isJsxExpression(handler.initializer) &&
+			handler.initializer.expression?.getText() === 'createProfileLogoutHandler(logout)'
+		);
+	});
+}
+
+function authInitializationCleanupAdvancesGeneration(source: ts.SourceFile): boolean {
+	const initializationEffect = callsNamed(source, 'useEffect').find((call) =>
+		descendants(call.arguments[0] ?? call, ts.isCallExpression).some(
+			(nestedCall) => nestedCall.expression.getText() === 'initializeAuth',
+		),
+	);
+	if (!initializationEffect) return false;
+	return descendants(initializationEffect.arguments[0] ?? initializationEffect, ts.isReturnStatement).some(
+		(statement) => {
+			const cleanup = statement.expression;
+			return (
+				cleanup !== undefined &&
+				ts.isArrowFunction(cleanup) &&
+				descendants(cleanup.body, ts.isBinaryExpression).some(
+					(expression) =>
+						expression.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
+						expression.left.getText() === 'authGenerationRef.current',
+				)
+			);
+		},
+	);
+}
+
+function buyNowSchedulerIsAssigned(source: ts.SourceFile): boolean {
+	return descendants(source, ts.isBinaryExpression).some(
+		(expression) =>
+			expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+			expression.left.getText() === 'pendingPaymentAction.current' &&
+			ts.isCallExpression(expression.right) &&
+			expression.right.expression.getText() === 'scheduleBuyNowPaymentAction',
+	);
+}
+
+function buyNowUnmountCleanupCancels(source: ts.SourceFile): boolean {
+	return callsNamed(source, 'useEffect').some((call) => {
+		const dependencies = call.arguments[1];
+		if (!dependencies || !ts.isArrayLiteralExpression(dependencies) || dependencies.elements.length !== 0) return false;
+		const effect = call.arguments[0];
+		if (!effect || !ts.isArrowFunction(effect) || !ts.isArrowFunction(effect.body)) return false;
+		return descendants(effect.body.body, ts.isCallExpression).some(
+			(cleanupCall) => cleanupCall.expression.getText() === 'pendingPaymentAction.current?.cancel',
+		);
+	});
+}
+
+function addressGuardIsExact(property: ts.ObjectLiteralElementLike | undefined, navbar: boolean): boolean {
+	if (!property || !ts.isPropertyAssignment(property) || !ts.isArrowFunction(property.initializer)) return false;
+	const body = property.initializer.body;
+	if (!navbar) {
+		return (
+			ts.isCallExpression(body) &&
+			body.expression.getText() === 'commerceOwnerMatches' &&
+			body.arguments[1]?.getText() === 'owner'
+		);
+	}
+	return (
+		ts.isBinaryExpression(body) &&
+		body.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken &&
+		body.left.getText() === 'profileIdRef.current === profileId' &&
+		ts.isCallExpression(body.right) &&
+		body.right.expression.getText() === 'commerceOwnerMatches' &&
+		body.right.arguments[1]?.getText() === 'owner'
+	);
+}
+
+function callbackCalls(property: ts.ObjectLiteralElementLike | undefined): ts.CallExpression[] {
+	if (!property || !ts.isPropertyAssignment(property) || !ts.isArrowFunction(property.initializer)) return [];
+	return descendants(property.initializer.body, ts.isCallExpression);
+}
+
+function hasNavigation(property: ts.ObjectLiteralElementLike | undefined, route: string): boolean {
+	return callbackCalls(property).some(
+		(call) => call.expression.getText() === 'router.push' && call.arguments[0]?.getText() === `'${route}'`,
+	);
+}
+
+function itemAddressCallbacksAreDirected(options: ts.ObjectLiteralExpression): boolean {
+	const addressCalls = callbackCalls(objectProperty(options, 'onAddress')).map((call) => call.expression.getText());
+	return (
+		addressCalls[0] === 'setAddressId' &&
+		['setIsProposalModalOpen', 'setIsBuyNowModalOpen'].includes(addressCalls[1] ?? '') &&
+		hasNavigation(objectProperty(options, 'onMissing'), '/auth/profile-setup/address') &&
+		!hasNavigation(objectProperty(options, 'onError'), '/auth/profile-setup/address')
+	);
+}
+
+function navbarAddressCallbacksAreDirected(options: ts.ObjectLiteralExpression): boolean {
+	const addressCalls = callbackCalls(objectProperty(options, 'onAddress')).map((call) => call.expression.getText());
+	return (
+		addressCalls[0] === 'setAddressId' &&
+		hasNavigation(objectProperty(options, 'onAddress'), '/auth/item/new') &&
+		hasNavigation(objectProperty(options, 'onMissing'), '/auth/profile-setup/address') &&
+		!hasNavigation(objectProperty(options, 'onError'), '/auth/profile-setup/address')
+	);
+}
+
 describe('storefront real component lifecycle wiring', () => {
 	it('ProfileMenu sends the actual Logout item through the AuthProvider logout callback', async () => {
 		const source = await storefrontSource('app/auth/profile/components/menu/index.tsx');
@@ -52,28 +186,20 @@ describe('storefront real component lifecycle wiring', () => {
 				ts.isCallExpression(declaration.initializer) &&
 				declaration.initializer.expression.getText() === 'useAuth',
 		);
-		const logoutAttribute = descendants(source, ts.isJsxAttribute).find(
-			(attribute) =>
-				attribute.name.getText() === 'onClickCapture' &&
-				attribute.initializer &&
-				ts.isJsxExpression(attribute.initializer) &&
-				attribute.initializer.expression?.getText() === 'createProfileLogoutHandler(logout)',
-		);
-
 		expect(authBinding).toBeDefined();
-		expect(logoutAttribute).toBeDefined();
+		expect(profileLogoutIsWired(source)).toBe(true);
 		const disconnected = mutatedSource(
 			source,
 			'onClickCapture={createProfileLogoutHandler(logout)}',
 			'onClickCapture={() => undefined}',
 		);
-		expect(
-			descendants(disconnected, ts.isJsxAttribute).some(
-				(attribute) =>
-					attribute.name.getText() === 'onClickCapture' &&
-					attribute.initializer?.getText().includes('createProfileLogoutHandler(logout)'),
-			),
-		).toBe(false);
+		expect(profileLogoutIsWired(disconnected)).toBe(false);
+		const moved = swappedSource(
+			source,
+			'onClickCapture={() => router.push(item.url)}',
+			'onClickCapture={createProfileLogoutHandler(logout)}',
+		);
+		expect(profileLogoutIsWired(moved)).toBe(false);
 	});
 
 	it('AuthProvider delegates its real initialization to the generation-guarded logout lifecycle', async () => {
@@ -89,12 +215,13 @@ describe('storefront real component lifecycle wiring', () => {
 		expect(objectProperty(options, 'isCurrent')?.getText()).toBe('isCurrent');
 		expect(objectProperty(options, 'commit')?.getText()).toBe('commit: commitIdentity');
 		expect(callsNamed(source, 'logoutClientSession')).toHaveLength(1);
-		const cleanupAdvancesGeneration = descendants(source, ts.isBinaryExpression).some(
-			(expression) =>
-				expression.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
-				expression.left.getText() === 'authGenerationRef.current',
+		expect(authInitializationCleanupAdvancesGeneration(source)).toBe(true);
+		const withoutCleanup = mutatedSource(
+			source,
+			'if (authGenerationRef.current === generation) authGenerationRef.current += 1;',
+			'if (authGenerationRef.current === generation) void authGenerationRef.current;',
 		);
-		expect(cleanupAdvancesGeneration).toBe(true);
+		expect(authInitializationCleanupAdvancesGeneration(withoutCleanup)).toBe(false);
 		const disconnected = mutatedSource(source, '\t\t\t\t\tlogout,', '\t\t\t\t\tlogout: () => undefined,');
 		const disconnectedCall = callsNamed(disconnected, 'initializeAuthSession')[0];
 		const disconnectedOptions = disconnectedCall?.arguments[0];
@@ -122,20 +249,23 @@ describe('storefront real component lifecycle wiring', () => {
 		expect(objectProperty(finishOptions, 'isCurrent')?.getText()).toBe('isCurrent: requestIsCurrent');
 		expect(objectProperty(scheduleOptions, 'isCurrent')?.getText()).toBe('isCurrent: requestIsCurrent');
 		expect(objectProperty(scheduleOptions, 'subscribe')?.getText()).toContain('useTantovaleStore.subscribe(listener)');
-		const cleanupCancel = descendants(source, ts.isCallExpression).some(
-			(call) => call.expression.getText() === 'pendingPaymentAction.current?.cancel',
-		);
-		expect(cleanupCancel).toBe(true);
-		const disconnected = mutatedSource(
+		expect(buyNowSchedulerIsAssigned(source)).toBe(true);
+		expect(buyNowUnmountCleanupCancels(source)).toBe(true);
+		const withoutAssignment = mutatedSource(
 			source,
-			'pendingPaymentAction.current?.cancel();',
-			'void pendingPaymentAction.current;',
+			'pendingPaymentAction.current = scheduleBuyNowPaymentAction({',
+			'scheduleBuyNowPaymentAction({',
 		);
-		expect(
-			descendants(disconnected, ts.isCallExpression).some(
-				(call) => call.expression.getText() === 'pendingPaymentAction.current?.cancel',
-			),
-		).toBe(false);
+		expect(buyNowSchedulerIsAssigned(withoutAssignment)).toBe(false);
+		const withoutUnmountCancel = mutatedSource(
+			source,
+			`() => () => {
+			pendingPaymentAction.current?.cancel();`,
+			`() => () => {
+			void pendingPaymentAction.current;`,
+		);
+		expect(buyNowUnmountCleanupCancels(withoutUnmountCancel)).toBe(false);
+		expect(buyNowSchedulerIsAssigned(withoutUnmountCancel)).toBe(true);
 	});
 
 	it('ChatInput passes its real RPC mutation and form reset through the checked mutation helper', async () => {
@@ -189,22 +319,71 @@ describe('storefront real component lifecycle wiring', () => {
 			const options = call.arguments[0];
 			if (!options || !ts.isObjectLiteralExpression(options)) throw new Error('Missing item address preflight options');
 			expect(objectProperty(options, 'request')?.getText()).toBe('request: AddressProtectedRoute');
-			expect(objectProperty(options, 'isOwnerCurrent')?.getText()).toContain('commerceOwnerMatches');
+			expect(addressGuardIsExact(objectProperty(options, 'isOwnerCurrent'), false)).toBe(true);
 			expect(objectProperty(options, 'setLoading')?.getText()).toBe('setLoading: setIsAddressLoading');
+			expect(itemAddressCallbacksAreDirected(options)).toBe(true);
 		}
 		expect(navbarRuns).toHaveLength(1);
 		const navbarOptions = navbarRuns[0]?.arguments[0];
 		if (!navbarOptions || !ts.isObjectLiteralExpression(navbarOptions)) {
 			throw new Error('Missing navbar address preflight options');
 		}
-		expect(objectProperty(navbarOptions, 'isOwnerCurrent')?.getText()).toContain('profileIdRef.current === profileId');
-		expect(objectProperty(navbarOptions, 'isOwnerCurrent')?.getText()).toContain('commerceOwnerMatches');
-		expect(objectProperty(navbarOptions, 'onAddress')?.getText()).toContain("router.push('/auth/item/new')");
+		expect(addressGuardIsExact(objectProperty(navbarOptions, 'isOwnerCurrent'), true)).toBe(true);
+		expect(navbarAddressCallbacksAreDirected(navbarOptions)).toBe(true);
+		const invertedItemGuard = mutatedSource(
+			itemSource,
+			'isOwnerCurrent: () => commerceOwnerMatches(useTantovaleStore.getState(), owner)',
+			'isOwnerCurrent: () => !commerceOwnerMatches(useTantovaleStore.getState(), owner)',
+		);
+		for (const call of descendants(invertedItemGuard, ts.isCallExpression).filter(
+			(candidate) => candidate.expression.getText() === 'addressPreflight.run',
+		)) {
+			const options = call.arguments[0];
+			if (!options || !ts.isObjectLiteralExpression(options)) throw new Error('Missing mutated item preflight');
+			expect(addressGuardIsExact(objectProperty(options, 'isOwnerCurrent'), false)).toBe(false);
+		}
+		const invertedNavbarGuard = mutatedSource(
+			navbarSource,
+			'profileIdRef.current === profileId && commerceOwnerMatches(useTantovaleStore.getState(), owner)',
+			'profileIdRef.current !== profileId && commerceOwnerMatches(useTantovaleStore.getState(), owner)',
+		);
+		const mutatedNavbarRun = descendants(invertedNavbarGuard, ts.isCallExpression).find(
+			(candidate) => candidate.expression.getText() === 'addressPreflight.run',
+		);
+		const mutatedNavbarOptions = mutatedNavbarRun?.arguments[0];
+		if (!mutatedNavbarOptions || !ts.isObjectLiteralExpression(mutatedNavbarOptions)) {
+			throw new Error('Missing mutated navbar preflight');
+		}
+		expect(addressGuardIsExact(objectProperty(mutatedNavbarOptions, 'isOwnerCurrent'), true)).toBe(false);
+		const misdirectedItem = mutatedSource(
+			itemSource,
+			"router.push('/auth/profile-setup/address')",
+			"router.push('/login')",
+		);
+		for (const call of descendants(misdirectedItem, ts.isCallExpression).filter(
+			(candidate) => candidate.expression.getText() === 'addressPreflight.run',
+		)) {
+			const options = call.arguments[0];
+			if (!options || !ts.isObjectLiteralExpression(options)) throw new Error('Missing misdirected item preflight');
+			expect(itemAddressCallbacksAreDirected(options)).toBe(false);
+		}
 	});
 
 	it('the proposal cancellation caller routes the discriminated result through truthful feedback', async () => {
 		const source = await storefrontSource('app/item/[slug]/item-detail-wrapper/components/user-info-box.tsx');
-		const feedbackCall = callsNamed(source, 'applyProposalAbortFeedback')[0];
+		const confirmButton = jsxElementsNamed(source, 'Button').find((button) =>
+			button.children.some((child) => ts.isJsxText(child) && child.text.trim() === 'Confirm'),
+		);
+		expect(confirmButton).toBeDefined();
+		if (!confirmButton) throw new Error('Missing proposal confirmation button');
+		expect(jsxAttribute(confirmButton, 'disabled')?.initializer?.getText()).toBe('{isCreatingProposal}');
+		const clickHandler = jsxAttribute(confirmButton, 'onClick');
+		if (!clickHandler?.initializer || !ts.isJsxExpression(clickHandler.initializer)) {
+			throw new Error('Missing proposal confirmation handler');
+		}
+		const handler = clickHandler.initializer.expression;
+		if (!handler) throw new Error('Missing proposal confirmation handler expression');
+		const feedbackCall = callsNamed(handler, 'applyProposalAbortFeedback')[0];
 		expect(feedbackCall).toBeDefined();
 		expect(feedbackCall?.arguments[0]?.getText()).toBe('result');
 		const actions = feedbackCall?.arguments[1];
@@ -212,5 +391,17 @@ describe('storefront real component lifecycle wiring', () => {
 		expect(objectProperty(actions, 'onCancelled')?.getText()).toContain('toast.success');
 		expect(objectProperty(actions, 'onFailed')?.getText()).toContain('toast.error');
 		expect(actions.properties).toHaveLength(2);
+		const wrapper = await storefrontSource('app/item/[slug]/item-detail-wrapper/index.tsx');
+		const visibilityCall = callsNamed(wrapper, 'visibleServerProposal')[0];
+		expect(visibilityCall?.arguments.map((argument) => argument.getText())).toEqual([
+			'item.orderProposal',
+			'dismissedServerProposalId',
+		]);
+		const disconnected = mutatedSource(
+			wrapper,
+			'visibleServerProposal(item.orderProposal, dismissedServerProposalId)',
+			'item.orderProposal',
+		);
+		expect(callsNamed(disconnected, 'visibleServerProposal')).toHaveLength(0);
 	});
 });

@@ -180,77 +180,97 @@ export const verifyRoute = createRouter()
 				tokenClaims.type !== 'email_verification' ||
 				typeof tokenClaims.exp !== 'number' ||
 				!Number.isFinite(tokenClaims.exp) ||
-				tokenClaims.exp * 1_000 <= Date.now()
+				tokenClaims.exp * 1_000 <= Date.now() ||
+				(tokenClaims.auth_epoch !== undefined && !Number.isSafeInteger(tokenClaims.auth_epoch))
 			) {
 				return c.json({ message: 'Invalid token' }, 400);
 			}
 
 			try {
 				const { db } = createClient();
-				const [user] = await db
-					.select({
-						id: users.id,
-						profile_id: profiles.id,
-						username: users.username,
-						email: users.email,
-						email_verified: users.email_verified,
-						phone_verified: users.phone_verified,
-					})
-					.from(users)
-					.innerJoin(profiles, eq(users.id, profiles.user_id))
-					.where(eq(users.id, tokenClaims.id as number))
-					.limit(1);
+				const verification = await db.transaction(async (tx) => {
+					const userId = tokenClaims.id as number;
+					await acquireUserTransactionLock(tx, userId);
+					const [user] = await tx
+						.select({
+							id: users.id,
+							profile_id: profiles.id,
+							username: users.username,
+							email: users.email,
+							email_verified: users.email_verified,
+							phone_verified: users.phone_verified,
+							is_banned: users.is_banned,
+							created_at: users.created_at,
+							updated_at: users.updated_at,
+						})
+						.from(users)
+						.innerJoin(profiles, eq(users.id, profiles.user_id))
+						.where(eq(users.id, userId))
+						.limit(1);
 
-				if (!user) {
-					return c.json({ error: 'User not found' }, 404);
-				}
-				if (user.username !== tokenClaims.username) {
-					return c.json({ message: 'Invalid token' }, 400);
-				}
+					if (!user) return { state: 'not_found' as const };
+					if (user.is_banned || user.username !== tokenClaims.username) {
+						return { state: 'invalid' as const };
+					}
+					if (user.email_verified) return { state: 'already_verified' as const };
 
-				if (user.email_verified) {
+					const tokenEpoch = tokenClaims.auth_epoch;
+					const epochMatches =
+						tokenEpoch === undefined
+							? user.created_at.getTime() === user.updated_at.getTime()
+							: tokenEpoch === user.updated_at.getTime();
+					if (!epochMatches) return { state: 'invalid' as const };
+
+					const verifiedUser = { ...user, email_verified: true };
+					const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
+					const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
+					const accessTokenPayload = tokenPayload({
+						...verifiedUser,
+						exp: Math.floor(accessTokenExpires.getTime() / 1_000),
+					});
+					const refreshTokenPayload = tokenPayload({
+						...verifiedUser,
+						exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
+					});
+					const accessToken = await sign({ ...accessTokenPayload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
+					const refreshToken = await sign(
+						{ ...refreshTokenPayload, jti: randomUUID(), sid: randomUUID() },
+						REFRESH_TOKEN_SECRET,
+					);
+					await tx.update(users).set({ email_verified: true, updated_at: new Date() }).where(eq(users.id, user.id));
+					await tx.insert(refreshTokens).values({
+						username: user.username,
+						token: refreshToken,
+						expires_at: refreshTokenExpires,
+					});
+
+					return {
+						state: 'verified' as const,
+						accessToken,
+						refreshToken,
+						accessTokenExpires,
+						refreshTokenExpires,
+					};
+				});
+
+				if (verification.state === 'not_found') return c.json({ error: 'User not found' }, 404);
+				if (verification.state === 'invalid') return c.json({ message: 'Invalid token' }, 400);
+				if (verification.state === 'already_verified') {
 					deleteCookie(c, 'email_activation_token', getAuthTokenDeleteOptions({ isProductionMode }));
 					return c.json({ message: 'User already verified' });
 				}
 
-				const verifiedUser = { ...user, email_verified: true };
-				const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
-				const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
-				const access_token_payload = tokenPayload({
-					...verifiedUser,
-					exp: Math.floor(accessTokenExpires.getTime() / 1_000),
-				});
-				const refresh_token_payload = tokenPayload({
-					...verifiedUser,
-					exp: Math.floor(refreshTokenExpires.getTime() / 1_000),
-				});
-				const new_access_token = await sign({ ...access_token_payload, jti: randomUUID() }, ACCESS_TOKEN_SECRET);
-				const new_refresh_token = await sign(
-					{ ...refresh_token_payload, jti: randomUUID(), sid: randomUUID() },
-					REFRESH_TOKEN_SECRET,
-				);
-
-				await db.transaction(async (tx) => {
-					await acquireUserTransactionLock(tx, user.id);
-					await tx.update(users).set({ email_verified: true }).where(eq(users.id, user.id));
-					await tx.insert(refreshTokens).values({
-						username: user.username,
-						token: new_refresh_token,
-						expires_at: refreshTokenExpires,
-					});
-				});
-
 				deleteCookie(c, 'email_activation_token', getAuthTokenDeleteOptions({ isProductionMode }));
-				setCookie(c, 'access_token', new_access_token, {
+				setCookie(c, 'access_token', verification.accessToken, {
 					...getAuthTokenOptions({
 						isProductionMode,
-						expires: accessTokenExpires,
+						expires: verification.accessTokenExpires,
 					}),
 				});
-				setCookie(c, 'refresh_token', new_refresh_token, {
+				setCookie(c, 'refresh_token', verification.refreshToken, {
 					...getAuthTokenOptions({
 						isProductionMode,
-						expires: refreshTokenExpires,
+						expires: verification.refreshTokenExpires,
 					}),
 				});
 

@@ -22,6 +22,7 @@ import useTantovaleStore from '#stores';
 import AddressProtectedRoute from '#utils/address-protected';
 import { createAddressPreflightController } from '#utils/address-preflight-lifecycle';
 import { captureCommerceOwner, commerceOwnerMatches } from '#stores/commerce-ownership';
+import { visibleServerProposal } from '#utils/proposal-visibility';
 
 export default function ItemWDetailWrapper({
 	item,
@@ -38,6 +39,7 @@ export default function ItemWDetailWrapper({
 		clientBuyNowOrderStatus,
 		clientProposalId,
 		clientProposalCreatedAt,
+		dismissedServerProposalId,
 		setItem,
 		setItemOwnerData,
 		setOrderProposal,
@@ -50,7 +52,7 @@ export default function ItemWDetailWrapper({
 		resetPrivateCommerceState,
 	} = useTantovaleStore();
 
-	const orderProposal = item.orderProposal;
+	const orderProposal = visibleServerProposal(item.orderProposal, dismissedServerProposalId);
 	const profileId = user?.profile_id ?? null;
 	const ownsCurrentCommerceState = commerceOwnerProfileId === profileId && commerceOwnerItemId === item.id;
 
@@ -97,7 +99,7 @@ export default function ItemWDetailWrapper({
 		setCommerceContext(profileId, item.id);
 		setItem(item);
 		setItemOwnerData(itemOwnerData);
-		setOrderProposal(orderProposal);
+		setOrderProposal(item.orderProposal);
 
 		return () => {
 			resetPrivateCommerceState();
@@ -105,7 +107,7 @@ export default function ItemWDetailWrapper({
 	}, [
 		item,
 		itemOwnerData,
-		orderProposal,
+		item.orderProposal,
 		profileId,
 		resetPrivateCommerceState,
 		setCommerceContext,
@@ -225,7 +227,7 @@ export default function ItemWDetailWrapper({
 								status: orderStatus,
 							},
 							orderProposal: {
-								...item.orderProposal,
+								...orderProposal,
 								id: proposalId,
 								created_at: proposalCreatedAt,
 							},

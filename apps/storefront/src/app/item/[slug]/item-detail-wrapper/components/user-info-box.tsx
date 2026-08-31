@@ -52,7 +52,12 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 		const { id: item_id, order, orderProposal, easy_pay } = item;
 		const { user } = useAuth();
 		const router = useRouter();
-		const { chatId: chatIdClient, isAddressLoading, handleBuyerAbortedProposal } = useTantovaleStore();
+		const {
+			chatId: chatIdClient,
+			isAddressLoading,
+			isCreatingProposal,
+			handleBuyerAbortedProposal,
+		} = useTantovaleStore();
 
 		const { messageBoxForm } = useItemChat({
 			item_id,
@@ -132,6 +137,7 @@ export const UserInfoBox = forwardRef<HTMLDivElement, UserInfoBoxProps>(
 															<Button
 																variant='destructive'
 																type='submit'
+																disabled={isCreatingProposal}
 																onClick={async () => {
 																	if (orderProposal.id) {
 																		const result = await handleBuyerAbortedProposal(orderProposal.id);

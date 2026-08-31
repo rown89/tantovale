@@ -42,18 +42,13 @@ export const logoutRoute = createRouter().post(`/${authPath}`, async (c) => {
 		const revoked = await db.transaction(async (tx) => {
 			await acquireUserTransactionLock(tx, claims.id);
 			const [currentUser] = await tx
-				.select({ id: users.id, profileId: profiles.id, username: users.username, isBanned: users.is_banned })
+				.select({ id: users.id, profileId: profiles.id, username: users.username })
 				.from(users)
 				.innerJoin(profiles, eq(users.id, profiles.user_id))
 				.where(eq(users.id, claims.id))
 				.limit(1);
 
-			if (
-				!currentUser ||
-				currentUser.isBanned ||
-				currentUser.profileId !== claims.profile_id ||
-				currentUser.username !== claims.username
-			) {
+			if (!currentUser || currentUser.profileId !== claims.profile_id || currentUser.username !== claims.username) {
 				return false;
 			}
 

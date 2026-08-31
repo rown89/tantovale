@@ -90,6 +90,7 @@ export const signupRoute = createRouter().post(
 					id: createdUser.id,
 					username: createdUser.username,
 					type: 'email_verification',
+					auth_epoch: createdUser.updated_at.getTime(),
 					exp: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS(),
 				},
 				EMAIL_VERIFY_TOKEN_SECRET,
