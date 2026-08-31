@@ -1,5 +1,4 @@
 import { environment } from '#utils/constants';
-import { entityTrustapTransactionStatusValues } from '#database/schemas/enumerated_values';
 import {
 	CalculateTransactionFeeProps,
 	CreateUserGuestResponse,
@@ -9,21 +8,67 @@ import {
 	GetTransactionStatusResponse,
 	CreateTransactionWithBothUsersProps,
 } from './types';
-import { canonicalTrustapId, parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
+import {
+	trustapChargeResponseSchema,
+	trustapGuestUserResponseSchema,
+	trustapTransactionResponseSchema,
+} from './provider.schemas';
+import { parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
 
-export class PaymentProviderHttpError extends Error {
+export type PaymentProviderOperation =
+	| 'create_guest_user'
+	| 'calculate_charge'
+	| 'create_transaction'
+	| 'fetch_transaction'
+	| 'cancel_transaction'
+	| 'provider_request';
+
+export type PaymentProviderErrorCategory = 'http' | 'invalid_response' | 'network' | 'ambiguous';
+
+export class PaymentProviderError extends Error {
+	readonly provider = 'trustap' as const;
+
+	constructor(
+		message: string,
+		readonly operation: PaymentProviderOperation,
+		readonly category: PaymentProviderErrorCategory,
+	) {
+		super(message);
+		this.name = 'PaymentProviderError';
+	}
+}
+
+export class PaymentProviderHttpError extends PaymentProviderError {
 	constructor(
 		message: string,
 		readonly status: number,
+		operation: PaymentProviderOperation = 'provider_request',
 	) {
-		super(message);
+		super(message, operation, 'http');
 		this.name = 'PaymentProviderHttpError';
 	}
 }
 
-export class PaymentProviderAmbiguousError extends Error {
-	constructor(message = 'Payment provider transaction outcome requires reconciliation') {
-		super(message);
+export class PaymentProviderInvalidResponseError extends PaymentProviderError {
+	constructor(operation: PaymentProviderOperation) {
+		super('Payment provider returned an invalid response', operation, 'invalid_response');
+		this.name = 'PaymentProviderInvalidResponseError';
+	}
+}
+
+export class PaymentProviderNetworkError extends PaymentProviderError {
+	constructor(operation: PaymentProviderOperation) {
+		super('Payment provider request failed', operation, 'network');
+		this.name = 'PaymentProviderNetworkError';
+	}
+}
+
+export class PaymentProviderAmbiguousError extends PaymentProviderError {
+	constructor(
+		message = 'Payment provider transaction outcome requires reconciliation',
+		operation: PaymentProviderOperation = 'create_transaction',
+	) {
+		super(message, operation, 'ambiguous');
 		this.name = 'PaymentProviderAmbiguousError';
 	}
 }
@@ -33,66 +78,6 @@ function providerSignal(): AbortSignal {
 }
 
 const deterministicCreateFailureStatuses = new Set([400, 401, 403, 404]);
-const postgresIntegerMax = 2_147_483_647;
-
-function isTransactionFeeResponse(
-	value: unknown,
-	expected: Required<Pick<CalculateTransactionFeeProps, 'currency' | 'postage_fee' | 'price'>>,
-): value is CalculateTransactionFeeResponse {
-	if (typeof value !== 'object' || value === null) return false;
-	const candidate = value as Partial<CalculateTransactionFeeResponse>;
-	return (
-		Number.isSafeInteger(candidate.charge) &&
-		(candidate.charge ?? -1) >= 0 &&
-		(candidate.charge ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		Number.isSafeInteger(candidate.charge_calculator_version) &&
-		(candidate.charge_calculator_version ?? 0) > 0 &&
-		(candidate.charge_calculator_version ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		candidate.charge_seller === 0 &&
-		candidate.currency === expected.currency &&
-		candidate.price === expected.price &&
-		candidate.postage_fee === expected.postage_fee
-	);
-}
-
-function isGuestUserResponse(value: unknown, expectedEmail: string): value is CreateUserGuestResponse {
-	if (typeof value !== 'object' || value === null) return false;
-	const candidate = value as Partial<CreateUserGuestResponse>;
-	return (
-		typeof candidate.id === 'string' &&
-		candidate.id.trim().length > 0 &&
-		candidate.id.length <= 100 &&
-		candidate.email === expectedEmail &&
-		typeof candidate.created_at === 'string' &&
-		Number.isFinite(Date.parse(candidate.created_at))
-	);
-}
-
-function isTransactionResponse(value: unknown): value is CreateTransactionResponse {
-	if (typeof value !== 'object' || value === null) return false;
-	const candidate = value as Partial<CreateTransactionResponse>;
-	return (
-		canonicalTrustapId(candidate.id) !== undefined &&
-		Number.isSafeInteger(candidate.price) &&
-		(candidate.price ?? 0) > 0 &&
-		(candidate.price ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		Number.isSafeInteger(candidate.postage_fee) &&
-		(candidate.postage_fee ?? -1) >= 0 &&
-		(candidate.postage_fee ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		Number.isSafeInteger(candidate.charge) &&
-		(candidate.charge ?? -1) >= 0 &&
-		(candidate.charge ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		Number.isSafeInteger(candidate.charge_seller) &&
-		(candidate.charge_seller ?? -1) >= 0 &&
-		(candidate.charge_seller ?? postgresIntegerMax + 1) <= postgresIntegerMax &&
-		typeof candidate.buyer_id === 'string' &&
-		typeof candidate.seller_id === 'string' &&
-		candidate.currency === 'eur' &&
-		typeof candidate.description === 'string' &&
-		typeof candidate.status === 'string' &&
-		(entityTrustapTransactionStatusValues as readonly string[]).includes(candidate.status)
-	);
-}
 
 export function buildGuestPaymentUrl(transactionId: TrustapId, orderId: number): string {
 	const base = new URL(environment.PAYMENT_PROVIDER_PAY_PAGE_URL);
@@ -116,38 +101,48 @@ export class PaymentProviderService {
 	 */
 	async createGuestUser({ ...props }: CreateGuestUserProps): Promise<CreateUserGuestResponse> {
 		const { id, email, first_name, last_name, country_code, tos_acceptance } = props;
-		const response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-			body: JSON.stringify({
-				id,
-				email,
-				first_name,
-				last_name,
-				country_code,
-				tos_acceptance,
-			}),
-			signal: providerSignal(),
-		});
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				body: JSON.stringify({
+					id,
+					email,
+					first_name,
+					last_name,
+					country_code,
+					tos_acceptance,
+				}),
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('create_guest_user');
+		}
 
 		if (!response.ok) {
-			throw new PaymentProviderHttpError('Failed to create guest user', response.status);
+			throw new PaymentProviderHttpError(
+				'Payment provider guest user request failed',
+				response.status,
+				'create_guest_user',
+			);
 		}
 
 		let data: unknown;
 		try {
 			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
-			throw new Error('Payment provider returned an invalid guest user');
+			throw new PaymentProviderInvalidResponseError('create_guest_user');
 		}
-		if (!isGuestUserResponse(data, email)) {
-			throw new Error('Payment provider returned an invalid guest user');
+		const parsed = trustapGuestUserResponseSchema.safeParse(data);
+		if (!parsed.success || parsed.data.email !== email) {
+			throw new PaymentProviderInvalidResponseError('create_guest_user');
 		}
 
-		return data;
+		return parsed.data;
 	}
 
 	/**
@@ -158,33 +153,44 @@ export class PaymentProviderService {
 	}: CalculateTransactionFeeProps): Promise<CalculateTransactionFeeResponse | undefined> {
 		const { price = 0, currency = 'eur', postage_fee = 0, use_hr_post = false } = props;
 
-		const response = await fetch(
-			`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
-			{
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+					},
+					signal: providerSignal(),
 				},
-				signal: providerSignal(),
-			},
-		);
+			);
+		} catch {
+			throw new PaymentProviderNetworkError('calculate_charge');
+		}
 
 		if (!response.ok) {
-			throw new Error('Failed to calculate transaction fee');
+			throw new PaymentProviderHttpError('Payment provider charge request failed', response.status, 'calculate_charge');
 		}
 
 		let data: unknown;
 		try {
 			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
-			throw new Error('Payment provider returned an invalid transaction fee');
+			throw new PaymentProviderInvalidResponseError('calculate_charge');
 		}
-		if (!isTransactionFeeResponse(data, { price, currency, postage_fee })) {
-			throw new Error('Payment provider returned an invalid transaction fee');
+		const parsed = trustapChargeResponseSchema.safeParse(data);
+		if (
+			!parsed.success ||
+			parsed.data.currency !== currency ||
+			parsed.data.price !== price ||
+			parsed.data.postage_fee !== postage_fee
+		) {
+			throw new PaymentProviderInvalidResponseError('calculate_charge');
 		}
 
-		return data;
+		return parsed.data;
 	}
 
 	/**
@@ -235,7 +241,11 @@ export class PaymentProviderService {
 
 		if (!response.ok) {
 			if (deterministicCreateFailureStatuses.has(response.status)) {
-				throw new PaymentProviderHttpError('Failed to create transaction', response.status);
+				throw new PaymentProviderHttpError(
+					'Payment provider transaction request failed',
+					response.status,
+					'create_transaction',
+				);
 			}
 			throw new PaymentProviderAmbiguousError();
 		}
@@ -246,50 +256,61 @@ export class PaymentProviderService {
 		} catch {
 			throw new PaymentProviderAmbiguousError();
 		}
+		const parsed = trustapTransactionResponseSchema.safeParse(data);
 		if (
-			!isTransactionResponse(data) ||
-			data.buyer_id !== buyer_id ||
-			data.seller_id !== seller_id ||
-			data.currency !== currency ||
-			data.price !== price ||
-			data.postage_fee !== postage_fee ||
-			data.charge !== charge ||
-			data.charge_seller !== 0 ||
-			data.description !== description
+			!parsed.success ||
+			parsed.data.buyer_id !== buyer_id ||
+			parsed.data.seller_id !== seller_id ||
+			parsed.data.currency !== currency ||
+			parsed.data.price !== price ||
+			parsed.data.postage_fee !== postage_fee ||
+			parsed.data.charge !== charge ||
+			parsed.data.charge_seller !== 0 ||
+			parsed.data.description !== description
 		) {
 			throw new PaymentProviderAmbiguousError();
 		}
 
-		return { ...data, id: canonicalTrustapId(data.id)! };
+		return parsed.data;
 	}
 
 	/**
 	 * Get transaction status
 	 */
 	async getTransactionStatus(transactionId: TrustapId): Promise<GetTransactionStatusResponse | undefined> {
-		const response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-			signal: providerSignal(),
-		});
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('fetch_transaction');
+		}
 
 		if (!response.ok) {
-			throw new Error('Failed to get transaction status');
+			throw new PaymentProviderHttpError(
+				'Payment provider transaction fetch failed',
+				response.status,
+				'fetch_transaction',
+			);
 		}
 
 		let data: unknown;
 		try {
 			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
-			throw new Error('Payment provider returned an invalid transaction');
+			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
-		if (!isTransactionResponse(data)) {
-			throw new Error('Payment provider returned an invalid transaction');
+		const parsed = trustapTransactionResponseSchema.safeParse(data);
+		if (!parsed.success || parsed.data.id !== transactionId) {
+			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
-		return { ...data, id: canonicalTrustapId(data.id)! };
+		return parsed.data;
 	}
 
 	async cancelGuestTransaction(
@@ -311,25 +332,38 @@ export class PaymentProviderService {
 				},
 			);
 		} catch {
-			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
 		}
 		if (!response.ok) {
-			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
 		}
 		let data: unknown;
 		try {
 			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
 		} catch {
-			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
 		}
+		const parsed = trustapTransactionResponseSchema.safeParse(data);
 		if (
-			!isTransactionResponse(data) ||
-			canonicalTrustapId(data.id) !== transactionId ||
-			data.status !== 'cancelled' ||
-			(data.buyer_id !== actingProviderUserId && data.seller_id !== actingProviderUserId)
+			!parsed.success ||
+			parsed.data.id !== transactionId ||
+			parsed.data.status !== 'cancelled' ||
+			(parsed.data.buyer_id !== actingProviderUserId && parsed.data.seller_id !== actingProviderUserId)
 		) {
-			throw new PaymentProviderAmbiguousError('Payment provider cancellation outcome requires reconciliation');
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
 		}
-		return { ...data, id: canonicalTrustapId(data.id)! };
+		return parsed.data;
 	}
 }

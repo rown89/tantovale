@@ -1,3 +1,5 @@
+import type { TrustapChargeResponse, TrustapGuestUserResponse, TrustapTransactionResponse } from './provider.schemas';
+
 export interface CreateGuestUserProps {
 	id: number;
 	email: string;
@@ -10,11 +12,7 @@ export interface CreateGuestUserProps {
 	};
 }
 
-export interface CreateUserGuestResponse {
-	created_at: string;
-	email: string;
-	id: string;
-}
+export type CreateUserGuestResponse = TrustapGuestUserResponse;
 
 export interface CalculateTransactionFeeProps {
 	price: number;
@@ -23,14 +21,7 @@ export interface CalculateTransactionFeeProps {
 	use_hr_post?: boolean;
 }
 
-export interface CalculateTransactionFeeResponse {
-	charge: number;
-	charge_calculator_version: number;
-	charge_seller: number;
-	currency: string;
-	postage_fee: number;
-	price: number;
-}
+export type CalculateTransactionFeeResponse = TrustapChargeResponse;
 
 export interface CreateTransactionWithBothUsersProps {
 	buyer_id: string;
@@ -45,37 +36,6 @@ export interface CreateTransactionWithBothUsersProps {
 	features?: ['use_custom_postage_fee'];
 }
 
-export interface CreateTransactionResponse {
-	buyer_id: string;
-	charge: number;
-	charge_seller: number;
-	client_id: string;
-	created: string;
-	currency: string;
-	description: string;
-	funds_released: string;
-	/** A positive Trustap signed-int64 identifier, represented losslessly. */
-	id: string;
-	is_payment_in_progress: boolean;
-	joined: string;
-	paid: string;
-	postage_fee: number;
-	price: number;
-	quantity: number;
-	seller_id: string;
-	status: string;
-}
+export type CreateTransactionResponse = TrustapTransactionResponse;
 
-export interface GetTransactionStatusResponse extends CreateTransactionResponse {
-	delivered?: string;
-	fund_released?: string;
-	posta_hr_tracking?: {
-		barcode: string;
-		barcode_generated: string;
-	};
-	tracked?: string;
-	tracking?: {
-		carrier: string;
-		tracking_code: string;
-	};
-}
+export type GetTransactionStatusResponse = TrustapTransactionResponse;

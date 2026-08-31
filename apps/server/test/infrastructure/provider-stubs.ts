@@ -22,6 +22,8 @@ export type StubScenario =
 	| 'provider-error'
 	| 'charge-error'
 	| 'charge-delay'
+	| 'charge-disconnect'
+	| 'charge-malformed-json'
 	| 'charge-price-mismatch'
 	| 'charge-postage-mismatch'
 	| 'charge-currency-mismatch'
@@ -30,8 +32,10 @@ export type StubScenario =
 	| 'charge-version-invalid'
 	| 'charge-seller-invalid'
 	| 'guest-delay'
+	| 'guest-timeout'
 	| 'guest-disconnect-after-create'
 	| 'guest-invalid-body'
+	| 'guest-malformed-json'
 	| 'shippo-delay'
 	| 'shippo-reordered-rates'
 	| 'shippo-address-mismatch'
@@ -54,6 +58,9 @@ export type StubScenario =
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
 	| 'transaction-postage-mismatch'
+	| 'transaction-fetch-disconnect'
+	| 'transaction-fetch-invalid-body'
+	| 'transaction-fetch-malformed-json'
 	| 'transaction-recovery-reference-mismatch'
 	| 'transaction-delay'
 	| 'transaction-disconnect';
@@ -134,6 +141,8 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'provider-error',
 	'charge-error',
 	'charge-delay',
+	'charge-disconnect',
+	'charge-malformed-json',
 	'charge-price-mismatch',
 	'charge-postage-mismatch',
 	'charge-currency-mismatch',
@@ -142,8 +151,10 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'charge-version-invalid',
 	'charge-seller-invalid',
 	'guest-delay',
+	'guest-timeout',
 	'guest-disconnect-after-create',
 	'guest-invalid-body',
+	'guest-malformed-json',
 	'shippo-delay',
 	'shippo-reordered-rates',
 	'shippo-address-mismatch',
@@ -166,6 +177,9 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'transaction-invalid-json',
 	'transaction-invalid-body',
 	'transaction-postage-mismatch',
+	'transaction-fetch-disconnect',
+	'transaction-fetch-invalid-body',
+	'transaction-fetch-malformed-json',
 	'transaction-recovery-reference-mismatch',
 	'transaction-delay',
 	'transaction-disconnect',
@@ -444,6 +458,8 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 			return true;
 		case 'charge-error':
 		case 'charge-delay':
+		case 'charge-disconnect':
+		case 'charge-malformed-json':
 		case 'charge-price-mismatch':
 		case 'charge-postage-mismatch':
 		case 'charge-currency-mismatch':
@@ -452,8 +468,10 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'charge-version-invalid':
 		case 'charge-seller-invalid':
 		case 'guest-delay':
+		case 'guest-timeout':
 		case 'guest-disconnect-after-create':
 		case 'guest-invalid-body':
+		case 'guest-malformed-json':
 			return false;
 		case 'shippo-delay':
 		case 'shippo-reordered-rates':
@@ -478,6 +496,9 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'transaction-invalid-json':
 		case 'transaction-invalid-body':
 		case 'transaction-postage-mismatch':
+		case 'transaction-fetch-disconnect':
+		case 'transaction-fetch-invalid-body':
+		case 'transaction-fetch-malformed-json':
 		case 'transaction-recovery-reference-mismatch':
 		case 'transaction-delay':
 		case 'transaction-disconnect':
@@ -722,6 +743,15 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 							sendJson(response, 201, { ...guest, id: '', email: 'different@example.test' });
 							return;
 						}
+						if (scenario === 'guest-malformed-json') {
+							response.writeHead(201, { 'content-type': 'application/json; charset=utf-8' });
+							response.end('{"id":');
+							return;
+						}
+						if (scenario === 'guest-timeout') {
+							setTimeout(() => sendJson(response, 201, guest), 500);
+							return;
+						}
 						if (scenario === 'guest-delay') {
 							setTimeout(() => sendJson(response, 201, guest), 75);
 							return;
@@ -764,6 +794,15 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					if (scenario === 'charge-seller-invalid') {
 						sendJson(response, 200, { ...chargeResponse, charge_seller: 1 });
+						return;
+					}
+					if (scenario === 'charge-malformed-json') {
+						response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+						response.end('{"charge":');
+						return;
+					}
+					if (scenario === 'charge-disconnect') {
+						response.destroy();
 						return;
 					}
 					trustapHandshakes.set(
@@ -840,6 +879,19 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 				case 'trustap-get-transaction': {
 					const transaction = trustapTransactions.get(route.transactionId);
 					if (!transaction) throw new Error('Known Trustap transaction is missing');
+					if (scenario === 'transaction-fetch-malformed-json') {
+						response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+						response.end('{"id":');
+						return;
+					}
+					if (scenario === 'transaction-fetch-invalid-body') {
+						sendJson(response, 200, { id: transaction.id, status: transaction.status });
+						return;
+					}
+					if (scenario === 'transaction-fetch-disconnect') {
+						response.destroy();
+						return;
+					}
 					if (scenario === 'transaction-recovery-reference-mismatch') {
 						sendJson(response, 200, { ...transaction, description: 'unrelated support reference' });
 						return;
