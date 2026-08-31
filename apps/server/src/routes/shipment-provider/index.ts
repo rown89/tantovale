@@ -15,6 +15,7 @@ import { ShipmentService, ShippoProviderError } from './shipment.service';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 
 const postgresIntegerMax = 2_147_483_647;
+const definitelyRejectedShippoStatuses = new Set([400, 401, 403, 404, 422]);
 
 const calculateShipmentCostSchema = z.object({
 	item_id: z.number().int().positive('Item ID must be a positive integer').max(postgresIntegerMax),
@@ -240,7 +241,10 @@ export const shipmentProviderRoute = createRouter()
 				});
 			};
 			const markClaimForReconciliation = async (
-				providerEvidence?: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>,
+				providerEvidence?: Extract<
+					Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>,
+					{ status: 'SUCCESS' }
+				>,
 			) => {
 				await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, claim.itemId);
@@ -321,20 +325,24 @@ export const shipmentProviderRoute = createRouter()
 			});
 			if (!mayPost) return c.json({ message: 'Shipping label purchase requires reconciliation' }, 409);
 
-			let transaction: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>;
+			let outcome: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>;
 			try {
-				transaction = await shipmentService.purchaseVerifiedLabel(claim.rateId);
+				outcome = await shipmentService.purchaseVerifiedLabel(claim.rateId);
 			} catch (error) {
 				const definiteRejection =
 					error instanceof ShippoProviderError &&
 					error.category === 'http' &&
 					error.status !== undefined &&
-					error.status >= 400 &&
-					error.status < 500;
+					definitelyRejectedShippoStatuses.has(error.status);
 				if (definiteRejection) await clearPrePostClaim();
 				else await markClaimForReconciliation();
 				return c.json({ message: 'Shipping provider request failed' }, 502);
 			}
+			if (outcome.status === 'ERROR') {
+				await clearPrePostClaim();
+				return c.json({ message: 'Shipping provider request failed' }, 502);
+			}
+			const transaction = outcome;
 
 			let stored;
 			try {

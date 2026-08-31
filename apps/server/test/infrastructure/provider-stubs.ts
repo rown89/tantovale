@@ -59,9 +59,17 @@ export type StubScenario =
 	| 'shippo-label-delay'
 	| 'shippo-label-disconnect'
 	| 'shippo-label-client-error'
+	| 'shippo-label-unauthorized'
+	| 'shippo-label-forbidden'
+	| 'shippo-label-not-found'
 	| 'shippo-label-unprocessable'
+	| 'shippo-label-request-timeout'
+	| 'shippo-label-conflict'
+	| 'shippo-label-too-early'
+	| 'shippo-label-rate-limited'
 	| 'shippo-label-provider-error'
 	| 'shippo-label-status-error'
+	| 'shippo-label-status-error-malformed'
 	| 'shippo-label-rate-mismatch'
 	| 'shippo-label-without-tracking'
 	| 'shippo-label-disconnect-after-create'
@@ -211,9 +219,17 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'shippo-label-delay',
 	'shippo-label-disconnect',
 	'shippo-label-client-error',
+	'shippo-label-unauthorized',
+	'shippo-label-forbidden',
+	'shippo-label-not-found',
 	'shippo-label-unprocessable',
+	'shippo-label-request-timeout',
+	'shippo-label-conflict',
+	'shippo-label-too-early',
+	'shippo-label-rate-limited',
 	'shippo-label-provider-error',
 	'shippo-label-status-error',
+	'shippo-label-status-error-malformed',
 	'shippo-label-rate-mismatch',
 	'shippo-label-without-tracking',
 	'shippo-label-disconnect-after-create',
@@ -601,9 +617,17 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'shippo-label-delay':
 		case 'shippo-label-disconnect':
 		case 'shippo-label-client-error':
+		case 'shippo-label-unauthorized':
+		case 'shippo-label-forbidden':
+		case 'shippo-label-not-found':
 		case 'shippo-label-unprocessable':
+		case 'shippo-label-request-timeout':
+		case 'shippo-label-conflict':
+		case 'shippo-label-too-early':
+		case 'shippo-label-rate-limited':
 		case 'shippo-label-provider-error':
 		case 'shippo-label-status-error':
+		case 'shippo-label-status-error-malformed':
 		case 'shippo-label-rate-mismatch':
 		case 'shippo-label-without-tracking':
 		case 'shippo-label-disconnect-after-create':
@@ -1337,8 +1361,35 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendJson(response, 400, { error: 'invalid_rate', message: 'The requested rate cannot be purchased' });
 						return;
 					}
+					const definiteHttpStatuses: Partial<Record<StubScenario, number>> = {
+						'shippo-label-unauthorized': 401,
+						'shippo-label-forbidden': 403,
+						'shippo-label-not-found': 404,
+					};
+					const definiteHttpStatus = definiteHttpStatuses[scenario];
+					if (definiteHttpStatus) {
+						sendJson(response, definiteHttpStatus, {
+							error: 'request_rejected',
+							message: 'The request was definitively rejected',
+						});
+						return;
+					}
 					if (scenario === 'shippo-label-unprocessable') {
 						sendJson(response, 422, { error: 'unprocessable', message: 'The requested label is invalid' });
+						return;
+					}
+					const ambiguousHttpStatuses: Partial<Record<StubScenario, number>> = {
+						'shippo-label-request-timeout': 408,
+						'shippo-label-conflict': 409,
+						'shippo-label-too-early': 425,
+						'shippo-label-rate-limited': 429,
+					};
+					const ambiguousHttpStatus = ambiguousHttpStatuses[scenario];
+					if (ambiguousHttpStatus) {
+						sendJson(response, ambiguousHttpStatus, {
+							error: 'ambiguous_request',
+							message: 'The request outcome is not proven',
+						});
 						return;
 					}
 					if (scenario === 'shippo-label-provider-error') {
@@ -1364,6 +1415,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					if (scenario === 'shippo-label-status-error') {
 						sendJson(response, 201, { ...transaction, status: 'ERROR' });
+						return;
+					}
+					if (scenario === 'shippo-label-status-error-malformed') {
+						sendJson(response, 201, { ...transaction, object_id: undefined, status: 'ERROR' });
 						return;
 					}
 					if (scenario === 'shippo-label-rate-mismatch') {

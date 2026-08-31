@@ -91,4 +91,24 @@ describe('shipping label purchase migration parity', () => {
 			),
 		).resolves.toMatchObject({ rowCount: 1 });
 	});
+
+	it.each(['reconciliation_required', 'purchased'])(
+		'rejects provider evidence with a NULL status while state is %s',
+		async (state) => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const order = await createOrderFixture(actors, item);
+			const { client } = getTestDatabase();
+			await expect(
+				client.query(
+					`INSERT INTO shipping_label_purchases
+						(order_id, item_id, purchase_attempt_id, shippo_rate_id, state,
+						 provider_transaction_id, label_url, provider_status)
+					 VALUES ($1, $2, '00000000-0000-4000-8000-000000000003', 'rate-null-status',
+					         $3, 'known-provider-transaction', 'https://labels.test/known.pdf', NULL)`,
+					[order.id, item.id, state],
+				),
+			).rejects.toMatchObject({ code: '23514' });
+		},
+	);
 });

@@ -587,32 +587,65 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAID);
 	});
 
-	it.each(['shippo-label-client-error', 'shippo-label-unprocessable'] as const)(
-		'releases a label claim after definite Shippo rejection %s and permits one retry',
-		async (scenario) => {
-			const { actors, order } = await prepareLabelOrder();
-			await setProviderScenario(shippoUrl(), scenario);
-			const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
-				order_id: order.id,
-				rate_id: 'rate-test',
-			});
-			expect(first.status).toBe(502);
-			expect(
-				await getTestDatabase()
-					.db.select()
-					.from(shipping_label_purchases)
-					.where(eq(shipping_label_purchases.order_id, order.id)),
-			).toEqual([]);
+	it.each([
+		'shippo-label-client-error',
+		'shippo-label-unauthorized',
+		'shippo-label-forbidden',
+		'shippo-label-not-found',
+		'shippo-label-unprocessable',
+	] as const)('releases a label claim after definite Shippo rejection %s and permits one retry', async (scenario) => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), scenario);
+		const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(first.status).toBe(502);
+		expect(
+			await getTestDatabase()
+				.db.select()
+				.from(shipping_label_purchases)
+				.where(eq(shipping_label_purchases.order_id, order.id)),
+		).toEqual([]);
 
-			await setProviderScenario(shippoUrl(), 'success');
-			const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
-				order_id: order.id,
-				rate_id: 'rate-test',
-			});
-			expect(retry.status).toBe(201);
-			expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toHaveLength(2);
-		},
-	);
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(retry.status).toBe(201);
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toHaveLength(2);
+	});
+
+	it.each([
+		'shippo-label-request-timeout',
+		'shippo-label-conflict',
+		'shippo-label-too-early',
+		'shippo-label-rate-limited',
+	] as const)('blocks retries after non-definitive Shippo HTTP outcome %s', async (scenario) => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), scenario);
+		const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(first.status).toBe(502);
+		const afterFirst = await getProviderRequests(shippoUrl());
+		expect(afterFirst.filter(({ path }) => path === '/transactions')).toHaveLength(1);
+		const [intent] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(intent?.state).toBe('reconciliation_required');
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(retry.status).toBe(409);
+		expect(await getProviderRequests(shippoUrl())).toEqual(afterFirst);
+	});
 
 	it.each([
 		'shippo-label-provider-error',
@@ -620,7 +653,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		'shippo-label-invalid-body',
 		'shippo-label-delay',
 		'shippo-label-disconnect',
-		'shippo-label-status-error',
+		'shippo-label-status-error-malformed',
 		'shippo-label-rate-mismatch',
 	] as const)('blocks retries after ambiguous Shippo label outcome %s', async (scenario) => {
 		const { actors, order } = await prepareLabelOrder();
@@ -644,6 +677,30 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		});
 		expect(retry.status).toBe(409);
 		expect(await getProviderRequests(shippoUrl())).toEqual(afterFirst);
+	});
+
+	it('releases the claim after a correlated Shippo ERROR outcome and permits one retry', async () => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-label-status-error');
+		const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(first.status).toBe(502);
+		expect(
+			await getTestDatabase()
+				.db.select()
+				.from(shipping_label_purchases)
+				.where(eq(shipping_label_purchases.order_id, order.id)),
+		).toEqual([]);
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(retry.status).toBe(201);
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toHaveLength(2);
 	});
 
 	it('compensates a local finalization failure with complete known provider evidence', async () => {

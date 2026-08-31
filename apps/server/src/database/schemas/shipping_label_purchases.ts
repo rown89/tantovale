@@ -48,6 +48,7 @@ export const shipping_label_purchases = pgTable(
 			sql`${table.state} <> 'purchased' OR (
 				${table.provider_transaction_id} IS NOT NULL
 				AND ${table.label_url} IS NOT NULL
+				AND ${table.provider_status} IS NOT NULL
 				AND ${table.provider_status} = 'SUCCESS'
 			)`,
 		),
@@ -62,6 +63,7 @@ export const shipping_label_purchases = pgTable(
 			) OR (
 				${table.provider_transaction_id} IS NOT NULL
 				AND ${table.label_url} IS NOT NULL
+				AND ${table.provider_status} IS NOT NULL
 				AND ${table.provider_status} = 'SUCCESS'
 			)`,
 		),

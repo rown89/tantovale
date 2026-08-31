@@ -65,14 +65,27 @@ const rateSchema = z.object({
 	amount: z.string().min(1),
 	currency: z.string().min(1),
 });
-const labelTransactionSchema = z.object({
+const labelTransactionRateSchema = z.union([
+	z.string().min(1),
+	z.object({ objectId: z.string().min(1) }).passthrough(),
+]);
+const successfulLabelTransactionSchema = z.object({
 	objectId: z.string().min(1),
 	status: z.literal('SUCCESS'),
 	labelUrl: z.string().url(),
-	rate: z.union([z.string().min(1), z.object({ objectId: z.string().min(1) }).passthrough()]),
+	rate: labelTransactionRateSchema,
 	trackingNumber: z.string().min(1).nullish(),
 	trackingUrlProvider: z.string().url().nullish(),
 });
+const rejectedLabelTransactionSchema = z.object({
+	objectId: z.string().min(1),
+	status: z.literal('ERROR'),
+	rate: labelTransactionRateSchema,
+});
+const labelTransactionSchema = z.discriminatedUnion('status', [
+	successfulLabelTransactionSchema,
+	rejectedLabelTransactionSchema,
+]);
 
 function shippoErrorStatus(error: unknown): number | undefined {
 	if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined;
