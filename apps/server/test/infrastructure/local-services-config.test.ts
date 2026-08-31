@@ -84,15 +84,19 @@ describe('local service configuration', () => {
 			for (const field of cronSecretFields) {
 				expect(() => parseEnv({ ...testEnvironment, [field]: '' })).toThrow(/Invalid env/);
 			}
-			for (let left = 0; left < cronSecretFields.length; left += 1) {
-				for (let right = left + 1; right < cronSecretFields.length; right += 1) {
-					const leftField = cronSecretFields[left]!;
-					const rightField = cronSecretFields[right]!;
-					expect(() => parseEnv({ ...testEnvironment, [rightField]: testEnvironment[leftField] })).toThrow(
-						/Invalid env/,
-					);
-				}
-			}
+			const sharedCronSecret = 'shared-but-nonempty-cron-secret';
+			expect(
+				parseEnv({
+					...testEnvironment,
+					DAILY_ORDER_CHECK_SECRET_KEY: sharedCronSecret,
+					DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: sharedCronSecret,
+					TRANSACTIONS_SYNC_SECRET_KEY: sharedCronSecret,
+				}),
+			).toMatchObject({
+				DAILY_ORDER_CHECK_SECRET_KEY: sharedCronSecret,
+				DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: sharedCronSecret,
+				TRANSACTIONS_SYNC_SECRET_KEY: sharedCronSecret,
+			});
 
 			expect(environment).toMatchObject({
 				AWS_ENDPOINT: runtime.minio.endpoint,

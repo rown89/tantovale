@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+	entityTrustapTransactionTypeValues,
 	ORDER_PROPOSAL_PHASES,
 	ORDER_PHASES,
 	PAYMENT_CANCELLATION_STATES,
@@ -325,7 +326,7 @@ describe('commerce expiry cron routes', () => {
 		});
 	});
 
-	it('preserves an authoritative webhook cancellation that wins after the remote cancel and before cron finalize', async () => {
+	it('normalizes an authoritative webhook cancellation winner to the cron expiry outcome', async () => {
 		const { actors, order } = await createPayableExpiredCandidate();
 		let releaseProvider!: () => void;
 		const providerReleased = new Promise<void>((resolve) => {
@@ -359,6 +360,7 @@ describe('commerce expiry cron routes', () => {
 		releaseProvider();
 		const cronResponse = await cronResponsePromise;
 		expect(cronResponse.status).toBe(200);
+		expect(await cronResponse.json()).toMatchObject({ orders: [{ id: order.id }], message: 'Orders expired' });
 
 		const { db } = getTestDatabase();
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
@@ -367,13 +369,124 @@ describe('commerce expiry cron routes', () => {
 			.from(entityTrustapTransactions)
 			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
 		expect(storedOrder).toMatchObject({
-			status: ORDER_PHASES.CANCELLED,
+			status: ORDER_PHASES.EXPIRED,
 			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED,
 		});
 		expect(storedProvider?.status).toBe('cancelled');
 		const buyerOrder = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
 		expect(buyerOrder.status).toBe(200);
 	});
+
+	it.each([
+		{
+			providerStatus: entityTrustapTransactionTypeValues.PAID,
+			orderStatus: ORDER_PHASES.PAYMENT_CONFIRMED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.REJECTED,
+			orderStatus: ORDER_PHASES.PAYMENT_FAILED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.TRACKED,
+			orderStatus: ORDER_PHASES.SHIPPING_CONFIRMED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT,
+			orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.DELIVERED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+			orderStatus: ORDER_PHASES.PAYMENT_REFUNDED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.COMPLAINED,
+			orderStatus: ORDER_PHASES.PAYMENT_PENDING,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			cancellationState: PAYMENT_CANCELLATION_STATES.NONE,
+			creationState: PAYMENT_CREATION_STATES.CREATED,
+		},
+	] as const)(
+		'clears a superseded cancellation attempt when $providerStatus wins before cron finalize',
+		async ({ providerStatus, orderStatus, cancellationState, creationState }) => {
+			const { order } = await createPayableExpiredCandidate();
+			let releaseProvider!: () => void;
+			const providerReleased = new Promise<void>((resolve) => {
+				releaseProvider = resolve;
+			});
+			let providerStarted!: () => void;
+			const providerWasCalled = new Promise<void>((resolve) => {
+				providerStarted = resolve;
+			});
+			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+				providerStarted();
+				await providerReleased;
+				if (providerStatus === entityTrustapTransactionTypeValues.PAID) {
+					throw new Error('Simulated ambiguous cancellation response after paid webhook');
+				}
+				return trustapTransactionFixture as never;
+			});
+
+			const cronResponsePromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+			await providerWasCalled;
+			const webhookResponse = await app.request('/webhooks/trustap/transaction-update', {
+				method: 'POST',
+				headers: {
+					Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					event: 'transaction_updated',
+					transaction_id: trustapTransactionFixture.id,
+					status: providerStatus,
+				}),
+			});
+			expect(webhookResponse.status).toBe(200);
+			releaseProvider();
+			const cronResponse = await cronResponsePromise;
+			expect(cronResponse.status).toBe(200);
+			expect(await cronResponse.json()).toMatchObject({ cancellation_superseded: [{ id: order.id }] });
+
+			const { db } = getTestDatabase();
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+			expect(storedOrder).toMatchObject({
+				status: orderStatus,
+				payment_cancellation_state: cancellationState,
+				payment_creation_state: creationState,
+			});
+			expect(storedProvider?.status).toBe(providerStatus);
+		},
+	);
 	it('fails closed for a created order without a cancellable transaction and preserves in-flight payment creation', async () => {
 		const actors = await createCommerceActors();
 		const { db } = getTestDatabase();
@@ -501,29 +614,37 @@ describe('commerce expiry cron routes', () => {
 		});
 	});
 
-	it.each(['paid', 'rejected', 'cancelled'] as const)(
-		'never calls cancel from the non-cancellable local provider state %s',
-		async (sourceStatus) => {
-			const { order } = await createPayableExpiredCandidate();
-			const { db } = getTestDatabase();
-			await db
-				.update(entityTrustapTransactions)
-				.set({ status: sourceStatus })
-				.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+	it.each([
+		entityTrustapTransactionTypeValues.PAID,
+		entityTrustapTransactionTypeValues.REJECTED,
+		entityTrustapTransactionTypeValues.CANCELLED,
+		entityTrustapTransactionTypeValues.TRACKED,
+		entityTrustapTransactionTypeValues.CANCELLED_WITH_PAYMENT,
+		entityTrustapTransactionTypeValues.DELIVERED,
+		entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
+		entityTrustapTransactionTypeValues.COMPLAINED,
+		entityTrustapTransactionTypeValues.COMPLAINT_PERIOD_ENDED,
+		entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+	] as const)('never calls cancel from the non-cancellable local provider state %s', async (sourceStatus) => {
+		const { order } = await createPayableExpiredCandidate();
+		const { db } = getTestDatabase();
+		await db
+			.update(entityTrustapTransactions)
+			.set({ status: sourceStatus })
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
 
-			await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
 
-			const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
-			expect(stored).toMatchObject({
-				status: ORDER_PHASES.PAYMENT_PENDING,
-				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
-			});
-			const cancellations = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
-				path.includes('/cancel_with_guest_user'),
-			);
-			expect(cancellations).toHaveLength(0);
-		},
-	);
+		const [stored] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(stored).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_PENDING,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+		const cancellations = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(({ path }) =>
+			path.includes('/cancel_with_guest_user'),
+		);
+		expect(cancellations).toHaveLength(0);
+	});
 
 	it('does not regress a terminal order even when it is older than the payment cutoff', async () => {
 		useFixedUtcClock();

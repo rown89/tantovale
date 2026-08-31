@@ -107,6 +107,7 @@ export type StubScenario =
 	| 'transaction-cancel-charge-seller-mismatch'
 	| 'transaction-cancel-currency-mismatch'
 	| 'transaction-cancel-description-mismatch'
+	| 'transaction-cancel-status-mismatch'
 	| 'transaction-invalid-json'
 	| 'transaction-invalid-body'
 	| 'transaction-buyer-missing'
@@ -282,6 +283,7 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'transaction-cancel-charge-seller-mismatch',
 	'transaction-cancel-currency-mismatch',
 	'transaction-cancel-description-mismatch',
+	'transaction-cancel-status-mismatch',
 	'transaction-invalid-json',
 	'transaction-invalid-body',
 	'transaction-buyer-missing',
@@ -604,6 +606,7 @@ function trustapCancellationResponse(
 		'transaction-cancel-charge-seller-mismatch': { charge_seller: transaction.charge_seller + 1 },
 		'transaction-cancel-currency-mismatch': { currency: 'usd' },
 		'transaction-cancel-description-mismatch': { description: `${transaction.description} changed` },
+		'transaction-cancel-status-mismatch': { status: 'paid' },
 	};
 	return { ...trustapTransactionResponse(transaction, scenario), ...mutations[scenario] };
 }
@@ -713,6 +716,7 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'transaction-cancel-charge-seller-mismatch':
 		case 'transaction-cancel-currency-mismatch':
 		case 'transaction-cancel-description-mismatch':
+		case 'transaction-cancel-status-mismatch':
 		case 'transaction-invalid-json':
 		case 'transaction-invalid-body':
 		case 'transaction-buyer-missing':

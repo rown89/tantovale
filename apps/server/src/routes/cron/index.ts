@@ -17,6 +17,7 @@ import {
 import { acquireItemCommerceLock } from 'src/lib/item-commerce-lock';
 import { entityTrustapTransactions, profiles } from '#db-schema';
 import { PaymentProviderService } from '../payments/payment-provider.service';
+import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { authenticateCronSecret } from './secret-auth';
 
 const expiredOrdersTolleranceInHours = environment.ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS;
@@ -95,6 +96,7 @@ export const cronRoute = createRouter()
 				),
 			);
 		const updatedOrders: Array<{ id: number }> = [];
+		const supersededCancellations: Array<{ id: number }> = [];
 		for (const candidate of candidates) {
 			if (!candidate.item_id) {
 				const [reconciled] = await db
@@ -246,9 +248,8 @@ export const cronRoute = createRouter()
 				continue;
 			}
 
-			try {
-				await new PaymentProviderService().cancelGuestTransaction(marked.provider_snapshot);
-				const finalized = await db.transaction(async (tx) => {
+			const settleCancellationAttempt = async (remoteCancellationConfirmed: boolean) =>
+				db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, candidate.item_id!);
 					const [current] = await tx
 						.select({
@@ -295,14 +296,73 @@ export const cronRoute = createRouter()
 						current.provider_quarantined === false;
 					if (
 						graphMatchesSnapshot &&
-						current?.status === ORDER_PHASES.CANCELLED &&
+						(current?.status === ORDER_PHASES.CANCELLED || current?.status === ORDER_PHASES.EXPIRED) &&
+						current.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
 						current.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.CANCELLED &&
 						current.payment_transaction_id === marked.provider_snapshot.transaction_id &&
 						current.provider_status === 'cancelled'
 					) {
-						return { outcome: 'cancelled' as const, order: { id: current.id } };
+						if (current.status === ORDER_PHASES.EXPIRED) {
+							return { outcome: 'cancelled' as const, order: { id: current.id } };
+						}
+						const [normalized] = await tx
+							.update(orders)
+							.set({ status: ORDER_PHASES.EXPIRED, updated_at: new Date() })
+							.where(
+								and(
+									eq(orders.id, current.id),
+									eq(orders.item_id, candidate.item_id!),
+									eq(orders.status, ORDER_PHASES.CANCELLED),
+									eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
+									eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLED),
+									eq(orders.payment_transaction_id, marked.provider_snapshot.transaction_id),
+								),
+							)
+							.returning({ id: orders.id });
+						return normalized ? { outcome: 'cancelled' as const, order: normalized } : undefined;
+					}
+					const providerAdvanced =
+						graphMatchesSnapshot &&
+						current !== undefined &&
+						current.provider_status !== null &&
+						current.provider_status !== 'created' &&
+						current.provider_status !== 'joined';
+					const repeatedTransition = providerAdvanced
+						? resolveTrustapOrderTransition(current.provider_status!, current.status, current.provider_status!)
+						: undefined;
+					if (
+						providerAdvanced &&
+						current !== undefined &&
+						current.provider_status !== null &&
+						repeatedTransition !== undefined &&
+						!repeatedTransition.apply &&
+						repeatedTransition.orderStatus === current.status
+					) {
+						const resolvedCancellationState = isAuthoritativeCancellationStatus(current.provider_status)
+							? PAYMENT_CANCELLATION_STATES.CANCELLED
+							: PAYMENT_CANCELLATION_STATES.NONE;
+						if (current.payment_cancellation_state === resolvedCancellationState) {
+							return { outcome: 'superseded' as const, order: { id: current.id } };
+						}
+						if (current.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.CANCELLING) {
+							const [settled] = await tx
+								.update(orders)
+								.set({ payment_cancellation_state: resolvedCancellationState, updated_at: new Date() })
+								.where(
+									and(
+										eq(orders.id, current.id),
+										eq(orders.item_id, candidate.item_id!),
+										eq(orders.status, current.status),
+										eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
+										eq(orders.payment_transaction_id, marked.provider_snapshot.transaction_id),
+									),
+								)
+								.returning({ id: orders.id });
+							return settled ? { outcome: 'superseded' as const, order: settled } : undefined;
+						}
 					}
 					if (
+						!remoteCancellationConfirmed ||
 						!graphMatchesSnapshot ||
 						current === undefined ||
 						current.status !== ORDER_PHASES.PAYMENT_PENDING ||
@@ -388,35 +448,28 @@ export const cronRoute = createRouter()
 						.returning({ id: orders.id });
 					return reconciled ? { outcome: 'reconciliation' as const } : undefined;
 				});
-				if (finalized?.outcome === 'cancelled') updatedOrders.push(finalized.order);
-				else {
-					reconciliationRequired.push({ id: candidate.id });
-				}
+			let remoteCancellationConfirmed = false;
+			try {
+				await new PaymentProviderService().cancelGuestTransaction(marked.provider_snapshot);
+				remoteCancellationConfirmed = true;
 			} catch {
-				await db.transaction(async (tx) => {
-					await acquireItemCommerceLock(tx, candidate.item_id!);
-					await tx
-						.update(orders)
-						.set({
-							payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
-							updated_at: new Date(),
-						})
-						.where(
-							and(
-								eq(orders.id, candidate.id),
-								eq(orders.item_id, candidate.item_id!),
-								eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
-								eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
-								eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
-								eq(orders.payment_transaction_id, marked.provider_snapshot.transaction_id),
-							),
-						);
-				});
+				// The exact locked graph below decides whether a concurrent provider update won
+				// or this ambiguous request must remain blocked for reconciliation.
+			}
+			let finalized;
+			try {
+				finalized = await settleCancellationAttempt(remoteCancellationConfirmed);
+			} catch {
+				finalized = await settleCancellationAttempt(false);
+			}
+			if (finalized?.outcome === 'cancelled') updatedOrders.push(finalized.order);
+			else if (finalized?.outcome === 'superseded') supersededCancellations.push(finalized.order);
+			else if (finalized?.outcome === 'reconciliation') {
 				reconciliationRequired.push({ id: candidate.id });
 			}
 		}
 
-		if (!updatedOrders.length && !reconciliationRequired.length) {
+		if (!updatedOrders.length && !reconciliationRequired.length && !supersededCancellations.length) {
 			return c.json({ message: 'No orders to cancel', status: 200 }, 200);
 		}
 
@@ -424,8 +477,13 @@ export const cronRoute = createRouter()
 			{
 				orders: updatedOrders,
 				reconciliation_required: reconciliationRequired,
+				cancellation_superseded: supersededCancellations,
 				status: 200,
-				message: updatedOrders.length ? 'Orders expired' : 'Order cancellation requires reconciliation',
+				message: updatedOrders.length
+					? 'Orders expired'
+					: supersededCancellations.length
+						? 'Order cancellation superseded by provider state'
+						: 'Order cancellation requires reconciliation',
 			},
 			200,
 		);

@@ -605,6 +605,7 @@ describe('Trustap v1 provider boundary', () => {
 		'transaction-cancel-charge-seller-mismatch',
 		'transaction-cancel-currency-mismatch',
 		'transaction-cancel-description-mismatch',
+		'transaction-cancel-status-mismatch',
 	] satisfies StubScenario[])(
 		'treats a %s response as an ambiguous cancellation rather than accepting partial correlation',
 		async (scenario) => {
