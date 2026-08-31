@@ -4,11 +4,17 @@ export function privateQueryRoot(profileId: PrivateProfileId) {
 	return ['private', profileId] as const;
 }
 
+export function canonicalChatRoomId(roomId: number | string | undefined): string | undefined {
+	if (roomId === undefined) return undefined;
+	const numericRoomId = Number(roomId);
+	return Number.isSafeInteger(numericRoomId) ? String(numericRoomId) : String(roomId);
+}
+
 export const privateQueryKeys = {
 	currentUser: (profileId: PrivateProfileId) => [...privateQueryRoot(profileId), 'currentUser'] as const,
 	chatRooms: (profileId: PrivateProfileId) => [...privateQueryRoot(profileId), 'chatRooms'] as const,
 	chatMessages: (profileId: PrivateProfileId, roomId: number | string | undefined) =>
-		[...privateQueryRoot(profileId), 'chat-messages', roomId] as const,
+		[...privateQueryRoot(profileId), 'chat-messages', canonicalChatRoomId(roomId)] as const,
 	favorites: (profileId: PrivateProfileId) => [...privateQueryRoot(profileId), 'get_user_favorites'] as const,
 	sellingItems: (profileId: PrivateProfileId, publishedType: string) =>
 		[...privateQueryRoot(profileId), 'user-selling-items', publishedType] as const,

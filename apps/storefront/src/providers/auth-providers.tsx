@@ -3,9 +3,11 @@
 import { client } from '@workspace/server/client-rpc';
 import refreshTokens from '../utils/refreshTokens';
 import { useRouter } from 'next/navigation';
-import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { shouldRemovePrivateQuery } from '@workspace/shared/utils/private-query-keys';
+import useTantovaleStore from '#stores';
+import { commitClientIdentity, logoutClientSession } from '#utils/client-logout';
 
 export interface User {
 	id: number;
@@ -29,13 +31,32 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; children: ReactNode }) => {
 	const router = useRouter();
 	const queryClient = useQueryClient();
-	const [user, setUser] = useState<User | null>(null);
+	const [user, setUserState] = useState<User | null>(null);
+	const userRef = useRef<User | null>(null);
 	const [loadingUser, setLoadingUser] = useState(true);
+	const setUser = useCallback<React.Dispatch<React.SetStateAction<User | null>>>((nextAction) => {
+		const nextIdentity = typeof nextAction === 'function' ? nextAction(userRef.current) : nextAction;
+		commitClientIdentity({
+			currentIdentity: userRef.current,
+			nextIdentity,
+			resetPrivateCommerceState: useTantovaleStore.getState().resetPrivateCommerceState,
+			commit: (identity) => {
+				userRef.current = identity;
+				setUserState(identity);
+			},
+		});
+	}, []);
 
 	const logout = useCallback(() => {
-		queryClient.removeQueries({ predicate: ({ queryKey }) => shouldRemovePrivateQuery(queryKey) });
-		setUser(null);
-		router.push('/api/logout');
+		logoutClientSession({
+			queryClient,
+			resetPrivateCommerceState: useTantovaleStore.getState().resetPrivateCommerceState,
+			clearIdentity: () => {
+				userRef.current = null;
+				setUserState(null);
+			},
+			navigateToLogout: () => router.push('/api/logout'),
+		});
 	}, [queryClient, router]);
 
 	useEffect(() => {
@@ -83,7 +104,7 @@ export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; childr
 		} finally {
 			setLoadingUser(false);
 		}
-	}, [logout]);
+	}, [logout, setUser]);
 
 	useEffect(() => {
 		if (isLogged) {

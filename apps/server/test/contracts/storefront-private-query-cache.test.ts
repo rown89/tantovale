@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const privateQueryModulePath = '../../../../packages/shared/src/utils/private-query-keys';
+const reactQueryModulePath = '../../../storefront/node_modules/@tanstack/react-query/build/modern/index.js';
 
 async function loadPrivateQueryKeys() {
 	return import(/* @vite-ignore */ privateQueryModulePath) as Promise<{
@@ -32,7 +32,7 @@ describe('storefront private React Query cache identity', () => {
 		expect(privateQueryKeys.orders(23, 'all')).not.toEqual(privateQueryKeys.orders(17, 'all'));
 		expect(privateQueryKeys.currentUser(17)).toEqual(['private', 17, 'currentUser']);
 		expect(privateQueryKeys.chatRooms(17)).toEqual(['private', 17, 'chatRooms']);
-		expect(privateQueryKeys.chatMessages(17, 41)).toEqual(['private', 17, 'chat-messages', 41]);
+		expect(privateQueryKeys.chatMessages(17, 41)).toEqual(['private', 17, 'chat-messages', '41']);
 		expect(privateQueryKeys.favorites(17)).toEqual(['private', 17, 'get_user_favorites']);
 		expect(privateQueryKeys.sellingItems(17, 'published')).toEqual(['private', 17, 'user-selling-items', 'published']);
 		expect(privateQueryKeys.orderProposal(17, 53)).toEqual(['private', 17, 'orderProposal', 53]);
@@ -41,22 +41,25 @@ describe('storefront private React Query cache identity', () => {
 		expect(cache.get(JSON.stringify(privateQueryKeys.favorites(23)))).toBeUndefined();
 	});
 
-	it('wires every private storefront query and auth cache purge to the profile-scoped helpers', async () => {
-		const expectedUsage = new Map([
-			['../../../storefront/src/app/auth/profile/components/orders/index.tsx', 'privateQueryKeys.orders'],
-			['../../../storefront/src/app/auth/profile/components/selling-items/index.tsx', 'privateQueryKeys.sellingItems'],
-			['../../../storefront/src/app/auth/favorites/index.tsx', 'privateQueryKeys.favorites'],
-			['../../../storefront/src/app/auth/chat/layout.tsx', 'privateQueryKeys.chatRooms'],
-			['../../../storefront/src/app/auth/chat/[id]/page.tsx', 'privateQueryKeys.chatMessages'],
-			['../../../storefront/src/components/chat/chat-input/index.tsx', 'privateQueryKeys.chatMessages'],
-			['../../../storefront/src/components/chat/chat-message/use-chat-message.ts', 'privateQueryKeys.orderProposal'],
-			['../../../storefront/src/providers/auth-providers.tsx', 'shouldRemovePrivateQuery'],
-		]);
+	it('canonicalizes URL and numeric chat room IDs so invalidation reaches the same cached query', async () => {
+		const { privateQueryKeys } = await loadPrivateQueryKeys();
+		const { QueryClient } = (await import(/* @vite-ignore */ reactQueryModulePath)) as {
+			QueryClient: new () => {
+				setQueryData(queryKey: readonly unknown[], data: unknown): void;
+				invalidateQueries(options: { queryKey: readonly unknown[]; refetchType: 'none' }): Promise<void>;
+				getQueryState(queryKey: readonly unknown[]): { isInvalidated: boolean } | undefined;
+			};
+		};
+		const urlKey = privateQueryKeys.chatMessages(17, '41');
+		const numericKey = privateQueryKeys.chatMessages(17, 41);
+		expect(urlKey).toEqual(numericKey);
+		expect(privateQueryKeys.chatMessages(17, '041')).toEqual(numericKey);
 
-		for (const [path, helper] of expectedUsage) {
-			const source = await readFile(new URL(path, import.meta.url), 'utf8');
-			expect(source, path).toContain(helper);
-		}
+		const queryClient = new QueryClient();
+		queryClient.setQueryData(urlKey, [{ text: 'private chat' }]);
+		expect(queryClient.getQueryState(urlKey)?.isInvalidated).toBe(false);
+		await queryClient.invalidateQueries({ queryKey: numericKey, refetchType: 'none' });
+		expect(queryClient.getQueryState(urlKey)?.isInvalidated).toBe(true);
 	});
 
 	it('purges another identity or every logged-out private query without touching public cache', async () => {

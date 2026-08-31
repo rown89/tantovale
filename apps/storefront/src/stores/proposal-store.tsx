@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { client } from '@workspace/server/client-rpc';
 import { SelectOrderProposal } from '@workspace/server/database';
+import { commerceOwnerMatches, CommerceOwnershipState } from './commerce-ownership';
 
 type OrderProposalProps = Omit<
 	SelectOrderProposal,
@@ -43,7 +44,12 @@ export type OrderProposalStore = {
 	resetProposal: () => void;
 };
 
-export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
+export const createProposalSlice: StateCreator<
+	OrderProposalStore & CommerceOwnershipState,
+	[],
+	[],
+	OrderProposalStore
+> = (set, get) => ({
 	clientProposalId: undefined,
 	clientProposalCreatedAt: undefined,
 	isProposalModalOpen: false,
@@ -51,6 +57,10 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 	setIsProposalModalOpen: (isProposalModalOpen: boolean) => set({ isProposalModalOpen }),
 	setIsCreatingProposal: (isCreatingProposal: boolean) => set({ isCreatingProposal }),
 	handleBuyerAbortedProposal: async (proposal_id: number) => {
+		const requestOwner = {
+			commerceOwnerProfileId: get().commerceOwnerProfileId,
+			commerceOwnerItemId: get().commerceOwnerItemId,
+		};
 		set({
 			isCreatingProposal: true,
 		});
@@ -62,19 +72,21 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 				},
 			});
 
-			set({
-				clientProposalId: undefined,
-				clientProposalCreatedAt: undefined,
-			});
+			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				set({
+					clientProposalId: undefined,
+					clientProposalCreatedAt: undefined,
+				});
+			}
 
 			return true;
 		} catch (error) {
 			console.error('Failed to abort proposal:', error);
 			return false;
 		} finally {
-			set({
-				isCreatingProposal: false,
-			});
+			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				set({ isCreatingProposal: false });
+			}
 		}
 	},
 	handleProposal: async ({
@@ -84,6 +96,11 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 		shipping_quote_id,
 		message,
 	}: handleProposalProps) => {
+		const requestOwner = {
+			commerceOwnerProfileId: get().commerceOwnerProfileId,
+			commerceOwnerItemId: get().commerceOwnerItemId,
+		};
+		if (requestOwner.commerceOwnerItemId !== item_id) return undefined;
 		set({
 			isCreatingProposal: true,
 		});
@@ -102,6 +119,9 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			if (!response.ok) return undefined;
 
 			const data = await response.json();
+			if (!commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				return undefined;
+			}
 
 			set({
 				clientProposalId: data.proposal.id,
@@ -126,9 +146,9 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			console.error('Failed to create proposal:', error);
 			return undefined;
 		} finally {
-			set({
-				isCreatingProposal: false,
-			});
+			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				set({ isCreatingProposal: false });
+			}
 		}
 	},
 	resetProposal: () =>
@@ -136,5 +156,6 @@ export const createProposalSlice: StateCreator<OrderProposalStore> = (set) => ({
 			clientProposalId: undefined,
 			clientProposalCreatedAt: undefined,
 			isProposalModalOpen: false,
+			isCreatingProposal: false,
 		}),
 });

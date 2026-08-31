@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 
 import { client } from '@workspace/server/client-rpc';
+import { commerceOwnerMatches, CommerceOwnershipState } from './commerce-ownership';
 
 export type OrderBuyNowStore = {
 	clientBuyNowOrderId: number;
@@ -22,7 +23,10 @@ type BuyNowResponse = {
 	error?: string;
 };
 
-export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
+export const createBuyNowSlice: StateCreator<OrderBuyNowStore & CommerceOwnershipState, [], [], OrderBuyNowStore> = (
+	set,
+	get,
+) => ({
 	clientBuyNowOrderId: 0,
 	clientBuyNowOrderStatus: '',
 	isBuyNowModalOpen: false,
@@ -31,6 +35,13 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 	setIsBuyNowModalOpen: (isBuyNowModalOpen) => set({ isBuyNowModalOpen }),
 	setIsCreatingOrder: (isCreatingOrder) => set({ isCreatingOrder }),
 	handleBuyNow: async (item_id: number): Promise<BuyNowResponse> => {
+		const requestOwner = {
+			commerceOwnerProfileId: get().commerceOwnerProfileId,
+			commerceOwnerItemId: get().commerceOwnerItemId,
+		};
+		if (requestOwner.commerceOwnerItemId !== item_id) {
+			return { success: false, error: 'Commerce context changed' };
+		}
 		set({
 			isCreatingOrder: true,
 		});
@@ -50,6 +61,9 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 			}
 
 			const { success, order, payment_url, message } = await responseCreateOrder.json();
+			if (!commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				return { success: false, error: 'Commerce context changed' };
+			}
 
 			if (!success) {
 				return {
@@ -67,8 +81,16 @@ export const createBuyNowSlice: StateCreator<OrderBuyNowStore> = (set) => ({
 				message,
 			};
 		} finally {
-			set({ isCreatingOrder: false });
+			if (commerceOwnerMatches(get(), requestOwner.commerceOwnerProfileId, requestOwner.commerceOwnerItemId)) {
+				set({ isCreatingOrder: false });
+			}
 		}
 	},
-	resetBuyNowStore: () => set({ clientBuyNowOrderId: 0, isBuyNowModalOpen: false }),
+	resetBuyNowStore: () =>
+		set({
+			clientBuyNowOrderId: 0,
+			clientBuyNowOrderStatus: '',
+			isBuyNowModalOpen: false,
+			isCreatingOrder: false,
+		}),
 });

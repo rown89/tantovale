@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const buyNowStoreModulePath = '../../../storefront/src/stores/buy-now-store';
 
 type BuyNowState = {
+	commerceOwnerProfileId: number;
+	commerceOwnerItemId: number;
 	isCreatingOrder: boolean;
 	clientBuyNowOrderId: number;
 	clientBuyNowOrderStatus: string;
 	handleBuyNow(itemId: number): Promise<{ success: boolean; error?: string }>;
 };
 
-async function createStore(post: () => Promise<unknown>) {
+async function createStore(post: () => Promise<unknown>, itemId: number) {
 	vi.doMock('@workspace/server/client-rpc', () => ({
 		client: { item: { auth: { buy_now: { $post: post } } } },
 	}));
@@ -17,13 +19,17 @@ async function createStore(post: () => Promise<unknown>) {
 		createBuyNowSlice(set: (partial: Partial<BuyNowState>) => void, get: () => BuyNowState, api: object): BuyNowState;
 	};
 	let state: BuyNowState;
-	state = createBuyNowSlice(
-		(partial) => {
-			state = { ...state, ...partial };
-		},
-		() => state,
-		{},
-	);
+	state = {
+		...createBuyNowSlice(
+			(partial) => {
+				state = { ...state, ...partial };
+			},
+			() => state,
+			{},
+		),
+		commerceOwnerProfileId: 17,
+		commerceOwnerItemId: itemId,
+	};
 	return () => state;
 }
 
@@ -51,7 +57,7 @@ describe('storefront Buy Now store', () => {
 					payment_url: 'https://payments.invalid/71',
 				}),
 			});
-		const getState = await createStore(post);
+		const getState = await createStore(post, 11);
 
 		await getState().handleBuyNow(11);
 		expect(getState().isCreatingOrder).toBe(false);
@@ -72,7 +78,7 @@ describe('storefront Buy Now store', () => {
 				ok: true,
 				json: async () => ({ success: true, order: { id: 72, status: 'payment_pending' } }),
 			});
-		const getState = await createStore(post);
+		const getState = await createStore(post, 12);
 
 		await expect(getState().handleBuyNow(12)).rejects.toThrow('network unavailable');
 		expect(getState().isCreatingOrder).toBe(false);

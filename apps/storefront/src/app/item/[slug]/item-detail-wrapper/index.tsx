@@ -39,19 +39,25 @@ export default function ItemWDetailWrapper({
 		setItem,
 		setItemOwnerData,
 		setOrderProposal,
-		resetAllItemDetail,
 		setIsAddressLoading,
 		isAddressLoading,
 		setAddressId,
+		commerceOwnerProfileId,
+		commerceOwnerItemId,
+		setCommerceContext,
+		resetPrivateCommerceState,
 	} = useTantovaleStore();
 
 	const orderProposal = item.orderProposal;
+	const profileId = user?.profile_id ?? null;
+	const ownsCurrentCommerceState = commerceOwnerProfileId === profileId && commerceOwnerItemId === item.id;
 
-	const proposalId = orderProposal?.id || clientProposalId || 0;
-	const proposalCreatedAt = orderProposal?.created_at || clientProposalCreatedAt || '';
+	const proposalId = orderProposal?.id || (ownsCurrentCommerceState ? clientProposalId : undefined) || 0;
+	const proposalCreatedAt =
+		orderProposal?.created_at || (ownsCurrentCommerceState ? clientProposalCreatedAt : undefined) || '';
 
-	const orderId = item.order.id || clientBuyNowOrderId || 0;
-	const orderStatus = item.order.status || clientBuyNowOrderStatus;
+	const orderId = item.order.id || (ownsCurrentCommerceState ? clientBuyNowOrderId : 0) || 0;
+	const orderStatus = item.order.status || (ownsCurrentCommerceState ? clientBuyNowOrderStatus : '');
 
 	// Use null as initial state to match SSR
 	const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -85,15 +91,25 @@ export default function ItemWDetailWrapper({
 	}, []);
 
 	useEffect(() => {
+		setCommerceContext(profileId, item.id);
 		setItem(item);
 		setItemOwnerData(itemOwnerData);
-
-		if (orderProposal) setOrderProposal(orderProposal);
+		setOrderProposal(orderProposal);
 
 		return () => {
-			resetAllItemDetail();
+			resetPrivateCommerceState();
 		};
-	}, [item, itemOwnerData, orderProposal, resetAllItemDetail, setItem, setItemOwnerData, setOrderProposal]);
+	}, [
+		item,
+		itemOwnerData,
+		orderProposal,
+		profileId,
+		resetPrivateCommerceState,
+		setCommerceContext,
+		setItem,
+		setItemOwnerData,
+		setOrderProposal,
+	]);
 
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {
@@ -226,7 +242,7 @@ export default function ItemWDetailWrapper({
 				)}
 			</div>
 
-			{item?.easy_pay && (
+			{item?.easy_pay && ownsCurrentCommerceState && (
 				<>
 					<BuyNowDialog />
 					<ProposalDialog />
