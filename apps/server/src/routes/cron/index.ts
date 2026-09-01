@@ -294,40 +294,44 @@ export const cronRoute = createRouter()
 							payment_transaction_id: orders.payment_transaction_id,
 							buyer_provider_id: profiles.payment_provider_id,
 							seller_provider_id: cronSellerProfiles.payment_provider_id,
-							provider_id: entityTrustapTransactions.id,
-							provider_buyer_id: entityTrustapTransactions.buyerId,
-							provider_seller_id: entityTrustapTransactions.sellerId,
-							provider_entity_id: entityTrustapTransactions.entityId,
-							provider_entity_title: entityTrustapTransactions.entityTitle,
-							provider_price: entityTrustapTransactions.price,
-							provider_charge: entityTrustapTransactions.charge,
-							provider_charge_seller: entityTrustapTransactions.chargeSeller,
-							provider_currency: entityTrustapTransactions.currency,
-							provider_quarantined: entityTrustapTransactions.quarantined,
-							provider_status: entityTrustapTransactions.status,
 						})
 						.from(orders)
 						.leftJoin(profiles, eq(orders.buyer_id, profiles.id))
 						.leftJoin(cronSellerProfiles, eq(orders.seller_id, cronSellerProfiles.id))
-						.leftJoin(
-							entityTrustapTransactions,
-							eq(entityTrustapTransactions.transactionId, orders.payment_transaction_id),
-						)
 						.where(eq(orders.id, candidate.id));
+					const [originalProvider] = await tx
+						.select({
+							id: entityTrustapTransactions.id,
+							buyer_id: entityTrustapTransactions.buyerId,
+							seller_id: entityTrustapTransactions.sellerId,
+							entity_id: entityTrustapTransactions.entityId,
+							entity_title: entityTrustapTransactions.entityTitle,
+							price: entityTrustapTransactions.price,
+							charge: entityTrustapTransactions.charge,
+							charge_seller: entityTrustapTransactions.chargeSeller,
+							currency: entityTrustapTransactions.currency,
+							quarantined: entityTrustapTransactions.quarantined,
+							status: entityTrustapTransactions.status,
+							transaction_id: entityTrustapTransactions.transactionId,
+						})
+						.from(entityTrustapTransactions)
+						.where(eq(entityTrustapTransactions.transactionId, marked.provider_snapshot.transaction_id))
+						.for('update')
+						.limit(1);
 					const graphMatchesSnapshot =
 						current?.item_id === candidate.item_id &&
 						current.payment_transaction_id === marked.provider_snapshot.transaction_id &&
 						current.buyer_provider_id === marked.provider_snapshot.buyer_id &&
 						current.seller_provider_id === marked.provider_snapshot.seller_id &&
-						current.provider_buyer_id === marked.provider_snapshot.buyer_id &&
-						current.provider_seller_id === marked.provider_snapshot.seller_id &&
-						current.provider_entity_id === candidate.item_id &&
-						current.provider_entity_title === marked.provider_snapshot.entity_title &&
-						current.provider_price === marked.provider_snapshot.price &&
-						current.provider_charge === marked.provider_snapshot.charge &&
-						current.provider_charge_seller === marked.provider_snapshot.charge_seller &&
-						current.provider_currency === marked.provider_snapshot.currency &&
-						current.provider_quarantined === false;
+						originalProvider?.buyer_id === marked.provider_snapshot.buyer_id &&
+						originalProvider.seller_id === marked.provider_snapshot.seller_id &&
+						originalProvider.entity_id === candidate.item_id &&
+						originalProvider.entity_title === marked.provider_snapshot.entity_title &&
+						originalProvider.price === marked.provider_snapshot.price &&
+						originalProvider.charge === marked.provider_snapshot.charge &&
+						originalProvider.charge_seller === marked.provider_snapshot.charge_seller &&
+						originalProvider.currency === marked.provider_snapshot.currency &&
+						originalProvider.quarantined === false;
 					if (!graphMatchesSnapshot && current) {
 						const [existingAudit] = await tx
 							.select({ id: commerce_reconciliation_audit.id })
@@ -341,16 +345,20 @@ export const cronRoute = createRouter()
 							)
 							.limit(1);
 						if (!existingAudit) {
-							const originalReference = current.payment_transaction_id ?? marked.provider_snapshot.transaction_id;
-							const snapshot = { order: current, expectedProvider: marked.provider_snapshot };
+							const originalReference = marked.provider_snapshot.transaction_id;
+							const snapshot = {
+								order: current,
+								provider: originalProvider ?? null,
+								expectedProvider: marked.provider_snapshot,
+							};
 							await tx.insert(commerce_reconciliation_audit).values([
-								...(current.provider_id === null
+								...(originalProvider === undefined
 									? []
 									: [
 											{
 												conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
 												source_table: 'entity_trustap_transactions',
-												source_row_id: current.provider_id,
+												source_row_id: originalProvider.id,
 												canonical_row_id: current.id,
 												original_reference: originalReference,
 												snapshot,
@@ -360,18 +368,35 @@ export const cronRoute = createRouter()
 									conflict_type: 'runtime_cron_cancellation_correlation_mismatch',
 									source_table: 'orders',
 									source_row_id: current.id,
-									canonical_row_id: current.provider_id,
+									canonical_row_id: originalProvider?.id ?? null,
 									original_reference: originalReference,
 									snapshot,
 								},
 							]);
 						}
-						if (current.provider_id !== null) {
+						if (originalProvider) {
 							await tx
 								.update(entityTrustapTransactions)
 								.set({ quarantined: true, updated_at: new Date() })
-								.where(eq(entityTrustapTransactions.id, current.provider_id));
+								.where(eq(entityTrustapTransactions.id, originalProvider.id));
 						}
+						const [reconciled] = await tx
+							.update(orders)
+							.set({
+								payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+								updated_at: new Date(),
+							})
+							.where(
+								and(
+									eq(orders.id, current.id),
+									eq(orders.item_id, candidate.item_id!),
+									eq(orders.status, current.status),
+									eq(orders.payment_creation_state, current.payment_creation_state),
+									eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
+								),
+							)
+							.returning({ id: orders.id });
+						return reconciled ? { outcome: 'reconciliation' as const } : undefined;
 					}
 					if (
 						graphMatchesSnapshot &&
@@ -379,7 +404,7 @@ export const cronRoute = createRouter()
 						current.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
 						current.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.CANCELLED &&
 						current.payment_transaction_id === marked.provider_snapshot.transaction_id &&
-						current.provider_status === 'cancelled'
+						originalProvider?.status === 'cancelled'
 					) {
 						if (current.status === ORDER_PHASES.EXPIRED) {
 							return { outcome: 'cancelled' as const, order: { id: current.id } };
@@ -403,21 +428,21 @@ export const cronRoute = createRouter()
 					const providerAdvanced =
 						graphMatchesSnapshot &&
 						current !== undefined &&
-						current.provider_status !== null &&
-						current.provider_status !== 'created' &&
-						current.provider_status !== 'joined';
+						originalProvider !== undefined &&
+						originalProvider.status !== 'created' &&
+						originalProvider.status !== 'joined';
 					const repeatedTransition = providerAdvanced
-						? resolveTrustapOrderTransition(current.provider_status!, current.status, current.provider_status!)
+						? resolveTrustapOrderTransition(originalProvider.status, current.status, originalProvider.status)
 						: undefined;
 					if (
 						providerAdvanced &&
 						current !== undefined &&
-						current.provider_status !== null &&
+						originalProvider !== undefined &&
 						repeatedTransition !== undefined &&
 						!repeatedTransition.apply &&
 						repeatedTransition.orderStatus === current.status
 					) {
-						const resolvedCancellationState = isAuthoritativeCancellationStatus(current.provider_status)
+						const resolvedCancellationState = isAuthoritativeCancellationStatus(originalProvider.status)
 							? PAYMENT_CANCELLATION_STATES.CANCELLED
 							: PAYMENT_CANCELLATION_STATES.NONE;
 						if (current.payment_cancellation_state === resolvedCancellationState) {
@@ -447,7 +472,7 @@ export const cronRoute = createRouter()
 						current.status !== ORDER_PHASES.PAYMENT_PENDING ||
 						current.payment_creation_state !== PAYMENT_CREATION_STATES.CREATED ||
 						current.payment_cancellation_state !== PAYMENT_CANCELLATION_STATES.CANCELLING ||
-						(current.provider_status !== 'created' && current.provider_status !== 'joined')
+						(originalProvider?.status !== 'created' && originalProvider?.status !== 'joined')
 					) {
 						const [reconciled] = await tx
 							.update(orders)

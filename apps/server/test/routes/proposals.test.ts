@@ -1709,6 +1709,46 @@ describe('proposal routes', () => {
 		]);
 	});
 
+	it.each(['financial_graph_mismatch', 'quarantined_provider_transaction'])(
+		'short-circuits a quarantined known-ID provider carrying a %s audit before provider I/O',
+		async (conflictType) => {
+			const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+				`Quarantined recovery ${conflictType.replaceAll('_', ' ')}`,
+			);
+			const { db } = getTestDatabase();
+			await db
+				.update(entityTrustapTransactions)
+				.set({ quarantined: true })
+				.where(eq(entityTrustapTransactions.id, provider.id));
+			await db.insert(commerce_reconciliation_audit).values({
+				conflict_type: conflictType,
+				source_table: 'orders',
+				source_row_id: reservation.id,
+				canonical_row_id: provider.id,
+				original_reference: transactionId,
+				snapshot: { reason: 'test-local quarantined provider evidence' },
+			});
+			const getTransactionStatus = vi.spyOn(PaymentProviderService.prototype, 'getTransactionStatus');
+
+			const first = await new TransactionSyncService().syncTransactionStatuses();
+			const second = await new TransactionSyncService().syncTransactionStatuses();
+
+			expect(getTransactionStatus).not.toHaveBeenCalled();
+			for (const sync of [first, second]) {
+				expect(sync.syncedTransactions).toBe(0);
+				expect(sync.failedTransactions).toBe(1);
+				expect(sync.results).toContainEqual({
+					transactionId,
+					orderId: reservation.id,
+					requiresManualReconciliation: true,
+					success: false,
+					error: 'Provider evidence is quarantined; manual reconciliation is required',
+				});
+			}
+			getTransactionStatus.mockRestore();
+		},
+	);
+
 	it('creates one durable audit when concurrent syncs observe the same no-provider mismatch', async () => {
 		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
 			'Concurrent no provider mismatch item',
@@ -1997,6 +2037,7 @@ describe('proposal routes', () => {
 			});
 
 		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		let sync: Awaited<typeof syncPromise> | undefined;
 		try {
 			await providerRead;
 			const webhook = await app.request('/webhooks/trustap/transaction-update', {
@@ -2013,12 +2054,22 @@ describe('proposal routes', () => {
 			});
 			expect(webhook.status).toBe(200);
 			releaseProviderRead();
-			await syncPromise;
+			sync = await syncPromise;
 		} finally {
 			releaseProviderRead();
 			await syncPromise.catch(() => undefined);
 			getTransactionStatus.mockRestore();
 		}
+		if (!sync) throw new Error('Transaction sync did not complete');
+
+		expect(sync.syncedTransactions).toBe(0);
+		expect(sync.failedTransactions).toBe(1);
+		expect(sync.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			success: false,
+			error: 'Provider response was superseded by newer durable evidence; retry later',
+		});
 
 		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
 			expect.objectContaining({
@@ -2035,6 +2086,264 @@ describe('proposal routes', () => {
 				.from(commerce_reconciliation_audit)
 				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
 		).toEqual([]);
+	});
+
+	it('processes a fetched forward status after a concurrent local status advance', async () => {
+		const { provider, proposal, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Forward provider advancement recovery race item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const initialRemote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!initialRemote) throw new Error('Missing remote transaction for forward provider advancement race');
+		let signalProviderRead!: () => void;
+		let releaseProviderRead!: () => void;
+		const providerRead = new Promise<void>((resolve) => {
+			signalProviderRead = resolve;
+		});
+		const providerRelease = new Promise<void>((resolve) => {
+			releaseProviderRead = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				signalProviderRead();
+				await providerRelease;
+				return { ...initialRemote, status: entityTrustapTransactionTypeValues.PAID };
+			});
+
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		let sync: Awaited<typeof syncPromise> | undefined;
+		try {
+			await providerRead;
+			await db
+				.update(entityTrustapTransactions)
+				.set({ status: entityTrustapTransactionTypeValues.JOINED })
+				.where(eq(entityTrustapTransactions.id, provider.id));
+			releaseProviderRead();
+			sync = await syncPromise;
+		} finally {
+			releaseProviderRead();
+			await syncPromise.catch(() => undefined);
+			getTransactionStatus.mockRestore();
+		}
+		if (!sync) throw new Error('Transaction sync did not complete');
+
+		expect(sync.syncedTransactions).toBe(1);
+		expect(sync.failedTransactions).toBe(0);
+		expect(sync.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			recovered: true,
+			success: true,
+		});
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.PAYMENT_CONFIRMED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.PAID, quarantined: false })]);
+	});
+
+	it('returns an honest resolved-superseded success when another recovery wins during provider I/O', async () => {
+		const { reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Concurrent successful recovery item',
+		);
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const remote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!remote) throw new Error('Missing remote transaction for concurrent successful recovery');
+		let calls = 0;
+		let signalBothReads!: () => void;
+		let releaseReads!: () => void;
+		const bothReads = new Promise<void>((resolve) => {
+			signalBothReads = resolve;
+		});
+		const readsReleased = new Promise<void>((resolve) => {
+			releaseReads = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				calls += 1;
+				if (calls === 2) signalBothReads();
+				await readsReleased;
+				return remote;
+			});
+
+		const firstPromise = new TransactionSyncService().syncTransactionStatuses();
+		const secondPromise = new TransactionSyncService().syncTransactionStatuses();
+		let runs: [Awaited<typeof firstPromise>, Awaited<typeof secondPromise>] | undefined;
+		try {
+			await bothReads;
+			releaseReads();
+			runs = await Promise.all([firstPromise, secondPromise]);
+		} finally {
+			releaseReads();
+			await Promise.allSettled([firstPromise, secondPromise]);
+			getTransactionStatus.mockRestore();
+		}
+		if (!runs) throw new Error('Concurrent transaction sync did not complete');
+
+		expect(calls).toBe(2);
+		expect(runs.map(({ totalTransactions }) => totalTransactions)).toEqual([1, 1]);
+		expect(runs.map(({ syncedTransactions }) => syncedTransactions)).toEqual([1, 1]);
+		expect(runs.map(({ failedTransactions }) => failedTransactions)).toEqual([0, 0]);
+		expect(runs.flatMap(({ results }) => results)).toEqual(
+			expect.arrayContaining([
+				{ transactionId, orderId: reservation.id, recovered: true, success: true },
+				{ transactionId, orderId: reservation.id, success: true, superseded: true },
+			]),
+		);
+	});
+
+	it('audits immutable provider drift that occurs while a known-ID GET is in flight', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Immutable provider drift recovery item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const remote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!remote) throw new Error('Missing remote transaction for immutable provider drift');
+		let signalProviderRead!: () => void;
+		let releaseProviderRead!: () => void;
+		const providerRead = new Promise<void>((resolve) => {
+			signalProviderRead = resolve;
+		});
+		const providerRelease = new Promise<void>((resolve) => {
+			releaseProviderRead = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				signalProviderRead();
+				await providerRelease;
+				return remote;
+			});
+
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		let sync: Awaited<typeof syncPromise> | undefined;
+		try {
+			await providerRead;
+			await db
+				.update(entityTrustapTransactions)
+				.set({ price: remote.price + 1 })
+				.where(eq(entityTrustapTransactions.id, provider.id));
+			releaseProviderRead();
+			sync = await syncPromise;
+		} finally {
+			releaseProviderRead();
+			await syncPromise.catch(() => undefined);
+			getTransactionStatus.mockRestore();
+		}
+		if (!sync) throw new Error('Transaction sync did not complete');
+
+		expect(sync.results).toContainEqual(
+			expect.objectContaining({
+				transactionId,
+				orderId: reservation.id,
+				requiresManualReconciliation: true,
+				success: false,
+			}),
+		);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ price: remote.price + 1, quarantined: true })]);
+		expect(
+			(
+				await db
+					.select({
+						conflictType: commerce_reconciliation_audit.conflict_type,
+						sourceTable: commerce_reconciliation_audit.source_table,
+						sourceRowId: commerce_reconciliation_audit.source_row_id,
+						canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					})
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
+			).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable)),
+		).toEqual([
+			{
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'entity_trustap_transactions',
+				sourceRowId: provider.id,
+				canonicalRowId: reservation.id,
+			},
+			{
+				conflictType: 'runtime_transaction_correlation_mismatch',
+				sourceTable: 'orders',
+				sourceRowId: reservation.id,
+				canonicalRowId: provider.id,
+			},
+		]);
+	});
+
+	it('audits a divergent local status branch that wins while a known-ID GET is in flight', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Divergent provider recovery item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const initialRemote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!initialRemote) throw new Error('Missing remote transaction for divergent provider recovery');
+		let signalProviderRead!: () => void;
+		let releaseProviderRead!: () => void;
+		const providerRead = new Promise<void>((resolve) => {
+			signalProviderRead = resolve;
+		});
+		const providerRelease = new Promise<void>((resolve) => {
+			releaseProviderRead = resolve;
+		});
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				signalProviderRead();
+				await providerRelease;
+				return { ...initialRemote, status: entityTrustapTransactionTypeValues.CANCELLED };
+			});
+
+		const syncPromise = new TransactionSyncService().syncTransactionStatuses();
+		let sync: Awaited<typeof syncPromise> | undefined;
+		try {
+			await providerRead;
+			await db
+				.update(entityTrustapTransactions)
+				.set({ status: entityTrustapTransactionTypeValues.PAID })
+				.where(eq(entityTrustapTransactions.id, provider.id));
+			await db.update(orders).set({ status: ORDER_PHASES.PAYMENT_CONFIRMED }).where(eq(orders.id, reservation.id));
+			releaseProviderRead();
+			sync = await syncPromise;
+		} finally {
+			releaseProviderRead();
+			await syncPromise.catch(() => undefined);
+			getTransactionStatus.mockRestore();
+		}
+		if (!sync) throw new Error('Transaction sync did not complete');
+
+		expect(sync.results).toContainEqual(
+			expect.objectContaining({
+				transactionId,
+				orderId: reservation.id,
+				requiresManualReconciliation: true,
+				success: false,
+			}),
+		);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.PAID, quarantined: true })]);
+		expect(
+			await db
+				.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([
+			{ conflictType: 'runtime_transaction_lineage_mismatch' },
+			{ conflictType: 'runtime_transaction_lineage_mismatch' },
+		]);
 	});
 
 	it('ignores a reverse-reachable stale provider response without quarantining current progress', async () => {
@@ -2067,7 +2376,7 @@ describe('proposal routes', () => {
 		).toEqual([]);
 	});
 
-	it('keeps complaint reconciliation when known-ID recovery only observes delivered', async () => {
+	it('keeps complaint reconciliation across delivered replays until an authoritative resolution arrives', async () => {
 		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
 			'Complaint delivered recovery item',
 		);
@@ -2083,6 +2392,7 @@ describe('proposal routes', () => {
 		);
 
 		await new TransactionSyncService().syncTransactionStatuses();
+		await new TransactionSyncService().syncTransactionStatuses();
 
 		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
 			expect.objectContaining({
@@ -2093,6 +2403,25 @@ describe('proposal routes', () => {
 		expect(
 			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
 		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.DELIVERED, quarantined: false })]);
+
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+		);
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([
+			expect.objectContaining({ status: entityTrustapTransactionTypeValues.FUNDS_RELEASED, quarantined: false }),
+		]);
 	});
 
 	it('does not let known-ID recovery cross the complained to rejected terminal branch', async () => {
@@ -2166,13 +2495,22 @@ describe('proposal routes', () => {
 				})
 				.from(commerce_reconciliation_audit)
 				.where(eq(commerce_reconciliation_audit.original_reference, transactionId))
-		).sort((left, right) => left.sourceTable.localeCompare(right.sourceTable));
+		).sort(
+			(left, right) =>
+				left.sourceTable.localeCompare(right.sourceTable) || left.conflictType.localeCompare(right.conflictType),
+		);
 		expect(audits).toEqual([
 			{
 				conflictType: 'runtime_transaction_lineage_mismatch',
 				sourceTable: 'entity_trustap_transactions',
 				sourceRowId: storedProvider!.id,
 				canonicalRowId: reservation.id,
+			},
+			{
+				conflictType: 'runtime_complaint_reconciliation_pending',
+				sourceTable: 'orders',
+				sourceRowId: reservation.id,
+				canonicalRowId: null,
 			},
 			{
 				conflictType: 'runtime_transaction_lineage_mismatch',
@@ -2195,7 +2533,7 @@ describe('proposal routes', () => {
 				.select({ id: commerce_reconciliation_audit.id })
 				.from(commerce_reconciliation_audit)
 				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
-		).toHaveLength(2);
+		).toHaveLength(3);
 	});
 
 	it('recovers every known Trustap state without a false proposal or payment invitation', async () => {
