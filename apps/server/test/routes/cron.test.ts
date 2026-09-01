@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +29,7 @@ import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures
 import { app } from '../../src/app';
 import { environment } from '../../src/utils/constants';
 import { PaymentProviderService } from '../../src/routes/payments/payment-provider.service';
+import type { CancelGuestTransactionProps, CreateTransactionResponse } from '../../src/routes/payments/types';
 
 function providerUrl(name: 'PAYMENT_PROVIDER_API_URL'): string {
 	const value = process.env[name];
@@ -40,6 +42,21 @@ const cronRoutes = [
 	['expired-proposals-check', 'proposals-cron-test-key'],
 	['sync-transactions', 'transactions-cron-test-key'],
 ] as const;
+
+function cancelledTrustapResponse(snapshot: CancelGuestTransactionProps): CreateTransactionResponse {
+	return {
+		...trustapTransactionFixture,
+		id: snapshot.transaction_id,
+		buyer_id: snapshot.buyer_id,
+		seller_id: snapshot.seller_id,
+		currency: snapshot.currency,
+		description: snapshot.description,
+		price: snapshot.price,
+		charge: snapshot.charge,
+		charge_seller: snapshot.charge_seller,
+		status: entityTrustapTransactionTypeValues.CANCELLED,
+	};
+}
 
 describe('scheduled job authentication', () => {
 	it.each(cronRoutes)('allows %s with its exact job key and no user cookie', async (route, key) => {
@@ -208,8 +225,9 @@ describe('commerce expiry cron routes', () => {
 					}),
 				});
 				expect(webhookResponse.status).toBe(200);
+				throw new Error('Simulated ambiguous cancellation response after paid webhook');
 			}
-			return trustapTransactionFixture as never;
+			return cancelledTrustapResponse(snapshot);
 		});
 
 		const response = await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
@@ -392,10 +410,10 @@ describe('commerce expiry cron routes', () => {
 		const providerWasCalled = new Promise<void>((resolve) => {
 			providerStarted = resolve;
 		});
-		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
 			providerStarted();
 			await providerReleased;
-			return trustapTransactionFixture as never;
+			return cancelledTrustapResponse(snapshot);
 		});
 
 		const cronResponsePromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
@@ -432,6 +450,158 @@ describe('commerce expiry cron routes', () => {
 		const buyerOrder = await authenticatedRequest(`/orders/auth/${order.id}`, 'GET', actors.buyer.jar);
 		expect(buyerOrder.status).toBe(200);
 	});
+
+	it.each([
+		{
+			providerStatus: entityTrustapTransactionTypeValues.DELIVERED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			confirmationLabel: 'confirmed',
+			cancellationConfirmed: true,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			confirmationLabel: 'confirmed',
+			cancellationConfirmed: true,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.DELIVERED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			confirmationLabel: 'ambiguous',
+			cancellationConfirmed: false,
+		},
+		{
+			providerStatus: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+			orderStatus: ORDER_PHASES.COMPLETED,
+			confirmationLabel: 'ambiguous',
+			cancellationConfirmed: false,
+		},
+	] as const)(
+		'keeps a $providerStatus webhook winner but requires reconciliation when cancellation confirmation is $confirmationLabel',
+		async ({ providerStatus, orderStatus, cancellationConfirmed }) => {
+			const { item, order } = await createPayableExpiredCandidate();
+			const { db } = getTestDatabase();
+			let signalProviderStarted!: () => void;
+			let releaseProvider!: () => void;
+			const providerStarted = new Promise<void>((resolve) => {
+				signalProviderStarted = resolve;
+			});
+			const providerReleased = new Promise<void>((resolve) => {
+				releaseProvider = resolve;
+			});
+			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
+				signalProviderStarted();
+				await providerReleased;
+				if (!cancellationConfirmed) throw new Error('Simulated ambiguous cancellation response');
+				return cancelledTrustapResponse(snapshot);
+			});
+
+			const cronPromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+			try {
+				await providerStarted;
+				const webhook = await app.request('/webhooks/trustap/transaction-update', {
+					method: 'POST',
+					headers: {
+						Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						event: 'transaction_updated',
+						transaction_id: trustapTransactionFixture.id,
+						status: providerStatus,
+					}),
+				});
+				expect(webhook.status).toBe(200);
+				releaseProvider();
+				const response = await cronPromise;
+				expect(response.status).toBe(200);
+				expect(await response.json()).toMatchObject(
+					cancellationConfirmed
+						? { reconciliation_required: [{ id: order.id }], cancellation_superseded: [] }
+						: { reconciliation_required: [], cancellation_superseded: [{ id: order.id }] },
+				);
+			} finally {
+				releaseProvider();
+				await Promise.resolve(cronPromise).catch(() => undefined);
+			}
+
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+			expect(storedOrder).toMatchObject({
+				status: orderStatus,
+				payment_cancellation_state: cancellationConfirmed
+					? PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED
+					: PAYMENT_CANCELLATION_STATES.NONE,
+			});
+			expect(storedProvider).toMatchObject({
+				status: providerStatus,
+				quarantined: cancellationConfirmed,
+			});
+			const audits = await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					canonicalRowId: commerce_reconciliation_audit.canonical_row_id,
+					snapshot: commerce_reconciliation_audit.snapshot,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, String(trustapTransactionFixture.id)));
+			if (!cancellationConfirmed) {
+				expect(audits).toEqual([]);
+				return;
+			}
+			expect(audits).toHaveLength(2);
+			expect(
+				audits
+					.map(({ conflictType, sourceTable, sourceRowId, canonicalRowId }) => ({
+						conflictType,
+						sourceTable,
+						sourceRowId,
+						canonicalRowId,
+					}))
+					.sort((left, right) => left.sourceTable.localeCompare(right.sourceTable)),
+			).toEqual([
+				{
+					conflictType: 'runtime_cron_cancellation_confirmed_state_conflict',
+					sourceTable: 'entity_trustap_transactions',
+					sourceRowId: storedProvider!.id,
+					canonicalRowId: order.id,
+				},
+				{
+					conflictType: 'runtime_cron_cancellation_confirmed_state_conflict',
+					sourceTable: 'orders',
+					sourceRowId: order.id,
+					canonicalRowId: storedProvider!.id,
+				},
+			]);
+			const expectedConfirmedCancellation = cancelledTrustapResponse({
+				transaction_id: String(trustapTransactionFixture.id),
+				acting_provider_user_id: trustapTransactionFixture.buyer_id,
+				buyer_id: trustapTransactionFixture.buyer_id,
+				seller_id: trustapTransactionFixture.seller_id,
+				currency: 'eur',
+				description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
+				price: trustapTransactionFixture.price,
+				charge: trustapTransactionFixture.charge,
+				charge_seller: trustapTransactionFixture.charge_seller,
+			});
+			for (const audit of audits) {
+				expect(audit.snapshot).toMatchObject({
+					confirmedCancellation: expectedConfirmedCancellation,
+					provider: { status: providerStatus },
+					order: { status: orderStatus },
+				});
+				expect((audit.snapshot as { confirmedCancellation: unknown }).confirmedCancellation).toEqual(
+					expectedConfirmedCancellation,
+				);
+				expect(JSON.stringify(audit.snapshot)).not.toMatch(/authorization|cookie|secret|api_key/iu);
+			}
+		},
+	);
 
 	it.each([
 		{
@@ -503,10 +673,7 @@ describe('commerce expiry cron routes', () => {
 			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
 				providerStarted();
 				await providerReleased;
-				if (providerStatus === entityTrustapTransactionTypeValues.PAID) {
-					throw new Error('Simulated ambiguous cancellation response after paid webhook');
-				}
-				return trustapTransactionFixture as never;
+				throw new Error(`Simulated ambiguous cancellation response after ${providerStatus} webhook`);
 			});
 
 			const cronResponsePromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
@@ -777,10 +944,10 @@ describe('commerce expiry cron routes', () => {
 		const cancellationReleased = new Promise<void>((resolve) => {
 			releaseCancellation = resolve;
 		});
-		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+		vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
 			signalCancellationStarted();
 			await cancellationReleased;
-			return trustapTransactionFixture as never;
+			return cancelledTrustapResponse(snapshot);
 		});
 
 		const cronPromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
@@ -861,6 +1028,75 @@ describe('commerce expiry cron routes', () => {
 		).toEqual([{ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true }]);
 	});
 
+	it.each(['item_price', 'platform_charge', 'provider_charge', 'proposal_id', 'payment_attempt_id'] as const)(
+		'audits immutable order %s drift that occurs while provider cancellation is in flight',
+		async (field) => {
+			const { actors, item, order } = await createPayableExpiredCandidate();
+			const { db } = getTestDatabase();
+			const proposal = await createProposalFixture(actors, item);
+			let signalProviderStarted!: () => void;
+			let releaseProvider!: () => void;
+			const providerStarted = new Promise<void>((resolve) => {
+				signalProviderStarted = resolve;
+			});
+			const providerReleased = new Promise<void>((resolve) => {
+				releaseProvider = resolve;
+			});
+			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
+				signalProviderStarted();
+				await providerReleased;
+				return cancelledTrustapResponse(snapshot);
+			});
+
+			const cronPromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+			try {
+				await providerStarted;
+				await db
+					.update(orders)
+					.set(
+						field === 'item_price'
+							? { item_price: order.item_price + 1 }
+							: field === 'platform_charge'
+								? { platform_charge: order.platform_charge + 1 }
+								: field === 'provider_charge'
+									? { payment_provider_charge: order.payment_provider_charge + 1 }
+									: field === 'proposal_id'
+										? { order_proposal_id: proposal.id }
+										: { payment_attempt_id: randomUUID() },
+					)
+					.where(eq(orders.id, order.id));
+				releaseProvider();
+				const response = await cronPromise;
+				expect(response.status).toBe(200);
+				expect(await response.json()).toMatchObject({
+					orders: [],
+					reconciliation_required: [{ id: order.id }],
+					cancellation_superseded: [],
+				});
+			} finally {
+				releaseProvider();
+				await Promise.resolve(cronPromise).catch(() => undefined);
+			}
+
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			const [storedProvider] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+			expect(storedOrder).toMatchObject({
+				status: ORDER_PHASES.PAYMENT_PENDING,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			});
+			expect(storedProvider).toMatchObject({ status: entityTrustapTransactionTypeValues.CREATED, quarantined: true });
+			expect(
+				await db
+					.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+					.from(commerce_reconciliation_audit)
+					.where(eq(commerce_reconciliation_audit.original_reference, String(trustapTransactionFixture.id))),
+			).toHaveLength(2);
+		},
+	);
+
 	it.each(['replacement', 'null'] as const)(
 		'audits and quarantines the original provider when the order transaction link changes to %s during cancellation',
 		async (linkMode) => {
@@ -898,10 +1134,10 @@ describe('commerce expiry cron routes', () => {
 			const cancellationReleased = new Promise<void>((resolve) => {
 				releaseCancellation = resolve;
 			});
-			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async () => {
+			vi.spyOn(PaymentProviderService.prototype, 'cancelGuestTransaction').mockImplementation(async (snapshot) => {
 				signalCancellationStarted();
 				await cancellationReleased;
-				return trustapTransactionFixture as never;
+				return cancelledTrustapResponse(snapshot);
 			});
 
 			const cronPromise = app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');

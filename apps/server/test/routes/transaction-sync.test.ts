@@ -13,9 +13,12 @@ import {
 	PAYMENT_INVITATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
 import {
+	chat_messages,
+	chat_rooms,
 	commerce_reconciliation_audit,
 	entityTrustapTransactions,
 	orders,
+	orders_proposals,
 	payment_invitation_outbox,
 	profiles,
 	shipping_label_purchases,
@@ -442,6 +445,119 @@ describe('Trustap transaction polling state mapping', () => {
 			status: ORDER_PHASES.PAYMENT_PENDING,
 			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
 		});
+		expect(
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					originalReference: commerce_reconciliation_audit.original_reference,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([
+			{
+				conflictType: 'runtime_complaint_reconciliation_pending',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				originalReference: transactionId,
+			},
+		]);
+
+		expect((await postTrustapStatus(transactionId, entityTrustapTransactionTypeValues.DELIVERED)).status).toBe(200);
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.DELIVERED,
+		);
+		await new TransactionSyncService().syncTransactionStatuses();
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+
+		expect((await postTrustapStatus(transactionId, entityTrustapTransactionTypeValues.FUNDS_RELEASED)).status).toBe(
+			200,
+		);
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+	});
+
+	it('leaves an authoritative polled result recoverable while its linked proposal is pending', async () => {
+		const { actors, item, order, transactionId } = await createStaleProviderBackedOrder();
+		const proposal = await createProposalFixture(actors, item);
+		const { db } = getTestDatabase();
+		const [room] = await db
+			.insert(chat_rooms)
+			.values({ item_id: item.id, buyer_id: actors.buyer.profile.id })
+			.returning();
+		if (!room) throw new Error('Missing proposal recovery room');
+		await db
+			.update(orders)
+			.set({
+				order_proposal_id: proposal.id,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			})
+			.where(eq(orders.id, order.id));
+		const [temporaryRecoveryExclusion] = await db
+			.insert(commerce_reconciliation_audit)
+			.values({
+				conflict_type: 'runtime_transaction_correlation_mismatch',
+				source_table: 'orders',
+				source_row_id: order.id,
+				original_reference: transactionId,
+				snapshot: { reason: 'test ordinary poller before known-id recovery' },
+			})
+			.returning({ id: commerce_reconciliation_audit.id });
+		if (!temporaryRecoveryExclusion) throw new Error('Missing temporary recovery exclusion');
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.pending }),
+		]);
+		await db
+			.delete(commerce_reconciliation_audit)
+			.where(eq(commerce_reconciliation_audit.id, temporaryRecoveryExclusion.id));
+
+		await new TransactionSyncService().syncTransactionStatuses();
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		expect(
+			(await db.select().from(chat_messages).where(eq(chat_messages.chat_room_id, room.id))).filter(
+				(message) => (message.metadata as { type?: string } | null)?.type === 'proposal_accepted',
+			),
+		).toHaveLength(1);
+		expect(
+			await db.select().from(payment_invitation_outbox).where(eq(payment_invitation_outbox.order_id, order.id)),
+		).toEqual([]);
 	});
 
 	it('closes polled complaint reconciliation when the complaint period authoritatively ends', async () => {

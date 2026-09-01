@@ -4,10 +4,11 @@ import { bodyLimit } from 'hono/body-limit';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
-import { commerce_reconciliation_audit, entityTrustapTransactions, orders } from '#db-schema';
+import { commerce_reconciliation_audit, entityTrustapTransactions, orders, orders_proposals } from '#db-schema';
 import {
 	entityTrustapTransactionStatusValues,
 	entityTrustapTransactionTypeValues,
+	ORDER_PROPOSAL_PHASES,
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '#database/schemas/enumerated_values';
@@ -26,6 +27,7 @@ import {
 	shippingLabelPurchaseDefersOrderTransition,
 } from '#lib/shipping-label-transition-guard';
 import { authenticateTrustapWebhook } from './basic-auth';
+import { complaintRequiresDurableReconciliation } from '../payments/complaint-reconciliation';
 
 // Trustap v1 webhook JSON is small; bound buffering before parsing to 64 KiB.
 const maxWebhookBodySize = 64 * 1024;
@@ -128,6 +130,7 @@ export const webhooksRoute = createRouter().post(
 						status: orders.status,
 						paymentCancellationState: orders.payment_cancellation_state,
 						paymentCreationState: orders.payment_creation_state,
+						proposalId: orders.order_proposal_id,
 					})
 					.from(orders)
 					.where(eq(orders.payment_transaction_id, payload.transaction_id))
@@ -139,6 +142,16 @@ export const webhooksRoute = createRouter().post(
 				if (order.itemId !== identity.entityId) {
 					return c.json({ error: 'Order transaction conflict' }, 409);
 				}
+				const [linkedProposal] =
+					order.proposalId === null
+						? []
+						: await tx
+								.select({ status: orders_proposals.status })
+								.from(orders_proposals)
+								.where(eq(orders_proposals.id, order.proposalId))
+								.for('update')
+								.limit(1);
+				const linkedProposalIsPending = linkedProposal?.status === ORDER_PROPOSAL_PHASES.pending;
 				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
 				const providerLineageApplies = isReachableOrSameTrustapTransition(
 					trustapTransaction.status,
@@ -198,24 +211,38 @@ export const webhooksRoute = createRouter().post(
 					payload.status,
 					transition,
 				);
-				const complaintRequiresReconciliation =
-					payload.status === entityTrustapTransactionTypeValues.COMPLAINED &&
-					order.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 				const resolvesCreationReconciliation =
 					order.paymentCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
-					isAuthoritativeCreationResolutionStatus(payload.status);
+					isAuthoritativeCreationResolutionStatus(payload.status) &&
+					!linkedProposalIsPending;
+				const mayMutateOrderState =
+					transition.apply ||
+					Boolean(cancellationSettlement) ||
+					payload.status === entityTrustapTransactionTypeValues.COMPLAINED ||
+					resolvesCreationReconciliation;
+				if (mayMutateOrderState && (await shippingLabelPurchaseDefersOrderTransition(tx, order.id))) {
+					return c.json({ error: SHIPPING_LABEL_TRANSITION_DEFERRED }, 503);
+				}
+				const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
+					orderId: order.id,
+					providerId: trustapTransaction.id,
+					transactionId: payload.transaction_id,
+					currentProviderStatus: trustapTransaction.status,
+					incomingProviderStatus: payload.status,
+				});
+				const complaintRequiresReconciliation = complaintReconciliation.required;
 				if (
 					!transition.apply &&
 					!cancellationSettlement &&
-					!complaintRequiresReconciliation &&
+					!complaintReconciliation.inserted &&
+					!(
+						complaintRequiresReconciliation &&
+						order.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
+					) &&
 					!resolvesCreationReconciliation
 				) {
 					return c.json({ success: true, message: 'Transaction update ignored' }, 200);
 				}
-				if (await shippingLabelPurchaseDefersOrderTransition(tx, order.id)) {
-					return c.json({ error: SHIPPING_LABEL_TRANSITION_DEFERRED }, 503);
-				}
-
 				// Update transaction status
 				if (transition.apply) {
 					const [updatedTransaction] = await tx
@@ -237,7 +264,7 @@ export const webhooksRoute = createRouter().post(
 					.update(orders)
 					.set({
 						status: cancellationSettlement?.orderStatus ?? transition.orderStatus,
-						...(payload.status === entityTrustapTransactionTypeValues.COMPLAINED
+						...(complaintRequiresReconciliation
 							? { payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED }
 							: resolvesCreationReconciliation
 								? { payment_creation_state: PAYMENT_CREATION_STATES.CREATED }

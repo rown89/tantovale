@@ -684,8 +684,14 @@ describe('Trustap transaction webhook state mapping', () => {
 		const { order, transactionId } = await createProviderBackedOrder();
 
 		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.COMPLAINED)).status).toBe(200);
-
 		const { db } = getTestDatabase();
+		const [afterFirstOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [afterFirstProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.COMPLAINED)).status).toBe(200);
+
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		const [storedProvider] = await db
 			.select()
@@ -696,6 +702,26 @@ describe('Trustap transaction webhook state mapping', () => {
 			payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
 		});
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.COMPLAINED);
+		expect(storedOrder?.updated_at).toEqual(afterFirstOrder?.updated_at);
+		expect(storedProvider?.updated_at).toEqual(afterFirstProvider?.updated_at);
+		expect(
+			await db
+				.select({
+					conflictType: commerce_reconciliation_audit.conflict_type,
+					sourceTable: commerce_reconciliation_audit.source_table,
+					sourceRowId: commerce_reconciliation_audit.source_row_id,
+					originalReference: commerce_reconciliation_audit.original_reference,
+				})
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([
+			{
+				conflictType: 'runtime_complaint_reconciliation_pending',
+				sourceTable: 'orders',
+				sourceRowId: order.id,
+				originalReference: transactionId,
+			},
+		]);
 	});
 
 	it('closes complaint reconciliation when the complaint period authoritatively ends', async () => {

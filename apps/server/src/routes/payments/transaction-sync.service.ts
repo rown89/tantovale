@@ -41,6 +41,7 @@ import {
 import type { TrustapId } from './trustap-int64';
 import { PaymentInvitationOutboxService } from './payment-invitation-outbox.service';
 import type { GetTransactionStatusResponse } from './types';
+import { complaintRequiresDurableReconciliation } from './complaint-reconciliation';
 import {
 	SHIPPING_LABEL_TRANSITION_DEFERRED,
 	shippingLabelPurchaseDefersOrderTransition,
@@ -103,8 +104,6 @@ const durableRecoveryConflictTypes = [
 	'runtime_terminal_provider_status_conflict',
 	'runtime_polling_correlation_mismatch',
 ] as const;
-
-const complaintReconciliationMarker = 'runtime_complaint_reconciliation_pending';
 
 function recoveryProviderImmutableSnapshotIsEqual(
 	initial: RecoveryProviderSnapshot,
@@ -626,11 +625,22 @@ export class TransactionSyncService {
 						await auditRecoveryConflict('runtime_transaction_lineage_mismatch');
 						return 'unreachable' as const;
 					}
-					if (reservation.paymentCreationState === PAYMENT_CREATION_STATES.CREATED) {
+					const creationAlreadyResolved = reservation.paymentCreationState === PAYMENT_CREATION_STATES.CREATED;
+					const cancellationRequiresSettlement =
+						reservation.paymentCancellationState === PAYMENT_CANCELLATION_STATES.CANCELLING ||
+						reservation.paymentCancellationState === PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+					if (
+						creationAlreadyResolved &&
+						(statusRelation === 'same' || statusRelation === 'stale') &&
+						!cancellationRequiresSettlement
+					) {
 						return 'resolved-superseded' as const;
 					}
+					if (statusRelation === 'stale') {
+						return 'stale' as const;
+					}
 					if (
-						statusRelation === 'stale' ||
+						!creationAlreadyResolved &&
 						reservation.paymentCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 					) {
 						return 'stale' as const;
@@ -654,36 +664,14 @@ export class TransactionSyncService {
 						recoveryTransition,
 					);
 					const recoveredOrderStatus = cancellationSettlement?.orderStatus ?? recoveryTransition.orderStatus;
-					const [existingComplaintMarker] = await tx
-						.select({ id: commerce_reconciliation_audit.id })
-						.from(commerce_reconciliation_audit)
-						.where(
-							and(
-								eq(commerce_reconciliation_audit.conflict_type, complaintReconciliationMarker),
-								eq(commerce_reconciliation_audit.source_table, 'orders'),
-								eq(commerce_reconciliation_audit.source_row_id, reservation.id),
-							),
-						)
-						.limit(1);
-					const complaintRequiresDurableReconciliation =
-						remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED ||
-						((existingComplaintMarker !== undefined ||
-							existingTransaction?.status === entityTrustapTransactionTypeValues.COMPLAINED) &&
-							!isAuthoritativeCreationResolutionStatus(remoteStatus));
-					if (complaintRequiresDurableReconciliation && !existingComplaintMarker) {
-						await tx.insert(commerce_reconciliation_audit).values({
-							conflict_type: complaintReconciliationMarker,
-							source_table: 'orders',
-							source_row_id: reservation.id,
-							canonical_row_id: existingTransaction?.id ?? null,
-							original_reference: transactionId,
-							snapshot: {
-								reason: 'complaint_requires_authoritative_resolution',
-								providerStatusBefore: existingTransaction?.status ?? null,
-								remoteStatus,
-							},
-						});
-					}
+					const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
+						orderId: reservation.id,
+						providerId: existingTransaction?.id ?? null,
+						transactionId,
+						currentProviderStatus: existingTransaction?.status,
+						incomingProviderStatus: remoteStatus,
+					});
+					const complaintRequiresReconciliation = complaintReconciliation.required;
 					if (!existingTransaction) {
 						await tx.insert(entityTrustapTransactions).values({
 							entityId: itemId,
@@ -708,7 +696,7 @@ export class TransactionSyncService {
 							.where(eq(entityTrustapTransactions.id, existingTransaction.id));
 					}
 
-					if (reservation.proposalId !== null) {
+					if (reservation.proposalId !== null && !creationAlreadyResolved) {
 						const proposalId = reservation.proposalId;
 						const [currentProposal] = await tx
 							.select({ status: orders_proposals.status })
@@ -769,7 +757,7 @@ export class TransactionSyncService {
 						.set({
 							payment_transaction_id: transactionId,
 							legacy_payment_transaction_id: null,
-							payment_creation_state: complaintRequiresDurableReconciliation
+							payment_creation_state: complaintRequiresReconciliation
 								? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
 								: PAYMENT_CREATION_STATES.CREATED,
 							status: recoveredOrderStatus,
@@ -781,14 +769,17 @@ export class TransactionSyncService {
 							updated_at: new Date(),
 						})
 						.where(
-							and(
-								eq(orders.id, reservation.id),
-								eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED),
-							),
+							and(eq(orders.id, reservation.id), eq(orders.payment_creation_state, reservation.paymentCreationState)),
 						)
 						.returning({ id: orders.id });
 					if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
-					return 'recovered' as const;
+					return creationAlreadyResolved
+						? {
+								outcome: 'advanced-resolved' as const,
+								oldStatus: existingTransaction?.status ?? remoteStatus,
+								newStatus: remoteStatus,
+							}
+						: ('recovered' as const);
 				});
 				if (recoveryOutcome === 'quarantined') {
 					results.push({
@@ -830,6 +821,17 @@ export class TransactionSyncService {
 						orderId: candidate.orderId,
 						success: false,
 						error: 'Provider response was superseded by newer durable evidence; retry later',
+					});
+					continue;
+				}
+				if (typeof recoveryOutcome === 'object' && recoveryOutcome.outcome === 'advanced-resolved') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						oldStatus: recoveryOutcome.oldStatus,
+						newStatus: recoveryOutcome.newStatus,
+						recovered: true,
+						success: true,
 					});
 					continue;
 				}
@@ -895,6 +897,7 @@ export class TransactionSyncService {
 					orderStatus: orders.status,
 					orderCreationState: orders.payment_creation_state,
 					orderCancellationState: orders.payment_cancellation_state,
+					orderProposalId: orders.order_proposal_id,
 					orderItemPrice: orders.item_price,
 					orderPlatformCharge: orders.platform_charge,
 					orderProviderCharge: orders.payment_provider_charge,
@@ -953,6 +956,16 @@ export class TransactionSyncService {
 			if (current.entityId === null || current.orderId === null || current.orderStatus === null) {
 				throw new Error('Trustap transaction lost its local graph after correlation');
 			}
+			const [linkedProposal] =
+				current.orderProposalId === null
+					? []
+					: await tx
+							.select({ status: orders_proposals.status })
+							.from(orders_proposals)
+							.where(eq(orders_proposals.id, current.orderProposalId))
+							.for('update')
+							.limit(1);
+			const linkedProposalIsPending = linkedProposal?.status === ORDER_PROPOSAL_PHASES.pending;
 			const transition = resolveTrustapOrderTransition(current.status, current.orderStatus, remoteStatus);
 			const providerLineageApplies = isReachableOrSameTrustapTransition(current.status, remoteStatus, transition);
 			if (!providerLineageApplies) return { outcome: 'ignored' };
@@ -996,24 +1009,38 @@ export class TransactionSyncService {
 				remoteStatus,
 				transition,
 			);
-			const complaintRequiresReconciliation =
-				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED &&
-				current.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED;
 			const resolvesCreationReconciliation =
 				current.orderCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
-				isAuthoritativeCreationResolutionStatus(remoteStatus);
+				isAuthoritativeCreationResolutionStatus(remoteStatus) &&
+				!linkedProposalIsPending;
+			const mayMutateOrderState =
+				transition.apply ||
+				Boolean(cancellationSettlement) ||
+				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED ||
+				resolvesCreationReconciliation;
+			if (mayMutateOrderState && (await shippingLabelPurchaseDefersOrderTransition(tx, current.orderId))) {
+				return { outcome: 'deferred' };
+			}
+			const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
+				orderId: current.orderId,
+				providerId: current.id,
+				transactionId: current.transactionId,
+				currentProviderStatus: current.status,
+				incomingProviderStatus: remoteStatus,
+			});
+			const complaintRequiresReconciliation = complaintReconciliation.required;
 			if (
 				!transition.apply &&
 				!cancellationSettlement &&
-				!complaintRequiresReconciliation &&
+				!complaintReconciliation.inserted &&
+				!(
+					complaintRequiresReconciliation &&
+					current.orderCreationState !== PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
+				) &&
 				!resolvesCreationReconciliation
 			) {
 				return { outcome: 'ignored' };
 			}
-			if (await shippingLabelPurchaseDefersOrderTransition(tx, current.orderId)) {
-				return { outcome: 'deferred' };
-			}
-
 			const updatedAt = new Date();
 			if (transition.apply) {
 				await tx

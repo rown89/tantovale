@@ -165,7 +165,7 @@ async function createExistingCreatedRecoveryReservation(title: string) {
 	const actors = await createCommerceActors();
 	const item = await createItemFixture(actors, { commons: { title } });
 	const conflictingItem = await createItemFixture(actors, { commons: { title: `${title} conflict` } });
-	await createRoom(actors, item.id);
+	const roomId = await createRoom(actors, item.id);
 	const proposal = await createQuotedProposalFixture(actors, item, {
 		proposal_price: 10_000,
 		platform_charge: 90,
@@ -204,7 +204,7 @@ async function createExistingCreatedRecoveryReservation(title: string) {
 			entityTitle: item.title,
 		})
 		.where(eq(entityTrustapTransactions.id, provider.id));
-	return { actors, item, proposal, provider, reservation, transactionId };
+	return { actors, item, proposal, provider, reservation, roomId, transactionId };
 }
 
 async function waitForProviderRequest(url: string, method: string, path: string): Promise<void> {
@@ -2200,6 +2200,223 @@ describe('proposal routes', () => {
 				{ transactionId, orderId: reservation.id, success: true, superseded: true },
 			]),
 		);
+	});
+
+	it('applies a newer fetched provider status after an older recovery already resolved creation', async () => {
+		const { provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Ordered concurrent recovery item',
+		);
+		const { db } = getTestDatabase();
+		const originalGetTransactionStatus = PaymentProviderService.prototype.getTransactionStatus;
+		const createdRemote = await originalGetTransactionStatus.call(new PaymentProviderService(), transactionId);
+		if (!createdRemote) throw new Error('Missing remote transaction for ordered concurrent recovery');
+		let signalBothReads!: () => void;
+		let releaseCreated!: () => void;
+		let releasePaid!: () => void;
+		const bothReads = new Promise<void>((resolve) => {
+			signalBothReads = resolve;
+		});
+		const createdReleased = new Promise<void>((resolve) => {
+			releaseCreated = resolve;
+		});
+		const paidReleased = new Promise<void>((resolve) => {
+			releasePaid = resolve;
+		});
+		let calls = 0;
+		const getTransactionStatus = vi
+			.spyOn(PaymentProviderService.prototype, 'getTransactionStatus')
+			.mockImplementation(async () => {
+				calls += 1;
+				if (calls === 1) {
+					await createdReleased;
+					return createdRemote;
+				}
+				signalBothReads();
+				await paidReleased;
+				return { ...createdRemote, status: entityTrustapTransactionTypeValues.PAID };
+			});
+
+		const createdRunPromise = new TransactionSyncService().syncTransactionStatuses();
+		const paidRunPromise = new TransactionSyncService().syncTransactionStatuses();
+		let createdRun: Awaited<typeof createdRunPromise> | undefined;
+		let paidRun: Awaited<typeof paidRunPromise> | undefined;
+		try {
+			await bothReads;
+			releaseCreated();
+			createdRun = await createdRunPromise;
+			releasePaid();
+			paidRun = await paidRunPromise;
+		} finally {
+			releaseCreated();
+			releasePaid();
+			await Promise.allSettled([createdRunPromise, paidRunPromise]);
+			getTransactionStatus.mockRestore();
+		}
+		if (!createdRun || !paidRun) throw new Error('Ordered concurrent recovery did not complete');
+
+		expect(createdRun.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			recovered: true,
+			success: true,
+		});
+		expect(paidRun.results).toContainEqual({
+			transactionId,
+			orderId: reservation.id,
+			oldStatus: entityTrustapTransactionTypeValues.CREATED,
+			newStatus: entityTrustapTransactionTypeValues.PAID,
+			recovered: true,
+			success: true,
+		});
+		expect(createdRun.syncedTransactions).toBe(1);
+		expect(paidRun.syncedTransactions).toBe(1);
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.PAYMENT_CONFIRMED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([expect.objectContaining({ status: entityTrustapTransactionTypeValues.PAID, quarantined: false })]);
+	});
+
+	it('keeps a pending proposal recoverable after an authoritative webhook resolves the provider', async () => {
+		const { actors, proposal, reservation, roomId, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Webhook before proposal recovery item',
+		);
+		const { db } = getTestDatabase();
+
+		const webhook = await app.request('/webhooks/trustap/transaction-update', {
+			method: 'POST',
+			headers: {
+				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				event: 'transaction_updated',
+				transaction_id: transactionId,
+				status: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+			}),
+		});
+		expect(webhook.status).toBe(200);
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.pending }),
+		]);
+
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+		);
+		await new TransactionSyncService().syncTransactionStatuses();
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		const acceptedMessages = (
+			await db.select().from(chat_messages).where(eq(chat_messages.chat_room_id, roomId))
+		).filter((message) => (message.metadata as { type?: string } | null)?.type === 'proposal_accepted');
+		expect(acceptedMessages).toHaveLength(1);
+		expect(
+			await db.select().from(payment_invitation_outbox).where(eq(payment_invitation_outbox.order_id, reservation.id)),
+		).toEqual([]);
+
+		await db
+			.update(orders_proposals)
+			.set({ created_at: new Date(0) })
+			.where(eq(orders_proposals.id, proposal.id));
+		expect((await app.request('/cron/auth/expired-proposals-check?key=proposals-cron-test-key')).status).toBe(200);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		expect(actors.buyer.profile.id).not.toBe(actors.buyer.user.id);
+	});
+
+	it('keeps complaint reconciliation across webhook progress and known-ID replays', async () => {
+		const { provider, proposal, reservation, roomId, transactionId } = await createExistingCreatedRecoveryReservation(
+			'Webhook complaint recovery item',
+		);
+		const { db } = getTestDatabase();
+		for (const status of [
+			entityTrustapTransactionTypeValues.PAID,
+			entityTrustapTransactionTypeValues.TRACKED,
+			entityTrustapTransactionTypeValues.COMPLAINED,
+			entityTrustapTransactionTypeValues.DELIVERED,
+		] as const) {
+			expect(
+				(
+					await app.request('/webhooks/trustap/transaction-update', {
+						method: 'POST',
+						headers: {
+							Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }),
+					})
+				).status,
+			).toBe(200);
+		}
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.DELIVERED,
+		);
+
+		await new TransactionSyncService().syncTransactionStatuses();
+		await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED,
+			}),
+		]);
+		expect(await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id))).toEqual([
+			expect.objectContaining({ status: ORDER_PROPOSAL_PHASES.accepted }),
+		]);
+		expect(
+			(await db.select().from(chat_messages).where(eq(chat_messages.chat_room_id, roomId))).filter(
+				(message) => (message.metadata as { type?: string } | null)?.type === 'proposal_accepted',
+			),
+		).toHaveLength(1);
+		expect(
+			await db
+				.select({ id: commerce_reconciliation_audit.id })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toHaveLength(1);
+
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.FUNDS_RELEASED,
+		);
+		await new TransactionSyncService().syncTransactionStatuses();
+		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
+			expect.objectContaining({
+				status: ORDER_PHASES.COMPLETED,
+				payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+			}),
+		]);
+		expect(
+			await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)),
+		).toEqual([
+			expect.objectContaining({ status: entityTrustapTransactionTypeValues.FUNDS_RELEASED, quarantined: false }),
+		]);
 	});
 
 	it('audits immutable provider drift that occurs while a known-ID GET is in flight', async () => {

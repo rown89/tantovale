@@ -17,6 +17,7 @@ import {
 import { acquireItemCommerceLock } from 'src/lib/item-commerce-lock';
 import { commerce_reconciliation_audit, entityTrustapTransactions, profiles } from '#db-schema';
 import { PaymentProviderService } from '../payments/payment-provider.service';
+import type { CreateTransactionResponse } from '../payments/types';
 import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { authenticateCronSecret } from './secret-auth';
 
@@ -256,6 +257,17 @@ export const cronRoute = createRouter()
 				return updated
 					? {
 							outcome: 'marked' as const,
+							order_snapshot: {
+								item_id: current.item_id,
+								item_price: current.item_price,
+								order_proposal_id: current.order_proposal_id,
+								payment_attempt_id: current.payment_attempt_id,
+								platform_charge: current.platform_charge,
+								provider_charge: current.provider_charge,
+								transaction_id: current.transaction_id,
+								buyer_provider_id: current.buyer_provider_id,
+								seller_provider_id: current.seller_provider_id,
+							},
 							provider_snapshot: {
 								acting_provider_user_id: buyerProviderId,
 								buyer_id: providerTransaction!.buyer_id!,
@@ -281,7 +293,7 @@ export const cronRoute = createRouter()
 				continue;
 			}
 
-			const settleCancellationAttempt = async (remoteCancellationConfirmed: boolean) =>
+			const settleCancellationAttempt = async (confirmedCancellation: CreateTransactionResponse | undefined) =>
 				db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, candidate.item_id!);
 					const [current] = await tx
@@ -292,6 +304,11 @@ export const cronRoute = createRouter()
 							payment_creation_state: orders.payment_creation_state,
 							payment_cancellation_state: orders.payment_cancellation_state,
 							payment_transaction_id: orders.payment_transaction_id,
+							item_price: orders.item_price,
+							platform_charge: orders.platform_charge,
+							provider_charge: orders.payment_provider_charge,
+							order_proposal_id: orders.order_proposal_id,
+							payment_attempt_id: orders.payment_attempt_id,
 							buyer_provider_id: profiles.payment_provider_id,
 							seller_provider_id: cronSellerProfiles.payment_provider_id,
 						})
@@ -320,9 +337,18 @@ export const cronRoute = createRouter()
 						.limit(1);
 					const graphMatchesSnapshot =
 						current?.item_id === candidate.item_id &&
+						current.item_id === marked.order_snapshot.item_id &&
 						current.payment_transaction_id === marked.provider_snapshot.transaction_id &&
+						current.payment_transaction_id === marked.order_snapshot.transaction_id &&
 						current.buyer_provider_id === marked.provider_snapshot.buyer_id &&
+						current.buyer_provider_id === marked.order_snapshot.buyer_provider_id &&
 						current.seller_provider_id === marked.provider_snapshot.seller_id &&
+						current.seller_provider_id === marked.order_snapshot.seller_provider_id &&
+						current.item_price === marked.order_snapshot.item_price &&
+						current.platform_charge === marked.order_snapshot.platform_charge &&
+						current.provider_charge === marked.order_snapshot.provider_charge &&
+						current.order_proposal_id === marked.order_snapshot.order_proposal_id &&
+						current.payment_attempt_id === marked.order_snapshot.payment_attempt_id &&
 						originalProvider?.buyer_id === marked.provider_snapshot.buyer_id &&
 						originalProvider.seller_id === marked.provider_snapshot.seller_id &&
 						originalProvider.entity_id === candidate.item_id &&
@@ -349,7 +375,9 @@ export const cronRoute = createRouter()
 							const snapshot = {
 								order: current,
 								provider: originalProvider ?? null,
+								expectedOrder: marked.order_snapshot,
 								expectedProvider: marked.provider_snapshot,
+								confirmedCancellation: confirmedCancellation ?? null,
 							};
 							await tx.insert(commerce_reconciliation_audit).values([
 								...(originalProvider === undefined
@@ -393,6 +421,73 @@ export const cronRoute = createRouter()
 									eq(orders.status, current.status),
 									eq(orders.payment_creation_state, current.payment_creation_state),
 									eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
+								),
+							)
+							.returning({ id: orders.id });
+						return reconciled ? { outcome: 'reconciliation' as const } : undefined;
+					}
+					const confirmedCancellationConflictsWithDurableState =
+						confirmedCancellation !== undefined &&
+						graphMatchesSnapshot &&
+						originalProvider !== undefined &&
+						!['created', 'joined', 'cancelled'].includes(originalProvider.status);
+					if (confirmedCancellationConflictsWithDurableState && current && originalProvider) {
+						const conflictType = 'runtime_cron_cancellation_confirmed_state_conflict';
+						const [existingAudit] = await tx
+							.select({ id: commerce_reconciliation_audit.id })
+							.from(commerce_reconciliation_audit)
+							.where(
+								and(
+									eq(commerce_reconciliation_audit.conflict_type, conflictType),
+									eq(commerce_reconciliation_audit.source_table, 'orders'),
+									eq(commerce_reconciliation_audit.source_row_id, current.id),
+								),
+							)
+							.limit(1);
+						if (!existingAudit) {
+							const snapshot = {
+								order: current,
+								provider: originalProvider,
+								expectedOrder: marked.order_snapshot,
+								expectedProvider: marked.provider_snapshot,
+								confirmedCancellation,
+							};
+							await tx.insert(commerce_reconciliation_audit).values([
+								{
+									conflict_type: conflictType,
+									source_table: 'entity_trustap_transactions',
+									source_row_id: originalProvider.id,
+									canonical_row_id: current.id,
+									original_reference: marked.provider_snapshot.transaction_id,
+									snapshot,
+								},
+								{
+									conflict_type: conflictType,
+									source_table: 'orders',
+									source_row_id: current.id,
+									canonical_row_id: originalProvider.id,
+									original_reference: marked.provider_snapshot.transaction_id,
+									snapshot,
+								},
+							]);
+						}
+						await tx
+							.update(entityTrustapTransactions)
+							.set({ quarantined: true, updated_at: new Date() })
+							.where(eq(entityTrustapTransactions.id, originalProvider.id));
+						const [reconciled] = await tx
+							.update(orders)
+							.set({
+								payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+								updated_at: new Date(),
+							})
+							.where(
+								and(
+									eq(orders.id, current.id),
+									eq(orders.item_id, candidate.item_id!),
+									eq(orders.status, current.status),
+									eq(orders.payment_creation_state, current.payment_creation_state),
+									eq(orders.payment_cancellation_state, current.payment_cancellation_state),
 								),
 							)
 							.returning({ id: orders.id });
@@ -466,7 +561,7 @@ export const cronRoute = createRouter()
 						}
 					}
 					if (
-						!remoteCancellationConfirmed ||
+						confirmedCancellation === undefined ||
 						!graphMatchesSnapshot ||
 						current === undefined ||
 						current.status !== ORDER_PHASES.PAYMENT_PENDING ||
@@ -552,19 +647,18 @@ export const cronRoute = createRouter()
 						.returning({ id: orders.id });
 					return reconciled ? { outcome: 'reconciliation' as const } : undefined;
 				});
-			let remoteCancellationConfirmed = false;
+			let confirmedCancellation: CreateTransactionResponse | undefined;
 			try {
-				await new PaymentProviderService().cancelGuestTransaction(marked.provider_snapshot);
-				remoteCancellationConfirmed = true;
+				confirmedCancellation = await new PaymentProviderService().cancelGuestTransaction(marked.provider_snapshot);
 			} catch {
 				// The exact locked graph below decides whether a concurrent provider update won
 				// or this ambiguous request must remain blocked for reconciliation.
 			}
 			let finalized;
 			try {
-				finalized = await settleCancellationAttempt(remoteCancellationConfirmed);
+				finalized = await settleCancellationAttempt(confirmedCancellation);
 			} catch {
-				finalized = await settleCancellationAttempt(false);
+				finalized = await settleCancellationAttempt(confirmedCancellation);
 			}
 			if (finalized?.outcome === 'cancelled') updatedOrders.push(finalized.order);
 			else if (finalized?.outcome === 'superseded') supersededCancellations.push(finalized.order);
