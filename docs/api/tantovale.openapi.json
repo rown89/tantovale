@@ -1,0 +1,5325 @@
+{
+	"components": {
+		"schemas": {},
+		"securitySchemes": {
+			"accessCookie": { "in": "cookie", "name": "access_token", "type": "apiKey" },
+			"cronKey": { "in": "query", "name": "key", "type": "apiKey" },
+			"refreshCookie": { "in": "cookie", "name": "refresh_token", "type": "apiKey" },
+			"trustapWebhookBasic": { "scheme": "basic", "type": "http" }
+		}
+	},
+	"info": { "description": "Tantovale API", "title": "Tantovale Honojs", "version": "1.0.0" },
+	"openapi": "3.1.0",
+	"paths": {
+		"/": {
+			"get": {
+				"operationId": "getRoot",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": { "text/html": { "schema": { "type": "string" } } },
+						"description": "Open the API reference succeeded"
+					}
+				},
+				"security": [],
+				"summary": "Open the API reference",
+				"tags": ["Documentation"]
+			}
+		},
+		"/addresses/auth/add_address_to_profile": {
+			"post": {
+				"operationId": "postAddressesAuthAddAddressToProfile",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+									"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+									"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+									"phone": { "type": "string" },
+									"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"status": { "enum": ["active", "inactive"], "type": "string" },
+									"street_address": { "maxLength": 100, "minLength": 3, "type": "string" }
+								},
+								"required": ["province_id", "city_id", "street_address", "civic_number", "postal_code", "phone"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"city_country_code": { "type": "string" },
+										"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"city_name": { "type": "string" },
+										"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+										"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"phone": { "type": "string" },
+										"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_country_code": { "type": "string" },
+										"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_name": { "type": "string" },
+										"status": { "enum": ["active", "inactive"], "type": "string" },
+										"street_address": { "maxLength": 100, "minLength": 3, "type": "string" },
+										"updated_at": { "format": "date-time", "type": "string" }
+									},
+									"required": ["id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Add a profile address succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Add a profile address",
+				"tags": ["Addresses"]
+			}
+		},
+		"/addresses/auth/addresses_profile": {
+			"get": {
+				"operationId": "getAddressesAuthAddressesProfile",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"city_country_code": { "type": "string" },
+											"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"city_name": { "type": "string" },
+											"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+											"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+											"created_at": { "format": "date-time", "type": "string" },
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+											"phone": { "type": "string" },
+											"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"province_country_code": { "type": "string" },
+											"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"province_name": { "type": "string" },
+											"status": { "enum": ["active", "inactive"], "type": "string" },
+											"street_address": { "maxLength": 100, "minLength": 3, "type": "string" },
+											"updated_at": { "format": "date-time", "type": "string" }
+										},
+										"required": ["id"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List profile addresses succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List profile addresses",
+				"tags": ["Addresses"]
+			}
+		},
+		"/addresses/auth/default_address": {
+			"get": {
+				"operationId": "getAddressesAuthDefaultAddress",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"city_country_code": { "type": "string" },
+										"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"city_name": { "type": "string" },
+										"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+										"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"phone": { "type": "string" },
+										"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_country_code": { "type": "string" },
+										"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_name": { "type": "string" },
+										"status": { "enum": ["active", "inactive"], "type": "string" },
+										"street_address": { "maxLength": 100, "minLength": 3, "type": "string" },
+										"updated_at": { "format": "date-time", "type": "string" }
+									},
+									"required": ["id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get the active profile address succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get the active profile address",
+				"tags": ["Addresses"]
+			}
+		},
+		"/addresses/auth/hide_address_from_profile": {
+			"put": {
+				"operationId": "putAddressesAuthHideAddressFromProfile",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "address_id": { "type": "number" } },
+								"required": ["address_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+									"required": ["id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Hide a profile address succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Hide a profile address",
+				"tags": ["Addresses"]
+			}
+		},
+		"/addresses/auth/update_address_to_profile": {
+			"put": {
+				"operationId": "putAddressesAuthUpdateAddressToProfile",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"address_id": { "type": "number" },
+									"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+									"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+									"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+									"phone": { "type": "string" },
+									"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"status": { "enum": ["active", "inactive"], "type": "string" },
+									"street_address": { "maxLength": 100, "minLength": 3, "type": "string" }
+								},
+								"required": [
+									"address_id",
+									"province_id",
+									"city_id",
+									"street_address",
+									"civic_number",
+									"postal_code",
+									"phone"
+								],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"city_country_code": { "type": "string" },
+										"city_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"city_name": { "type": "string" },
+										"civic_number": { "maxLength": 10, "minLength": 1, "type": "string" },
+										"country_code": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"label": { "maxLength": 50, "minLength": 1, "type": "string" },
+										"phone": { "type": "string" },
+										"postal_code": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_country_code": { "type": "string" },
+										"province_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"province_name": { "type": "string" },
+										"status": { "enum": ["active", "inactive"], "type": "string" },
+										"street_address": { "maxLength": 100, "minLength": 3, "type": "string" },
+										"updated_at": { "format": "date-time", "type": "string" }
+									},
+									"required": ["id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Update a profile address succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Update a profile address",
+				"tags": ["Addresses"]
+			}
+		},
+		"/categories": {
+			"get": {
+				"operationId": "getCategories",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "List categories succeeded"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "List categories",
+				"tags": ["Catalog"]
+			}
+		},
+		"/chat/auth/rooms": {
+			"get": {
+				"operationId": "getChatAuthRooms",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"author": {
+												"additionalProperties": false,
+												"properties": {
+													"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+													"username": { "type": "string" }
+												},
+												"required": ["id", "username"],
+												"type": "object"
+											},
+											"buyer": {
+												"additionalProperties": false,
+												"properties": {
+													"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+													"username": { "type": "string" }
+												},
+												"required": ["id", "username"],
+												"type": "object"
+											},
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"item": { "additionalProperties": true, "type": "object" },
+											"last_message": { "additionalProperties": true, "type": "object" }
+										},
+										"required": ["id", "item", "author", "buyer", "last_message"],
+										"type": "object"
+									},
+									"maxItems": 100,
+									"type": "array"
+								}
+							}
+						},
+						"description": "List chat rooms succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": { "application/json": { "schema": { "items": { "not": {} }, "maxItems": 0, "type": "array" } } },
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List chat rooms",
+				"tags": ["Chat"]
+			},
+			"post": {
+				"operationId": "postChatAuthRooms",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+								"required": ["item_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+									"required": ["id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Create a chat room succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Create a chat room",
+				"tags": ["Chat"]
+			}
+		},
+		"/chat/auth/rooms/id/{item_id}": {
+			"get": {
+				"operationId": "getChatAuthRoomsIdByItemId",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "item_id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get the chat room for an item succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get the chat room for an item",
+				"tags": ["Chat"]
+			}
+		},
+		"/chat/auth/rooms/{roomId}/messages": {
+			"get": {
+				"operationId": "getChatAuthRoomsByRoomIdMessages",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "roomId",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"chat_room_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"created_at": { "format": "date-time", "type": "string" },
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"message": { "maxLength": 600, "minLength": 1, "type": "string" },
+											"message_type": { "enum": ["text", "proposal", "system", "buy_now"], "type": "string" },
+											"metadata": { "oneOf": [{ "additionalProperties": true, "type": "object" }, { "enum": [null] }] },
+											"order_proposal_id": {
+												"oneOf": [{ "maximum": 2147483647, "minimum": 1, "type": "integer" }, { "enum": [null] }]
+											},
+											"read_at": { "oneOf": [{ "format": "date-time", "type": "string" }, { "enum": [null] }] },
+											"sender": {
+												"additionalProperties": false,
+												"properties": {
+													"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+													"username": { "type": "string" }
+												},
+												"required": ["id", "username"],
+												"type": "object"
+											},
+											"sender_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+										},
+										"required": ["id", "message"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List room messages succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"403": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authenticated caller is not allowed to perform this operation"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List room messages",
+				"tags": ["Chat"]
+			},
+			"post": {
+				"operationId": "postChatAuthRoomsByRoomIdMessages",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "roomId",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"message": {
+										"description": "Message must contain 1 to 600 safe Unicode code points and cannot be whitespace-only.",
+										"maxLength": 600,
+										"minLength": 1,
+										"pattern": "^(?=[\\s\\S]*\\S)[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]+$",
+										"type": "string"
+									}
+								},
+								"required": ["message"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"chat_room_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"message": { "maxLength": 600, "minLength": 1, "type": "string" },
+										"message_type": { "enum": ["text", "proposal", "system", "buy_now"], "type": "string" },
+										"metadata": { "oneOf": [{ "additionalProperties": true, "type": "object" }, { "enum": [null] }] },
+										"order_proposal_id": {
+											"oneOf": [{ "maximum": 2147483647, "minimum": 1, "type": "integer" }, { "enum": [null] }]
+										},
+										"read_at": { "oneOf": [{ "format": "date-time", "type": "string" }, { "enum": [null] }] },
+										"sender": {
+											"additionalProperties": false,
+											"properties": {
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"username": { "type": "string" }
+											},
+											"required": ["id", "username"],
+											"type": "object"
+										},
+										"sender_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+									},
+									"required": ["id", "message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Send a chat message succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"403": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authenticated caller is not allowed to perform this operation"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Send a chat message",
+				"tags": ["Chat"]
+			}
+		},
+		"/cron/auth/expired-orders-check": {
+			"get": {
+				"operationId": "getCronAuthExpiredOrdersCheck",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"cancellation_superseded": {
+											"items": { "additionalProperties": true, "type": "object" },
+											"type": "array"
+										},
+										"message": { "type": "string" },
+										"orders": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" },
+										"reconciliation_required": {
+											"items": { "additionalProperties": true, "type": "object" },
+											"type": "array"
+										},
+										"status": { "enum": [200], "type": "integer" }
+									},
+									"required": ["message", "status"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Expire stale payment-pending orders succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "cronKey": [] }],
+				"summary": "Expire stale payment-pending orders",
+				"tags": ["Cron"]
+			}
+		},
+		"/cron/auth/expired-proposals-check": {
+			"get": {
+				"operationId": "getCronAuthExpiredProposalsCheck",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"message": { "type": "string" },
+										"proposals": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" },
+										"status": { "enum": [200], "type": "integer" }
+									},
+									"required": ["message", "status"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Expire stale proposals succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "cronKey": [] }],
+				"summary": "Expire stale proposals",
+				"tags": ["Cron"]
+			}
+		},
+		"/cron/auth/sync-transactions": {
+			"get": {
+				"operationId": "getCronAuthSyncTransactions",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"failedTransactions": { "minimum": 0, "type": "integer" },
+										"results": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" },
+										"syncedTransactions": { "minimum": 0, "type": "integer" },
+										"totalTransactions": { "minimum": 0, "type": "integer" }
+									},
+									"required": ["totalTransactions", "syncedTransactions", "failedTransactions", "results"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Synchronize provider transactions succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "cronKey": [] }],
+				"summary": "Synchronize provider transactions",
+				"tags": ["Cron"]
+			}
+		},
+		"/favorites/auth/check/{item_id}": {
+			"get": {
+				"operationId": "getFavoritesAuthCheckByItemId",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "item_id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": { "application/json": { "schema": { "type": "boolean" } } },
+						"description": "Check whether an item is favorited succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Check whether an item is favorited",
+				"tags": ["Favorites"]
+			}
+		},
+		"/favorites/auth/handle": {
+			"post": {
+				"operationId": "postFavoritesAuthHandle",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"action": { "enum": ["add", "remove"], "type": "string" },
+									"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+								},
+								"required": ["action", "item_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": { "application/json": { "schema": { "type": "boolean" } } },
+						"description": "Add or remove a favorite succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Add or remove a favorite",
+				"tags": ["Favorites"]
+			}
+		},
+		"/item/auth/buy_now": {
+			"post": {
+				"operationId": "postItemAuthBuyNow",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+								"required": ["item_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"message": { "type": "string" },
+										"order": {
+											"properties": {
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"status": { "type": "string" }
+											},
+											"required": ["id", "status"],
+											"type": "object"
+										},
+										"payment_url": { "format": "uri", "type": "string" },
+										"success": { "enum": [true], "type": "boolean" }
+									},
+									"required": ["success", "order", "payment_url", "message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Buy an item now succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"409": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request conflicts with the current resource state"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Buy an item now",
+				"tags": ["Items"]
+			}
+		},
+		"/item/auth/edit/{id}": {
+			"put": {
+				"operationId": "putItemAuthEditById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"description": "At least one mutable item section must be supplied.",
+								"properties": {
+									"commons": {
+										"additionalProperties": false,
+										"properties": {
+											"address_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"description": { "maxLength": 2500, "minLength": 50, "type": "string" },
+											"easy_pay": { "type": "boolean" },
+											"price": {
+												"description": "Amount in integer euro cents.",
+												"maximum": 1000000,
+												"minimum": 1,
+												"type": "integer"
+											},
+											"subcategory_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"title": { "maxLength": 180, "minLength": 5, "pattern": "^[a-zA-Z0-9\\s]+$", "type": "string" }
+										},
+										"required": [],
+										"type": "object"
+									},
+									"properties": {
+										"items": {
+											"additionalProperties": false,
+											"properties": {
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"slug": { "type": "string" },
+												"value": {
+													"oneOf": [
+														{ "type": "string" },
+														{ "maximum": 2147483647, "minimum": -2147483648, "type": "integer" },
+														{ "type": "boolean" },
+														{ "items": { "type": "string" }, "type": "array" },
+														{
+															"items": { "maximum": 2147483647, "minimum": -2147483648, "type": "integer" },
+															"type": "array"
+														}
+													]
+												}
+											},
+											"required": ["id", "slug", "value"],
+											"type": "object"
+										},
+										"type": "array"
+									},
+									"shipping": {
+										"additionalProperties": false,
+										"properties": {
+											"item_height": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_length": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_weight": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_width": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"shipping_price": { "maximum": 2147483647, "minimum": 0, "type": "integer" }
+										},
+										"type": "object"
+									}
+								},
+								"required": [],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"message": { "type": "string" }
+									},
+									"required": ["message", "item_id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Edit an owned item succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Edit an owned item",
+				"tags": ["Items"]
+			}
+		},
+		"/item/auth/new": {
+			"post": {
+				"operationId": "postItemAuthNew",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"commons": {
+										"additionalProperties": false,
+										"properties": {
+											"address_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"description": { "maxLength": 2500, "minLength": 50, "type": "string" },
+											"easy_pay": { "type": "boolean" },
+											"price": {
+												"description": "Amount in integer euro cents.",
+												"maximum": 1000000,
+												"minimum": 1,
+												"type": "integer"
+											},
+											"subcategory_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"title": { "maxLength": 180, "minLength": 5, "pattern": "^[a-zA-Z0-9\\s]+$", "type": "string" }
+										},
+										"required": ["address_id", "subcategory_id", "title", "description"],
+										"type": "object"
+									},
+									"properties": {
+										"items": {
+											"additionalProperties": false,
+											"properties": {
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"slug": { "type": "string" },
+												"value": {
+													"oneOf": [
+														{ "type": "string" },
+														{ "maximum": 2147483647, "minimum": -2147483648, "type": "integer" },
+														{ "type": "boolean" },
+														{ "items": { "type": "string" }, "type": "array" },
+														{
+															"items": { "maximum": 2147483647, "minimum": -2147483648, "type": "integer" },
+															"type": "array"
+														}
+													]
+												}
+											},
+											"required": ["id", "slug", "value"],
+											"type": "object"
+										},
+										"type": "array"
+									},
+									"shipping": {
+										"additionalProperties": false,
+										"properties": {
+											"item_height": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_length": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_weight": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"item_width": { "maximum": 2147483647, "minimum": 0, "type": "integer" },
+											"shipping_price": { "maximum": 2147483647, "minimum": 0, "type": "integer" }
+										},
+										"type": "object"
+									}
+								},
+								"required": ["commons"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"message": { "type": "string" }
+									},
+									"required": ["message", "item_id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Create an item succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Create an item",
+				"tags": ["Items"]
+			}
+		},
+		"/item/auth/publish_state": {
+			"post": {
+				"operationId": "postItemAuthPublishState",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"published": { "type": "boolean" }
+								},
+								"required": ["id", "published"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"message": { "type": "string" }
+									},
+									"required": ["message", "id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Change item publication state succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Change item publication state",
+				"tags": ["Items"]
+			}
+		},
+		"/item/auth/user_delete_item": {
+			"post": {
+				"operationId": "postItemAuthUserDeleteItem",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "id": { "type": "number" } },
+								"required": ["id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "id": { "type": "number" }, "message": { "type": "string" } },
+									"required": ["message", "id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Delete an owned item succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Delete an owned item",
+				"tags": ["Items"]
+			}
+		},
+		"/item/{id}": {
+			"get": {
+				"operationId": "getItemById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"description": { "type": "string" },
+										"easy_pay": { "type": "boolean" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"images": { "items": { "format": "uri", "type": "string" }, "type": "array" },
+										"location": { "additionalProperties": true, "type": "object" },
+										"order": { "additionalProperties": true, "type": "object" },
+										"orderProposal": { "additionalProperties": true, "type": "object" },
+										"price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+										"properties": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" },
+										"subcategory": { "additionalProperties": true, "type": "object" },
+										"title": { "type": "string" },
+										"user": { "additionalProperties": true, "type": "object" }
+									},
+									"required": [
+										"id",
+										"user",
+										"title",
+										"price",
+										"description",
+										"order",
+										"orderProposal",
+										"location",
+										"easy_pay",
+										"subcategory",
+										"properties",
+										"images"
+									],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get an item succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{}, { "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get an item",
+				"tags": ["Items"]
+			}
+		},
+		"/items/auth/user/favorites": {
+			"get": {
+				"operationId": "getItemsAuthUserFavorites",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"image": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"imageUrl": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+											"published": { "type": "boolean" },
+											"title": { "type": "string" }
+										},
+										"required": ["id", "title", "price"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List authenticated user favorites succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List authenticated user favorites",
+				"tags": ["Items"]
+			}
+		},
+		"/items/auth/user/selling_items": {
+			"post": {
+				"operationId": "postItemsAuthUserSellingItems",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "published": { "type": "boolean" } },
+								"required": ["published"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"image": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"imageUrl": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+											"published": { "type": "boolean" },
+											"title": { "type": "string" }
+										},
+										"required": ["id", "title", "price"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List authenticated user selling items succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List authenticated user selling items",
+				"tags": ["Items"]
+			}
+		},
+		"/items/{username}": {
+			"get": {
+				"operationId": "getItemsByUsername",
+				"parameters": [
+					{
+						"description": "username route selector.",
+						"in": "path",
+						"name": "username",
+						"required": true,
+						"schema": { "minLength": 1, "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"image": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"imageUrl": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] },
+											"price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+											"published": { "type": "boolean" },
+											"title": { "type": "string" }
+										},
+										"required": ["id", "title", "price"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List a user storefront succeeded"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "List a user storefront",
+				"tags": ["Items"]
+			}
+		},
+		"/locations/search": {
+			"get": {
+				"operationId": "getLocationsSearch",
+				"parameters": [
+					{
+						"description": "Location kind.",
+						"in": "query",
+						"name": "locationType",
+						"required": true,
+						"schema": { "enum": ["city", "province"], "type": "string" }
+					},
+					{
+						"description": "Location search text.",
+						"in": "query",
+						"name": "locationName",
+						"required": true,
+						"schema": { "minLength": 1, "type": "string" }
+					},
+					{
+						"description": "ISO country code.",
+						"in": "query",
+						"name": "locationCountryCode",
+						"required": false,
+						"schema": { "minLength": 1, "type": "string" }
+					},
+					{
+						"description": "Optional state code.",
+						"in": "query",
+						"name": "locationStateCode",
+						"required": false,
+						"schema": { "minLength": 1, "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"country_code": { "type": "string" },
+											"country_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+											"name": { "type": "string" },
+											"state_code": { "type": "string" }
+										},
+										"required": ["id", "name"],
+										"type": "object"
+									},
+									"maxItems": 10,
+									"type": "array"
+								}
+							}
+						},
+						"description": "Search locations succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Search locations",
+				"tags": ["Catalog"]
+			}
+		},
+		"/locations/search_by_id/{locationType}/{locationId}": {
+			"get": {
+				"operationId": "getLocationsSearchByIdByLocationTypeByLocationId",
+				"parameters": [
+					{
+						"description": "locationType route selector.",
+						"in": "path",
+						"name": "locationType",
+						"required": true,
+						"schema": { "enum": ["city"], "type": "string" }
+					},
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "locationId",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"locationResponse": {
+											"additionalProperties": false,
+											"properties": {
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"name": { "type": "string" },
+												"stateCode": { "type": "string" }
+											},
+											"required": ["id", "name", "stateCode"],
+											"type": "object"
+										}
+									},
+									"required": ["locationResponse"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get a location by type and ID succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get a location by type and ID",
+				"tags": ["Catalog"]
+			}
+		},
+		"/login": {
+			"post": {
+				"operationId": "postLogin",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"email": { "format": "email", "type": "string" },
+									"password": {
+										"description": "Legacy login password accepted by character count for existing bcrypt hashes.",
+										"maxLength": 100,
+										"minLength": 8,
+										"type": "string"
+									}
+								},
+								"required": ["email", "password"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"message": { "type": "string" },
+										"user": {
+											"additionalProperties": false,
+											"properties": {
+												"email": { "format": "email", "type": "string" },
+												"email_verified": { "type": "boolean" },
+												"exp": { "type": "integer" },
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"phone_verified": { "type": "boolean" },
+												"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"username": { "minLength": 1, "type": "string" }
+											},
+											"required": ["id", "profile_id", "username", "email", "email_verified", "phone_verified"],
+											"type": "object"
+										}
+									},
+									"required": ["message", "user"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Log in succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"403": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authenticated caller is not allowed to perform this operation"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Log in",
+				"tags": ["Authentication"]
+			}
+		},
+		"/logout/auth": {
+			"post": {
+				"operationId": "postLogoutAuth",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Log out and revoke the refresh family succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "refreshCookie": [] }],
+				"summary": "Log out and revoke the refresh family",
+				"tags": ["Authentication"]
+			}
+		},
+		"/openapi": {
+			"get": {
+				"operationId": "getOpenapi",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"info": { "additionalProperties": true, "type": "object" },
+										"openapi": { "type": "string" },
+										"paths": { "additionalProperties": true, "type": "object" }
+									},
+									"required": ["openapi", "info", "paths"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get the OpenAPI document succeeded"
+					}
+				},
+				"security": [],
+				"summary": "Get the OpenAPI document",
+				"tags": ["Documentation"]
+			}
+		},
+		"/orders/auth/status/{status}": {
+			"get": {
+				"operationId": "getOrdersAuthStatusByStatus",
+				"parameters": [
+					{
+						"description": "status route selector.",
+						"in": "path",
+						"name": "status",
+						"required": true,
+						"schema": {
+							"enum": [
+								"all",
+								"payment_pending",
+								"payment_confirmed",
+								"payment_failed",
+								"payment_refunded",
+								"shipping_pending",
+								"shipping_confirmed",
+								"completed",
+								"cancelled",
+								"expired"
+							],
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"additionalProperties": true,
+										"properties": {
+											"id": { "minimum": 1, "type": "integer" },
+											"item_price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+											"original_price": {
+												"description": "Amount in integer euro cents.",
+												"minimum": 0,
+												"type": "integer"
+											},
+											"payment_provider_charge": {
+												"description": "Amount in integer euro cents.",
+												"minimum": 0,
+												"type": "integer"
+											},
+											"payment_transaction_id": {
+												"description": "Lossless Trustap integer identifier; large values are represented as decimal strings.",
+												"oneOf": [
+													{
+														"pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+														"type": "string"
+													},
+													{ "maximum": 9007199254740991, "minimum": 1, "type": "integer" }
+												]
+											},
+											"payment_url": { "format": "uri", "type": "string" },
+											"platform_charge": {
+												"description": "Amount in integer euro cents.",
+												"minimum": 0,
+												"type": "integer"
+											},
+											"shipping_label_id": {
+												"description": "A Shippo shipment object ID used to retrieve rates; it is not a purchased label transaction ID.",
+												"type": "string"
+											},
+											"shipping_price": {
+												"description": "Amount in integer euro cents.",
+												"minimum": 0,
+												"type": "integer"
+											},
+											"status": { "type": "string" }
+										},
+										"required": ["id", "status"],
+										"type": "object"
+									},
+									"type": "array"
+								}
+							}
+						},
+						"description": "List orders by status succeeded"
+					},
+					"400": {
+						"content": { "application/json": { "schema": { "items": { "not": {} }, "maxItems": 0, "type": "array" } } },
+						"description": "Invalid order status"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List orders by status",
+				"tags": ["Orders"]
+			}
+		},
+		"/orders/auth/{id}": {
+			"get": {
+				"operationId": "getOrdersAuthById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"id": { "minimum": 1, "type": "integer" },
+										"item_price": { "description": "Amount in integer euro cents.", "minimum": 0, "type": "integer" },
+										"original_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"payment_provider_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"payment_transaction_id": {
+											"description": "Lossless Trustap integer identifier; large values are represented as decimal strings.",
+											"oneOf": [
+												{
+													"pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+													"type": "string"
+												},
+												{ "maximum": 9007199254740991, "minimum": 1, "type": "integer" }
+											]
+										},
+										"payment_url": { "format": "uri", "type": "string" },
+										"platform_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"shipping_label_id": {
+											"description": "A Shippo shipment object ID used to retrieve rates; it is not a purchased label transaction ID.",
+											"type": "string"
+										},
+										"shipping_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"status": { "type": "string" }
+									},
+									"required": ["id", "status"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get an order succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get an order",
+				"tags": ["Orders"]
+			}
+		},
+		"/orders_proposals/auth": {
+			"put": {
+				"operationId": "putOrdersProposalsAuth",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"status": { "enum": ["accepted", "rejected"], "type": "string" }
+								},
+								"required": ["id", "item_id", "status"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"message": { "type": "string" },
+										"order": {
+											"properties": { "id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+											"required": ["id"],
+											"type": "object"
+										},
+										"proposal": {
+											"additionalProperties": true,
+											"properties": {
+												"created_at": { "format": "date-time", "type": "string" },
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"original_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"payment_provider_charge": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"platform_charge": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"proposal_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"shipping_label_id": { "type": "string" },
+												"shipping_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"shipping_quote_id": { "format": "uuid", "type": "string" },
+												"status": {
+													"enum": ["pending", "accepted", "rejected", "expired", "buyer_aborted"],
+													"type": "string"
+												},
+												"updated_at": { "format": "date-time", "type": "string" }
+											},
+											"required": ["id", "status"],
+											"type": "object"
+										},
+										"transaction": {
+											"properties": {
+												"id": {
+													"description": "Lossless Trustap integer identifier; large values are represented as decimal strings.",
+													"oneOf": [
+														{
+															"pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+															"type": "string"
+														},
+														{ "maximum": 9007199254740991, "minimum": 1, "type": "integer" }
+													]
+												},
+												"status": { "type": "string" }
+											},
+											"required": ["id", "status"],
+											"type": "object"
+										}
+									},
+									"required": ["message", "proposal"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Accept or reject a proposal succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"409": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request conflicts with the current resource state"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Accept or reject a proposal",
+				"tags": ["Proposals"]
+			}
+		},
+		"/orders_proposals/auth/buyer_aborted_proposal": {
+			"post": {
+				"operationId": "postOrdersProposalsAuthBuyerAbortedProposal",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "proposal_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+								"required": ["proposal_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Abort a buyer proposal succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Abort a buyer proposal",
+				"tags": ["Proposals"]
+			}
+		},
+		"/orders_proposals/auth/by_item/{item_id}": {
+			"get": {
+				"operationId": "getOrdersProposalsAuthByItemByItemId",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "item_id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					},
+					{
+						"description": "Optional proposal status filter.",
+						"in": "query",
+						"name": "status",
+						"required": false,
+						"schema": { "enum": ["pending", "accepted", "rejected", "expired", "buyer_aborted"], "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"original_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"payment_provider_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"platform_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"proposal_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"shipping_label_id": { "type": "string" },
+										"shipping_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"shipping_quote_id": { "format": "uuid", "type": "string" },
+										"status": {
+											"enum": ["pending", "accepted", "rejected", "expired", "buyer_aborted"],
+											"type": "string"
+										},
+										"updated_at": { "format": "date-time", "type": "string" }
+									},
+									"required": ["id", "status"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get an item proposal succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get an item proposal",
+				"tags": ["Proposals"]
+			}
+		},
+		"/orders_proposals/auth/create": {
+			"post": {
+				"operationId": "postOrdersProposalsAuthCreate",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"message": {
+										"description": "Message is trimmed before validation; the trimmed value must contain 1 to 600 safe Unicode code points.",
+										"minLength": 1,
+										"pattern": "^\\s*(?=[\\s\\S]*\\S)[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]{1,600}\\s*$",
+										"type": "string"
+									},
+									"proposal_price": {
+										"description": "Amount in integer euro cents.",
+										"maximum": 2147483647,
+										"minimum": 1,
+										"type": "integer"
+									},
+									"shipping_label_id": {
+										"description": "Legacy Shippo shipment object ID; this is not a purchased label transaction ID.",
+										"minLength": 1,
+										"type": "string"
+									},
+									"shipping_quote_id": { "format": "uuid", "type": "string" }
+								},
+								"required": ["item_id", "proposal_price", "shipping_label_id", "message"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"chatRoomId": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"proposal": {
+											"additionalProperties": true,
+											"properties": {
+												"created_at": { "format": "date-time", "type": "string" },
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"original_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"payment_provider_charge": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"platform_charge": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"proposal_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"shipping_label_id": { "type": "string" },
+												"shipping_price": {
+													"description": "Amount in integer euro cents.",
+													"minimum": 0,
+													"type": "integer"
+												},
+												"shipping_quote_id": { "format": "uuid", "type": "string" },
+												"status": {
+													"enum": ["pending", "accepted", "rejected", "expired", "buyer_aborted"],
+													"type": "string"
+												},
+												"updated_at": { "format": "date-time", "type": "string" }
+											},
+											"required": ["id", "status"],
+											"type": "object"
+										}
+									},
+									"required": ["proposal", "chatRoomId"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Create an order proposal succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Create an order proposal",
+				"tags": ["Proposals"]
+			}
+		},
+		"/orders_proposals/auth/{id}": {
+			"get": {
+				"operationId": "getOrdersProposalsAuthById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"created_at": { "format": "date-time", "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"original_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"payment_provider_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"platform_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"proposal_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"shipping_label_id": { "type": "string" },
+										"shipping_price": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"shipping_quote_id": { "format": "uuid", "type": "string" },
+										"status": {
+											"enum": ["pending", "accepted", "rejected", "expired", "buyer_aborted"],
+											"type": "string"
+										},
+										"updated_at": { "format": "date-time", "type": "string" }
+									},
+									"required": ["id", "status"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get a proposal succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get a proposal",
+				"tags": ["Proposals"]
+			}
+		},
+		"/password/auth/reset": {
+			"post": {
+				"operationId": "postPasswordAuthReset",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"newPassword": {
+										"description": "Password, limited to 72 UTF-8 bytes by the runtime validator.",
+										"maxLength": 100,
+										"minLength": 8,
+										"type": "string"
+									},
+									"token": { "minLength": 1, "type": "string" }
+								},
+								"required": ["token", "newPassword"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Reset a password succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Reset a password",
+				"tags": ["Authentication"]
+			}
+		},
+		"/password/auth/reset-verify-token": {
+			"get": {
+				"operationId": "getPasswordAuthResetVerifyToken",
+				"parameters": [
+					{
+						"description": "Password reset token.",
+						"in": "query",
+						"name": "token",
+						"required": true,
+						"schema": { "minLength": 1, "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"valid": { "enum": [true], "type": "boolean" }
+									},
+									"required": ["valid", "id"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Verify a password reset token succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Verify a password reset token",
+				"tags": ["Authentication"]
+			}
+		},
+		"/password/forgot-password": {
+			"post": {
+				"operationId": "postPasswordForgotPassword",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "email": { "format": "email", "type": "string" } },
+								"required": ["email"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request a password reset succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Request a password reset",
+				"tags": ["Authentication"]
+			}
+		},
+		"/platforms_costs/auth/calculate_platform_costs": {
+			"post": {
+				"operationId": "postPlatformsCostsAuthCalculatePlatformCosts",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"price": {
+										"description": "Amount in integer euro cents.",
+										"maximum": 2147483647,
+										"minimum": 1,
+										"type": "integer"
+									},
+									"shipping_price": {
+										"description": "Amount in integer euro cents.",
+										"maximum": 2147483647,
+										"minimum": 0,
+										"type": "integer"
+									}
+								},
+								"required": ["price", "shipping_price"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"payment_provider_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"platform_charge": {
+											"description": "Amount in integer euro cents.",
+											"minimum": 0,
+											"type": "integer"
+										},
+										"proposalExpireTime": { "minimum": 0, "type": "number" }
+									},
+									"required": ["platform_charge", "payment_provider_charge", "proposalExpireTime"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Calculate platform costs succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Calculate platform costs",
+				"tags": ["Platform costs"]
+			}
+		},
+		"/profile/auth": {
+			"get": {
+				"operationId": "getProfileAuth",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"created_at": { "format": "date-time", "type": "string" },
+										"email": { "format": "email", "type": "string" },
+										"gender": { "enum": ["male", "female"], "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"location": { "additionalProperties": true, "type": "object" },
+										"name": { "maxLength": 30, "minLength": 3, "type": "string" },
+										"surname": { "maxLength": 30, "minLength": 3, "type": "string" },
+										"username": { "type": "string" }
+									},
+									"required": ["name", "surname", "gender"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get the authenticated profile succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get the authenticated profile",
+				"tags": ["Profiles"]
+			},
+			"put": {
+				"operationId": "putProfileAuth",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"gender": { "enum": ["male", "female"], "type": "string" },
+									"name": { "maxLength": 30, "minLength": 3, "type": "string" },
+									"surname": { "maxLength": 30, "minLength": 3, "type": "string" }
+								},
+								"required": ["name", "surname", "gender"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": {
+										"created_at": { "format": "date-time", "type": "string" },
+										"email": { "format": "email", "type": "string" },
+										"gender": { "enum": ["male", "female"], "type": "string" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"location": { "additionalProperties": true, "type": "object" },
+										"name": { "maxLength": 30, "minLength": 3, "type": "string" },
+										"surname": { "maxLength": 30, "minLength": 3, "type": "string" },
+										"username": { "type": "string" }
+									},
+									"required": ["name", "surname", "gender"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Update the authenticated profile succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Update the authenticated profile",
+				"tags": ["Profiles"]
+			}
+		},
+		"/profile/auth/profile_active_address_id": {
+			"get": {
+				"operationId": "getProfileAuthProfileActiveAddressId",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "oneOf": [{ "maximum": 2147483647, "minimum": 1, "type": "integer" }, { "enum": [null] }] }
+							}
+						},
+						"description": "Get the active address ID succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get the active address ID",
+				"tags": ["Profiles"]
+			}
+		},
+		"/profile/compact/{username}": {
+			"get": {
+				"operationId": "getProfileCompactByUsername",
+				"parameters": [
+					{
+						"description": "username route selector.",
+						"in": "path",
+						"name": "username",
+						"required": true,
+						"schema": { "minLength": 1, "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"created_at": { "format": "date-time", "type": "string" },
+										"email_verified": { "type": "boolean" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"location": {
+											"additionalProperties": false,
+											"properties": {
+												"city": {
+													"additionalProperties": false,
+													"properties": {
+														"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+														"name": { "type": "string" }
+													},
+													"required": ["id", "name"],
+													"type": "object"
+												},
+												"province": {
+													"additionalProperties": false,
+													"properties": {
+														"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+														"name": { "type": "string" }
+													},
+													"required": ["id", "name"],
+													"type": "object"
+												}
+											},
+											"required": ["city", "province"],
+											"type": "object"
+										},
+										"phone_verified": { "type": "boolean" },
+										"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"selling_items": { "minimum": 0, "type": "integer" }
+									},
+									"required": [
+										"id",
+										"profile_id",
+										"phone_verified",
+										"email_verified",
+										"created_at",
+										"selling_items",
+										"location"
+									],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get a compact public profile succeeded"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get a compact public profile",
+				"tags": ["Profiles"]
+			}
+		},
+		"/properties/subcategory_properties/{id}": {
+			"get": {
+				"operationId": "getPropertiesSubcategoryPropertiesById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "List subcategory properties succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "List subcategory properties",
+				"tags": ["Catalog"]
+			}
+		},
+		"/properties/{id}": {
+			"get": {
+				"operationId": "getPropertiesById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "Get a property succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get a property",
+				"tags": ["Catalog"]
+			}
+		},
+		"/refresh/auth": {
+			"post": {
+				"operationId": "postRefreshAuth",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Rotate the refresh session succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "refreshCookie": [] }],
+				"summary": "Rotate the refresh session",
+				"tags": ["Authentication"]
+			}
+		},
+		"/shipment_provider/auth/active_carriers": {
+			"get": {
+				"operationId": "getShipmentProviderAuthActiveCarriers",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"activeCarriers": {
+											"items": {
+												"additionalProperties": false,
+												"properties": {
+													"accountId": { "type": "string" },
+													"active": { "type": "boolean" },
+													"carrier": { "type": "string" }
+												},
+												"required": ["accountId", "active", "carrier"],
+												"type": "object"
+											},
+											"type": "array"
+										}
+									},
+									"required": ["activeCarriers"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "List active shipping carriers succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"502": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Upstream provider returned an invalid response or failed"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "List active shipping carriers",
+				"tags": ["Shipping"]
+			}
+		},
+		"/shipment_provider/auth/calculate_shipment_cost": {
+			"post": {
+				"operationId": "postShipmentProviderAuthCalculateShipmentCost",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": { "item_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" } },
+								"required": ["item_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"rates": {
+											"items": {
+												"additionalProperties": true,
+												"properties": {
+													"amount": { "pattern": "^\\d+(?:\\.\\d{1,2})?$", "type": "string" },
+													"currency": { "enum": ["EUR"], "type": "string" },
+													"shipment_label_id": {
+														"description": "A Shippo shipment object ID used to retrieve rates; it is not a purchased label transaction ID.",
+														"type": "string"
+													},
+													"shipping_quote_id": { "format": "uuid", "type": "string" }
+												},
+												"required": ["amount", "currency", "shipment_label_id", "shipping_quote_id"],
+												"type": "object"
+											},
+											"maxItems": 1,
+											"minItems": 1,
+											"type": "array"
+										}
+									},
+									"required": ["rates"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Calculate shipment cost succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					},
+					"502": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Upstream provider returned an invalid response or failed"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Calculate shipment cost",
+				"tags": ["Shipping"]
+			}
+		},
+		"/shipment_provider/auth/create_label": {
+			"post": {
+				"operationId": "postShipmentProviderAuthCreateLabel",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"order_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+									"rate_id": { "minLength": 1, "type": "string" }
+								},
+								"required": ["order_id", "rate_id"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"properties": {
+										"label": {
+											"properties": {
+												"id": { "type": "string" },
+												"label_url": { "format": "uri", "type": "string" },
+												"status": { "enum": ["SUCCESS"], "type": "string" },
+												"tracking_number": { "oneOf": [{ "type": "string" }, { "enum": [null] }] },
+												"tracking_url": { "oneOf": [{ "format": "uri", "type": "string" }, { "enum": [null] }] }
+											},
+											"required": ["id", "status", "label_url"],
+											"type": "object"
+										}
+									},
+									"required": ["label"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Purchase a verified shipping label succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"409": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request conflicts with the current resource state"
+					},
+					"502": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Upstream provider returned an invalid response or failed"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Purchase a verified shipping label",
+				"tags": ["Shipping"]
+			}
+		},
+		"/signup": {
+			"post": {
+				"operationId": "postSignup",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": false,
+								"properties": {
+									"email": { "format": "email", "type": "string" },
+									"gender": { "enum": ["male", "female"], "type": "string" },
+									"marketing_policy": { "type": "boolean" },
+									"name": { "maxLength": 30, "minLength": 3, "type": "string" },
+									"password": {
+										"description": "Password, limited to 72 UTF-8 bytes by the runtime validator.",
+										"maxLength": 100,
+										"minLength": 8,
+										"type": "string"
+									},
+									"privacy_policy": { "enum": [true], "type": "boolean" },
+									"surname": { "maxLength": 30, "minLength": 3, "type": "string" },
+									"username": { "maxLength": 30, "minLength": 3, "type": "string" }
+								},
+								"required": [
+									"name",
+									"surname",
+									"gender",
+									"privacy_policy",
+									"marketing_policy",
+									"username",
+									"email",
+									"password"
+								],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Create an account succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"409": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request conflicts with the current resource state"
+					},
+					"422": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request is well-formed but cannot be processed"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Create an account",
+				"tags": ["Authentication"]
+			}
+		},
+		"/subcategories": {
+			"get": {
+				"operationId": "getSubcategories",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "List subcategories succeeded"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "List subcategories",
+				"tags": ["Catalog"]
+			}
+		},
+		"/subcategories/no_parent/{id}": {
+			"get": {
+				"operationId": "getSubcategoriesNoParentById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "List subcategories without the parent succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "List subcategories without the parent",
+				"tags": ["Catalog"]
+			}
+		},
+		"/subcategories/{id}": {
+			"get": {
+				"operationId": "getSubcategoriesById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "Get a subcategory succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get a subcategory",
+				"tags": ["Catalog"]
+			}
+		},
+		"/subcategory_properties/filter/{id}": {
+			"get": {
+				"operationId": "getSubcategoryPropertiesFilterById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "Get subcategory filters succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get subcategory filters",
+				"tags": ["Catalog"]
+			}
+		},
+		"/subcategory_properties/{id}": {
+			"get": {
+				"operationId": "getSubcategoryPropertiesById",
+				"parameters": [
+					{
+						"description": "Positive PostgreSQL integer identifier.",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": { "maximum": 2147483647, "minimum": 1, "type": "integer" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": { "items": { "additionalProperties": true, "type": "object" }, "type": "array" }
+							}
+						},
+						"description": "Get subcategory property mappings succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Get subcategory property mappings",
+				"tags": ["Catalog"]
+			}
+		},
+		"/uploads/auth/images-item": {
+			"post": {
+				"operationId": "postUploadsAuthImagesItem",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"properties": {
+									"images": {
+										"items": { "format": "binary", "type": "string" },
+										"maxItems": 5,
+										"minItems": 1,
+										"type": "array"
+									},
+									"item_id": {
+										"description": "Positive int4 item ID form field.",
+										"pattern": "^(?:[1-9][0-9]{0,8}|1[0-9]{9}|20[0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6]|2147483647)$",
+										"type": "string"
+									}
+								},
+								"required": ["item_id", "images"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"files": {
+											"items": {
+												"additionalProperties": false,
+												"properties": {
+													"mediumKey": { "type": "string" },
+													"orderPosition": { "minimum": 0, "type": "integer" },
+													"originalKey": { "type": "string" },
+													"smallKey": { "type": "string" },
+													"thumbKey": { "type": "string" }
+												},
+												"required": ["originalKey", "smallKey", "mediumKey", "thumbKey", "orderPosition"],
+												"type": "object"
+											},
+											"type": "array"
+										},
+										"item_id": {
+											"pattern": "^(?:[1-9][0-9]{0,8}|1[0-9]{9}|20[0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6]|2147483647)$",
+											"type": "string"
+										},
+										"message": { "type": "string" }
+									},
+									"required": ["message", "item_id", "files"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Upload item image variants succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"413": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request payload is too large"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Upload item image variants",
+				"tags": ["Uploads"]
+			}
+		},
+		"/user/auth": {
+			"get": {
+				"operationId": "getUserAuth",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"email": { "format": "email", "type": "string" },
+										"email_verified": { "type": "boolean" },
+										"exp": { "type": "integer" },
+										"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"phone_verified": { "type": "boolean" },
+										"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+										"username": { "minLength": 1, "type": "string" }
+									},
+									"required": ["id", "profile_id", "username", "email", "email_verified", "phone_verified"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Get the authenticated user succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Get the authenticated user",
+				"tags": ["Authentication"]
+			}
+		},
+		"/verify": {
+			"get": {
+				"operationId": "getVerify",
+				"parameters": [],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": {
+										"message": { "type": "string" },
+										"user": {
+											"additionalProperties": false,
+											"properties": {
+												"email": { "format": "email", "type": "string" },
+												"email_verified": { "type": "boolean" },
+												"exp": { "type": "integer" },
+												"id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"phone_verified": { "type": "boolean" },
+												"profile_id": { "maximum": 2147483647, "minimum": 1, "type": "integer" },
+												"username": { "minLength": 1, "type": "string" }
+											},
+											"required": ["id", "profile_id", "username", "email", "email_verified", "phone_verified"],
+											"type": "object"
+										}
+									},
+									"required": ["message", "user"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Verify the authenticated session succeeded"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [{ "accessCookie": [], "refreshCookie": [] }],
+				"summary": "Verify the authenticated session",
+				"tags": ["Authentication"]
+			}
+		},
+		"/verify/email": {
+			"get": {
+				"operationId": "getVerifyEmail",
+				"parameters": [
+					{
+						"description": "Signed email verification token.",
+						"in": "query",
+						"name": "token",
+						"required": true,
+						"schema": { "minLength": 1, "type": "string" }
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" } },
+									"required": ["message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Verify an email address succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					}
+				},
+				"security": [],
+				"summary": "Verify an email address",
+				"tags": ["Authentication"]
+			}
+		},
+		"/webhooks/trustap/transaction-update": {
+			"post": {
+				"operationId": "postWebhooksTrustapTransactionUpdate",
+				"parameters": [],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": true,
+								"properties": {
+									"cancelled": { "format": "date-time", "type": "string" },
+									"cancelled_with_payment": { "format": "date-time", "type": "string" },
+									"code": { "not": {} },
+									"complained": { "format": "date-time", "type": "string" },
+									"complaint_period_deadline": { "format": "date-time", "type": "string" },
+									"complaint_period_ended": { "format": "date-time", "type": "string" },
+									"created": { "format": "date-time", "type": "string" },
+									"delivered": { "format": "date-time", "type": "string" },
+									"event": { "enum": ["transaction_updated"], "type": "string" },
+									"funds_released": { "format": "date-time", "type": "string" },
+									"joined": { "format": "date-time", "type": "string" },
+									"paid": { "format": "date-time", "type": "string" },
+									"payment_refunded": { "format": "date-time", "type": "string" },
+									"rejected": { "format": "date-time", "type": "string" },
+									"status": {
+										"enum": [
+											"created",
+											"joined",
+											"paid",
+											"tracked",
+											"delivered",
+											"complained",
+											"complaint_period_ended",
+											"funds_released",
+											"rejected",
+											"cancelled",
+											"cancelled_with_payment",
+											"payment_refunded"
+										],
+										"type": "string"
+									},
+									"target_id": { "not": {} },
+									"target_preview": { "not": {} },
+									"tracked": { "format": "date-time", "type": "string" },
+									"transaction_id": {
+										"description": "Positive signed-int64 Trustap identifier (maximum 9223372036854775807); the webhook raw numeric token is preserved losslessly before JSON parsing.",
+										"oneOf": [
+											{
+												"pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$",
+												"type": "string"
+											},
+											{ "format": "int64", "minimum": 1, "type": "integer" }
+										]
+									}
+								},
+								"required": ["event", "transaction_id", "status"],
+								"type": "object"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": false,
+									"properties": { "message": { "type": "string" }, "success": { "enum": [true], "type": "boolean" } },
+									"required": ["success", "message"],
+									"type": "object"
+								}
+							}
+						},
+						"description": "Apply a Trustap transaction update succeeded"
+					},
+					"400": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Invalid request"
+					},
+					"401": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Authentication required or invalid credentials"
+					},
+					"404": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Requested resource was not found"
+					},
+					"409": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request conflicts with the current resource state"
+					},
+					"413": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Request payload is too large"
+					},
+					"500": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Unexpected server error"
+					},
+					"503": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"additionalProperties": true,
+									"properties": { "error": { "type": "string" }, "message": { "type": "string" } },
+									"type": "object"
+								}
+							}
+						},
+						"description": "Operation is temporarily deferred and can be retried"
+					}
+				},
+				"security": [{ "trustapWebhookBasic": [] }],
+				"summary": "Apply a Trustap transaction update",
+				"tags": ["Webhooks"]
+			}
+		}
+	},
+	"servers": [{ "url": "http://localhost:4000" }]
+}

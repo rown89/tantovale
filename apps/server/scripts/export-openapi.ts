@@ -1,0 +1,152 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { format } from 'prettier';
+import { tsImport } from 'tsx/esm/api';
+
+type JsonPrimitive = boolean | null | number | string;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+const CANONICAL_OPENAPI_URL = 'http://localhost:4000/openapi';
+const SERVER_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
+
+const DOCUMENTATION_ENVIRONMENT = {
+	NODE_ENV: 'test',
+	LOG_LEVEL: 'silent',
+	PROJECT_NAME: 'Tantovale documentation',
+	NEXT_PUBLIC_HONO_API_URL: 'http://localhost:4000',
+	SERVER_HOSTNAME: 'localhost',
+	SERVER_PORT: '4000',
+	STOREFRONT_HOSTNAME: 'http://localhost:3000',
+	STOREFRONT_PORT: '3000',
+	POSTGRES_USER: 'documentation',
+	POSTGRES_PASSWORD: 'documentation-only-not-used',
+	DATABASE_HOST: '127.0.0.1',
+	DATABASE_PORT: '1',
+	POSTGRES_DB: 'documentation',
+	PAYMENT_PROVIDER_API_URL: 'http://127.0.0.1:1',
+	PAYMENT_PROVIDER_API_VERSION: 'api/v1',
+	PAYMENT_PROVIDER_API_KEY: 'documentation-only-not-used',
+	PAYMENT_PROVIDER_CLIENT_ID: 'documentation',
+	PAYMENT_PROVIDER_CLIENT_SECRET: 'documentation-only-not-used',
+	PAYMENT_PROVIDER_WEBHOOK_USERNAME: 'documentation',
+	PAYMENT_PROVIDER_WEBHOOK_SECRET: 'documentation-only-not-used',
+	PAYMENT_PROVIDER_PAY_PAGE_URL: 'http://127.0.0.1:1/transactions',
+	POST_PAYMENT_REDIRECT_URL: 'http://localhost:3000',
+	PROVIDER_REQUEST_TIMEOUT_MS: '1000',
+	SHIPPING_PROVIDER_API_KEY: 'documentation-only-not-used',
+	SHIPPING_PROVIDER_WEBHOOK_SECRET: 'documentation-only-not-used',
+	SHIPPING_PROVIDER_API_URL: 'http://127.0.0.1:1',
+	ACCESS_TOKEN_SECRET: 'documentation-only-not-used',
+	REFRESH_TOKEN_SECRET: 'documentation-only-not-used',
+	EMAIL_VERIFY_TOKEN_SECRET: 'documentation-only-not-used',
+	RESET_TOKEN_SECRET: 'documentation-only-not-used',
+	COOKIE_SECRET: 'documentation-only-not-used',
+	AWS_REGION: 'eu-west-1',
+	AWS_ACCESS_KEY: 'documentation-only-not-used',
+	AWS_SECRET_ACCESS_KEY: 'documentation-only-not-used',
+	AWS_BUCKET_NAME: 'documentation',
+	AWS_ENDPOINT: 'http://127.0.0.1:1',
+	AWS_FORCE_PATH_STYLE: 'true',
+	SMTP_HOST: '127.0.0.1',
+	SMTP_PORT: '1',
+	SMTP_USER: 'documentation',
+	SMTP_PASS: 'documentation-only-not-used',
+	SMTP_FROM: 'Tantovale <noreply@localhost>',
+	SMTP_REQUEST_TIMEOUT_MS: '1000',
+	DAILY_ORDER_CHECK_SECRET_KEY: 'documentation-orders-not-used',
+	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: 'documentation-proposals-not-used',
+	TRANSACTIONS_SYNC_SECRET_KEY: 'documentation-transactions-not-used',
+	PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS: '96',
+	ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS: '48',
+} satisfies NodeJS.ProcessEnv;
+
+class OpenApiExportError extends Error {}
+
+export function sortJsonValue(value: JsonValue): JsonValue {
+	if (Array.isArray(value)) return value.map(sortJsonValue);
+	if (value === null || typeof value !== 'object') return value;
+
+	return Object.fromEntries(
+		Object.entries(value)
+			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+			.map(([key, entry]) => [key, sortJsonValue(entry)]),
+	);
+}
+
+function installDocumentationEnvironment(): void {
+	Object.assign(process.env, DOCUMENTATION_ENVIRONMENT);
+}
+
+export async function renderOpenApiArtifact(): Promise<string> {
+	installDocumentationEnvironment();
+	const { app } = (await tsImport('../src/app.ts', {
+		parentURL: import.meta.url,
+		tsconfig: path.join(SERVER_DIRECTORY, 'tsconfig.json'),
+	})) as typeof import('../src/app');
+	const response = await app.request(CANONICAL_OPENAPI_URL);
+
+	if (!response.ok) throw new OpenApiExportError('OpenAPI generation failed.');
+
+	let document: JsonValue;
+	try {
+		document = (await response.json()) as JsonValue;
+	} catch {
+		throw new OpenApiExportError('OpenAPI generation failed.');
+	}
+
+	const formatted = await format(JSON.stringify(sortJsonValue(document)), {
+		parser: 'json',
+		printWidth: 120,
+		tabWidth: 2,
+		useTabs: true,
+		endOfLine: 'lf',
+	});
+	return `${formatted.trimEnd()}\n`;
+}
+
+function parseArguments(args: string[]): { check: boolean; targetPath: string } {
+	if (
+		(args.length !== 1 && args.length !== 2) ||
+		!args[0] ||
+		args[0].startsWith('-') ||
+		(args.length === 2 && args[1] !== '--check')
+	) {
+		throw new OpenApiExportError('Usage: export-openapi <target> [--check]');
+	}
+
+	return { check: args[1] === '--check', targetPath: path.resolve(args[0]) };
+}
+
+export async function runOpenApiExport(args: string[]): Promise<void> {
+	const { check, targetPath } = parseArguments(args);
+	const generatedBytes = Buffer.from(await renderOpenApiArtifact(), 'utf8');
+
+	if (check) {
+		let currentBytes: Buffer;
+		try {
+			currentBytes = await readFile(targetPath);
+		} catch {
+			throw new OpenApiExportError('OpenAPI artifact is missing or stale.');
+		}
+		if (!currentBytes.equals(generatedBytes)) {
+			throw new OpenApiExportError('OpenAPI artifact is missing or stale.');
+		}
+		return;
+	}
+
+	await mkdir(path.dirname(targetPath), { recursive: true });
+	await writeFile(targetPath, generatedBytes);
+}
+
+function isDirectExecution(): boolean {
+	const entrypoint = process.argv[1];
+	return entrypoint !== undefined && pathToFileURL(path.resolve(entrypoint)).href === import.meta.url;
+}
+
+if (isDirectExecution()) {
+	runOpenApiExport(process.argv.slice(2)).catch((error: unknown) => {
+		console.error(error instanceof OpenApiExportError ? error.message : 'OpenAPI export failed.');
+		process.exitCode = 1;
+	});
+}
