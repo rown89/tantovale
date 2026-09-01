@@ -37,7 +37,9 @@ function schemaAccepts(schemaValue: unknown, value: unknown): boolean {
 		const length = Array.from(value).length;
 		if (typeof schema.minLength === 'number' && length < schema.minLength) return false;
 		if (typeof schema.maxLength === 'number' && length > schema.maxLength) return false;
-		if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(value)) return false;
+		// OpenAPI patterns use ECMA-262 semantics. Compiling without the Unicode flag keeps
+		// surrogate pairs as two UTF-16 code units, matching the Zod/JavaScript length guard.
+		if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern).test(value)) return false;
 		return true;
 	}
 	if (schema.type === 'number' || schema.type === 'integer') {
@@ -393,7 +395,12 @@ describe('OpenAPI mounted-route parity', () => {
 				transaction_id: {
 					oneOf: [
 						{ type: 'string', pattern: expect.any(String) },
-						{ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+						{
+							type: 'integer',
+							format: 'int64',
+							minimum: 1,
+							maximum: Number('9223372036854775807'),
+						},
 					],
 				},
 			},
@@ -550,7 +557,7 @@ describe('OpenAPI mounted-route parity', () => {
 			'payment_refunded',
 		];
 
-		expect(webhook.additionalProperties).toBe(false);
+		expect(webhook.additionalProperties).toBe(true);
 		expect(Object.keys(properties).sort()).toEqual(
 			['event', 'transaction_id', 'status', ...timestampFields, 'code', 'target_id', 'target_preview'].sort(),
 		);
@@ -565,17 +572,38 @@ describe('OpenAPI mounted-route parity', () => {
 		const base = { event: 'transaction_updated', transaction_id: '9223372036854775807', status: 'paid' };
 		const allTimestamps = Object.fromEntries(timestampFields.map((field) => [field, '2026-09-01T10:30:00.000Z']));
 		expect(schemaAccepts(webhook, { ...base, ...allTimestamps })).toBe(true);
-		expect(schemaAccepts(webhook, { ...base, transaction_id: Number.MAX_SAFE_INTEGER })).toBe(true);
-		for (const transaction_id of [0, '0', '01', 9_007_199_254_740_992, '9223372036854775808']) {
+		expect(
+			schemaAccepts(webhook, {
+				...base,
+				webhook_delivery_id: 'delivery-v1',
+				provider_context: { retry: false },
+			}),
+		).toBe(true);
+		for (const [marker, value] of [
+			['code', 'tx.paid'],
+			['target_id', '9223372036854775807'],
+			['target_preview', { status: 'paid' }],
+		] as const) {
+			expect(schemaAccepts(webhook, { ...base, [marker]: value }), marker).toBe(false);
+		}
+	});
+
+	it('documents inbound Trustap numeric tokens across the positive signed-int64 range', async () => {
+		const { operations } = await generatedOperations();
+		const webhook = requestSchema(operations.get('POST /webhooks/trustap/transaction-update'));
+		const properties = webhook.properties as Record<string, JsonSchema>;
+		const base = { event: 'transaction_updated', transaction_id: '9223372036854775807', status: 'paid' };
+
+		expect(schemaAccepts(webhook, { ...base, transaction_id: Number('9223372036854775807') })).toBe(true);
+		for (const transaction_id of [0, -1, 1.5, '0', '01', 10_000_000_000_000_000_000, '9223372036854775808']) {
 			expect(schemaAccepts(webhook, { ...base, transaction_id }), String(transaction_id)).toBe(false);
 		}
-		expect(schemaAccepts(webhook, { ...base, code: 'tx.paid' })).toBe(false);
 		expect(properties.transaction_id).toEqual({
 			oneOf: [
 				{ type: 'string', pattern: expect.any(String) },
-				{ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+				{ type: 'integer', format: 'int64', minimum: 1, maximum: Number('9223372036854775807') },
 			],
-			description: expect.stringContaining('Lossless Trustap'),
+			description: expect.stringContaining('raw numeric token'),
 		});
 	});
 
@@ -610,12 +638,15 @@ describe('OpenAPI mounted-route parity', () => {
 		).message;
 		for (const schema of [chatMessage, proposalMessage]) {
 			expect(schemaAccepts(schema, 'safe\nmessage')).toBe(true);
+			expect(schemaAccepts(schema, '😀'.repeat(300))).toBe(true);
+			expect(schemaAccepts(schema, '😀'.repeat(301))).toBe(false);
+			expect(schemaAccepts(schema, 'x'.repeat(600))).toBe(true);
+			expect(schemaAccepts(schema, 'x'.repeat(601))).toBe(false);
 			expect(schemaAccepts(schema, ' \t\n ')).toBe(false);
 			expect(schemaAccepts(schema, 'unsafe\u0000message')).toBe(false);
+			expect(String((schema as JsonSchema).description), 'UTF-16 description').toContain('UTF-16');
 		}
-		expect(schemaAccepts(chatMessage, 'x'.repeat(601))).toBe(false);
 		expect(schemaAccepts(proposalMessage, `${' '.repeat(400)}x${' '.repeat(400)}`)).toBe(true);
-		expect(schemaAccepts(proposalMessage, 'x'.repeat(601))).toBe(false);
 
 		const upload = operations.get('POST /uploads/auth/images-item')?.requestBody?.content?.['multipart/form-data']
 			?.schema as JsonSchema;

@@ -1,11 +1,11 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { losslessTrustapIdSchema, routeDescription, type ManualSchema } from '../common';
+import { inboundTrustapIdSchema, routeDescription, type ManualSchema } from '../common';
 
 const request: ManualSchema = {
 	type: 'object',
 	properties: {
 		event: { type: 'string', enum: ['transaction_updated'] },
-		transaction_id: losslessTrustapIdSchema,
+		transaction_id: inboundTrustapIdSchema,
 		status: {
 			type: 'string',
 			enum: [
@@ -41,7 +41,7 @@ const request: ManualSchema = {
 		target_preview: { not: {} },
 	},
 	required: ['event', 'transaction_id', 'status'],
-	additionalProperties: false,
+	additionalProperties: true,
 };
 export const webhooksOpenApi = {
 	trustap: routeDescription({

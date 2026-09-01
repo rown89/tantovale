@@ -131,6 +131,24 @@ const suiteOwnership = {
 	},
 } as const satisfies Record<RouteSuite, OwnedSuite>;
 
+const suiteAnchors = {
+	documentation: 'GET /openapi',
+	authentication: 'POST /login',
+	profiles: 'GET /profile/auth',
+	addresses: 'GET /addresses/auth/default_address',
+	catalog: 'GET /categories',
+	items: 'POST /item/auth/new',
+	uploads: 'POST /uploads/auth/images-item',
+	favorites: 'GET /favorites/auth/check/:item_id',
+	chat: 'GET /chat/auth/rooms',
+	proposals: 'POST /orders_proposals/auth/create',
+	orders: 'GET /orders/auth/:id',
+	'platform-costs': 'POST /platforms_costs/auth/calculate_platform_costs',
+	shipping: 'POST /shipment_provider/auth/create_label',
+	cron: 'GET /cron/auth/sync-transactions',
+	webhooks: 'POST /webhooks/trustap/transaction-update',
+} as const satisfies Record<RouteSuite, string>;
+
 describe('route test-suite ownership manifest', () => {
 	it('assigns every registry operation exactly once to an existing owner suite', async () => {
 		const declared = Object.entries(suiteOwnership)
@@ -146,6 +164,14 @@ describe('route test-suite ownership manifest', () => {
 
 		for (const [suite, owner] of Object.entries(suiteOwnership)) {
 			const source = await readFile(resolve(process.cwd(), owner.file), 'utf8');
+			const anchorOperation = suiteAnchors[suite as RouteSuite];
+			const anchorPath = anchorOperation.slice(anchorOperation.indexOf(' ') + 1);
+			expect(owner.operations, `${suite}: anchor ownership`).toContain(anchorOperation);
+			expect(
+				registry.some(({ operation, suite: routeSuite }) => operation === anchorOperation && routeSuite === suite),
+				`${suite}: registry anchor`,
+			).toBe(true);
+			expect(source, `${suite}: literal route anchor`).toContain(anchorPath);
 			expect(source, `${suite}: ${owner.file}`).toContain('describe(');
 			expect(source, `${suite}: ${owner.file}`).toContain("it('");
 		}
