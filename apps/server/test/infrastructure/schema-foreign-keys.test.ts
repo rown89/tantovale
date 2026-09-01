@@ -9,6 +9,8 @@ type ForeignKeyProjection = {
 	columnName: string;
 	foreignColumnName: string;
 	foreignTableName: string;
+	onDelete: string;
+	onUpdate: string;
 	tableName: string;
 };
 
@@ -31,6 +33,8 @@ function sourceForeignKeys(): ForeignKeyProjection[] {
 					columnName: column.name,
 					foreignColumnName: reference.foreignColumns[index]!.name,
 					foreignTableName: getTableName(reference.foreignTable),
+					onDelete: (foreignKey.onDelete ?? 'no action').toUpperCase(),
+					onUpdate: (foreignKey.onUpdate ?? 'no action').toUpperCase(),
 					tableName: tableConfig.name,
 				}));
 			});
@@ -43,21 +47,46 @@ describe('runtime Drizzle schema', () => {
 		const { client } = getTestDatabase();
 		const { rows: databaseForeignKeys } = await client.query<ForeignKeyProjection>(`
 			SELECT
-				kcu.column_name AS "columnName",
-				ccu.column_name AS "foreignColumnName",
-				ccu.table_name AS "foreignTableName",
-				tc.table_name AS "tableName"
-			FROM information_schema.table_constraints tc
-			INNER JOIN information_schema.key_column_usage kcu
-				ON tc.constraint_schema = kcu.constraint_schema
-				AND tc.constraint_name = kcu.constraint_name
-			INNER JOIN information_schema.constraint_column_usage ccu
-				ON tc.constraint_schema = ccu.constraint_schema
-				AND tc.constraint_name = ccu.constraint_name
-			WHERE tc.constraint_schema = 'public'
-				AND tc.constraint_type = 'FOREIGN KEY'
+				fk.column_name AS "columnName",
+				referenced.column_name AS "foreignColumnName",
+				referenced.table_name AS "foreignTableName",
+				reference.delete_rule AS "onDelete",
+				reference.update_rule AS "onUpdate",
+				fk.table_name AS "tableName"
+			FROM information_schema.referential_constraints reference
+			INNER JOIN information_schema.key_column_usage fk
+				ON reference.constraint_catalog = fk.constraint_catalog
+				AND reference.constraint_schema = fk.constraint_schema
+				AND reference.constraint_name = fk.constraint_name
+			INNER JOIN information_schema.key_column_usage referenced
+				ON reference.unique_constraint_catalog = referenced.constraint_catalog
+				AND reference.unique_constraint_schema = referenced.constraint_schema
+				AND reference.unique_constraint_name = referenced.constraint_name
+				AND fk.position_in_unique_constraint = referenced.ordinal_position
+			WHERE reference.constraint_schema = 'public'
 		`);
 
-		expect(sourceForeignKeys()).toEqual(databaseForeignKeys.sort(compareForeignKeys));
+		const source = sourceForeignKeys();
+		const database = databaseForeignKeys.sort(compareForeignKeys);
+
+		expect(source).toHaveLength(51);
+		expect(source).toEqual(database);
+		expect(
+			Object.entries(
+				source.reduce<Record<string, number>>((distribution, foreignKey) => {
+					const action = `${foreignKey.onDelete}/${foreignKey.onUpdate}`;
+					distribution[action] = (distribution[action] ?? 0) + 1;
+					return distribution;
+				}, {}),
+			).sort(),
+		).toEqual([
+			['CASCADE/CASCADE', 45],
+			['NO ACTION/NO ACTION', 1],
+			['RESTRICT/CASCADE', 5],
+		]);
+
+		const mutated = structuredClone(source);
+		mutated[0]!.onDelete = mutated[0]!.onDelete === 'CASCADE' ? 'RESTRICT' : 'CASCADE';
+		expect(mutated).not.toEqual(database);
 	});
 });

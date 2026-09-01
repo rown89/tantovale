@@ -1,3 +1,15 @@
 packages:
   - 'apps/*'
   - 'packages/**'
+
+onlyBuiltDependencies:
+  - esbuild
+
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - core-js-pure
+  - cpu-features
+  - protobufjs
+  - sharp
+  - ssh2
+  - unrs-resolver
