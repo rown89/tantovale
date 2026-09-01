@@ -1,5 +1,6 @@
 import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '#database/index';
 import {
@@ -15,6 +16,7 @@ import { authPath } from '#utils/constants';
 
 import { buildGuestPaymentUrl } from '../payments/payment-provider.service';
 import { publicTrustapId } from '../payments/trustap-int64';
+import { ordersOpenApi } from '../../openapi/routes';
 
 const postgresIntegerMax = 2_147_483_647;
 const orderStatuses = new Set<string>(Object.values(ORDER_PHASES));
@@ -29,7 +31,7 @@ function parseResourceId(value: string): number | undefined {
 }
 
 export const ordersRoute = createRouter()
-	.get(`${authPath}/status/:status`, authMiddleware, async (c) => {
+	.get(`${authPath}/status/:status`, describeRoute(ordersOpenApi.byStatus), authMiddleware, async (c) => {
 		const user = c.var.user;
 		const status = c.req.param('status') ?? '';
 		if (status !== 'all' && !orderStatuses.has(status)) {
@@ -97,7 +99,7 @@ export const ordersRoute = createRouter()
 			200,
 		);
 	})
-	.get(`${authPath}/:id`, authMiddleware, async (c) => {
+	.get(`${authPath}/:id`, describeRoute(ordersOpenApi.detail), authMiddleware, async (c) => {
 		const id = parseResourceId(c.req.param('id'));
 		if (!id) return c.json({ error: 'Invalid order ID' }, 400);
 

@@ -5,8 +5,14 @@ import {
 } from './subcategories.controller';
 
 import { createRouter } from '../../lib/create-app';
+import { describeRoute } from 'hono-openapi';
+import { catalogOpenApi } from '../../openapi/routes';
 
 export const subcategoriesRoute = createRouter()
-	.get('/', getSubcategoriesController)
-	.get('/:id', getSubcategoriesByIdController)
-	.get('/no_parent/:id', getSubcategoriesWithoutParentByIdController);
+	.get('/', describeRoute(catalogOpenApi.subcategories), getSubcategoriesController)
+	.get('/:id', describeRoute(catalogOpenApi.subcategory), getSubcategoriesByIdController)
+	.get(
+		'/no_parent/:id',
+		describeRoute(catalogOpenApi.subcategoryWithoutParent),
+		getSubcategoriesWithoutParentByIdController,
+	);

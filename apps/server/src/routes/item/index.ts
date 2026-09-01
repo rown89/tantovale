@@ -5,6 +5,7 @@ import { z } from 'zod/v4';
 import { env } from 'hono/adapter';
 import { getCookie } from 'hono/cookie';
 import { randomUUID } from 'node:crypto';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient, type DrizzleClient } from '#database/index';
 import {
@@ -43,6 +44,7 @@ import { sendBuyNowOrderCreatedBuyer } from '#mailer/templates/orders/buyer/buy-
 import { resolveOptionalLiveSessionUser } from '#middlewares/authMiddleware/utils';
 import { ensurePaymentProviderIdentity } from '#lib/payment-provider-identity';
 import { acquireItemCommerceLock, itemCommerceOrderBlockingPredicate } from '#lib/item-commerce-lock';
+import { itemsOpenApi } from '../../openapi/routes';
 
 import {
 	parseProviderDecimalToCents,
@@ -382,7 +384,7 @@ async function validateEditItemState(
 
 export const itemRoute = createRouter()
 	// THIS ENDPOINT CAN BE CONSUMED BY BOTH LOGGED AND GUEST USERS
-	.get('/:id', async (c) => {
+	.get('/:id', describeRoute(itemsOpenApi.detail), async (c) => {
 		const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
 			ACCESS_TOKEN_SECRET: string;
 			REFRESH_TOKEN_SECRET: string;
@@ -552,7 +554,12 @@ export const itemRoute = createRouter()
 			return c.json({ message: 'Get item error' }, 500);
 		}
 	})
-	.post(`/${authPath}/new`, authMiddleware, zValidator('json', createItemSchema), async (c) => {
+	.post(
+		`/${authPath}/new`,
+		describeRoute(itemsOpenApi.create),
+		authMiddleware,
+		zValidator('json', createItemSchema),
+		async (c) => {
 		try {
 			const user = c.var.user;
 			const { commons, properties: requestedProperties, shipping } = c.req.valid('json');
@@ -624,8 +631,14 @@ export const itemRoute = createRouter()
 				400,
 			);
 		}
-	})
-	.put(`/${authPath}/edit/:id`, authMiddleware, zValidator('json', updateItemSchema), async (c) => {
+		},
+	)
+	.put(
+		`/${authPath}/edit/:id`,
+		describeRoute(itemsOpenApi.edit),
+		authMiddleware,
+		zValidator('json', updateItemSchema),
+		async (c) => {
 		const id = Number(c.req.param('id'));
 		if (!Number.isSafeInteger(id) || id <= 0 || id > postgresIntegerMax) {
 			return c.json({ message: 'Invalid item ID' }, 400);
@@ -716,9 +729,11 @@ export const itemRoute = createRouter()
 			if (error instanceof ItemMutationNotFoundError) return c.json({ message: 'Item not found' }, 404);
 			return c.json({ message: error instanceof Error ? error.message : 'Failed to update item' }, 400);
 		}
-	})
+		},
+	)
 	.post(
 		`/${authPath}/buy_now`,
+		describeRoute(itemsOpenApi.buyNow),
 		authMiddleware,
 		zValidator(
 			'json',
@@ -1099,6 +1114,7 @@ export const itemRoute = createRouter()
 	)
 	.post(
 		`/${authPath}/user_delete_item`,
+		describeRoute(itemsOpenApi.remove),
 		authMiddleware,
 		zValidator(
 			'json',
@@ -1150,6 +1166,7 @@ export const itemRoute = createRouter()
 	)
 	.post(
 		`/${authPath}/publish_state`,
+		describeRoute(itemsOpenApi.publish),
 		authMiddleware,
 		zValidator(
 			'json',

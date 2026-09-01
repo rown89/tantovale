@@ -1,10 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath, environment } from '#utils/constants';
 import { calculatePlatformCosts } from '#utils/platform-costs';
+import { platformCostsOpenApi } from '../../openapi/routes';
 
 const calculatePlatformCostsSchema = z.object({
 	price: z.number().int().positive().max(2_147_483_647),
@@ -13,6 +15,7 @@ const calculatePlatformCostsSchema = z.object({
 
 export const platformsCostsRoute = createRouter().post(
 	`${authPath}/calculate_platform_costs`,
+	describeRoute(platformCostsOpenApi.calculate),
 	authMiddleware,
 	zValidator('json', calculatePlatformCostsSchema),
 	async (c) => {

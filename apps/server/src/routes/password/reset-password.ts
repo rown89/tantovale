@@ -2,6 +2,7 @@ import { env } from 'hono/adapter';
 import { and, eq, gt } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import { passwordSchema } from '../../extended_schemas/password';
 import { hashPassword } from '../../lib/password';
@@ -11,6 +12,7 @@ import { users, password_reset_tokens, refreshTokens } from '../../database/sche
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { findVerifiedResetToken } from './reset-token.service';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 const resetPasswordSchema = z.object({
 	token: z.string().min(1),
@@ -19,7 +21,11 @@ const resetPasswordSchema = z.object({
 
 export const passwordResetRoute = createRouter()
 	// Update Password
-	.post(`/${authPath}/reset`, zValidator('json', resetPasswordSchema), async (c) => {
+	.post(
+		`/${authPath}/reset`,
+		describeRoute(authenticationOpenApi.resetPassword),
+		zValidator('json', resetPasswordSchema),
+		async (c) => {
 		const { RESET_TOKEN_SECRET } = env<{
 			RESET_TOKEN_SECRET: string;
 		}>(c);
@@ -79,4 +85,5 @@ export const passwordResetRoute = createRouter()
 		} catch {
 			return c.json({ error: 'Unable to reset password' }, 500);
 		}
-	});
+		},
+	);

@@ -21,12 +21,12 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '#database/schemas/enumerated_values';
-import { activeCarriersDescription, createLabelDescription } from './describe';
 import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { ShipmentService, ShippoProviderError } from './shipment.service';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { alias } from 'drizzle-orm/pg-core';
+import { shippingOpenApi } from '../../openapi/routes';
 
 const postgresIntegerMax = 2_147_483_647;
 const definitelyRejectedShippoStatuses = new Set([400, 401, 403, 404, 422]);
@@ -148,7 +148,7 @@ const ERROR_MESSAGES = {
 } as const;
 
 export const shipmentProviderRoute = createRouter()
-	.get(`/${authPath}/active_carriers`, authMiddleware, describeRoute(activeCarriersDescription), async (c) => {
+	.get(`/${authPath}/active_carriers`, describeRoute(shippingOpenApi.carriers), authMiddleware, async (c) => {
 		try {
 			const activeCarriers = await new ShipmentService().listActiveCarriers();
 			if (activeCarriers.length === 0) {
@@ -161,6 +161,7 @@ export const shipmentProviderRoute = createRouter()
 	})
 	.post(
 		`/${authPath}/calculate_shipment_cost`,
+		describeRoute(shippingOpenApi.quote),
 		authMiddleware,
 		zValidator('json', calculateShipmentCostSchema),
 		async (c) => {
@@ -197,7 +198,7 @@ export const shipmentProviderRoute = createRouter()
 	)
 	.post(
 		`/${authPath}/create_label`,
-		describeRoute(createLabelDescription),
+		describeRoute(shippingOpenApi.label),
 		zValidator('json', createLabelSchema),
 		async (c) => {
 			const user = c.get('user');

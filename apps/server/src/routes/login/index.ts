@@ -6,6 +6,7 @@ import { setCookie } from 'hono/cookie';
 import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import { tokenPayload } from '../../lib/tokenPayload';
 import { verifyPassword } from '../../lib/password';
@@ -16,6 +17,7 @@ import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { UserProfileSchema } from '../../extended_schemas/users';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 const DUMMY_PASSWORD_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
 const loginSchema = UserProfileSchema.pick({ email: true }).extend({
@@ -23,7 +25,11 @@ const loginSchema = UserProfileSchema.pick({ email: true }).extend({
 	password: z.string().min(8, 'La password deve contenere almeno 8 caratteri').max(100).nonempty(),
 });
 
-export const loginRoute = createRouter().post('/', zValidator('json', loginSchema), async (c) => {
+export const loginRoute = createRouter().post(
+	'/',
+	describeRoute(authenticationOpenApi.login),
+	zValidator('json', loginSchema),
+	async (c) => {
 	const { NODE_ENV, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
 		NODE_ENV: string;
 		ACCESS_TOKEN_SECRET: string;
@@ -173,4 +179,5 @@ export const loginRoute = createRouter().post('/', zValidator('json', loginSchem
 	} catch {
 		return c.json({ message: 'Internal server error' }, 500);
 	}
-});
+	},
+);

@@ -2,6 +2,7 @@ import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod/v4';
 import { zValidator } from '@hono/zod-validator';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '#database/index';
 import {
@@ -48,6 +49,7 @@ import { publicTrustapId } from '../payments/trustap-int64';
 import { PaymentInvitationOutboxService } from '../payments/payment-invitation-outbox.service';
 import { parseProviderDecimalToCents, ShipmentService } from '../shipment-provider/shipment.service';
 import { shipmentMatchesShippingState, shippingSnapshotFingerprint } from '../shipment-provider/shipment.service';
+import { proposalsOpenApi } from '../../openapi/routes';
 
 const postgresIntegerMax = 2_147_483_647;
 
@@ -70,7 +72,12 @@ async function bestEffortEmail(send: () => Promise<unknown>): Promise<void> {
 }
 
 export const ordersProposalsRoute = createRouter()
-	.post(`${authPath}/create`, authMiddleware, zValidator('json', create_order_proposal_schema), async (c) => {
+	.post(
+		`${authPath}/create`,
+		describeRoute(proposalsOpenApi.create),
+		authMiddleware,
+		zValidator('json', create_order_proposal_schema),
+		async (c) => {
 		const user = c.var.user;
 		const { item_id, proposal_price, shipping_label_id, shipping_quote_id, message } = c.req.valid('json');
 		const { db } = createClient();
@@ -267,7 +274,10 @@ export const ordersProposalsRoute = createRouter()
 						country_code: addresses.country_code,
 					})
 					.from(profiles)
-					.innerJoin(addresses, and(eq(addresses.profile_id, profiles.id), eq(addresses.status, addressStatus.ACTIVE)))
+						.innerJoin(
+							addresses,
+							and(eq(addresses.profile_id, profiles.id), eq(addresses.status, addressStatus.ACTIVE)),
+						)
 					.where(eq(profiles.id, user.profile_id))
 					.limit(1);
 				if (!buyer) return { error: 'Buyer information not found', status: 404 as const };
@@ -351,8 +361,14 @@ export const ordersProposalsRoute = createRouter()
 			console.error('Error creating proposal:', error);
 			return c.json({ error: 'Failed to create proposal' }, 500);
 		}
-	})
-	.put(`${authPath}`, authMiddleware, zValidator('json', seller_update_order_proposal_schema), async (c) => {
+		},
+	)
+	.put(
+		`${authPath}`,
+		describeRoute(proposalsOpenApi.update),
+		authMiddleware,
+		zValidator('json', seller_update_order_proposal_schema),
+		async (c) => {
 		const user = c.var.user;
 		const { id, status, item_id } = c.req.valid('json');
 		const { db } = createClient();
@@ -912,9 +928,11 @@ export const ordersProposalsRoute = createRouter()
 			console.error('Error updating proposal:', error);
 			return c.json({ error: 'Failed to update proposal' }, 500);
 		}
-	})
+		},
+	)
 	.post(
 		`${authPath}/buyer_aborted_proposal`,
+		describeRoute(proposalsOpenApi.abort),
 		authMiddleware,
 		zValidator('json', buyer_abort_proposal_schema),
 		async (c) => {
@@ -1008,7 +1026,7 @@ export const ordersProposalsRoute = createRouter()
 			}
 		},
 	)
-	.get(`${authPath}/:id`, authMiddleware, async (c) => {
+	.get(`${authPath}/:id`, describeRoute(proposalsOpenApi.detail), authMiddleware, async (c) => {
 		const id = parseResourceId(c.req.param('id'));
 		if (!id) return c.json({ error: 'Invalid proposal ID' }, 400);
 		const user = c.var.user;
@@ -1034,6 +1052,7 @@ export const ordersProposalsRoute = createRouter()
 	})
 	.get(
 		`${authPath}/by_item/:item_id`,
+		describeRoute(proposalsOpenApi.byItem),
 		zValidator('query', z.object({ status: z.enum(orderProposalStatusValues).optional() })),
 		authMiddleware,
 		async (c) => {

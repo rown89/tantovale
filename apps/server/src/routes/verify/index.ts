@@ -12,65 +12,10 @@ import { getAuthTokenDeleteOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { hasLiveMatchingRefreshSession, verifyAccessTokenClaims } from '../../middlewares/authMiddleware/utils';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const verifyRoute = createRouter()
-	.get(
-		'/',
-		describeRoute({
-			description: 'User token verifier',
-			responses: {
-				200: {
-					description: 'Token verified successfully',
-					content: {
-						'application/json': {
-							schema: {
-								type: 'object',
-								properties: {
-									message: { type: 'string' },
-									user: {
-										type: 'object',
-										properties: {
-											id: { type: 'number' },
-											username: { type: 'string' },
-											email: { type: 'string' },
-											email_verified: { type: 'boolean' },
-											phone_verified: { type: 'boolean' },
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-				401: {
-					description: 'No token provided or invalid token',
-					content: {
-						'application/json': {
-							schema: {
-								type: 'object',
-								properties: {
-									message: { type: 'string' },
-								},
-							},
-						},
-					},
-				},
-				500: {
-					description: 'Error processing request',
-					content: {
-						'application/json': {
-							schema: {
-								type: 'object',
-								properties: {
-									message: { type: 'string' },
-								},
-							},
-						},
-					},
-				},
-			},
-		}),
-		async (c) => {
+	.get('/', describeRoute(authenticationOpenApi.verify), async (c) => {
 			const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = env<{
 				ACCESS_TOKEN_SECRET: string;
 				REFRESH_TOKEN_SECRET: string;
@@ -138,19 +83,8 @@ export const verifyRoute = createRouter()
 			} catch {
 				return c.json({ message: 'Error processing verify token request' }, 500);
 			}
-		},
-	)
-	.get(
-		'/email',
-		describeRoute({
-			description: 'Email verifier',
-			responses: {
-				200: {
-					description: 'Email verified successfully!',
-				},
-			},
-		}),
-		async (c) => {
+	})
+	.get('/email', describeRoute(authenticationOpenApi.verifyEmail), async (c) => {
 			const { EMAIL_VERIFY_TOKEN_SECRET, NODE_ENV } = env<{
 				EMAIL_VERIFY_TOKEN_SECRET: string;
 				NODE_ENV: string;
@@ -226,5 +160,4 @@ export const verifyRoute = createRouter()
 			} catch {
 				return c.json({ message: 'Email verification failed' }, 500);
 			}
-		},
-	);
+	});

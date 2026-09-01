@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { differenceInMinutes } from 'date-fns';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '../../database';
 import { chat_rooms, chat_messages, users, items, profiles } from '../../database/schemas/schema';
@@ -12,6 +13,7 @@ import { authMiddleware } from '../../middlewares/authMiddleware';
 import { sendNewMessageWarning } from 'src/mailer/templates/new-email-message';
 import { ChatMessageSchema } from 'src/extended_schemas';
 import { ChatMessageMetadata, itemStatus } from '#database/schemas/enumerated_values';
+import { chatOpenApi } from '../../openapi/routes';
 
 const postgresIntegerIdSchema = z.number().int().positive().max(2_147_483_647);
 
@@ -56,7 +58,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 	return (
 		createRouter()
 			// get all user chat rooms
-			.get(`/${authPath}/rooms`, authMiddleware, async (c) => {
+			.get(`/${authPath}/rooms`, describeRoute(chatOpenApi.rooms), authMiddleware, async (c) => {
 				const user = c.var.user;
 				const { db } = createClient();
 
@@ -154,7 +156,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 				}
 			})
 			// get chat room id by item_id
-			.get(`/${authPath}/rooms/id/:item_id`, authMiddleware, async (c) => {
+			.get(`/${authPath}/rooms/id/:item_id`, describeRoute(chatOpenApi.roomByItem), authMiddleware, async (c) => {
 				const user = c.var.user;
 				const rawItemId = c.req.param('item_id');
 				const item_id = parsePathId(rawItemId);
@@ -190,7 +192,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 				}
 			})
 			// Get messages for a specific chat room
-			.get(`/${authPath}/rooms/:roomId/messages`, authMiddleware, async (c) => {
+			.get(`/${authPath}/rooms/:roomId/messages`, describeRoute(chatOpenApi.messages), authMiddleware, async (c) => {
 				const user = c.var.user;
 				const rawRoomId = c.req.param('roomId');
 				const roomId = parsePathId(rawRoomId);
@@ -294,6 +296,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 			// Create a new chat room
 			.post(
 				`/${authPath}/rooms`,
+				describeRoute(chatOpenApi.createRoom),
 				authMiddleware,
 				zValidator(
 					'json',
@@ -347,6 +350,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
 			// Send a message in a chat room
 			.post(
 				`/${authPath}/rooms/:roomId/messages`,
+				describeRoute(chatOpenApi.sendMessage),
 				authMiddleware,
 				zValidator('json', textChatMessageSchema),
 				async (c) => {

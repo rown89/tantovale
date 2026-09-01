@@ -20,17 +20,11 @@ import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 import { createRouter } from '../../lib/create-app';
 import { SignupUserProfileSchema } from '../../extended_schemas/users';
 import { zValidator } from '@hono/zod-validator';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const signupRoute = createRouter().post(
 	'/',
-	describeRoute({
-		description: 'Create a user',
-		responses: {
-			200: {
-				description: 'Successful Signup',
-			},
-		},
-	}),
+	describeRoute(authenticationOpenApi.signup),
 	zValidator('json', SignupUserProfileSchema),
 	async (c) => {
 		const { NODE_ENV, EMAIL_VERIFY_TOKEN_SECRET } = env<{

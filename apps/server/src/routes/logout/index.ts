@@ -1,6 +1,7 @@
 import { deleteCookie, getCookie } from 'hono/cookie';
 import { and, eq, gt, inArray } from 'drizzle-orm';
 import { env } from 'hono/adapter';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '../../database';
 import { profiles, refreshTokens, users } from '../../database/schemas/schema';
@@ -9,8 +10,12 @@ import { getAuthTokenDeleteOptions } from '../../lib/getAuthTokenOptions';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { getRefreshSessionFamilyId, verifyRefreshTokenClaims } from '../../middlewares/authMiddleware/utils';
 import { authPath, getNodeEnvMode } from '../../utils/constants';
+import { authenticationOpenApi } from '../../openapi/routes';
 
-export const logoutRoute = createRouter().post(`/${authPath}`, async (c) => {
+export const logoutRoute = createRouter().post(
+	`/${authPath}`,
+	describeRoute(authenticationOpenApi.logout),
+	async (c) => {
 	const { REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
 		REFRESH_TOKEN_SECRET: string;
 		NODE_ENV: string;
@@ -86,4 +91,5 @@ export const logoutRoute = createRouter().post(`/${authPath}`, async (c) => {
 	} catch {
 		return c.json({ message: 'Logout error' }, 401);
 	}
-});
+	},
+);

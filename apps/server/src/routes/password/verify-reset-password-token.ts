@@ -2,10 +2,12 @@ import { env } from 'hono/adapter';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
 import { findVerifiedResetToken } from './reset-token.service';
+import { describeRoute } from 'hono-openapi';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const passwordResetVerifyToken = createRouter()
 	// Verify Reset Token
-	.get(`/${authPath}/reset-verify-token`, async (c) => {
+	.get(`/${authPath}/reset-verify-token`, describeRoute(authenticationOpenApi.verifyResetToken), async (c) => {
 		const { RESET_TOKEN_SECRET } = env<{
 			RESET_TOKEN_SECRET: string;
 		}>(c);

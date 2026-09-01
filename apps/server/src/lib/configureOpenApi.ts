@@ -1,11 +1,13 @@
 import { Scalar } from '@scalar/hono-api-reference';
-import { openAPISpecs } from 'hono-openapi';
+import { describeRoute, openAPISpecs } from 'hono-openapi';
 
 import type { AppAPI } from './types';
+import { securitySchemes } from '../openapi/descriptions';
+import { documentationOpenApi } from '../openapi/routes';
 
 export function configureOpenAPI(app: AppAPI) {
 	// Create an endpoint that builds the OpenAPI spec dynamically
-	app.get('/openapi', async (c) => {
+	app.get('/openapi', describeRoute(documentationOpenApi.openapi), async (c) => {
 		const { hostname, protocol, port } = new URL(c.req.url);
 
 		// Get the server URL from the environment
@@ -19,20 +21,13 @@ export function configureOpenAPI(app: AppAPI) {
 					version: '1.0.0',
 					description: 'Tantovale API',
 				},
+				paths: {},
+				components: { securitySchemes },
 				servers: [
 					{
 						url: serverUrl,
 					},
 				],
-			},
-			defaultOptions: {
-				GET: {
-					responses: {
-						400: {
-							description: 'Zod Error',
-						},
-					},
-				},
 			},
 		});
 		// Call the dynamically created handler with the current context
@@ -42,6 +37,7 @@ export function configureOpenAPI(app: AppAPI) {
 	// Serve the API reference using the /openapi spec
 	app.get(
 		'/',
+		describeRoute(documentationOpenApi.root),
 		Scalar({
 			theme: 'saturn',
 			url: '/openapi',

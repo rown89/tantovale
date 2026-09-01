@@ -4,6 +4,7 @@ import { DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand } from '@aw
 import { and, count, eq, isNull, max } from 'drizzle-orm';
 import { bodyLimit } from 'hono/body-limit';
 import sharp from 'sharp';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '../../database';
 import { items, items_images, type InsertItemImage } from '../../database/schemas/schema';
@@ -11,6 +12,7 @@ import { createRouter } from '../../lib/create-app';
 import { s3Client } from '../../lib/s3client';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { authPath, environment } from '../../utils/constants';
+import { uploadsOpenApi } from '../../openapi/routes';
 
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024;
 const MAX_IMAGE_COUNT = 5;
@@ -132,6 +134,7 @@ async function cleanUpUploadedObjects(bucket: string, keys: string[]): Promise<v
 
 export const uploadsRoute = createRouter().post(
 	`/${authPath}/images-item`,
+	describeRoute(uploadsOpenApi.itemImages),
 	bodyLimit({
 		maxSize: MAX_UPLOAD_BODY_SIZE,
 		onError: (c) => c.json({ error: 'Upload payload too large' }, 413),

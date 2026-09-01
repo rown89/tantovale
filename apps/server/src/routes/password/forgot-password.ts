@@ -5,6 +5,7 @@ import { sign } from 'hono/jwt';
 import { env } from 'hono/adapter';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { describeRoute } from 'hono-openapi';
 
 import { sendForgotPasswordEmail } from '../../mailer/templates/forgot-password-email';
 import { createClient } from '../../database';
@@ -13,6 +14,7 @@ import { password_reset_tokens } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { environment } from '../../utils/constants';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 const forgotPasswordSchema = z.object({
 	email: z.string().email(),
@@ -20,6 +22,7 @@ const forgotPasswordSchema = z.object({
 
 export const passwordForgotRoute = createRouter().post(
 	'/forgot-password',
+	describeRoute(authenticationOpenApi.forgotPassword),
 	zValidator('json', forgotPasswordSchema),
 	async (c) => {
 		const { RESET_TOKEN_SECRET, NODE_ENV } = env<{

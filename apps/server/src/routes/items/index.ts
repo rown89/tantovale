@@ -2,6 +2,7 @@ import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import {
 	categories,
@@ -25,6 +26,7 @@ import { authPath } from '../../utils/constants';
 
 import type { ItemWithProperties } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
+import { itemsOpenApi } from '../../openapi/routes';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -32,7 +34,12 @@ export const itemTypeSchema = z.object({
 
 export const itemsRoute = createRouter()
 	// get logged user selling items
-	.post(`${authPath}/user/selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
+	.post(
+		`${authPath}/user/selling_items`,
+		describeRoute(itemsOpenApi.selling),
+		zValidator('json', itemTypeSchema),
+		authMiddleware,
+		async (c) => {
 		const params = c.req.valid('json');
 		const user = c.var.user;
 		const { db } = createClient();
@@ -74,9 +81,10 @@ export const itemsRoute = createRouter()
 				500,
 			);
 		}
-	})
+		},
+	)
 	// get all user favorite items
-	.get(`${authPath}/user/favorites`, authMiddleware, async (c) => {
+	.get(`${authPath}/user/favorites`, describeRoute(itemsOpenApi.favorites), authMiddleware, async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
@@ -126,7 +134,7 @@ export const itemsRoute = createRouter()
 		}
 	})
 	// get specific user published selling items
-	.get(`/:username`, async (c) => {
+	.get(`/:username`, describeRoute(itemsOpenApi.byUsername), async (c) => {
 		const username = c.req.param('username');
 
 		const { db } = createClient();

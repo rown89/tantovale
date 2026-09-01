@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, ne, or } from 'drizzle-orm';
 import { zValidator } from '@hono/zod-validator';
 import { alias } from 'drizzle-orm/pg-core';
+import { describeRoute } from 'hono-openapi';
 
 import { profiles } from '../../database/schemas/profiles';
 import { createClient } from '../../database';
@@ -12,6 +13,7 @@ import { cities } from 'src/database/schemas/cities';
 import { addAddressSchema } from 'src/extended_schemas';
 import { addressStatusValues } from 'src/database/schemas/enumerated_values';
 import { acquireAddressTransactionLock } from 'src/lib/address-transaction-lock';
+import { addressesOpenApi } from '../../openapi/routes';
 
 export const ADDRESS_STATUS = {
 	ACTIVE: 'active' as const,
@@ -20,7 +22,7 @@ export const ADDRESS_STATUS = {
 } satisfies Record<string, (typeof addressStatusValues)[number]>;
 
 export const addressesRoute = createRouter()
-	.get(`/${authPath}/addresses_profile`, authMiddleware, async (c) => {
+	.get(`/${authPath}/addresses_profile`, describeRoute(addressesOpenApi.list), authMiddleware, async (c) => {
 		try {
 			const user = c.get('user');
 
@@ -80,7 +82,7 @@ export const addressesRoute = createRouter()
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}
 	})
-	.get(`/${authPath}/default_address`, authMiddleware, async (c) => {
+	.get(`/${authPath}/default_address`, describeRoute(addressesOpenApi.default), authMiddleware, async (c) => {
 		try {
 			const user = c.get('user');
 
@@ -126,6 +128,7 @@ export const addressesRoute = createRouter()
 	})
 	.post(
 		`/${authPath}/add_address_to_profile`,
+		describeRoute(addressesOpenApi.add),
 		authMiddleware,
 		zValidator('json', addAddressSchema.omit({ address_id: true })),
 		async (c) => {
@@ -190,7 +193,12 @@ export const addressesRoute = createRouter()
 			}
 		},
 	)
-	.put(`/${authPath}/update_address_to_profile`, authMiddleware, zValidator('json', addAddressSchema), async (c) => {
+	.put(
+		`/${authPath}/update_address_to_profile`,
+		describeRoute(addressesOpenApi.update),
+		authMiddleware,
+		zValidator('json', addAddressSchema),
+		async (c) => {
 		try {
 			const user = c.get('user');
 
@@ -269,9 +277,11 @@ export const addressesRoute = createRouter()
 			console.log('Error updating address to profile:', error);
 			return c.json({ message: 'addressesRoute error' }, 500);
 		}
-	})
+		},
+	)
 	.put(
 		`/${authPath}/hide_address_from_profile`,
+		describeRoute(addressesOpenApi.hide),
 		authMiddleware,
 		zValidator('json', addAddressSchema.pick({ address_id: true })),
 		async (c) => {

@@ -8,6 +8,8 @@ import { createCommerceActors, createItemFixture, createOrderFixture } from '../
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 
+const ORDER_DETAIL_ROUTE_TEMPLATE = '/orders/auth/:id';
+
 async function attachPayableProvider(
 	actors: Awaited<ReturnType<typeof createCommerceActors>>,
 	item: Awaited<ReturnType<typeof createItemFixture>>,
@@ -28,7 +30,7 @@ async function attachPayableProvider(
 	});
 }
 
-describe('order routes', () => {
+describe(`order routes (${ORDER_DETAIL_ROUTE_TEMPLATE})`, () => {
 	it.each([['/orders/auth/status/all'], ['/orders/auth/1']])('requires authentication for GET %s', async (path) => {
 		const response = await app.request(path);
 		expect(response.status).toBe(401);

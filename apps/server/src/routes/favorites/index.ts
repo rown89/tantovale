@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '#database/index';
 import { items, profiles_items_favorites } from '#db-schema';
@@ -8,12 +9,13 @@ import { itemStatus } from '#database/schemas/enumerated_values';
 import { createRouter } from 'src/lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath } from '#utils/constants';
+import { favoritesOpenApi } from '../../openapi/routes';
 
 const postgresIntegerIdSchema = z.number().int().positive().max(2_147_483_647);
 
 export const favoritesRoute = createRouter()
 	// Check if item is an user favorite
-	.get(`${authPath}/check/:item_id`, authMiddleware, async (c) => {
+	.get(`${authPath}/check/:item_id`, describeRoute(favoritesOpenApi.check), authMiddleware, async (c) => {
 		const user = c.var.user;
 		const rawItemId = Number(c.req.param('item_id'));
 		if (!rawItemId) return c.json({ error: 'Item id is required' }, 400);
@@ -42,6 +44,7 @@ export const favoritesRoute = createRouter()
 	// handle favorite (add or remove)
 	.post(
 		`${authPath}/handle`,
+		describeRoute(favoritesOpenApi.handle),
 		authMiddleware,
 		zValidator(
 			'json',

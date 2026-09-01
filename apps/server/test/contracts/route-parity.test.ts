@@ -4,12 +4,15 @@ import { app } from '../../src/app';
 import { routeContracts, type RouteAuth, type RouteSuite } from './route-registry';
 
 const EXPECTED_OPERATION_PAIR_COUNT = 63;
-const EXPECTED_HANDLER_LAYER_COUNT = 133;
+const EXPECTED_RUNTIME_HANDLER_LAYER_COUNT = 127;
+const EXPECTED_DESCRIPTION_LAYER_COUNT = 63;
+const EXPECTED_HANDLER_LAYER_COUNT = EXPECTED_RUNTIME_HANDLER_LAYER_COUNT + EXPECTED_DESCRIPTION_LAYER_COUNT;
 
 function mountedRouteHandlerLayers(routes: typeof app.routes): string[] {
 	// Hono records `app.use()` middleware layers as `ALL`, while concrete methods are handler layers.
 	// One operation pair can have several same-method/path layers (for example auth, bodyLimit, and handler),
-	// so this raw 133-layer baseline is intentionally distinct from the 63 unique operation pairs below.
+	// The 127 executable layers plus 63 one-per-operation description layers are intentionally
+	// distinct from the 63 unique operation pairs below.
 	return routes.filter((route) => route.method !== 'ALL').map((route) => `${route.method.toUpperCase()} ${route.path}`);
 }
 
@@ -39,7 +42,14 @@ describe('mounted API route target contracts for later route suites', () => {
 
 	it('registers unique endpoint pairs with valid target classifications for later route suites', () => {
 		const registered = registeredRoutes();
-		const authValues: readonly RouteAuth[] = ['public', 'cookie', 'cron-secret', 'webhook-basic'];
+		const authValues: readonly RouteAuth[] = [
+			'public',
+			'optional-access-refresh-cookie',
+			'access-refresh-cookie',
+			'refresh-cookie',
+			'cron-secret',
+			'webhook-basic',
+		];
 		const suiteValues: readonly RouteSuite[] = [
 			'addresses',
 			'authentication',

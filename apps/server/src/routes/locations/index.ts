@@ -5,9 +5,11 @@ import { createClient } from '../../database';
 import { cities } from '../../database/schemas/cities';
 import { states } from '../../database/schemas/states';
 import { parsePositivePostgresInt } from '../../lib/parse-positive-postgres-int';
+import { describeRoute } from 'hono-openapi';
+import { catalogOpenApi } from '../../openapi/routes';
 
 export const locationsRoute = createRouter()
-	.get('/search', async (c) => {
+	.get('/search', describeRoute(catalogOpenApi.locationSearch), async (c) => {
 		const locationType = c.req.query('locationType') as 'city' | 'province';
 		const locationName = c.req.query('locationName') as string;
 		const locationCountryCode = c.req.query('locationCountryCode') ?? 'IT';
@@ -68,7 +70,7 @@ export const locationsRoute = createRouter()
 			return c.json({ message: 'Failed to search locations' }, 500);
 		}
 	})
-	.get('/search_by_id/:locationType/:locationId', async (c) => {
+	.get('/search_by_id/:locationType/:locationId', describeRoute(catalogOpenApi.locationById), async (c) => {
 		const locationType = c.req.param('locationType');
 		const locationId = parsePositivePostgresInt(c.req.param('locationId'));
 

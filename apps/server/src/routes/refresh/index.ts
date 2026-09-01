@@ -6,17 +6,11 @@ import { createClient } from '../../database';
 import { createRouter } from '../../lib/create-app';
 import { InvalidRefreshSessionError, rotateRefreshSession } from '../../middlewares/authMiddleware/utils';
 import { authPath, getNodeEnvMode } from '../../utils/constants';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const refreshRoute = createRouter().post(
 	`/${authPath}`,
-	describeRoute({
-		description: 'Refresh token verifier',
-		responses: {
-			200: {
-				description: 'Tokens refreshed successfully',
-			},
-		},
-	}),
+	describeRoute(authenticationOpenApi.refresh),
 	async (c) => {
 		const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, NODE_ENV } = env<{
 			ACCESS_TOKEN_SECRET: string;

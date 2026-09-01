@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lt, notExists } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { subHours } from 'date-fns';
+import { describeRoute } from 'hono-openapi';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
@@ -20,6 +21,7 @@ import { PaymentProviderService } from '../payments/payment-provider.service';
 import type { CreateTransactionResponse } from '../payments/types';
 import { isAuthoritativeCancellationStatus, resolveTrustapOrderTransition } from '../payments/trustap-order-state';
 import { authenticateCronSecret } from './secret-auth';
+import { cronOpenApi } from '../../openapi/routes';
 
 const expiredOrdersTolleranceInHours = environment.ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS;
 const expiredProposalsTolleranceInHours = environment.PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS;
@@ -39,7 +41,11 @@ function expectedTrustapDescription(entityTitle: string, proposalId: number | nu
 }
 
 export const cronRoute = createRouter()
-	.get(`${authPath}/expired-orders-check`, authenticateExpiredOrdersCron, async (c) => {
+	.get(
+		`${authPath}/expired-orders-check`,
+		describeRoute(cronOpenApi.expiredOrders),
+		authenticateExpiredOrdersCron,
+		async (c) => {
 		const { db } = createClient();
 
 		// Calculate date that is orders payment tollerance hours ago from creation date
@@ -687,8 +693,13 @@ export const cronRoute = createRouter()
 			},
 			200,
 		);
-	})
-	.get(`${authPath}/expired-proposals-check`, authenticateExpiredProposalsCron, async (c) => {
+		},
+	)
+	.get(
+		`${authPath}/expired-proposals-check`,
+		describeRoute(cronOpenApi.expiredProposals),
+		authenticateExpiredProposalsCron,
+		async (c) => {
 		const { db } = createClient();
 
 		// Calculate date that is proposals tollerance hours ago from creation date
@@ -698,7 +709,10 @@ export const cronRoute = createRouter()
 			.select({ id: orders_proposals.id, item_id: orders_proposals.item_id })
 			.from(orders_proposals)
 			.where(
-				and(eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending), lt(orders_proposals.created_at, toleranceDate)),
+					and(
+						eq(orders_proposals.status, ORDER_PROPOSAL_PHASES.pending),
+						lt(orders_proposals.created_at, toleranceDate),
+					),
 			);
 		const updatedProposals = (
 			await Promise.all(
@@ -740,8 +754,13 @@ export const cronRoute = createRouter()
 		if (!updatedProposals.length) return c.json({ message: 'No proposals to cancel', status: 200 }, 200);
 
 		return c.json({ proposals: updatedProposals, status: 200, message: 'Proposals expired' }, 200);
-	})
-	.get(`${authPath}/sync-transactions`, authenticateTransactionSyncCron, async (c) => {
+		},
+	)
+	.get(
+		`${authPath}/sync-transactions`,
+		describeRoute(cronOpenApi.syncTransactions),
+		authenticateTransactionSyncCron,
+		async (c) => {
 		try {
 			const syncService = new TransactionSyncService();
 			const result = await syncService.syncTransactionStatuses();
@@ -751,4 +770,5 @@ export const cronRoute = createRouter()
 			console.error('Transaction sync error:', error);
 			return c.json({ error: 'Failed to sync transactions' }, 500);
 		}
-	});
+		},
+	);

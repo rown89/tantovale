@@ -1,6 +1,7 @@
 import { z } from 'zod/v4';
 import { eq } from 'drizzle-orm';
 import { bodyLimit } from 'hono/body-limit';
+import { describeRoute } from 'hono-openapi';
 
 import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
@@ -28,6 +29,7 @@ import {
 } from '#lib/shipping-label-transition-guard';
 import { authenticateTrustapWebhook } from './basic-auth';
 import { complaintRequiresDurableReconciliation } from '../payments/complaint-reconciliation';
+import { webhooksOpenApi } from '../../openapi/routes';
 
 // Trustap v1 webhook JSON is small; bound buffering before parsing to 64 KiB.
 const maxWebhookBodySize = 64 * 1024;
@@ -78,6 +80,7 @@ const trustapWebhookSchema = z
 
 export const webhooksRoute = createRouter().post(
 	'/trustap/transaction-update',
+	describeRoute(webhooksOpenApi.trustap),
 	authenticateTrustapWebhook,
 	bodyLimit({
 		maxSize: maxWebhookBodySize,
