@@ -132,11 +132,11 @@ describe('Trustap transaction webhook state mapping', () => {
 			PAYMENT_CANCELLATION_STATES.CANCELLED,
 		],
 		[
-			'crashed cancellation overtaken by payment',
+			'fresh cancellation observes payment without releasing its owner lease',
 			PAYMENT_CANCELLATION_STATES.CANCELLING,
 			entityTrustapTransactionTypeValues.PAID,
 			ORDER_PHASES.PAYMENT_CONFIRMED,
-			PAYMENT_CANCELLATION_STATES.NONE,
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
 		],
 		[
 			'ambiguous cancellation overtaken by tracking',
@@ -167,6 +167,36 @@ describe('Trustap transaction webhook state mapping', () => {
 			expect(storedProvider?.status).toBe(providerStatus);
 		},
 	);
+
+	it('keeps a fresh cancellation lease through a non-cancel update and its duplicate without timestamp churn', async () => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING })
+			.where(eq(orders.id, order.id));
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.PAID)).status).toBe(200);
+		const [orderAfterProgress] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [providerAfterProgress] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(orderAfterProgress).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_CONFIRMED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING,
+		});
+
+		expect((await postStatus(transactionId, entityTrustapTransactionTypeValues.PAID)).status).toBe(200);
+		const [orderAfterDuplicate] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [providerAfterDuplicate] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(orderAfterDuplicate?.updated_at).toEqual(orderAfterProgress?.updated_at);
+		expect(providerAfterDuplicate?.updated_at).toEqual(providerAfterProgress?.updated_at);
+		expect(orderAfterDuplicate?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.CANCELLING);
+	});
 
 	it('persists a numeric max-int64 webhook id without precision loss', async () => {
 		const actors = await createCommerceActors();

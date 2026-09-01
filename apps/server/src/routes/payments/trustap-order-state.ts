@@ -206,6 +206,17 @@ export function resolveCronCancellationSettlement(
 	) {
 		return undefined;
 	}
+	// CANCELLING is an owned, fresh provider request lease. A non-cancellation
+	// update may advance the durable payment state, but it cannot release the
+	// lease while the cron request can still return a contradictory result. The
+	// cron finalizer owns that decision; after a crash the lease is first moved
+	// to RECONCILIATION_REQUIRED and ordinary webhook/poll recovery can settle it.
+	if (
+		currentCancellationState === PAYMENT_CANCELLATION_STATES.CANCELLING &&
+		incomingProviderStatus !== TRUSTAP.CANCELLED
+	) {
+		return undefined;
+	}
 	if (incomingProviderStatus === TRUSTAP.CREATED || incomingProviderStatus === TRUSTAP.JOINED) return undefined;
 	// A durable cron marker must not make an otherwise unreachable provider edge valid.
 	// Same-status replays are intentionally accepted so a webhook or poll can settle an

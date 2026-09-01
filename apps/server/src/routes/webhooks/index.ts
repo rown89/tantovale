@@ -271,7 +271,8 @@ export const webhooksRoute = createRouter().post(
 								: {}),
 						...(cancellationSettlement
 							? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
-							: isAuthoritativeCancellationStatus(payload.status)
+							: order.paymentCancellationState !== PAYMENT_CANCELLATION_STATES.CANCELLING &&
+								  isAuthoritativeCancellationStatus(payload.status)
 								? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
 								: {}),
 						updated_at: new Date(),

@@ -400,6 +400,45 @@ describe('commerce expiry cron routes', () => {
 		});
 	});
 
+	it('expires a fresh cancellation lease after payment has advanced, then lets polling settle it', async () => {
+		useFixedUtcClock();
+		const { item, order } = await createPayableExpiredCandidate(new Date(fixedNow.getTime() - 49 * hourInMilliseconds));
+		const { db } = getTestDatabase();
+		await db
+			.update(orders)
+			.set({
+				status: ORDER_PHASES.PAYMENT_CONFIRMED,
+				payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING,
+				updated_at: new Date(fixedNow.getTime() - environment.PROVIDER_REQUEST_TIMEOUT_MS * 2 - 1),
+			})
+			.where(eq(orders.id, order.id));
+		await db
+			.update(entityTrustapTransactions)
+			.set({
+				status: entityTrustapTransactionTypeValues.PAID,
+				updated_at: new Date(fixedNow.getTime() - hourInMilliseconds - 1),
+			})
+			.where(eq(entityTrustapTransactions.transactionId, String(trustapTransactionFixture.id)));
+		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'paid', {
+			description: `Transaction for ${item.title} - (Buy Now, ref ${order.payment_attempt_id})`,
+		});
+
+		await app.request('/cron/auth/expired-orders-check?key=orders-cron-test-key');
+		const [afterLease] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(afterLease).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_CONFIRMED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+		});
+
+		const sync = await app.request('/cron/auth/sync-transactions?key=transactions-cron-test-key');
+		expect(sync.status).toBe(200);
+		const [afterSync] = await db.select().from(orders).where(eq(orders.id, order.id));
+		expect(afterSync).toMatchObject({
+			status: ORDER_PHASES.PAYMENT_CONFIRMED,
+			payment_cancellation_state: PAYMENT_CANCELLATION_STATES.NONE,
+		});
+	});
+
 	it('normalizes an authoritative webhook cancellation winner to the cron expiry outcome', async () => {
 		const { actors, order } = await createPayableExpiredCandidate();
 		let releaseProvider!: () => void;

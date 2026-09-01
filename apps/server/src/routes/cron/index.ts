@@ -51,8 +51,6 @@ export const cronRoute = createRouter()
 			.from(orders)
 			.where(
 				and(
-					eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
-					eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
 					eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
 					lt(orders.updated_at, cancellationLeaseCutoff),
 				),
@@ -70,8 +68,6 @@ export const cronRoute = createRouter()
 						and(
 							eq(orders.id, claim.id),
 							claim.item_id ? eq(orders.item_id, claim.item_id) : isNull(orders.item_id),
-							eq(orders.status, ORDER_PHASES.PAYMENT_PENDING),
-							eq(orders.payment_creation_state, PAYMENT_CREATION_STATES.CREATED),
 							eq(orders.payment_cancellation_state, PAYMENT_CANCELLATION_STATES.CANCELLING),
 							lt(orders.updated_at, cancellationLeaseCutoff),
 						),

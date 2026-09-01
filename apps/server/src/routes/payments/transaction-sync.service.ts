@@ -664,6 +664,9 @@ export class TransactionSyncService {
 						recoveryTransition,
 					);
 					const recoveredOrderStatus = cancellationSettlement?.orderStatus ?? recoveryTransition.orderStatus;
+					if (await shippingLabelPurchaseDefersOrderTransition(tx, reservation.id)) {
+						return 'deferred' as const;
+					}
 					const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
 						orderId: reservation.id,
 						providerId: existingTransaction?.id ?? null,
@@ -672,6 +675,47 @@ export class TransactionSyncService {
 						incomingProviderStatus: remoteStatus,
 					});
 					const complaintRequiresReconciliation = complaintReconciliation.required;
+					const targetCreationState = complaintRequiresReconciliation
+						? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
+						: PAYMENT_CREATION_STATES.CREATED;
+					const targetCancellationState = cancellationSettlement
+						? cancellationSettlement.paymentCancellationState
+						: reservation.paymentCancellationState !== PAYMENT_CANCELLATION_STATES.CANCELLING &&
+							  ['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(remoteStatus)
+							? PAYMENT_CANCELLATION_STATES.CANCELLED
+							: reservation.paymentCancellationState;
+					const [currentProposal] =
+						reservation.proposalId === null
+							? []
+							: await tx
+									.select({ status: orders_proposals.status })
+									.from(orders_proposals)
+									.where(and(eq(orders_proposals.id, reservation.proposalId), eq(orders_proposals.item_id, itemId)))
+									.for('update')
+									.limit(1);
+					if (reservation.proposalId !== null && !currentProposal) {
+						throw new Error('The proposal no longer exists');
+					}
+					const proposalRequiresFinalization =
+						reservation.proposalId !== null &&
+						!creationAlreadyResolved &&
+						currentProposal?.status === ORDER_PROPOSAL_PHASES.pending;
+					const providerRequiresUpdate = !existingTransaction || existingTransaction.status !== remoteStatus;
+					const orderRequiresUpdate =
+						reservation.paymentTransactionId !== transactionId ||
+						reservation.legacyTransactionId !== null ||
+						reservation.paymentCreationState !== targetCreationState ||
+						reservation.orderStatus !== recoveredOrderStatus ||
+						reservation.paymentCancellationState !== targetCancellationState;
+					if (
+						complaintRequiresReconciliation &&
+						!complaintReconciliation.inserted &&
+						!providerRequiresUpdate &&
+						!proposalRequiresFinalization &&
+						!orderRequiresUpdate
+					) {
+						return 'pending-reconciliation' as const;
+					}
 					if (!existingTransaction) {
 						await tx.insert(entityTrustapTransactions).values({
 							entityId: itemId,
@@ -698,12 +742,6 @@ export class TransactionSyncService {
 
 					if (reservation.proposalId !== null && !creationAlreadyResolved) {
 						const proposalId = reservation.proposalId;
-						const [currentProposal] = await tx
-							.select({ status: orders_proposals.status })
-							.from(orders_proposals)
-							.where(and(eq(orders_proposals.id, proposalId), eq(orders_proposals.item_id, itemId)))
-							.for('update')
-							.limit(1);
 						if (!currentProposal) throw new Error('The proposal no longer exists');
 						if (currentProposal.status === ORDER_PROPOSAL_PHASES.pending) {
 							await tx
@@ -752,27 +790,26 @@ export class TransactionSyncService {
 						}
 					}
 
-					const [recoveredOrder] = await tx
-						.update(orders)
-						.set({
-							payment_transaction_id: transactionId,
-							legacy_payment_transaction_id: null,
-							payment_creation_state: complaintRequiresReconciliation
-								? PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED
-								: PAYMENT_CREATION_STATES.CREATED,
-							status: recoveredOrderStatus,
-							...(cancellationSettlement
-								? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
-								: ['rejected', 'cancelled', 'cancelled_with_payment', 'payment_refunded'].includes(remoteStatus)
-									? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
-									: {}),
-							updated_at: new Date(),
-						})
-						.where(
-							and(eq(orders.id, reservation.id), eq(orders.payment_creation_state, reservation.paymentCreationState)),
-						)
-						.returning({ id: orders.id });
-					if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
+					if (orderRequiresUpdate) {
+						const [recoveredOrder] = await tx
+							.update(orders)
+							.set({
+								payment_transaction_id: transactionId,
+								legacy_payment_transaction_id: null,
+								payment_creation_state: targetCreationState,
+								status: recoveredOrderStatus,
+								payment_cancellation_state: targetCancellationState,
+								updated_at: new Date(),
+							})
+							.where(
+								and(eq(orders.id, reservation.id), eq(orders.payment_creation_state, reservation.paymentCreationState)),
+							)
+							.returning({ id: orders.id });
+						if (!recoveredOrder) throw new Error('The order recovery state changed before finalization');
+					}
+					if (complaintRequiresReconciliation) {
+						return 'pending-reconciliation' as const;
+					}
 					return creationAlreadyResolved
 						? {
 								outcome: 'advanced-resolved' as const,
@@ -821,6 +858,25 @@ export class TransactionSyncService {
 						orderId: candidate.orderId,
 						success: false,
 						error: 'Provider response was superseded by newer durable evidence; retry later',
+					});
+					continue;
+				}
+				if (recoveryOutcome === 'deferred') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						success: false,
+						error: SHIPPING_LABEL_TRANSITION_DEFERRED,
+					});
+					continue;
+				}
+				if (recoveryOutcome === 'pending-reconciliation') {
+					results.push({
+						transactionId,
+						orderId: candidate.orderId,
+						requiresManualReconciliation: true,
+						success: false,
+						error: 'Trustap complaint requires authoritative reconciliation',
 					});
 					continue;
 				}
@@ -1059,7 +1115,8 @@ export class TransactionSyncService {
 							: {}),
 					...(cancellationSettlement
 						? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
-						: isAuthoritativeCancellationStatus(remoteStatus)
+						: current.orderCancellationState !== PAYMENT_CANCELLATION_STATES.CANCELLING &&
+							  isAuthoritativeCancellationStatus(remoteStatus)
 							? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
 							: {}),
 					updated_at: updatedAt,

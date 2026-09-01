@@ -5,17 +5,108 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { createRouter } from '#lib/create-app';
-import { createClient } from '#create-client';
-import { orders, shipping_label_purchases, shipping_quotes, SHIPPING_LABEL_PURCHASE_STATES } from '#db-schema';
-import { ORDER_PHASES } from '#database/schemas/enumerated_values';
+import { createClient, type DrizzleClient } from '#create-client';
+import {
+	entityTrustapTransactions,
+	items,
+	orders,
+	profiles,
+	shipping_label_purchases,
+	shipping_quotes,
+	SHIPPING_LABEL_PURCHASE_STATES,
+} from '#db-schema';
+import {
+	entityTrustapTransactionTypeValues,
+	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
+	PAYMENT_CREATION_STATES,
+} from '#database/schemas/enumerated_values';
 import { activeCarriersDescription, createLabelDescription } from './describe';
 import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { ShipmentService, ShippoProviderError } from './shipment.service';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
+import { alias } from 'drizzle-orm/pg-core';
 
 const postgresIntegerMax = 2_147_483_647;
 const definitelyRejectedShippoStatuses = new Set([400, 401, 403, 404, 422]);
+type ItemTransaction = Parameters<Parameters<DrizzleClient['db']['transaction']>[0]>[0];
+const labelBuyerProfiles = alias(profiles, 'label_buyer_profiles');
+const labelSellerProfiles = alias(profiles, 'label_seller_profiles');
+
+async function readLabelPaymentGraph(tx: ItemTransaction, orderId: number, itemId: number) {
+	const [graph] = await tx
+		.select({
+			id: orders.id,
+			item_id: orders.item_id,
+			buyer_id: orders.buyer_id,
+			seller_id: orders.seller_id,
+			buyer_address: orders.buyer_address,
+			seller_address: orders.seller_address,
+			shipping_label_id: orders.shipping_label_id,
+			shipping_price: orders.shipping_price,
+			shipping_quote_id: orders.shipping_quote_id,
+			status: orders.status,
+			payment_creation_state: orders.payment_creation_state,
+			payment_cancellation_state: orders.payment_cancellation_state,
+			payment_transaction_id: orders.payment_transaction_id,
+			payment_attempt_id: orders.payment_attempt_id,
+			item_price: orders.item_price,
+			platform_charge: orders.platform_charge,
+			payment_provider_charge: orders.payment_provider_charge,
+			buyer_provider_id: labelBuyerProfiles.payment_provider_id,
+			seller_provider_id: labelSellerProfiles.payment_provider_id,
+			provider_entity_id: entityTrustapTransactions.entityId,
+			item_title: items.title,
+			provider_transaction_id: entityTrustapTransactions.transactionId,
+			provider_transaction_type: entityTrustapTransactions.transactionType,
+			provider_buyer_id: entityTrustapTransactions.buyerId,
+			provider_seller_id: entityTrustapTransactions.sellerId,
+			provider_status: entityTrustapTransactions.status,
+			provider_price: entityTrustapTransactions.price,
+			provider_charge: entityTrustapTransactions.charge,
+			provider_charge_seller: entityTrustapTransactions.chargeSeller,
+			provider_currency: entityTrustapTransactions.currency,
+			provider_quarantined: entityTrustapTransactions.quarantined,
+			provider_entity_title: entityTrustapTransactions.entityTitle,
+		})
+		.from(orders)
+		.leftJoin(labelBuyerProfiles, eq(orders.buyer_id, labelBuyerProfiles.id))
+		.leftJoin(labelSellerProfiles, eq(orders.seller_id, labelSellerProfiles.id))
+		.leftJoin(items, eq(orders.item_id, items.id))
+		.leftJoin(entityTrustapTransactions, eq(orders.payment_transaction_id, entityTrustapTransactions.transactionId))
+		.where(and(eq(orders.id, orderId), eq(orders.item_id, itemId)))
+		.limit(1);
+	return graph;
+}
+
+function labelPaymentGraphIsReady(graph: Awaited<ReturnType<typeof readLabelPaymentGraph>>): boolean {
+	return Boolean(
+		graph &&
+			(graph.status === ORDER_PHASES.PAYMENT_CONFIRMED || graph.status === ORDER_PHASES.SHIPPING_PENDING) &&
+			graph.payment_creation_state === PAYMENT_CREATION_STATES.CREATED &&
+			graph.payment_cancellation_state === PAYMENT_CANCELLATION_STATES.NONE &&
+			graph.payment_transaction_id !== null &&
+			graph.payment_attempt_id !== null &&
+			graph.item_id !== null &&
+			graph.buyer_id !== null &&
+			graph.seller_id !== null &&
+			graph.buyer_address !== null &&
+			graph.seller_address !== null &&
+			graph.provider_quarantined === false &&
+			graph.provider_status === entityTrustapTransactionTypeValues.PAID &&
+			graph.provider_transaction_type === 'online_payment' &&
+			graph.provider_transaction_id === graph.payment_transaction_id &&
+			graph.provider_entity_id === graph.item_id &&
+			graph.provider_entity_title === graph.item_title &&
+			graph.provider_buyer_id === graph.buyer_provider_id &&
+			graph.provider_seller_id === graph.seller_provider_id &&
+			graph.provider_currency === 'eur' &&
+			graph.provider_price === graph.item_price + graph.platform_charge &&
+			graph.provider_charge === graph.payment_provider_charge &&
+			graph.provider_charge_seller === 0,
+	);
+}
 
 const calculateShipmentCostSchema = z.object({
 	item_id: z.number().int().positive('Item ID must be a positive integer').max(postgresIntegerMax),
@@ -122,27 +213,8 @@ export const shipmentProviderRoute = createRouter()
 			const attemptId = randomUUID();
 			const claim = await db.transaction(async (tx) => {
 				await acquireItemCommerceLock(tx, itemId);
-				const [order] = await tx
-					.select({
-						id: orders.id,
-						item_id: orders.item_id,
-						buyer_id: orders.buyer_id,
-						seller_id: orders.seller_id,
-						buyer_address: orders.buyer_address,
-						seller_address: orders.seller_address,
-						shipping_label_id: orders.shipping_label_id,
-						shipping_price: orders.shipping_price,
-						shipping_quote_id: orders.shipping_quote_id,
-						status: orders.status,
-					})
-					.from(orders)
-					.where(and(eq(orders.id, order_id), eq(orders.item_id, itemId), eq(orders.seller_id, user.profile_id)))
-					.for('update')
-					.limit(1);
-				if (!order?.item_id) return { kind: 'not_found' as const };
-				if (order.status !== ORDER_PHASES.PAYMENT_CONFIRMED && order.status !== ORDER_PHASES.SHIPPING_PENDING) {
-					return { kind: 'wrong_state' as const };
-				}
+				const order = await readLabelPaymentGraph(tx, order_id, itemId);
+				if (!order?.item_id || order.seller_id !== user.profile_id) return { kind: 'not_found' as const };
 
 				const [existing] = await tx
 					.select()
@@ -171,6 +243,7 @@ export const shipmentProviderRoute = createRouter()
 					}
 					return { kind: 'in_progress' as const };
 				}
+				if (!labelPaymentGraphIsReady(order)) return { kind: 'wrong_state' as const };
 
 				if (!order.shipping_quote_id) return { kind: 'missing_quote' as const };
 				const [quote] = await tx
@@ -296,12 +369,7 @@ export const shipmentProviderRoute = createRouter()
 			// intent makes webhook/poller transitions defer until finalization.
 			const mayPost = await db.transaction(async (tx) => {
 				await acquireItemCommerceLock(tx, claim.itemId);
-				const [order] = await tx
-					.select({ status: orders.status })
-					.from(orders)
-					.where(and(eq(orders.id, order_id), eq(orders.item_id, claim.itemId)))
-					.for('update')
-					.limit(1);
+				const order = await readLabelPaymentGraph(tx, order_id, claim.itemId);
 				const [intent] = await tx
 					.select({ state: shipping_label_purchases.state })
 					.from(shipping_label_purchases)
@@ -314,9 +382,7 @@ export const shipmentProviderRoute = createRouter()
 					.for('update')
 					.limit(1);
 				if (intent?.state !== SHIPPING_LABEL_PURCHASE_STATES.CREATING) return false;
-				if (order?.status === ORDER_PHASES.PAYMENT_CONFIRMED || order?.status === ORDER_PHASES.SHIPPING_PENDING) {
-					return true;
-				}
+				if (labelPaymentGraphIsReady(order)) return true;
 				await tx
 					.update(shipping_label_purchases)
 					.set({ state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED, updated_at: new Date() })
@@ -348,10 +414,13 @@ export const shipmentProviderRoute = createRouter()
 			try {
 				stored = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, claim.itemId);
+					const paymentGraph = await readLabelPaymentGraph(tx, order_id, claim.itemId);
 					const [purchase] = await tx
 						.update(shipping_label_purchases)
 						.set({
-							state: SHIPPING_LABEL_PURCHASE_STATES.PURCHASED,
+							state: labelPaymentGraphIsReady(paymentGraph)
+								? SHIPPING_LABEL_PURCHASE_STATES.PURCHASED
+								: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED,
 							provider_transaction_id: transaction.objectId,
 							provider_status: transaction.status,
 							label_url: transaction.labelUrl,
@@ -380,6 +449,10 @@ export const shipmentProviderRoute = createRouter()
 					// The untouched durable claim is intentionally fail-closed.
 				}
 				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 502);
+			}
+
+			if (stored.state !== SHIPPING_LABEL_PURCHASE_STATES.PURCHASED) {
+				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 409);
 			}
 
 			return c.json(

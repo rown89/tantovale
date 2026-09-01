@@ -116,21 +116,43 @@ describe('Trustap order transition policy', () => {
 		],
 	] as const;
 
-	it.each([PAYMENT_CANCELLATION_STATES.CANCELLING, PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED])(
-		'settles every authoritative provider outcome for a durable %s cron intent',
-		(cancellationState) => {
-			for (const [providerStatus, expected] of cronSettlementMatrix) {
-				const currentOrderStatus =
-					providerStatus === TRUSTAP.COMPLAINED
-						? ORDER_PHASES.COMPLETED
-						: (exactMappings.find(([status]) => status === providerStatus)?.[1] ?? ORDER_PHASES.COMPLETED);
-				const transition = resolveTrustapOrderTransition(providerStatus, currentOrderStatus, providerStatus);
-				expect(
-					resolveCronCancellationSettlement(cancellationState, providerStatus, providerStatus, transition),
-				).toEqual(expected);
+	it('settles every authoritative provider outcome after an ambiguous cron cancellation lease', () => {
+		const cancellationState = PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED;
+		for (const [providerStatus, expected] of cronSettlementMatrix) {
+			const currentOrderStatus =
+				providerStatus === TRUSTAP.COMPLAINED
+					? ORDER_PHASES.COMPLETED
+					: (exactMappings.find(([status]) => status === providerStatus)?.[1] ?? ORDER_PHASES.COMPLETED);
+			const transition = resolveTrustapOrderTransition(providerStatus, currentOrderStatus, providerStatus);
+			expect(resolveCronCancellationSettlement(cancellationState, providerStatus, providerStatus, transition)).toEqual(
+				expected,
+			);
+		}
+	});
+
+	it('keeps a fresh cancelling lease reserved until its owner observes the provider result', () => {
+		for (const [providerStatus] of cronSettlementMatrix) {
+			const currentOrderStatus =
+				providerStatus === TRUSTAP.COMPLAINED
+					? ORDER_PHASES.COMPLETED
+					: (exactMappings.find(([status]) => status === providerStatus)?.[1] ?? ORDER_PHASES.COMPLETED);
+			const transition = resolveTrustapOrderTransition(providerStatus, currentOrderStatus, providerStatus);
+			const settlement = resolveCronCancellationSettlement(
+				PAYMENT_CANCELLATION_STATES.CANCELLING,
+				providerStatus,
+				providerStatus,
+				transition,
+			);
+			if (providerStatus === TRUSTAP.CANCELLED) {
+				expect(settlement).toEqual({
+					orderStatus: ORDER_PHASES.EXPIRED,
+					paymentCancellationState: PAYMENT_CANCELLATION_STATES.CANCELLED,
+				});
+			} else {
+				expect(settlement).toBeUndefined();
 			}
-		},
-	);
+		}
+	});
 
 	it('does not reinterpret orders without a durable cron cancellation intent', () => {
 		expect(

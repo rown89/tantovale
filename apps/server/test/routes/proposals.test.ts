@@ -1,4 +1,5 @@
 import { and, eq, lt } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
@@ -29,6 +30,7 @@ import {
 	orders_proposals,
 	payment_invitation_outbox,
 	profiles,
+	shipping_label_purchases,
 	shipping_quotes,
 } from '../../src/database/schemas/schema';
 import {
@@ -1887,7 +1889,7 @@ describe('proposal routes', () => {
 			PAYMENT_CANCELLATION_STATES.CANCELLING,
 			entityTrustapTransactionTypeValues.PAID,
 			ORDER_PHASES.PAYMENT_CONFIRMED,
-			PAYMENT_CANCELLATION_STATES.NONE,
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
 		],
 		[
 			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
@@ -1902,25 +1904,33 @@ describe('proposal routes', () => {
 						marker,
 						entityTrustapTransactionTypeValues.DELIVERED,
 						ORDER_PHASES.COMPLETED,
-						PAYMENT_CANCELLATION_STATES.NONE,
+						marker === PAYMENT_CANCELLATION_STATES.CANCELLING
+							? PAYMENT_CANCELLATION_STATES.CANCELLING
+							: PAYMENT_CANCELLATION_STATES.NONE,
 					],
 					[
 						marker,
 						entityTrustapTransactionTypeValues.PAYMENT_REFUNDED,
 						ORDER_PHASES.PAYMENT_REFUNDED,
-						PAYMENT_CANCELLATION_STATES.CANCELLED,
+						marker === PAYMENT_CANCELLATION_STATES.CANCELLING
+							? PAYMENT_CANCELLATION_STATES.CANCELLING
+							: PAYMENT_CANCELLATION_STATES.CANCELLED,
 					],
 					[
 						marker,
 						entityTrustapTransactionTypeValues.REJECTED,
 						ORDER_PHASES.PAYMENT_FAILED,
-						PAYMENT_CANCELLATION_STATES.CANCELLED,
+						marker === PAYMENT_CANCELLATION_STATES.CANCELLING
+							? PAYMENT_CANCELLATION_STATES.CANCELLING
+							: PAYMENT_CANCELLATION_STATES.CANCELLED,
 					],
 					[
 						marker,
 						entityTrustapTransactionTypeValues.FUNDS_RELEASED,
 						ORDER_PHASES.COMPLETED,
-						PAYMENT_CANCELLATION_STATES.NONE,
+						marker === PAYMENT_CANCELLATION_STATES.CANCELLING
+							? PAYMENT_CANCELLATION_STATES.CANCELLING
+							: PAYMENT_CANCELLATION_STATES.NONE,
 					],
 				] as const,
 		),
@@ -2376,8 +2386,52 @@ describe('proposal routes', () => {
 			entityTrustapTransactionTypeValues.DELIVERED,
 		);
 
-		await new TransactionSyncService().syncTransactionStatuses();
-		await new TransactionSyncService().syncTransactionStatuses();
+		const first = await new TransactionSyncService().syncTransactionStatuses();
+		expect(first).toMatchObject({
+			syncedTransactions: 0,
+			failedTransactions: 1,
+			results: [expect.objectContaining({ transactionId, success: false, requiresManualReconciliation: true })],
+		});
+		const [orderAfterFirst] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [providerAfterFirst] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.id, provider.id));
+		const markersAfterFirst = await db
+			.select()
+			.from(commerce_reconciliation_audit)
+			.where(
+				and(
+					eq(commerce_reconciliation_audit.source_row_id, reservation.id),
+					eq(commerce_reconciliation_audit.conflict_type, 'runtime_complaint_reconciliation_pending'),
+				),
+			);
+		expect(markersAfterFirst).toHaveLength(1);
+
+		const second = await new TransactionSyncService().syncTransactionStatuses();
+		expect(second).toMatchObject({
+			syncedTransactions: 0,
+			failedTransactions: 1,
+			results: [expect.objectContaining({ transactionId, success: false, requiresManualReconciliation: true })],
+		});
+		const [orderAfterSecond] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [providerAfterSecond] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.id, provider.id));
+		expect(orderAfterSecond?.updated_at).toEqual(orderAfterFirst?.updated_at);
+		expect(providerAfterSecond?.updated_at).toEqual(providerAfterFirst?.updated_at);
+		expect(
+			await db
+				.select()
+				.from(commerce_reconciliation_audit)
+				.where(
+					and(
+						eq(commerce_reconciliation_audit.source_row_id, reservation.id),
+						eq(commerce_reconciliation_audit.conflict_type, 'runtime_complaint_reconciliation_pending'),
+					),
+				),
+		).toEqual(markersAfterFirst);
 
 		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
 			expect.objectContaining({
@@ -2608,8 +2662,31 @@ describe('proposal routes', () => {
 			entityTrustapTransactionTypeValues.DELIVERED,
 		);
 
-		await new TransactionSyncService().syncTransactionStatuses();
-		await new TransactionSyncService().syncTransactionStatuses();
+		const firstProgress = await new TransactionSyncService().syncTransactionStatuses();
+		expect(firstProgress).toMatchObject({
+			syncedTransactions: 0,
+			failedTransactions: 1,
+			results: [expect.objectContaining({ transactionId, success: false, requiresManualReconciliation: true })],
+		});
+		const [orderAfterProgress] = await db.select().from(orders).where(eq(orders.id, reservation.id));
+		const [providerAfterProgress] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.id, provider.id));
+
+		const replay = await new TransactionSyncService().syncTransactionStatuses();
+		expect(replay).toMatchObject({
+			syncedTransactions: 0,
+			failedTransactions: 1,
+			results: [expect.objectContaining({ transactionId, success: false, requiresManualReconciliation: true })],
+		});
+		expect((await db.select().from(orders).where(eq(orders.id, reservation.id)))[0]?.updated_at).toEqual(
+			orderAfterProgress?.updated_at,
+		);
+		expect(
+			(await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)))[0]
+				?.updated_at,
+		).toEqual(providerAfterProgress?.updated_at);
 
 		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
 			expect.objectContaining({
@@ -2640,6 +2717,62 @@ describe('proposal routes', () => {
 			expect.objectContaining({ status: entityTrustapTransactionTypeValues.FUNDS_RELEASED, quarantined: false }),
 		]);
 	});
+
+	it.each([entityTrustapTransactionTypeValues.PAYMENT_REFUNDED, entityTrustapTransactionTypeValues.CANCELLED] as const)(
+		'defers known-ID %s recovery while a label purchase owns the item transition',
+		async (remoteStatus) => {
+			const { provider, proposal, reservation, transactionId } = await createExistingCreatedRecoveryReservation(
+				`Known recovery label barrier ${remoteStatus.replaceAll('_', ' ')}`,
+			);
+			const { db } = getTestDatabase();
+			await db.insert(shipping_label_purchases).values({
+				order_id: reservation.id,
+				item_id: reservation.item_id!,
+				purchase_attempt_id: randomUUID(),
+				shippo_rate_id: `rate-${reservation.id}`,
+			});
+			await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, remoteStatus);
+			const before = {
+				order: (await db.select().from(orders).where(eq(orders.id, reservation.id)))[0],
+				provider: (
+					await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id))
+				)[0],
+				proposal: (await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id)))[0],
+				messages: await db.select().from(chat_messages).where(eq(chat_messages.order_proposal_id, proposal.id)),
+				outbox: await db
+					.select()
+					.from(payment_invitation_outbox)
+					.where(eq(payment_invitation_outbox.order_id, reservation.id)),
+			};
+
+			const result = await new TransactionSyncService().syncTransactionStatuses();
+
+			expect(result).toMatchObject({
+				syncedTransactions: 0,
+				failedTransactions: 1,
+				results: [
+					expect.objectContaining({
+						transactionId,
+						success: false,
+						error: 'Shipping label purchase transition deferred',
+					}),
+				],
+			});
+			expect((await db.select().from(orders).where(eq(orders.id, reservation.id)))[0]).toEqual(before.order);
+			expect(
+				(await db.select().from(entityTrustapTransactions).where(eq(entityTrustapTransactions.id, provider.id)))[0],
+			).toEqual(before.provider);
+			expect((await db.select().from(orders_proposals).where(eq(orders_proposals.id, proposal.id)))[0]).toEqual(
+				before.proposal,
+			);
+			expect(await db.select().from(chat_messages).where(eq(chat_messages.order_proposal_id, proposal.id))).toEqual(
+				before.messages,
+			);
+			expect(
+				await db.select().from(payment_invitation_outbox).where(eq(payment_invitation_outbox.order_id, reservation.id)),
+			).toEqual(before.outbox);
+		},
+	);
 
 	it('does not let known-ID recovery cross the complained to rejected terminal branch', async () => {
 		const actors = await createCommerceActors();

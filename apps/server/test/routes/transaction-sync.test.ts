@@ -164,11 +164,11 @@ describe('Trustap transaction polling state mapping', () => {
 			PAYMENT_CANCELLATION_STATES.CANCELLED,
 		],
 		[
-			'crashed cancellation overtaken by payment',
+			'fresh cancellation observes payment without releasing its owner lease',
 			PAYMENT_CANCELLATION_STATES.CANCELLING,
 			entityTrustapTransactionTypeValues.PAID,
 			ORDER_PHASES.PAYMENT_CONFIRMED,
-			PAYMENT_CANCELLATION_STATES.NONE,
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
 		],
 		[
 			'ambiguous cancellation overtaken by delivery',

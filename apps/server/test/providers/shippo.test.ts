@@ -10,7 +10,12 @@ import {
 	shipping_label_purchases,
 	shipping_quotes,
 } from '../../src/database/schemas/schema';
-import { entityTrustapTransactionTypeValues, ORDER_PHASES } from '../../src/database/schemas/enumerated_values';
+import {
+	entityTrustapTransactionTypeValues,
+	ORDER_PHASES,
+	PAYMENT_CANCELLATION_STATES,
+	PAYMENT_CREATION_STATES,
+} from '../../src/database/schemas/enumerated_values';
 import { ShipmentService, ShippoProviderError } from '../../src/routes/shipment-provider/shipment.service';
 import { environment, SHIPPING_UNITS } from '../../src/utils/constants';
 import {
@@ -67,25 +72,23 @@ async function prepareLabelOrder(
 		shipping_price: 750,
 		status,
 	});
+	if (!order.payment_transaction_id) throw new Error('Label order fixture has no payment transaction');
+	await db.insert(entityTrustapTransactions).values({
+		entityId: item.id,
+		sellerId: actors.seller.profile.payment_provider_id,
+		buyerId: actors.buyer.profile.payment_provider_id,
+		transactionId: order.payment_transaction_id,
+		status: entityTrustapTransactionTypeValues.PAID,
+		price: order.item_price + order.platform_charge,
+		charge: order.payment_provider_charge,
+		chargeSeller: 0,
+		entityTitle: item.title,
+	});
 	return { actors, item, quote, order };
 }
 
 async function prepareProviderBackedLabelOrder() {
-	const prepared = await prepareLabelOrder(ORDER_PHASES.PAYMENT_CONFIRMED);
-	if (!prepared.order.payment_transaction_id) throw new Error('Label order fixture has no payment transaction');
-	const { db } = getTestDatabase();
-	await db.insert(entityTrustapTransactions).values({
-		entityId: prepared.item.id,
-		sellerId: prepared.actors.seller.profile.payment_provider_id,
-		buyerId: prepared.actors.buyer.profile.payment_provider_id,
-		transactionId: prepared.order.payment_transaction_id,
-		status: entityTrustapTransactionTypeValues.PAID,
-		price: prepared.order.item_price + prepared.order.platform_charge,
-		charge: prepared.order.payment_provider_charge,
-		chargeSeller: 0,
-		entityTitle: prepared.item.title,
-	});
-	return prepared;
+	return prepareLabelOrder(ORDER_PHASES.PAYMENT_CONFIRMED);
 }
 
 function exactShipmentBody(
@@ -374,6 +377,47 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		});
 	});
 
+	it.each([
+		['unresolved payment creation', 'creation'],
+		['active payment cancellation', 'cancellation'],
+		['quarantined provider evidence', 'quarantine'],
+		['non-paid provider evidence', 'provider-status'],
+	] as const)('rejects label claim with %s before provider I/O', async (_case, mutation) => {
+		const { actors, order } = await prepareLabelOrder();
+		const { db } = getTestDatabase();
+		if (mutation === 'creation') {
+			await db
+				.update(orders)
+				.set({ payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED })
+				.where(eq(orders.id, order.id));
+		} else if (mutation === 'cancellation') {
+			await db
+				.update(orders)
+				.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING })
+				.where(eq(orders.id, order.id));
+		} else {
+			await db
+				.update(entityTrustapTransactions)
+				.set(mutation === 'quarantine' ? { quarantined: true } : { status: entityTrustapTransactionTypeValues.JOINED })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		}
+		const beforeTransactions = (await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions');
+
+		const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ message: 'Order is not ready for label purchase' });
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toEqual(
+			beforeTransactions,
+		);
+		expect(
+			await db.select().from(shipping_label_purchases).where(eq(shipping_label_purchases.order_id, order.id)),
+		).toEqual([]);
+	});
+
 	it('rejects a caller rate different from the consumed quote before provider I/O', async () => {
 		const { actors, order } = await prepareLabelOrder();
 		const before = await getProviderRequests(shippoUrl());
@@ -530,6 +574,38 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		expect(retried.status).toBe(200);
 		const [terminalOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		expect(terminalOrder?.status).toBe(ORDER_PHASES.PAYMENT_REFUNDED);
+	});
+
+	it('persists exact Shippo success evidence as reconciliation when payment becomes unresolved during POST', async () => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-label-barrier');
+		const purchase = authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(await waitForLabelBarrier(1)).toBe(true);
+		await getTestDatabase()
+			.db.update(orders)
+			.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING })
+			.where(eq(orders.id, order.id));
+
+		await releaseLabelBarrier();
+		const response = await purchase;
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ message: 'Shipping label purchase requires reconciliation' });
+		const [intent] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(intent).toMatchObject({
+			state: 'reconciliation_required',
+			provider_transaction_id: 'label-transaction-test',
+			provider_status: 'SUCCESS',
+			label_url: 'https://labels.test/label-transaction-test.pdf',
+			tracking_number: 'TRACK-TEST-1',
+			tracking_url: 'https://tracking.test/TRACK-TEST-1',
+		});
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toHaveLength(1);
 	});
 
 	it('blocks every retry after Shippo creates a label but the response is lost', async () => {
