@@ -1,5 +1,12 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { losslessTrustapIdSchema, moneyCentsSchema, routeDescription, type ManualSchema } from '../common';
+import {
+	emptyArraySchema,
+	jsonResponse,
+	losslessTrustapIdSchema,
+	moneyCentsSchema,
+	routeDescription,
+	type ManualSchema,
+} from '../common';
 
 const orderSchema: ManualSchema = {
 	type: 'object',
@@ -30,6 +37,7 @@ export const ordersOpenApi = {
 		tag: 'Orders',
 		security: 'access-refresh-cookie',
 		errors: [400, 401],
+		responseOverrides: { 400: jsonResponse('Invalid order status', emptyArraySchema) },
 		responseSchema: { type: 'array', items: orderSchema },
 	}),
 	detail: routeDescription({

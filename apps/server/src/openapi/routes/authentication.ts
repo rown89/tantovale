@@ -1,11 +1,18 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
 import { messageSchema, positiveIntegerSchema, queryParameter, routeDescription, type ManualSchema } from '../common';
 
-const passwordSchema: ManualSchema = {
+const signupPasswordSchema: ManualSchema = {
 	type: 'string',
 	minLength: 8,
 	maxLength: 100,
 	description: 'Password, limited to 72 UTF-8 bytes by the runtime validator.',
+};
+
+const loginPasswordSchema: ManualSchema = {
+	type: 'string',
+	minLength: 8,
+	maxLength: 100,
+	description: 'Legacy login password accepted by character count for existing bcrypt hashes.',
 };
 
 const authUserSchema: ManualSchema = {
@@ -32,7 +39,7 @@ const authenticatedResponse: ManualSchema = {
 
 const loginRequest: ManualSchema = {
 	type: 'object',
-	properties: { email: { type: 'string', format: 'email' }, password: passwordSchema },
+	properties: { email: { type: 'string', format: 'email' }, password: loginPasswordSchema },
 	required: ['email', 'password'],
 	additionalProperties: false,
 };
@@ -47,7 +54,7 @@ const signupRequest: ManualSchema = {
 		marketing_policy: { type: 'boolean' },
 		username: { type: 'string', minLength: 3, maxLength: 30 },
 		email: { type: 'string', format: 'email' },
-		password: passwordSchema,
+		password: signupPasswordSchema,
 	},
 	required: ['name', 'surname', 'gender', 'privacy_policy', 'marketing_policy', 'username', 'email', 'password'],
 	additionalProperties: false,
@@ -62,7 +69,7 @@ const emailRequest: ManualSchema = {
 
 const resetRequest: ManualSchema = {
 	type: 'object',
-	properties: { token: { type: 'string', minLength: 1 }, newPassword: passwordSchema },
+	properties: { token: { type: 'string', minLength: 1 }, newPassword: signupPasswordSchema },
 	required: ['token', 'newPassword'],
 	additionalProperties: false,
 };

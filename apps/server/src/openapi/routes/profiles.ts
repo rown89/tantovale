@@ -17,6 +17,33 @@ const profileSchema: ManualSchema = {
 	additionalProperties: true,
 };
 
+const compactLocationMember: ManualSchema = {
+	type: 'object',
+	properties: { id: positiveIntegerSchema, name: { type: 'string' } },
+	required: ['id', 'name'],
+	additionalProperties: false,
+};
+
+const compactProfileSchema: ManualSchema = {
+	type: 'object',
+	properties: {
+		id: positiveIntegerSchema,
+		profile_id: positiveIntegerSchema,
+		phone_verified: { type: 'boolean' },
+		email_verified: { type: 'boolean' },
+		created_at: { type: 'string', format: 'date-time' },
+		selling_items: { type: 'integer', minimum: 0 },
+		location: {
+			type: 'object',
+			properties: { city: compactLocationMember, province: compactLocationMember },
+			required: ['city', 'province'],
+			additionalProperties: false,
+		},
+	},
+	required: ['id', 'profile_id', 'phone_verified', 'email_verified', 'created_at', 'selling_items', 'location'],
+	additionalProperties: false,
+};
+
 export const profilesOpenApi = {
 	detail: routeDescription({
 		method: 'GET',
@@ -43,16 +70,7 @@ export const profilesOpenApi = {
 		tag: 'Profiles',
 		security: 'public',
 		errors: [404, 500],
-		responseSchema: {
-			...profileSchema,
-			properties: {
-				...(profileSchema.properties ?? {}),
-				profile_id: positiveIntegerSchema,
-				phone_verified: { type: 'boolean' },
-				email_verified: { type: 'boolean' },
-				selling_items: { type: 'integer', minimum: 0 },
-			},
-		},
+		responseSchema: compactProfileSchema,
 	}),
 	update: routeDescription({
 		method: 'PUT',

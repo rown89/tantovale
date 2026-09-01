@@ -1,10 +1,10 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { moneyCentsSchema, positiveIntegerSchema, routeDescription, type ManualSchema } from '../common';
+import { moneyCentsSchema, routeDescription, type ManualSchema } from '../common';
 
 const request: ManualSchema = {
 	type: 'object',
 	properties: {
-		price: positiveIntegerSchema,
+		price: { ...moneyCentsSchema, minimum: 1, maximum: 2_147_483_647 },
 		shipping_price: { ...moneyCentsSchema, maximum: 2_147_483_647 },
 	},
 	required: ['price', 'shipping_price'],

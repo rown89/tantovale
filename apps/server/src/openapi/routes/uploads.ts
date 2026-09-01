@@ -1,5 +1,5 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { routeDescription } from '../common';
+import { positiveInt4StringSchema, routeDescription } from '../common';
 
 export const uploadsOpenApi = {
 	itemImages: routeDescription({
@@ -14,7 +14,7 @@ export const uploadsOpenApi = {
 		requestSchema: {
 			type: 'object',
 			properties: {
-				item_id: { type: 'string', pattern: '^[1-9][0-9]*$', description: 'Positive int4 item ID form field.' },
+				item_id: { ...positiveInt4StringSchema, description: 'Positive int4 item ID form field.' },
 				images: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string', format: 'binary' } },
 			},
 			required: ['item_id', 'images'],
@@ -23,7 +23,7 @@ export const uploadsOpenApi = {
 			type: 'object',
 			properties: {
 				message: { type: 'string' },
-				item_id: { type: 'string', pattern: '^[1-9][0-9]*$' },
+				item_id: positiveInt4StringSchema,
 				files: {
 					type: 'array',
 					items: {

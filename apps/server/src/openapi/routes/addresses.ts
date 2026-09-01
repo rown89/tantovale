@@ -10,7 +10,7 @@ const addressInputProperties = {
 	postal_code: positiveIntegerSchema,
 	country_code: { type: 'string', minLength: 1, maxLength: 50 },
 	status: { type: 'string', enum: ['active', 'inactive'] },
-	phone: { type: 'string', minLength: 1 },
+	phone: { type: 'string' },
 } satisfies Record<string, ManualSchema>;
 
 const addressInputRequired = ['province_id', 'city_id', 'street_address', 'civic_number', 'postal_code', 'phone'];
@@ -40,13 +40,13 @@ const addressResponse: ManualSchema = {
 
 const updateAddressInput: ManualSchema = {
 	...addressInput,
-	properties: { address_id: positiveIntegerSchema, ...addressInputProperties },
+	properties: { address_id: { type: 'number' }, ...addressInputProperties },
 	required: ['address_id', ...addressInputRequired],
 };
 
 const addressIdInput: ManualSchema = {
 	type: 'object',
-	properties: { address_id: positiveIntegerSchema },
+	properties: { address_id: { type: 'number' } },
 	required: ['address_id'],
 	additionalProperties: false,
 };

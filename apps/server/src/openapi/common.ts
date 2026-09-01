@@ -27,10 +27,7 @@ export const jsonEntityListSchema = {
 export const booleanSchema = { type: 'boolean' } as const satisfies ManualSchema;
 
 export const nullablePositiveIntegerSchema = {
-	type: 'integer',
-	minimum: 1,
-	maximum: 2_147_483_647,
-	nullable: true,
+	oneOf: [{ type: 'integer', minimum: 1, maximum: 2_147_483_647 }, { enum: [null] }],
 } as const satisfies ManualSchema;
 
 export const messageSchema = {
@@ -61,9 +58,54 @@ export const moneyCentsSchema = {
 	description: 'Amount in integer euro cents.',
 } as const satisfies ManualSchema;
 
+function boundedPositiveDecimalPattern(maximum: string): string {
+	const alternatives = [`[1-9][0-9]{0,${maximum.length - 2}}`];
+	for (let index = 0; index < maximum.length; index += 1) {
+		const digit = Number(maximum[index]);
+		const minimumDigit = index === 0 ? 1 : 0;
+		if (digit <= minimumDigit) continue;
+		const prefix = maximum.slice(0, index);
+		const suffixLength = maximum.length - index - 1;
+		const range = digit - 1 === minimumDigit ? String(minimumDigit) : `[${minimumDigit}-${digit - 1}]`;
+		alternatives.push(`${prefix}${range}${suffixLength === 0 ? '' : `[0-9]{${suffixLength}}`}`);
+	}
+	alternatives.push(maximum);
+	return `^(?:${alternatives.join('|')})$`;
+}
+
+export const positiveInt4StringSchema = {
+	type: 'string',
+	pattern: boundedPositiveDecimalPattern('2147483647'),
+} as const satisfies ManualSchema;
+
 export const losslessTrustapIdSchema = {
-	oneOf: [{ type: 'string', pattern: '^[0-9]+$' }, { type: 'integer' }],
+	oneOf: [
+		{ type: 'string', pattern: boundedPositiveDecimalPattern('9223372036854775807') },
+		{ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+	],
 	description: 'Lossless Trustap integer identifier; large values are represented as decimal strings.',
+} as const satisfies ManualSchema;
+
+export const emptyArraySchema = {
+	type: 'array',
+	maxItems: 0,
+	items: { not: {} },
+} as const satisfies ManualSchema;
+
+const safeMessageCharacters = '[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]';
+
+export const chatMessageInputSchema = {
+	type: 'string',
+	minLength: 1,
+	maxLength: 600,
+	pattern: `^(?=[\\s\\S]*\\S)${safeMessageCharacters}+$`,
+} as const satisfies ManualSchema;
+
+export const proposalMessageInputSchema = {
+	type: 'string',
+	minLength: 1,
+	pattern: `^(?=[\\s\\S]*\\S)(?=\\s*[\\s\\S]{1,600}\\s*$)${safeMessageCharacters}+$`,
+	description: 'Message is trimmed before validation; the trimmed value must contain 1 to 600 safe characters.',
 } as const satisfies ManualSchema;
 
 export const securityRequirements: Record<ApiSecurity, Array<Record<string, never[]>>> = {
@@ -159,6 +201,7 @@ export type RouteDescriptionInput = {
 	requestMediaType?: 'application/json' | 'multipart/form-data';
 	responseSchema: ManualSchema;
 	responseMediaType?: 'application/json' | 'text/html';
+	responseOverrides?: Responses;
 };
 
 export function routeDescription(input: RouteDescriptionInput): DescribeRouteOptions {
@@ -186,8 +229,13 @@ export function routeDescription(input: RouteDescriptionInput): DescribeRouteOpt
 				content: { [responseMediaType]: { schema: input.responseSchema } },
 			},
 			...errorResponses(input.errors ?? []),
+			...input.responseOverrides,
 		},
 	};
+}
+
+export function jsonResponse(description: string, schema: ManualSchema): Response {
+	return { description, content: { 'application/json': { schema } } };
 }
 
 export function queryParameter(

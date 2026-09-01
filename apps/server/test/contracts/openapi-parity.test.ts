@@ -15,9 +15,76 @@ type OpenApiOperation = {
 };
 
 type OpenApiDocument = {
+	openapi?: string;
 	paths: Record<string, Partial<Record<'get' | 'post' | 'put', OpenApiOperation>>>;
 	components?: { securitySchemes?: Record<string, Record<string, unknown>> };
 };
+
+type JsonSchema = Record<string, unknown>;
+
+function schemaAccepts(schemaValue: unknown, value: unknown): boolean {
+	if (schemaValue === true) return true;
+	if (schemaValue === false || typeof schemaValue !== 'object' || schemaValue === null) return false;
+	const schema = schemaValue as JsonSchema;
+	if (schema.not !== undefined && schemaAccepts(schema.not, value)) return false;
+	if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return false;
+	if (Array.isArray(schema.oneOf)) {
+		return schema.oneOf.filter((candidate) => schemaAccepts(candidate, value)).length === 1;
+	}
+	if (schema.type === 'null') return value === null;
+	if (schema.type === 'string') {
+		if (typeof value !== 'string') return false;
+		const length = Array.from(value).length;
+		if (typeof schema.minLength === 'number' && length < schema.minLength) return false;
+		if (typeof schema.maxLength === 'number' && length > schema.maxLength) return false;
+		if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(value)) return false;
+		return true;
+	}
+	if (schema.type === 'number' || schema.type === 'integer') {
+		if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+		if (schema.type === 'integer' && !Number.isInteger(value)) return false;
+		if (typeof schema.minimum === 'number' && value < schema.minimum) return false;
+		if (typeof schema.maximum === 'number' && value > schema.maximum) return false;
+		return true;
+	}
+	if (schema.type === 'boolean') return typeof value === 'boolean';
+	if (schema.type === 'array') {
+		if (!Array.isArray(value)) return false;
+		if (typeof schema.minItems === 'number' && value.length < schema.minItems) return false;
+		if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) return false;
+		return schema.items === undefined || value.every((entry) => schemaAccepts(schema.items, entry));
+	}
+	if (schema.type === 'object') {
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+		const objectValue = value as Record<string, unknown>;
+		const properties = (schema.properties ?? {}) as Record<string, unknown>;
+		if (
+			Array.isArray(schema.required) &&
+			schema.required.some((property) => typeof property === 'string' && !Object.hasOwn(objectValue, property))
+		)
+			return false;
+		if (
+			schema.additionalProperties === false &&
+			Object.keys(objectValue).some((key) => !Object.hasOwn(properties, key))
+		)
+			return false;
+		return Object.entries(objectValue).every(
+			([key, entry]) => !Object.hasOwn(properties, key) || schemaAccepts(properties[key], entry),
+		);
+	}
+	return true;
+}
+
+function findKeywordPaths(value: unknown, keyword: string, path = '$'): string[] {
+	if (typeof value !== 'object' || value === null) return [];
+	if (Array.isArray(value)) {
+		return value.flatMap((entry, index) => findKeywordPaths(entry, keyword, `${path}[${index}]`));
+	}
+	return Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) => [
+		...(key === keyword ? [`${path}.${key}`] : []),
+		...findKeywordPaths(entry, keyword, `${path}.${key}`),
+	]);
+}
 
 const EXPECTED_SECURITY: Record<RouteAuth, Array<Record<string, string[]>>> = {
 	public: [],
@@ -173,6 +240,22 @@ function documentedOperations(document: OpenApiDocument): Array<[string, OpenApi
 	);
 }
 
+async function generatedOperations(): Promise<{
+	document: OpenApiDocument;
+	operations: Map<string, OpenApiOperation>;
+}> {
+	const document = (await (await app.request('http://localhost/openapi')).json()) as OpenApiDocument;
+	return { document, operations: new Map(documentedOperations(document)) };
+}
+
+function requestSchema(operation: OpenApiOperation | undefined): JsonSchema {
+	return operation?.requestBody?.content?.['application/json']?.schema ?? {};
+}
+
+function responseSchema(operation: OpenApiOperation | undefined, status: number): JsonSchema {
+	return operation?.responses?.[status]?.content?.['application/json']?.schema ?? {};
+}
+
 describe('OpenAPI mounted-route parity', () => {
 	it('has exactly one description layer on every mounted operation and no invented operation', () => {
 		const concrete = app.routes.filter((route) => route.method !== 'ALL');
@@ -195,7 +278,10 @@ describe('OpenAPI mounted-route parity', () => {
 		const documented = documentedOperations(document);
 		const documentedSet = documented.map(([key]) => key).sort();
 		const registrySet = routeContracts.map((route) => `${route.method} ${route.path}`).sort();
-		const requestBodyOperations = documented.filter(([, operation]) => operation.requestBody).map(([key]) => key).sort();
+		const requestBodyOperations = documented
+			.filter(([, operation]) => operation.requestBody)
+			.map(([key]) => key)
+			.sort();
 
 		expect(response.status).toBe(200);
 		expect(documentedSet).toHaveLength(63);
@@ -304,7 +390,12 @@ describe('OpenAPI mounted-route parity', () => {
 		});
 		expect(webhook?.requestBody?.content?.['application/json']?.schema).toMatchObject({
 			properties: {
-				transaction_id: { oneOf: [{ type: 'string', pattern: '^[0-9]+$' }, { type: 'integer' }] },
+				transaction_id: {
+					oneOf: [
+						{ type: 'string', pattern: expect.any(String) },
+						{ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+					],
+				},
 			},
 		});
 		expect(platformCosts?.requestBody?.content?.['application/json']?.schema).toMatchObject({
@@ -324,5 +415,225 @@ describe('OpenAPI mounted-route parity', () => {
 		});
 		expect(refresh?.requestBody).toBeUndefined();
 		expect(logout?.requestBody).toBeUndefined();
+	});
+
+	it('emits OpenAPI 3.1 null unions and an exact privacy-safe compact profile', async () => {
+		const { document, operations } = await generatedOperations();
+		expect(document.openapi).toBe('3.1.0');
+		expect(findKeywordPaths(document, 'nullable')).toEqual([]);
+
+		const activeAddress = responseSchema(operations.get('GET /profile/auth/profile_active_address_id'), 200);
+		expect(activeAddress).toEqual({
+			oneOf: [{ type: 'integer', minimum: 1, maximum: 2_147_483_647 }, { enum: [null] }],
+		});
+		expect(schemaAccepts(activeAddress, null)).toBe(true);
+		expect(schemaAccepts(activeAddress, 41)).toBe(true);
+
+		const chatMessage = responseSchema(operations.get('GET /chat/auth/rooms/:roomId/messages'), 200)
+			.items as JsonSchema;
+		const chatProperties = chatMessage.properties as Record<string, unknown>;
+		for (const [field, example] of [
+			['order_proposal_id', 41],
+			['read_at', '2026-09-01T10:30:00.000Z'],
+			['metadata', { type: 'proposal' }],
+		] as const) {
+			expect(schemaAccepts(chatProperties[field], null), field).toBe(true);
+			expect(schemaAccepts(chatProperties[field], example), field).toBe(true);
+		}
+
+		const itemSummary = responseSchema(operations.get('GET /items/:username'), 200).items as JsonSchema;
+		const itemProperties = itemSummary.properties as Record<string, unknown>;
+		for (const field of ['image', 'imageUrl']) {
+			expect(schemaAccepts(itemProperties[field], null), field).toBe(true);
+			expect(schemaAccepts(itemProperties[field], 'https://images.test/item.png'), field).toBe(true);
+		}
+
+		const label = (
+			responseSchema(operations.get('POST /shipment_provider/auth/create_label'), 201).properties as Record<
+				string,
+				JsonSchema
+			>
+		).label;
+		expect(label).toBeDefined();
+		const labelProperties = label?.properties as Record<string, unknown>;
+		for (const field of ['tracking_number', 'tracking_url']) {
+			expect(schemaAccepts(labelProperties[field], null), field).toBe(true);
+		}
+
+		const compact = responseSchema(operations.get('GET /profile/compact/:username'), 200);
+		expect(Object.keys(compact.properties as Record<string, unknown>).sort()).toEqual([
+			'created_at',
+			'email_verified',
+			'id',
+			'location',
+			'phone_verified',
+			'profile_id',
+			'selling_items',
+		]);
+		expect([...(compact.required as string[])].sort()).toEqual([
+			'created_at',
+			'email_verified',
+			'id',
+			'location',
+			'phone_verified',
+			'profile_id',
+			'selling_items',
+		]);
+		expect(compact.additionalProperties).toBe(false);
+		expect((compact.properties as Record<string, JsonSchema>).location).toEqual({
+			type: 'object',
+			properties: {
+				city: {
+					type: 'object',
+					properties: { id: { type: 'integer', minimum: 1, maximum: 2_147_483_647 }, name: { type: 'string' } },
+					required: ['id', 'name'],
+					additionalProperties: false,
+				},
+				province: {
+					type: 'object',
+					properties: { id: { type: 'integer', minimum: 1, maximum: 2_147_483_647 }, name: { type: 'string' } },
+					required: ['id', 'name'],
+					additionalProperties: false,
+				},
+			},
+			required: ['city', 'province'],
+			additionalProperties: false,
+		});
+	});
+
+	it('does not duplicate cron secrets and documents route-specific legacy error bodies', async () => {
+		const { operations } = await generatedOperations();
+		for (const key of [
+			'GET /cron/auth/expired-orders-check',
+			'GET /cron/auth/expired-proposals-check',
+			'GET /cron/auth/sync-transactions',
+		]) {
+			expect(
+				operations.get(key)?.parameters?.some((parameter) => parameter.name === 'key'),
+				key,
+			).toBe(false);
+			expect(operations.get(key)?.security).toEqual([{ cronKey: [] }]);
+		}
+
+		expect(responseSchema(operations.get('GET /orders/auth/status/:status'), 400)).toEqual({
+			type: 'array',
+			maxItems: 0,
+			items: { not: {} },
+		});
+		expect(responseSchema(operations.get('GET /chat/auth/rooms'), 500)).toEqual({
+			type: 'array',
+			maxItems: 0,
+			items: { not: {} },
+		});
+		expect(responseSchema(operations.get('GET /orders/auth/status/:status'), 401)).toMatchObject({
+			type: 'object',
+		});
+	});
+
+	it('mirrors the complete Trustap v1 webhook input contract without accepting lossy IDs or v2 markers', async () => {
+		const { operations } = await generatedOperations();
+		const webhook = requestSchema(operations.get('POST /webhooks/trustap/transaction-update'));
+		const properties = webhook.properties as Record<string, JsonSchema>;
+		const timestampFields = [
+			'created',
+			'joined',
+			'paid',
+			'tracked',
+			'delivered',
+			'complained',
+			'funds_released',
+			'complaint_period_deadline',
+			'complaint_period_ended',
+			'rejected',
+			'cancelled',
+			'cancelled_with_payment',
+			'payment_refunded',
+		];
+
+		expect(webhook.additionalProperties).toBe(false);
+		expect(Object.keys(properties).sort()).toEqual(
+			['event', 'transaction_id', 'status', ...timestampFields, 'code', 'target_id', 'target_preview'].sort(),
+		);
+		for (const field of timestampFields) {
+			expect(properties[field], field).toEqual({ type: 'string', format: 'date-time' });
+			expect(schemaAccepts(properties[field], null), `${field} null`).toBe(false);
+		}
+		for (const marker of ['code', 'target_id', 'target_preview']) {
+			expect(schemaAccepts(properties[marker], 'forbidden'), marker).toBe(false);
+		}
+
+		const base = { event: 'transaction_updated', transaction_id: '9223372036854775807', status: 'paid' };
+		const allTimestamps = Object.fromEntries(timestampFields.map((field) => [field, '2026-09-01T10:30:00.000Z']));
+		expect(schemaAccepts(webhook, { ...base, ...allTimestamps })).toBe(true);
+		expect(schemaAccepts(webhook, { ...base, transaction_id: Number.MAX_SAFE_INTEGER })).toBe(true);
+		for (const transaction_id of [0, '0', '01', 9_007_199_254_740_992, '9223372036854775808']) {
+			expect(schemaAccepts(webhook, { ...base, transaction_id }), String(transaction_id)).toBe(false);
+		}
+		expect(schemaAccepts(webhook, { ...base, code: 'tx.paid' })).toBe(false);
+		expect(properties.transaction_id).toEqual({
+			oneOf: [
+				{ type: 'string', pattern: expect.any(String) },
+				{ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+			],
+			description: expect.stringContaining('Lossless Trustap'),
+		});
+	});
+
+	it('mirrors request-validator boundaries for auth, addresses, messages, uploads, and money', async () => {
+		const { operations } = await generatedOperations();
+		const login = requestSchema(operations.get('POST /login'));
+		const signup = requestSchema(operations.get('POST /signup'));
+		const loginPassword = (login.properties as Record<string, JsonSchema>).password;
+		const signupPassword = (signup.properties as Record<string, JsonSchema>).password;
+		expect(loginPassword).toBeDefined();
+		expect(signupPassword).toBeDefined();
+		expect(schemaAccepts(loginPassword, 'é'.repeat(50))).toBe(true);
+		expect(schemaAccepts(loginPassword, 'x'.repeat(101))).toBe(false);
+		expect(String(loginPassword?.description ?? '')).not.toContain('72');
+		expect(String(signupPassword?.description ?? '')).toContain('72');
+
+		const addAddress = requestSchema(operations.get('POST /addresses/auth/add_address_to_profile'));
+		const updateAddress = requestSchema(operations.get('PUT /addresses/auth/update_address_to_profile'));
+		const hideAddress = requestSchema(operations.get('PUT /addresses/auth/hide_address_from_profile'));
+		expect(schemaAccepts((addAddress.properties as Record<string, unknown>).phone, '')).toBe(true);
+		for (const schema of [updateAddress, hideAddress]) {
+			const addressId = (schema.properties as Record<string, unknown>).address_id;
+			expect(schemaAccepts(addressId, -1)).toBe(true);
+			expect(schemaAccepts(addressId, 1.5)).toBe(true);
+		}
+
+		const chatMessage = (
+			requestSchema(operations.get('POST /chat/auth/rooms/:roomId/messages')).properties as Record<string, unknown>
+		).message;
+		const proposalMessage = (
+			requestSchema(operations.get('POST /orders_proposals/auth/create')).properties as Record<string, unknown>
+		).message;
+		for (const schema of [chatMessage, proposalMessage]) {
+			expect(schemaAccepts(schema, 'safe\nmessage')).toBe(true);
+			expect(schemaAccepts(schema, ' \t\n ')).toBe(false);
+			expect(schemaAccepts(schema, 'unsafe\u0000message')).toBe(false);
+		}
+		expect(schemaAccepts(chatMessage, 'x'.repeat(601))).toBe(false);
+		expect(schemaAccepts(proposalMessage, `${' '.repeat(400)}x${' '.repeat(400)}`)).toBe(true);
+		expect(schemaAccepts(proposalMessage, 'x'.repeat(601))).toBe(false);
+
+		const upload = operations.get('POST /uploads/auth/images-item')?.requestBody?.content?.['multipart/form-data']
+			?.schema as JsonSchema;
+		const uploadItemId = (upload.properties as Record<string, unknown>).item_id;
+		expect(schemaAccepts(uploadItemId, '2147483647')).toBe(true);
+		for (const id of ['0', '01', '2147483648']) expect(schemaAccepts(uploadItemId, id), id).toBe(false);
+
+		const platformPrice = (
+			requestSchema(operations.get('POST /platforms_costs/auth/calculate_platform_costs')).properties as Record<
+				string,
+				JsonSchema
+			>
+		).price;
+		expect(platformPrice).toEqual({
+			type: 'integer',
+			minimum: 1,
+			maximum: 2_147_483_647,
+			description: 'Amount in integer euro cents.',
+		});
 	});
 });

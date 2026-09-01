@@ -1,7 +1,6 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { jsonEntityListSchema, queryParameter, routeDescription, type ManualSchema } from '../common';
+import { jsonEntityListSchema, routeDescription, type ManualSchema } from '../common';
 
-const key = queryParameter('key', 'Route-specific scheduler secret.');
 const ordersResponse: ManualSchema = {
 	type: 'object',
 	properties: {
@@ -43,7 +42,6 @@ export const cronOpenApi = {
 		tag: 'Cron',
 		security: 'cron-secret',
 		errors: [401, 500],
-		parameters: [key],
 		responseSchema: ordersResponse,
 	}),
 	expiredProposals: routeDescription({
@@ -53,7 +51,6 @@ export const cronOpenApi = {
 		tag: 'Cron',
 		security: 'cron-secret',
 		errors: [401, 500],
-		parameters: [key],
 		responseSchema: proposalsResponse,
 	}),
 	syncTransactions: routeDescription({
@@ -63,7 +60,6 @@ export const cronOpenApi = {
 		tag: 'Cron',
 		security: 'cron-secret',
 		errors: [401, 500],
-		parameters: [key],
 		responseSchema: syncResponse,
 	}),
 } satisfies Record<string, DescribeRouteOptions>;

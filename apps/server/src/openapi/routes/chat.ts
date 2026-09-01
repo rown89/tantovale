@@ -1,5 +1,12 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
-import { positiveIntegerSchema, routeDescription, type ManualSchema } from '../common';
+import {
+	chatMessageInputSchema,
+	emptyArraySchema,
+	jsonResponse,
+	positiveIntegerSchema,
+	routeDescription,
+	type ManualSchema,
+} from '../common';
 
 const participantSchema: ManualSchema = {
 	type: 'object',
@@ -17,10 +24,10 @@ const messageSchema: ManualSchema = {
 		sender: participantSchema,
 		message: { type: 'string', minLength: 1, maxLength: 600 },
 		message_type: { type: 'string', enum: ['text', 'proposal', 'system', 'buy_now'] },
-		order_proposal_id: { ...positiveIntegerSchema, nullable: true },
+		order_proposal_id: { oneOf: [positiveIntegerSchema, { enum: [null] }] },
 		created_at: { type: 'string', format: 'date-time' },
-		read_at: { type: 'string', format: 'date-time', nullable: true },
-		metadata: { type: 'object', additionalProperties: true, nullable: true },
+		read_at: { oneOf: [{ type: 'string', format: 'date-time' }, { enum: [null] }] },
+		metadata: { oneOf: [{ type: 'object', additionalProperties: true }, { enum: [null] }] },
 	},
 	required: ['id', 'message'],
 	additionalProperties: true,
@@ -40,6 +47,7 @@ export const chatOpenApi = {
 		tag: 'Chat',
 		security: 'access-refresh-cookie',
 		errors: [401, 500],
+		responseOverrides: { 500: jsonResponse('Unexpected server error', emptyArraySchema) },
 		responseSchema: {
 			type: 'array',
 			maxItems: 100,
@@ -99,7 +107,7 @@ export const chatOpenApi = {
 		errors: [400, 401, 403, 404, 500],
 		requestSchema: {
 			type: 'object',
-			properties: { message: { type: 'string', minLength: 1, maxLength: 600 } },
+			properties: { message: chatMessageInputSchema },
 			required: ['message'],
 			additionalProperties: false,
 		},
