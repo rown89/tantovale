@@ -22,10 +22,19 @@ export type ProcessRunnerRuntime = {
 	addSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
 	platform: NodeJS.Platform;
 	removeSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
-	signalProcess: (processId: number, signal: ForwardedSignal) => void;
+	signalProcess: (processId: number, signal: NodeJS.Signals) => void;
 	signalSelf: (signal: NodeJS.Signals) => void;
 	spawnChild: (command: string, args: string[], options: ChildSpawnOptions) => ManagedChildProcess;
 };
+
+export type ProcessSignalPolicy = {
+	detached: boolean;
+	proxySignals: boolean;
+};
+
+export function resolveProcessSignalPolicy(platform: NodeJS.Platform): ProcessSignalPolicy {
+	return platform === 'win32' ? { detached: false, proxySignals: false } : { detached: true, proxySignals: true };
+}
 
 const processRunnerRuntime: ProcessRunnerRuntime = {
 	addSignalListener: (signal, listener) => process.on(signal, listener),
@@ -46,12 +55,17 @@ export async function runChildProcess(
 	runtime: ProcessRunnerRuntime = processRunnerRuntime,
 ): Promise<number | undefined> {
 	return new Promise<number | undefined>((resolve, reject) => {
+		const signalPolicy = resolveProcessSignalPolicy(runtime.platform);
 		let child: ManagedChildProcess | undefined;
-		let forwardedSignal = false;
-		let receivedSignal: ForwardedSignal | null = null;
+		const pendingSignals: ForwardedSignal[] = [];
+		let firstReceivedSignal: ForwardedSignal | null = null;
+		let flushingSignals = false;
+		let forcedCleanupError: unknown;
+		let forcedCleanupStarted = false;
 		let settled = false;
 
 		const cleanup = () => {
+			if (!signalPolicy.proxySignals) return;
 			runtime.removeSignalListener('SIGINT', forwardInterrupt);
 			runtime.removeSignalListener('SIGTERM', forwardTermination);
 		};
@@ -61,10 +75,47 @@ export async function runChildProcess(
 			cleanup();
 			reject(error);
 		};
-		const forwardPendingSignal = () => {
+		const forceCleanup = (error: unknown) => {
+			if (forcedCleanupStarted) return;
+			forcedCleanupStarted = true;
+			forcedCleanupError = error;
+			cleanup();
+
+			if (child?.pid === undefined) {
+				fail(error);
+				return;
+			}
+
+			// Both bounded attempts are intentional: killing the group tears down
+			// descendants, while the direct fallback covers a missing/broken group.
+			for (const processId of [-child.pid, child.pid]) {
+				try {
+					runtime.signalProcess(processId, 'SIGKILL');
+				} catch (cleanupError) {
+					if (!isNoSuchProcessError(cleanupError)) continue;
+				}
+			}
+		};
+		const deliverSignal = (signal: ForwardedSignal) => {
+			if (child?.pid === undefined) return;
+
+			try {
+				runtime.signalProcess(-child.pid, signal);
+			} catch (groupError) {
+				if (isNoSuchProcessError(groupError)) return;
+
+				try {
+					runtime.signalProcess(child.pid, signal);
+				} catch (directError) {
+					if (isNoSuchProcessError(directError)) return;
+					forceCleanup(directError);
+				}
+			}
+		};
+		const forwardPendingSignals = () => {
 			if (
-				forwardedSignal ||
-				receivedSignal === null ||
+				flushingSignals ||
+				forcedCleanupStarted ||
 				child?.pid === undefined ||
 				child.exitCode !== null ||
 				child.signalCode !== null
@@ -72,28 +123,32 @@ export async function runChildProcess(
 				return;
 			}
 
-			forwardedSignal = true;
-			const childTarget = runtime.platform === 'win32' ? child.pid : -child.pid;
+			flushingSignals = true;
 			try {
-				runtime.signalProcess(childTarget, receivedSignal);
-			} catch (error) {
-				if (!isNoSuchProcessError(error)) fail(error);
+				while (pendingSignals.length > 0 && !forcedCleanupStarted) {
+					deliverSignal(pendingSignals.shift()!);
+				}
+			} finally {
+				flushingSignals = false;
 			}
 		};
 		const receiveSignal = (signal: ForwardedSignal) => {
-			receivedSignal ??= signal;
-			forwardPendingSignal();
+			firstReceivedSignal ??= signal;
+			pendingSignals.push(signal);
+			forwardPendingSignals();
 		};
 		const forwardInterrupt = () => receiveSignal('SIGINT');
 		const forwardTermination = () => receiveSignal('SIGTERM');
 
-		// Install before spawn so a parent cancellation cannot land in a listener gap.
-		runtime.addSignalListener('SIGINT', forwardInterrupt);
-		runtime.addSignalListener('SIGTERM', forwardTermination);
+		if (signalPolicy.proxySignals) {
+			// Install before spawn so a parent cancellation cannot land in a listener gap.
+			runtime.addSignalListener('SIGINT', forwardInterrupt);
+			runtime.addSignalListener('SIGTERM', forwardTermination);
+		}
 
 		try {
 			child = runtime.spawnChild(command, args, {
-				detached: runtime.platform !== 'win32',
+				detached: signalPolicy.detached,
 				stdio: 'inherit',
 			});
 		} catch (error) {
@@ -101,13 +156,20 @@ export async function runChildProcess(
 			return;
 		}
 
-		child.once('error', fail);
+		child.once('error', (error) => {
+			if (child?.pid === undefined) fail(error);
+			else forceCleanup(error);
+		});
 		child.once('close', (code, signal) => {
 			if (settled) return;
 			settled = true;
 			cleanup();
+			if (forcedCleanupError !== undefined) {
+				reject(forcedCleanupError);
+				return;
+			}
 
-			const terminatingSignal = signal ?? receivedSignal;
+			const terminatingSignal = signal ?? firstReceivedSignal;
 			if (terminatingSignal !== null) {
 				runtime.signalSelf(terminatingSignal);
 				resolve(undefined);
@@ -117,7 +179,7 @@ export async function runChildProcess(
 			resolve(code ?? 1);
 		});
 
-		forwardPendingSignal();
+		forwardPendingSignals();
 	});
 }
 

@@ -13,6 +13,7 @@ if (mode === 'process-tree') {
 		tsxLoaderPath,
 		signalTreeFixturePath,
 		process.argv[3] === 'SIGINT' ? 'SIGINT' : 'SIGTERM',
+		process.argv[4] === '2' ? '2' : '1',
 	]);
 } else {
 	const childSource =

@@ -119,7 +119,7 @@ describe('runtime Drizzle schema', () => {
 					b integer NOT NULL,
 					CONSTRAINT p07_composite_fk_exact
 						FOREIGN KEY (a, b)
-						REFERENCES public.p07_composite_fk_parent (x, y)
+						REFERENCES public.p07_composite_fk_parent (y, x)
 						ON DELETE RESTRICT
 						ON UPDATE CASCADE
 				);
@@ -131,7 +131,7 @@ describe('runtime Drizzle schema', () => {
 			expect(projection).toEqual([
 				{
 					columnName: 'a',
-					foreignColumnName: 'x',
+					foreignColumnName: 'y',
 					foreignTableName: 'p07_composite_fk_parent',
 					onDelete: 'RESTRICT',
 					onUpdate: 'CASCADE',
@@ -139,7 +139,7 @@ describe('runtime Drizzle schema', () => {
 				},
 				{
 					columnName: 'b',
-					foreignColumnName: 'y',
+					foreignColumnName: 'x',
 					foreignTableName: 'p07_composite_fk_parent',
 					onDelete: 'RESTRICT',
 					onUpdate: 'CASCADE',
@@ -147,8 +147,8 @@ describe('runtime Drizzle schema', () => {
 				},
 			]);
 			expect(projection).not.toEqual([
-				{ ...projection[0]!, foreignColumnName: 'y' },
-				{ ...projection[1]!, foreignColumnName: 'x' },
+				{ ...projection[0]!, foreignColumnName: 'x' },
+				{ ...projection[1]!, foreignColumnName: 'y' },
 			]);
 		} finally {
 			try {
