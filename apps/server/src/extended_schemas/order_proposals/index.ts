@@ -13,6 +13,7 @@ export const create_order_proposal_schema = z.object({
 		.trim()
 		.min(1)
 		.refine((value) => hasAtMostUnicodeCodePoints(value, 600), {
+			abort: true,
 			message: 'Message must contain at most 600 Unicode code points',
 		})
 		.refine(

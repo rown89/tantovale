@@ -7,6 +7,7 @@ export const ChatMessageSchema = z.object({
 		.min(1)
 		.nonempty()
 		.refine((value) => hasAtMostUnicodeCodePoints(value, 600), {
+			abort: true,
 			message: 'Message must contain at most 600 Unicode code points',
 		}),
 });
