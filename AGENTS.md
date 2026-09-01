@@ -27,16 +27,18 @@
 - Paths containing `auth` are subject to global authentication middleware, and many routes explicitly add it as well. Do not rename or reorganize protected route paths casually.
 - Use the existing Drizzle schemas and transactions for multi-write workflows. Do not run `db:push`, migrations, or seeders without explicit approval.
 - Payment, shipping, S3 upload, SMTP, cron, webhook, and token flows are external-system boundaries. Treat endpoint paths, cookie options, expiry, state enums, and provider payloads as compatibility-sensitive.
-- OpenAPI/Scalar coverage is partial. Keep descriptions and schemas accurate when modifying an already documented endpoint; do not assume every route is documented.
+- OpenAPI/Scalar covers all 63 mounted API operations. Keep handler metadata and runtime behavior aligned, update the canonical `docs/api/tantovale.openapi.json` artifact when contracts change, and run `pnpm --filter @workspace/server api:check` to detect drift.
 
 ## Quality and safety
 
-- There is currently no automated test suite. Do not claim test coverage or assume CI runs linting/type checks; CI presently builds only.
+- The backend has an automated API suite backed by disposable Docker services and local provider stubs. Use `pnpm --filter @workspace/server test:api` for the full suite and `pnpm --filter @workspace/server test:api:coverage` for the CI coverage gate; the enforced minimums are 90% lines, 90% functions, and 85% branches.
+- `.github/workflows/backend-api.yml` gates backend pull requests and pushes to `main` with server lint, typecheck, build, API coverage, and the canonical OpenAPI check. Keep the documented Node 22 and frozen pnpm install contract working.
+- Backend tests must use disposable Postgres/MinIO/Mailpit instances and local Trustap/Shippo/SMTP stubs. Never point automated tests at live external services or real credentials.
 - `next lint` was removed in Next 16. Run `pnpm --filter @workspace/storefront lint`, which invokes ESLint directly; `.next` must remain excluded from lint input.
 - Workspace scripts use `typecheck`, while Turbo declares `check-types`; verify the actual command for a task rather than relying on Turbo task names.
 - Prettier runs through the pre-commit hook; use the repository formatting configuration. Conventional Commit messages are enforced at commit time.
 - Never expose or log `.env` values, JWTs, cookies, payment/shipping credentials, or webhook secrets.
-- Do not assume scheduled workflows, webhook verification, migrations, or every exported route are operational; audit the relevant integration before relying on it.
+- Do not assume deployment schedules, provider configuration, webhook delivery, or migrations are operational merely because their local contracts are tested; audit the relevant deployed integration before relying on it.
 
 ## Dependency upgrades
 
