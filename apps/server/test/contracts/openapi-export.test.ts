@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { sortJsonValue } from '../../scripts/export-openapi';
+import * as exporterModule from '../../scripts/export-openapi';
 import { routeContracts } from './route-registry';
 
 type JsonObject = Record<string, unknown>;
@@ -15,6 +15,110 @@ const serverDirectory = fileURLToPath(new URL('../..', import.meta.url));
 const scriptPath = path.join(serverDirectory, 'scripts', 'export-openapi.ts');
 const tsxLoaderPath = createRequire(import.meta.url).resolve('tsx');
 const temporaryDirectories: string[] = [];
+const documentationEnvironmentKeys = [
+	'NODE_ENV',
+	'LOG_LEVEL',
+	'PROJECT_NAME',
+	'NEXT_PUBLIC_HONO_API_URL',
+	'SERVER_HOSTNAME',
+	'SERVER_PORT',
+	'STOREFRONT_HOSTNAME',
+	'STOREFRONT_PORT',
+	'POSTGRES_USER',
+	'POSTGRES_PASSWORD',
+	'DATABASE_HOST',
+	'DATABASE_PORT',
+	'POSTGRES_DB',
+	'PAYMENT_PROVIDER_API_URL',
+	'PAYMENT_PROVIDER_API_VERSION',
+	'PAYMENT_PROVIDER_API_KEY',
+	'PAYMENT_PROVIDER_CLIENT_ID',
+	'PAYMENT_PROVIDER_CLIENT_SECRET',
+	'PAYMENT_PROVIDER_WEBHOOK_USERNAME',
+	'PAYMENT_PROVIDER_WEBHOOK_SECRET',
+	'PAYMENT_PROVIDER_PAY_PAGE_URL',
+	'POST_PAYMENT_REDIRECT_URL',
+	'PROVIDER_REQUEST_TIMEOUT_MS',
+	'SHIPPING_PROVIDER_API_KEY',
+	'SHIPPING_PROVIDER_WEBHOOK_SECRET',
+	'SHIPPING_PROVIDER_API_URL',
+	'ACCESS_TOKEN_SECRET',
+	'REFRESH_TOKEN_SECRET',
+	'EMAIL_VERIFY_TOKEN_SECRET',
+	'RESET_TOKEN_SECRET',
+	'COOKIE_SECRET',
+	'AWS_REGION',
+	'AWS_ACCESS_KEY',
+	'AWS_SECRET_ACCESS_KEY',
+	'AWS_BUCKET_NAME',
+	'AWS_ENDPOINT',
+	'AWS_FORCE_PATH_STYLE',
+	'SMTP_HOST',
+	'SMTP_PORT',
+	'SMTP_USER',
+	'SMTP_PASS',
+	'SMTP_FROM',
+	'SMTP_REQUEST_TIMEOUT_MS',
+	'DAILY_ORDER_CHECK_SECRET_KEY',
+	'DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY',
+	'TRANSACTIONS_SYNC_SECRET_KEY',
+	'PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS',
+	'ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS',
+] as const;
+
+type EnvironmentSnapshot = Array<{
+	exists: boolean;
+	key: (typeof documentationEnvironmentKeys)[number];
+	value?: string;
+}>;
+type AtomicWriteFile = (
+	targetPath: string,
+	contents: Uint8Array,
+	options?: { rename?: (oldPath: string, newPath: string) => Promise<void> },
+) => Promise<void>;
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+	let resolve!: () => void;
+	const promise = new Promise<void>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
+}
+
+function documentationApp(): { app: { request: () => Promise<Response> } } {
+	return {
+		app: {
+			request: async () =>
+				new Response(JSON.stringify({ openapi: '3.1.0', paths: {} }), {
+					headers: { 'content-type': 'application/json' },
+					status: 200,
+				}),
+		},
+	};
+}
+
+function captureDocumentationEnvironment(): EnvironmentSnapshot {
+	return documentationEnvironmentKeys.map((key) => ({
+		key,
+		exists: Object.hasOwn(process.env, key),
+		...(process.env[key] === undefined ? {} : { value: process.env[key] }),
+	}));
+}
+
+function restoreDocumentationEnvironment(snapshot: EnvironmentSnapshot): void {
+	for (const entry of snapshot) {
+		if (entry.exists) process.env[entry.key] = entry.value;
+		else delete process.env[entry.key];
+	}
+}
+
+function installMixedAmbientEnvironment(): EnvironmentSnapshot {
+	documentationEnvironmentKeys.forEach((key, index) => {
+		if (index % 2 === 0) process.env[key] = `ambient-${key.toLowerCase()}`;
+		else delete process.env[key];
+	});
+	return captureDocumentationEnvironment();
+}
 
 async function temporaryDirectory(): Promise<string> {
 	const directory = await mkdtemp(path.join(tmpdir(), 'tantovale-openapi-'));
@@ -122,7 +226,7 @@ afterAll(async () => {
 describe('canonical OpenAPI export', () => {
 	it('sorts object keys recursively without reordering arrays', () => {
 		expect(
-			sortJsonValue({
+			exporterModule.sortJsonValue({
 				z: [{ z: 1, a: 2 }, 'first'],
 				a: { z: true, a: false },
 			}),
@@ -130,7 +234,125 @@ describe('canonical OpenAPI export', () => {
 			a: { a: false, z: true },
 			z: [{ a: 2, z: 1 }, 'first'],
 		});
-		expect(Object.keys(sortJsonValue({ z: 1, a: 2 }) as JsonObject)).toEqual(['a', 'z']);
+		expect(Object.keys(exporterModule.sortJsonValue({ z: 1, a: 2 }) as JsonObject)).toEqual(['a', 'z']);
+	});
+
+	it('atomically preserves the previous artifact and cleans its temp file when rename fails', async () => {
+		const atomicWriteFile = Reflect.get(exporterModule, 'atomicWriteFile') as AtomicWriteFile | undefined;
+		expect(atomicWriteFile, 'atomic writer export').toBeTypeOf('function');
+		if (!atomicWriteFile) return;
+
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		await writeFile(target, 'previous-complete-artifact\n', 'utf8');
+		const before = await stat(target);
+		const failure = new Error('injected rename failure');
+
+		await expect(
+			atomicWriteFile(target, Buffer.from('replacement-complete-artifact\n'), {
+				rename: async (temporaryPath, destinationPath) => {
+					expect(destinationPath).toBe(target);
+					expect(path.dirname(temporaryPath)).toBe(directory);
+					expect(await readFile(temporaryPath, 'utf8')).toBe('replacement-complete-artifact\n');
+					throw failure;
+				},
+			}),
+		).rejects.toBe(failure);
+
+		expect(await readFile(target, 'utf8')).toBe('previous-complete-artifact\n');
+		expect((await stat(target)).mtimeMs).toBe(before.mtimeMs);
+		expect(await readdir(directory)).toEqual(['tantovale.openapi.json']);
+	});
+
+	it('keeps the complete previous bytes visible until the atomic rename publishes complete replacement bytes', async () => {
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		const previousBytes = 'previous-complete-artifact\n';
+		const replacementBytes = 'replacement-complete-artifact\n'.repeat(4_096);
+		await writeFile(target, previousBytes, 'utf8');
+		const renameStarted = deferred();
+		const releaseRename = deferred();
+
+		const writing = exporterModule.atomicWriteFile(target, Buffer.from(replacementBytes), {
+			rename: async (temporaryPath, destinationPath) => {
+				expect(await readFile(temporaryPath, 'utf8')).toBe(replacementBytes);
+				renameStarted.resolve();
+				await releaseRename.promise;
+				await rename(temporaryPath, destinationPath);
+			},
+		});
+		await renameStarted.promise;
+		expect(await readFile(target, 'utf8')).toBe(previousBytes);
+
+		releaseRename.resolve();
+		await writing;
+		expect(await readFile(target, 'utf8')).toBe(replacementBytes);
+		expect(await readdir(directory)).toEqual(['tantovale.openapi.json']);
+	});
+
+	it('restores every present and absent documentation environment key after an in-process render', async () => {
+		const originalEnvironment = captureDocumentationEnvironment();
+		try {
+			const ambientEnvironment = installMixedAmbientEnvironment();
+			const artifact = await exporterModule.renderOpenApiArtifact();
+			expect((JSON.parse(artifact) as JsonObject).openapi).toBe('3.1.0');
+			expect(captureDocumentationEnvironment()).toEqual(ambientEnvironment);
+		} finally {
+			restoreDocumentationEnvironment(originalEnvironment);
+		}
+	});
+
+	it('restores every documentation environment key when app loading fails', async () => {
+		const originalEnvironment = captureDocumentationEnvironment();
+		try {
+			const ambientEnvironment = installMixedAmbientEnvironment();
+			const failure = new Error('injected app-load failure');
+			await expect(
+				exporterModule.renderOpenApiArtifact({
+					loadApp: async () => {
+						throw failure;
+					},
+				}),
+			).rejects.toBe(failure);
+			expect(captureDocumentationEnvironment()).toEqual(ambientEnvironment);
+		} finally {
+			restoreDocumentationEnvironment(originalEnvironment);
+		}
+	});
+
+	it('serializes in-process renders so process environment leases cannot overlap', async () => {
+		const originalEnvironment = captureDocumentationEnvironment();
+		try {
+			const ambientEnvironment = installMixedAmbientEnvironment();
+			const firstStarted = deferred();
+			const releaseFirst = deferred();
+			let secondStarted = false;
+			const first = exporterModule.renderOpenApiArtifact({
+				loadApp: async () => {
+					firstStarted.resolve();
+					await releaseFirst.promise;
+					return documentationApp();
+				},
+			});
+			await firstStarted.promise;
+			const second = exporterModule.renderOpenApiArtifact({
+				loadApp: async () => {
+					secondStarted = true;
+					return documentationApp();
+				},
+			});
+
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(secondStarted).toBe(false);
+			releaseFirst.resolve();
+			await expect(first).resolves.toContain('"openapi": "3.1.0"');
+			await expect(second).resolves.toContain('"openapi": "3.1.0"');
+			expect(secondStarted).toBe(true);
+			expect(captureDocumentationEnvironment()).toEqual(ambientEnvironment);
+		} finally {
+			restoreDocumentationEnvironment(originalEnvironment);
+		}
 	});
 
 	it('exports deterministic, sorted, secret-free OpenAPI 3.1 bytes from any cwd', async () => {
@@ -149,6 +371,7 @@ describe('canonical OpenAPI export', () => {
 		const firstBytes = await readFile(firstTarget, 'utf8');
 		const secondBytes = await readFile(secondTarget, 'utf8');
 		expect(secondBytes).toBe(firstBytes);
+		expect(firstBytes).toBe(`${JSON.stringify(JSON.parse(firstBytes), null, '\t')}\n`);
 		expect(firstBytes.endsWith('\n')).toBe(true);
 		expect(firstBytes.endsWith('\n\n')).toBe(false);
 		expect(firstBytes).not.toContain('\r');
@@ -198,10 +421,14 @@ describe('canonical OpenAPI export', () => {
 		const tamperedBytes = canonicalBytes.replace('Tantovale API', 'Tantovale APX');
 		expect(tamperedBytes).not.toBe(canonicalBytes);
 		await writeFile(target, tamperedBytes, 'utf8');
+		const preservedTimestamp = new Date('2020-01-02T03:04:05.000Z');
+		await utimes(target, preservedTimestamp, preservedTimestamp);
+		const beforeDriftCheck = await stat(target);
 
 		const driftCheck = runExporter([target, '--check'], { cwd: directory });
 		expect(driftCheck.status).not.toBe(0);
 		expect(await readFile(target, 'utf8')).toBe(tamperedBytes);
+		expect((await stat(target)).mtimeMs).toBe(beforeDriftCheck.mtimeMs);
 		expect(`${driftCheck.stdout}${driftCheck.stderr}`).not.toContain('ambient-credential-must-not-appear');
 
 		const repairRun = runExporter([target], { cwd: directory });

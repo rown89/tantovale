@@ -1,7 +1,7 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, open, readFile, rename as renameFile, unlink, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { format } from 'prettier';
 import { tsImport } from 'tsx/esm/api';
 
 type JsonPrimitive = boolean | null | number | string;
@@ -63,6 +63,22 @@ const DOCUMENTATION_ENVIRONMENT = {
 
 class OpenApiExportError extends Error {}
 
+type OpenApiApp = {
+	request: (input: string) => Promise<Response> | Response;
+};
+
+type RenderOpenApiOptions = {
+	loadApp?: () => Promise<{ app: OpenApiApp }>;
+};
+
+type AtomicWriteOptions = {
+	rename?: (oldPath: string, newPath: string) => Promise<void>;
+};
+
+type EnvironmentSnapshot = Array<{ exists: boolean; key: string; value?: string }>;
+
+let renderQueue: Promise<void> = Promise.resolve();
+
 export function sortJsonValue(value: JsonValue): JsonValue {
 	if (Array.isArray(value)) return value.map(sortJsonValue);
 	if (value === null || typeof value !== 'object') return value;
@@ -74,35 +90,99 @@ export function sortJsonValue(value: JsonValue): JsonValue {
 	);
 }
 
-function installDocumentationEnvironment(): void {
+function installDocumentationEnvironment(): () => void {
+	const snapshot: EnvironmentSnapshot = Object.keys(DOCUMENTATION_ENVIRONMENT).map((key) => ({
+		exists: Object.hasOwn(process.env, key),
+		key,
+		...(process.env[key] === undefined ? {} : { value: process.env[key] }),
+	}));
+
 	Object.assign(process.env, DOCUMENTATION_ENVIRONMENT);
+	return () => {
+		for (const entry of snapshot) {
+			if (entry.exists) process.env[entry.key] = entry.value;
+			else delete process.env[entry.key];
+		}
+	};
 }
 
-export async function renderOpenApiArtifact(): Promise<string> {
-	installDocumentationEnvironment();
+async function loadOpenApiApp(): Promise<{ app: OpenApiApp }> {
 	const { app } = (await tsImport('../src/app.ts', {
 		parentURL: import.meta.url,
 		tsconfig: path.join(SERVER_DIRECTORY, 'tsconfig.json'),
 	})) as typeof import('../src/app');
-	const response = await app.request(CANONICAL_OPENAPI_URL);
+	return { app };
+}
 
-	if (!response.ok) throw new OpenApiExportError('OpenAPI generation failed.');
-
-	let document: JsonValue;
+async function renderOpenApiArtifactWithEnvironment(options: RenderOpenApiOptions): Promise<string> {
+	const restoreEnvironment = installDocumentationEnvironment();
 	try {
-		document = (await response.json()) as JsonValue;
-	} catch {
-		throw new OpenApiExportError('OpenAPI generation failed.');
-	}
+		const { app } = await (options.loadApp ?? loadOpenApiApp)();
+		const response = await app.request(CANONICAL_OPENAPI_URL);
 
-	const formatted = await format(JSON.stringify(sortJsonValue(document)), {
-		parser: 'json',
-		printWidth: 120,
-		tabWidth: 2,
-		useTabs: true,
-		endOfLine: 'lf',
-	});
-	return `${formatted.trimEnd()}\n`;
+		if (!response.ok) throw new OpenApiExportError('OpenAPI generation failed.');
+
+		let document: JsonValue;
+		try {
+			document = (await response.json()) as JsonValue;
+		} catch {
+			throw new OpenApiExportError('OpenAPI generation failed.');
+		}
+
+		return `${JSON.stringify(sortJsonValue(document), null, '\t')}\n`;
+	} finally {
+		restoreEnvironment();
+	}
+}
+
+export function renderOpenApiArtifact(options: RenderOpenApiOptions = {}): Promise<string> {
+	const rendering = renderQueue.then(() => renderOpenApiArtifactWithEnvironment(options));
+	renderQueue = rendering.then(
+		() => undefined,
+		() => undefined,
+	);
+	return rendering;
+}
+
+async function removeTemporaryFile(temporaryPath: string, originalError: unknown): Promise<never> {
+	try {
+		await unlink(temporaryPath);
+	} catch (cleanupError) {
+		if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') {
+			throw new AggregateError([originalError, cleanupError], 'OpenAPI export and temporary-file cleanup failed.');
+		}
+	}
+	throw originalError;
+}
+
+export async function atomicWriteFile(
+	targetPath: string,
+	contents: Uint8Array,
+	options: AtomicWriteOptions = {},
+): Promise<void> {
+	const temporaryPath = path.join(
+		path.dirname(targetPath),
+		`.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`,
+	);
+	let handle: FileHandle | undefined;
+
+	try {
+		handle = await open(temporaryPath, 'wx', 0o600);
+		await handle.writeFile(contents);
+		await handle.sync();
+		await handle.close();
+		handle = undefined;
+		await (options.rename ?? renameFile)(temporaryPath, targetPath);
+	} catch (error) {
+		if (handle) {
+			try {
+				await handle.close();
+			} catch {
+				// Cleanup below is still attempted; the original error remains authoritative.
+			}
+		}
+		await removeTemporaryFile(temporaryPath, error);
+	}
 }
 
 function parseArguments(args: string[]): { check: boolean; targetPath: string } {
@@ -136,7 +216,7 @@ export async function runOpenApiExport(args: string[]): Promise<void> {
 	}
 
 	await mkdir(path.dirname(targetPath), { recursive: true });
-	await writeFile(targetPath, generatedBytes);
+	await atomicWriteFile(targetPath, generatedBytes);
 }
 
 function isDirectExecution(): boolean {
