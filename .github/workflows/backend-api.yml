@@ -1,0 +1,46 @@
+name: Backend API
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-api-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint server
+        run: pnpm --filter @workspace/server lint
+
+      - name: Typecheck server
+        run: pnpm --filter @workspace/server typecheck
+
+      - name: Build server
+        run: pnpm --filter @workspace/server build
+
+      - name: Verify API coverage
+        run: pnpm --filter @workspace/server test:api:coverage -- --sequence.shuffle --sequence.seed=211
+
+      - name: Verify OpenAPI artifact
+        run: pnpm --filter @workspace/server api:check

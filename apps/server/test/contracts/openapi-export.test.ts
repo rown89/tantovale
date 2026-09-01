@@ -131,12 +131,14 @@ async function temporaryDirectory(): Promise<string> {
 
 function runExporter(args: string[], options: { cwd: string; ambientMarker?: string }): SpawnSyncReturns<string> {
 	const marker = options.ambientMarker ?? 'ambient-credential-must-not-appear';
+	const subprocessEnvironment = { ...process.env };
+	delete subprocessEnvironment.NODE_V8_COVERAGE;
 	return spawnSync(process.execPath, ['--import', tsxLoaderPath, scriptPath, ...args], {
 		cwd: options.cwd,
 		encoding: 'utf8',
 		timeout: 30_000,
 		env: {
-			...process.env,
+			...subprocessEnvironment,
 			NODE_NO_WARNINGS: '1',
 			NODE_ENV: 'production',
 			POSTGRES_PASSWORD: marker,
@@ -414,7 +416,7 @@ describe('canonical OpenAPI export', () => {
 		const originalEnvironment = captureDocumentationEnvironment();
 		try {
 			const ambientEnvironment = installMixedAmbientEnvironment();
-			const artifact = await exporterModule.renderOpenApiArtifact();
+			const artifact = await exporterModule.renderOpenApiArtifact({ loadApp: async () => documentationApp() });
 			expect((JSON.parse(artifact) as JsonObject).openapi).toBe('3.1.0');
 			expect(captureDocumentationEnvironment()).toEqual(ambientEnvironment);
 		} finally {

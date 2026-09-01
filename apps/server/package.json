@@ -25,10 +25,10 @@
 		"lint": "eslint . --max-warnings 0",
 		"typecheck": "npx tsc --noEmit",
 		"test": "vitest run --config vitest.config.ts",
-		"test:api": "vitest run --config vitest.config.ts",
+		"test:api": "tsx scripts/run-api-tests.ts",
 		"test:api:watch": "vitest --config vitest.config.ts",
 		"test:api:worker-isolation": "vitest run --config ./test/worker-isolation.vitest.config.ts",
-		"test:api:coverage": "vitest run --config vitest.config.ts --coverage",
+		"test:api:coverage": "tsx scripts/run-api-tests.ts --coverage",
 		"api:export": "tsx scripts/export-openapi.ts ../../docs/api/tantovale.openapi.json",
 		"api:check": "tsx scripts/export-openapi.ts ../../docs/api/tantovale.openapi.json --check"
 	},

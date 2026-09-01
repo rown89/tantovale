@@ -16,8 +16,16 @@ export default defineConfig({
 		hookTimeout: 60_000,
 		coverage: {
 			provider: 'v8',
+			all: true,
 			include: ['src/**/*.ts'],
-			exclude: ['src/database/drizzle/migrations/**'],
+			exclude: [
+				'src/database/drizzle/migrations/**',
+				'src/database/scripts/**',
+				'src/database/drizzle.config.ts',
+				'src/index.ts',
+				'**/*.d.ts',
+			],
+			ignoreEmptyLines: true,
 			thresholds: {
 				lines: 90,
 				functions: 90,
