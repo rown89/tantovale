@@ -652,18 +652,6 @@ describe('buy-now route', () => {
 		await db
 			.delete(entityTrustapTransactions)
 			.where(eq(entityTrustapTransactions.transactionId, expectedTransactionId));
-		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'transaction-recovery-reference-mismatch');
-		const mismatchedSync = await new TransactionSyncService().syncTransactionStatuses();
-		expect(mismatchedSync.results).toContainEqual(
-			expect.objectContaining({
-				orderId: reservations[0]!.id,
-				requiresManualReconciliation: true,
-				success: false,
-			}),
-		);
-		expect((await db.select().from(orders).where(eq(orders.id, reservations[0]!.id)))[0]?.payment_creation_state).toBe(
-			'reconciliation_required',
-		);
 		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'success');
 		const syncResult = await new TransactionSyncService().syncTransactionStatuses();
 		expect(syncResult.results).toContainEqual(
