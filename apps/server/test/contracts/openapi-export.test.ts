@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -74,7 +74,10 @@ type EnvironmentSnapshot = Array<{
 type AtomicWriteFile = (
 	targetPath: string,
 	contents: Uint8Array,
-	options?: { rename?: (oldPath: string, newPath: string) => Promise<void> },
+	options?: {
+		rename?: (oldPath: string, newPath: string) => Promise<void>;
+		syncDirectory?: (directoryPath: string) => Promise<void>;
+	},
 ) => Promise<void>;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -262,6 +265,96 @@ describe('canonical OpenAPI export', () => {
 		expect(await readFile(target, 'utf8')).toBe('previous-complete-artifact\n');
 		expect((await stat(target)).mtimeMs).toBe(before.mtimeMs);
 		expect(await readdir(directory)).toEqual(['tantovale.openapi.json']);
+	});
+
+	it('preserves an existing artifact permission mode across atomic replacement', async () => {
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		await writeFile(target, 'previous-complete-artifact\n', 'utf8');
+		await chmod(target, 0o640);
+
+		await exporterModule.atomicWriteFile(target, Buffer.from('replacement-complete-artifact\n'), {
+			syncDirectory: async () => undefined,
+		});
+
+		expect((await stat(target)).mode & 0o777).toBe(0o640);
+	});
+
+	it('uses normal 0666-masked creation permissions for a new artifact', async () => {
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		const expectedMode = 0o666 & ~process.umask();
+
+		await exporterModule.atomicWriteFile(target, Buffer.from('new-complete-artifact\n'), {
+			syncDirectory: async () => undefined,
+		});
+
+		expect((await stat(target)).mode & 0o777).toBe(expectedMode);
+	});
+
+	it('synchronizes the parent directory after publishing the replacement', async () => {
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		const synchronizedDirectories: string[] = [];
+
+		await exporterModule.atomicWriteFile(target, Buffer.from('complete-artifact\n'), {
+			syncDirectory: async (directoryPath) => {
+				synchronizedDirectories.push(directoryPath);
+			},
+		});
+
+		expect(synchronizedDirectories).toEqual([directory]);
+	});
+
+	it('reports a directory-sync failure after rename while retaining the complete replacement', async () => {
+		const directory = await temporaryDirectory();
+		const target = path.join(directory, 'tantovale.openapi.json');
+		await writeFile(target, 'previous-complete-artifact\n', 'utf8');
+		const failure = new Error('injected directory-sync failure');
+
+		await expect(
+			exporterModule.atomicWriteFile(target, Buffer.from('replacement-complete-artifact\n'), {
+				syncDirectory: async () => {
+					throw failure;
+				},
+			}),
+		).rejects.toBe(failure);
+
+		expect(await readFile(target, 'utf8')).toBe('replacement-complete-artifact\n');
+		expect(await readdir(directory)).toEqual(['tantovale.openapi.json']);
+	});
+
+	it('only classifies documented directory open/fsync failures as unsupported', () => {
+		const isUnsupportedDirectorySyncError = Reflect.get(exporterModule, 'isUnsupportedDirectorySyncError') as
+			| ((error: unknown) => boolean)
+			| undefined;
+		expect(isUnsupportedDirectorySyncError, 'directory-sync compatibility classifier export').toBeTypeOf('function');
+		if (!isUnsupportedDirectorySyncError) return;
+
+		expect(
+			isUnsupportedDirectorySyncError(Object.assign(new Error('directory open'), { code: 'EISDIR', syscall: 'open' })),
+		).toBe(true);
+		expect(
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('directory fsync'), { code: 'EINVAL', syscall: 'fsync' }),
+			),
+		).toBe(true);
+		expect(
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('directory fsync'), { code: 'ENOTSUP', syscall: 'fsync' }),
+			),
+		).toBe(true);
+		expect(
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('permission denied'), { code: 'EPERM', syscall: 'open' }),
+			),
+		).toBe(false);
+		expect(
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('wrong operation'), { code: 'EINVAL', syscall: 'write' }),
+			),
+		).toBe(false);
+		expect(isUnsupportedDirectorySyncError(new Error('unclassified failure'))).toBe(false);
 	});
 
 	it('keeps the complete previous bytes visible until the atomic rename publishes complete replacement bytes', async () => {

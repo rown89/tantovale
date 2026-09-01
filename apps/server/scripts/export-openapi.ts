@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename as renameFile, unlink, type FileHandle } from 'node:fs/promises';
+import { mkdir, open, readFile, rename as renameFile, stat, unlink, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
@@ -73,6 +73,7 @@ type RenderOpenApiOptions = {
 
 type AtomicWriteOptions = {
 	rename?: (oldPath: string, newPath: string) => Promise<void>;
+	syncDirectory?: (directoryPath: string) => Promise<void>;
 };
 
 type EnvironmentSnapshot = Array<{ exists: boolean; key: string; value?: string }>;
@@ -155,24 +156,57 @@ async function removeTemporaryFile(temporaryPath: string, originalError: unknown
 	throw originalError;
 }
 
+export function isUnsupportedDirectorySyncError(error: unknown): boolean {
+	const filesystemError = error as NodeJS.ErrnoException;
+	return (
+		(filesystemError.syscall === 'open' && filesystemError.code === 'EISDIR') ||
+		(filesystemError.syscall === 'fsync' && (filesystemError.code === 'EINVAL' || filesystemError.code === 'ENOTSUP'))
+	);
+}
+
+async function syncParentDirectory(directoryPath: string): Promise<void> {
+	let directoryHandle: FileHandle | undefined;
+	try {
+		directoryHandle = await open(directoryPath, 'r');
+		await directoryHandle.sync();
+	} catch (error) {
+		// Windows cannot open directories as files (EISDIR), while some filesystems
+		// explicitly reject directory fsync with EINVAL/ENOTSUP. All other errors
+		// indicate an actual durability failure and remain visible to the caller.
+		if (!isUnsupportedDirectorySyncError(error)) throw error;
+	} finally {
+		await directoryHandle?.close();
+	}
+}
+
+async function replacementPermissions(targetPath: string): Promise<number> {
+	try {
+		return (await stat(targetPath)).mode & 0o777;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+		return 0o666 & ~process.umask();
+	}
+}
+
 export async function atomicWriteFile(
 	targetPath: string,
 	contents: Uint8Array,
 	options: AtomicWriteOptions = {},
 ): Promise<void> {
-	const temporaryPath = path.join(
-		path.dirname(targetPath),
-		`.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`,
-	);
+	const targetDirectory = path.dirname(targetPath);
+	const temporaryPath = path.join(targetDirectory, `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
 	let handle: FileHandle | undefined;
 
 	try {
+		const finalPermissions = await replacementPermissions(targetPath);
 		handle = await open(temporaryPath, 'wx', 0o600);
 		await handle.writeFile(contents);
+		await handle.chmod(finalPermissions);
 		await handle.sync();
 		await handle.close();
 		handle = undefined;
 		await (options.rename ?? renameFile)(temporaryPath, targetPath);
+		await (options.syncDirectory ?? syncParentDirectory)(targetDirectory);
 	} catch (error) {
 		if (handle) {
 			try {
