@@ -522,7 +522,12 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 	});
 
 	it.each(labelGraphNonNullFields)('requires non-null label payment graph field %s', (field) => {
-		expect(labelPaymentGraphIsReady({ ...readyLabelPaymentGraph, [field]: null })).toBe(false);
+		const graphWithIsolatedNull: LabelPaymentGraph = { ...readyLabelPaymentGraph, [field]: null };
+		if (field === 'payment_transaction_id') graphWithIsolatedNull.provider_transaction_id = null;
+		if (field === 'item_id') graphWithIsolatedNull.provider_entity_id = null;
+		expect(graphWithIsolatedNull.provider_transaction_id).toBe(graphWithIsolatedNull.payment_transaction_id);
+		expect(graphWithIsolatedNull.provider_entity_id).toBe(graphWithIsolatedNull.item_id);
+		expect(labelPaymentGraphIsReady(graphWithIsolatedNull)).toBe(false);
 	});
 
 	it('requires transaction identity equality even while every LEFT JOIN row remains present', () => {
