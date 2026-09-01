@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export function normalizeForwardedVitestArguments(args: string[]): string[] {
@@ -9,28 +8,39 @@ export function normalizeForwardedVitestArguments(args: string[]): string[] {
 
 export type ForwardedSignal = 'SIGINT' | 'SIGTERM';
 
-// pnpm can proxy the same terminal signal after the kernel has already delivered it
-// to the lifecycle process group. The observed duplicate was <=0.276ms; 10ms keeps
-// a bounded scheduler margin without swallowing a deliberate rapid escalation.
-export const SIGNAL_BURST_COALESCE_WINDOW_MS = 10;
+// A lifecycle group signal reaches this wrapper directly and can then be proxied by
+// pnpm. Keeping the same-signal gate across two check-phase boundaries groups those
+// deliveries even when the wrapper event loop is briefly blocked, without applying
+// any debounce to direct callers or to a different signal.
+export const SIGNAL_BURST_COALESCE_TURNS = 2;
 
 export type SignalBurstMode = 'direct' | 'pnpm-lifecycle';
 
-export type ObservedSignalEvent = {
-	observedAt: number;
-	signal: ForwardedSignal;
-};
-
-export function shouldForwardSignalEvent(
+export function createSignalBurstPolicy(
 	mode: SignalBurstMode,
-	lastForwarded: ObservedSignalEvent | null,
-	current: ObservedSignalEvent,
-	windowMs = SIGNAL_BURST_COALESCE_WINDOW_MS,
-): boolean {
-	if (mode === 'direct') return true;
-	if (lastForwarded === null || lastForwarded.signal !== current.signal) return true;
-	const elapsed = current.observedAt - lastForwarded.observedAt;
-	return elapsed < 0 || elapsed >= windowMs;
+	scheduleTurn: (callback: () => void) => void,
+): (signal: ForwardedSignal) => boolean {
+	let burstGeneration = 0;
+	let guardedSignal: ForwardedSignal | null = null;
+
+	return (signal) => {
+		if (mode === 'direct') return true;
+		if (guardedSignal === signal) return false;
+
+		guardedSignal = signal;
+		const generation = ++burstGeneration;
+		let remainingTurns = SIGNAL_BURST_COALESCE_TURNS;
+		const advanceTurn = () => {
+			scheduleTurn(() => {
+				if (generation !== burstGeneration) return;
+				remainingTurns -= 1;
+				if (remainingTurns === 0) guardedSignal = null;
+				else advanceTurn();
+			});
+		};
+		advanceTurn();
+		return true;
+	};
 }
 
 export function resolveSignalBurstMode(environment: Readonly<Record<string, string | undefined>>): SignalBurstMode {
@@ -52,9 +62,9 @@ type ChildSpawnOptions = {
 
 export type ProcessRunnerRuntime = {
 	addSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
-	monotonicNow?: () => number;
 	platform: NodeJS.Platform;
 	removeSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
+	scheduleSignalBurstTurn?: (callback: () => void) => void;
 	signalProcess: (processId: number, signal: NodeJS.Signals) => void;
 	signalSelf: (signal: NodeJS.Signals) => void;
 	spawnChild: (command: string, args: string[], options: ChildSpawnOptions) => ManagedChildProcess;
@@ -75,9 +85,9 @@ export function resolveProcessSignalPolicy(platform: NodeJS.Platform): ProcessSi
 
 const processRunnerRuntime: ProcessRunnerRuntime = {
 	addSignalListener: (signal, listener) => process.on(signal, listener),
-	monotonicNow: () => performance.now(),
 	platform: process.platform,
 	removeSignalListener: (signal, listener) => process.off(signal, listener),
+	scheduleSignalBurstTurn: (callback) => setImmediate(callback),
 	signalProcess: (processId, signal) => process.kill(processId, signal),
 	signalSelf: (signal) => process.kill(process.pid, signal),
 	spawnChild: (command, args, options) => spawn(command, args, options),
@@ -96,13 +106,16 @@ export async function runChildProcess(
 	return new Promise<number | undefined>((resolve, reject) => {
 		const signalPolicy = resolveProcessSignalPolicy(runtime.platform);
 		let child: ManagedChildProcess | undefined;
-		const pendingSignals: ObservedSignalEvent[] = [];
+		const pendingSignals: ForwardedSignal[] = [];
 		let firstReceivedSignal: ForwardedSignal | null = null;
-		let lastForwardedSignal: ObservedSignalEvent | null = null;
 		let flushingSignals = false;
 		let forcedCleanupError: unknown;
 		let forcedCleanupStarted = false;
 		let settled = false;
+		const shouldForwardSignal = createSignalBurstPolicy(
+			options.signalBurstMode ?? 'direct',
+			runtime.scheduleSignalBurstTurn ?? ((callback) => setImmediate(callback)),
+		);
 
 		const cleanup = () => {
 			if (!signalPolicy.proxySignals) return;
@@ -136,18 +149,17 @@ export async function runChildProcess(
 				}
 			}
 		};
-		const deliverSignal = (event: ObservedSignalEvent) => {
+		const deliverSignal = (signal: ForwardedSignal) => {
 			if (child?.pid === undefined) return;
-			if (!shouldForwardSignalEvent(options.signalBurstMode ?? 'direct', lastForwardedSignal, event)) return;
-			lastForwardedSignal = event;
+			if (!shouldForwardSignal(signal)) return;
 
 			try {
-				runtime.signalProcess(-child.pid, event.signal);
+				runtime.signalProcess(-child.pid, signal);
 			} catch (groupError) {
 				if (isNoSuchProcessError(groupError)) return;
 
 				try {
-					runtime.signalProcess(child.pid, event.signal);
+					runtime.signalProcess(child.pid, signal);
 				} catch (directError) {
 					if (isNoSuchProcessError(directError)) return;
 					forceCleanup(directError);
@@ -176,7 +188,7 @@ export async function runChildProcess(
 		};
 		const receiveSignal = (signal: ForwardedSignal) => {
 			firstReceivedSignal ??= signal;
-			pendingSignals.push({ observedAt: runtime.monotonicNow?.() ?? performance.now(), signal });
+			pendingSignals.push(signal);
 			forwardPendingSignals();
 		};
 		const forwardInterrupt = () => receiveSignal('SIGINT');

@@ -4,15 +4,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+	createSignalBurstPolicy,
 	runChildProcess,
 	resolveSignalBurstMode,
-	SIGNAL_BURST_COALESCE_WINDOW_MS,
-	shouldForwardSignalEvent,
+	SIGNAL_BURST_COALESCE_TURNS,
 	type ProcessRunnerRuntime,
 } from '../../scripts/run-api-tests';
 
@@ -145,13 +144,21 @@ function startCommandFixture(command: string, args: string[], environment: NodeJ
 	};
 
 	let stopPromise: Promise<void> | undefined;
+	let closedTreeConfirmed = false;
+	const confirmClosedTree = () => {
+		if (closeResult === undefined) return false;
+		closedTreeConfirmed = true;
+		return true;
+	};
 	const ensureStopped = () => {
 		stopPromise ??= (async () => {
 			let cleanupError: unknown;
-			try {
-				await terminateFixtureTree(fixture, output);
-			} catch (error) {
-				cleanupError = error;
+			if (!closedTreeConfirmed) {
+				try {
+					await terminateFixtureTree(fixture, output);
+				} catch (error) {
+					cleanupError = error;
+				}
 			}
 			try {
 				await waitWithTimeout(close, 'Fixture did not close during cleanup');
@@ -163,10 +170,10 @@ function startCommandFixture(command: string, args: string[], environment: NodeJ
 		return stopPromise;
 	};
 
-	return { close, ensureStopped, fixture, getOutput: () => output, waitForOutput };
+	return { close, confirmClosedTree, ensureStopped, fixture, getOutput: () => output, waitForOutput };
 }
 
-async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM') {
+async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM', pressureWrapper = false) {
 	const packageDirectory = await mkdtemp(path.join(tmpdir(), 'tantovale-pnpm-signal-'));
 	try {
 		const script = [
@@ -177,6 +184,7 @@ async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM') {
 			'process-tree',
 			signal,
 			'2',
+			pressureWrapper ? 'pressure' : 'idle',
 		].join(' ');
 		await writeFile(
 			path.join(packageDirectory, 'package.json'),
@@ -220,11 +228,6 @@ function readProcessId(output: string, marker: string): number {
 	return Number(match[1]);
 }
 
-function applyBriefCpuPressure(durationMs = 15): void {
-	const deadline = performance.now() + durationMs;
-	while (performance.now() < deadline) Math.sqrt(deadline);
-}
-
 function isProcessAlive(processId: number): boolean {
 	try {
 		process.kill(processId, 0);
@@ -235,7 +238,7 @@ function isProcessAlive(processId: number): boolean {
 	}
 }
 
-async function expectFixtureTreeGone(output: string): Promise<void> {
+async function expectFixtureTreeGone(output: string, confirmClosedTree: () => boolean): Promise<void> {
 	const processIds = [readProcessId(output, 'TREE_CHILD_PID'), readProcessId(output, 'DESCENDANT_PID')];
 	await waitWithTimeout(
 		(async () => {
@@ -243,6 +246,7 @@ async function expectFixtureTreeGone(output: string): Promise<void> {
 		})(),
 		'Fixture descendants remained alive after wrapper shutdown',
 	);
+	expect(confirmClosedTree()).toBe(true);
 }
 
 function createFakeChild(processId: number): ChildProcess {
@@ -296,9 +300,7 @@ async function cleanupActualChild(child: ChildProcess | undefined): Promise<void
 }
 
 describe('API test process runner', () => {
-	it('coalesces only same-signal events inside the monotonic burst window', () => {
-		const initial = { observedAt: 1_000, signal: 'SIGTERM' as const };
-
+	it('coalesces only same-signal pnpm deliveries across two event-loop turns', () => {
 		expect(resolveSignalBurstMode({})).toBe('direct');
 		expect(resolveSignalBurstMode({ npm_config_user_agent: 'pnpm/10.12.1' })).toBe('direct');
 		expect(resolveSignalBurstMode({ npm_lifecycle_event: 'test:api' })).toBe('direct');
@@ -306,37 +308,34 @@ describe('API test process runner', () => {
 		expect(
 			resolveSignalBurstMode({ npm_config_user_agent: 'pnpm/10.12.1 npm/? node/v22', npm_lifecycle_event: 'test:api' }),
 		).toBe('pnpm-lifecycle');
-		expect(
-			shouldForwardSignalEvent('direct', initial, {
-				observedAt: 1_000,
-				signal: 'SIGTERM',
-			}),
-		).toBe(true);
-		expect(
-			shouldForwardSignalEvent('pnpm-lifecycle', initial, {
-				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS - 1,
-				signal: 'SIGTERM',
-			}),
-		).toBe(false);
-		expect(
-			shouldForwardSignalEvent('pnpm-lifecycle', initial, {
-				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS,
-				signal: 'SIGTERM',
-			}),
-		).toBe(true);
-		expect(shouldForwardSignalEvent('pnpm-lifecycle', initial, { observedAt: 1_001, signal: 'SIGINT' })).toBe(true);
-		expect(shouldForwardSignalEvent('pnpm-lifecycle', initial, { observedAt: 999, signal: 'SIGTERM' })).toBe(true);
+
+		const directTurns: Array<() => void> = [];
+		const directPolicy = createSignalBurstPolicy('direct', (callback) => directTurns.push(callback));
+		expect(directPolicy('SIGTERM')).toBe(true);
+		expect(directPolicy('SIGTERM')).toBe(true);
+		expect(directTurns).toEqual([]);
+
+		const lifecycleTurns: Array<() => void> = [];
+		const lifecyclePolicy = createSignalBurstPolicy('pnpm-lifecycle', (callback) => lifecycleTurns.push(callback));
+		expect(SIGNAL_BURST_COALESCE_TURNS).toBe(2);
+		expect(lifecyclePolicy('SIGTERM')).toBe(true);
+		expect(lifecyclePolicy('SIGTERM')).toBe(false);
+		lifecycleTurns.shift()!();
+		expect(lifecyclePolicy('SIGTERM')).toBe(false);
+		lifecycleTurns.shift()!();
+		expect(lifecyclePolicy('SIGTERM')).toBe(true);
+		expect(lifecyclePolicy('SIGINT')).toBe(true);
 	});
 
 	it.runIf(process.platform !== 'win32').each(['SIGINT', 'SIGTERM'] as const)(
 		'coalesces one %s burst through the actual pnpm lifecycle',
 		async (signal) => {
-			const running = await startPnpmFixture(signal);
+			const running = await startPnpmFixture(signal, true);
 
 			try {
+				await running.waitForOutput('WRAPPER_PRESSURE:READY');
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, signal);
-				applyBriefCpuPressure();
 				await running.waitForOutput('DESCENDANT:COUNT:1');
 				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 				const output = running.getOutput();
@@ -350,14 +349,14 @@ describe('API test process runner', () => {
 	);
 
 	it.runIf(process.platform !== 'win32')(
-		'forwards a later SIGTERM through the pnpm lifecycle after the burst window',
+		'forwards a later SIGTERM through the pnpm lifecycle after the structural burst gate closes',
 		async () => {
-			const running = await startPnpmFixture('SIGTERM');
+			const running = await startPnpmFixture('SIGTERM', true);
 
 			try {
+				await running.waitForOutput('WRAPPER_PRESSURE:READY');
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, 'SIGTERM');
-				applyBriefCpuPressure();
 				await running.waitForOutput('DESCENDANT:COUNT:1');
 				await new Promise<void>((resolve) => setTimeout(resolve, 75));
 				expect(running.getOutput()).not.toContain('COUNT:2');
@@ -370,7 +369,7 @@ describe('API test process runner', () => {
 				expect(output).toContain('CHILD:COUNT:2');
 				expect(output).toContain('DESCENDANT:COUNT:2');
 				expect(output).not.toContain('COUNT:3');
-				await expectFixtureTreeGone(output);
+				await expectFixtureTreeGone(output, running.confirmClosedTree);
 			} finally {
 				await running.cleanup();
 			}
@@ -404,6 +403,28 @@ describe('API test process runner', () => {
 		},
 	);
 
+	it.runIf(process.platform !== 'win32')(
+		'refuses a premature tree-gone confirmation and still cleans the live process group',
+		async () => {
+			const running = startFixture('process-tree', 'SIGTERM', '2');
+			const killSpy = vi.spyOn(process, 'kill');
+
+			try {
+				await running.waitForOutput('TREE:READY');
+				expect(running.confirmClosedTree()).toBe(false);
+
+				await running.ensureStopped();
+				expect(
+					killSpy.mock.calls.filter(([, forwardedSignal]) => forwardedSignal === 'SIGKILL').length,
+				).toBeGreaterThan(0);
+				await expectFixtureTreeGone(running.getOutput(), running.confirmClosedTree);
+			} finally {
+				killSpy.mockRestore();
+				await running.ensureStopped();
+			}
+		},
+	);
+
 	it('preserves successful and nonzero child exit codes without synchronous fixtures', async () => {
 		await expect(runFixture('success')).resolves.toMatchObject({ signal: null, code: 0 });
 		await expect(runFixture('failure')).resolves.toMatchObject({ signal: null, code: 7 });
@@ -429,7 +450,15 @@ describe('API test process runner', () => {
 				expect(output).toContain('DESCENDANT:COUNT:1');
 				expect(output).toContain('DESCENDANT:CLOSED');
 				expect(output).not.toContain('COUNT:2');
-				await expectFixtureTreeGone(output);
+				await expectFixtureTreeGone(output, running.confirmClosedTree);
+
+				const postClosureKillSpy = vi.spyOn(process, 'kill');
+				try {
+					await running.ensureStopped();
+					expect(postClosureKillSpy).not.toHaveBeenCalled();
+				} finally {
+					postClosureKillSpy.mockRestore();
+				}
 			} finally {
 				await running.ensureStopped();
 			}
@@ -457,7 +486,7 @@ describe('API test process runner', () => {
 				expect(output).toContain('CHILD:COUNT:2');
 				expect(output).toContain('DESCENDANT:COUNT:2');
 				expect(output).not.toContain('COUNT:3');
-				await expectFixtureTreeGone(output);
+				await expectFixtureTreeGone(output, running.confirmClosedTree);
 			} finally {
 				await running.ensureStopped();
 			}
@@ -491,11 +520,10 @@ describe('API test process runner', () => {
 		expect(listeners).toEqual(new Map());
 	});
 
-	it('forwards consecutive same-signal events for direct API callers even at one monotonic instant', async () => {
+	it('forwards consecutive same-signal events for direct API callers without coalescing', async () => {
 		const child = createFakeChild(74);
 		const forwarded: Array<[number, NodeJS.Signals]> = [];
 		const { listeners, runtime } = createRuntimeWithListeners(child, {
-			monotonicNow: () => 1_000,
 			signalProcess: (processId, signal) => forwarded.push([processId, signal]),
 			signalSelf: () => undefined,
 			spawnChild: () => {
