@@ -1,5 +1,6 @@
 import { getTableName, is } from 'drizzle-orm';
 import { type AnyPgTable, getTableConfig, PgTable } from 'drizzle-orm/pg-core';
+import type { PoolClient, QueryResult } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import * as schema from '../../src/database/schemas/schema';
@@ -42,10 +43,12 @@ function sourceForeignKeys(): ForeignKeyProjection[] {
 		.sort(compareForeignKeys);
 }
 
-describe('runtime Drizzle schema', () => {
-	it('matches every source foreign-key callback to the migrated PostgreSQL graph', async () => {
-		const { client } = getTestDatabase();
-		const { rows: databaseForeignKeys } = await client.query<ForeignKeyProjection>(`
+async function readDatabaseForeignKeys(
+	connection: Pick<PoolClient, 'query'>,
+	tableName: string | null = null,
+): Promise<QueryResult<ForeignKeyProjection>> {
+	return connection.query<ForeignKeyProjection>(
+		`
 			SELECT
 				fk.column_name AS "columnName",
 				referenced.column_name AS "foreignColumnName",
@@ -64,7 +67,16 @@ describe('runtime Drizzle schema', () => {
 				AND reference.unique_constraint_name = referenced.constraint_name
 				AND fk.position_in_unique_constraint = referenced.ordinal_position
 			WHERE reference.constraint_schema = 'public'
-		`);
+				AND ($1::text IS NULL OR fk.table_name = $1)
+		`,
+		[tableName],
+	);
+}
+
+describe('runtime Drizzle schema', () => {
+	it('matches every source foreign-key callback to the migrated PostgreSQL graph', async () => {
+		const { client } = getTestDatabase();
+		const { rows: databaseForeignKeys } = await readDatabaseForeignKeys(client);
 
 		const source = sourceForeignKeys();
 		const database = databaseForeignKeys.sort(compareForeignKeys);
@@ -88,5 +100,62 @@ describe('runtime Drizzle schema', () => {
 		const mutated = structuredClone(source);
 		mutated[0]!.onDelete = mutated[0]!.onDelete === 'CASCADE' ? 'RESTRICT' : 'CASCADE';
 		expect(mutated).not.toEqual(database);
+	});
+
+	it('pairs composite foreign-key columns by their referenced ordinal positions', async () => {
+		const { client } = getTestDatabase();
+		const connection = await client.connect();
+
+		try {
+			await connection.query('BEGIN');
+			await connection.query(`
+				CREATE TABLE public.p07_composite_fk_parent (
+					x integer NOT NULL,
+					y integer NOT NULL,
+					UNIQUE (x, y)
+				);
+				CREATE TABLE public.p07_composite_fk_child (
+					a integer NOT NULL,
+					b integer NOT NULL,
+					CONSTRAINT p07_composite_fk_exact
+						FOREIGN KEY (a, b)
+						REFERENCES public.p07_composite_fk_parent (x, y)
+						ON DELETE RESTRICT
+						ON UPDATE CASCADE
+				);
+			`);
+
+			const { rows } = await readDatabaseForeignKeys(connection, 'p07_composite_fk_child');
+			const projection = rows.sort(compareForeignKeys);
+
+			expect(projection).toEqual([
+				{
+					columnName: 'a',
+					foreignColumnName: 'x',
+					foreignTableName: 'p07_composite_fk_parent',
+					onDelete: 'RESTRICT',
+					onUpdate: 'CASCADE',
+					tableName: 'p07_composite_fk_child',
+				},
+				{
+					columnName: 'b',
+					foreignColumnName: 'y',
+					foreignTableName: 'p07_composite_fk_parent',
+					onDelete: 'RESTRICT',
+					onUpdate: 'CASCADE',
+					tableName: 'p07_composite_fk_child',
+				},
+			]);
+			expect(projection).not.toEqual([
+				{ ...projection[0]!, foreignColumnName: 'y' },
+				{ ...projection[1]!, foreignColumnName: 'x' },
+			]);
+		} finally {
+			try {
+				await connection.query('ROLLBACK');
+			} finally {
+				connection.release();
+			}
+		}
 	});
 });

@@ -20,14 +20,14 @@ function resolveWorkerAssignment(runtime: TestRuntime, workerId: string | undefi
 describe('local service configuration', () => {
 	it('selects every matching resource for a nonzero synthetic Vitest worker', () => {
 		const runtime = inject('testRuntime');
-		const assignment = resolveWorkerAssignment(runtime, '3');
+		const assignment = resolveWorkerAssignment(runtime, '2');
 
 		expect(assignment).toEqual({
-			workerIndex: 2,
-			database: runtime.resourceNames.workerDatabases[2],
-			bucket: runtime.resourceNames.workerBuckets[2],
-			trustapUrl: runtime.providers.trustapUrls[2],
-			shippoUrl: runtime.providers.shippoUrls[2],
+			workerIndex: 1,
+			database: runtime.resourceNames.workerDatabases[1],
+			bucket: runtime.resourceNames.workerBuckets[1],
+			trustapUrl: runtime.providers.trustapUrls[1],
+			shippoUrl: runtime.providers.shippoUrls[1],
 		});
 	});
 

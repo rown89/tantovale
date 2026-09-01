@@ -74,7 +74,7 @@ describe('backend API CI gate', () => {
 	it('covers exactly every API runtime source file with only approved generated/bootstrap exclusions', async () => {
 		const coverage = vitestConfig.test?.coverage;
 
-		expect(vitestConfig.test?.maxWorkers).toBe(4);
+		expect(vitestConfig.test?.maxWorkers).toBe(2);
 		expect(coverage).toMatchObject({
 			all: true,
 			include: ['src/**/*.ts'],

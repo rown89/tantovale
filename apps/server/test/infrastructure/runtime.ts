@@ -1,6 +1,6 @@
 import { PROVIDER_TEST_CREDENTIALS } from './provider-stubs';
 
-export const API_TEST_WORKERS = 4;
+export const API_TEST_WORKERS = 2;
 
 export type ResourceNames = {
 	templateDatabase: string;

@@ -6,7 +6,7 @@ export default defineConfig({
 		globalSetup: ['./test/infrastructure/global-setup.ts'],
 		setupFiles: ['./test/setup.ts'],
 		pool: 'forks',
-		maxWorkers: 4,
+		maxWorkers: 2,
 		minWorkers: 1,
 		fileParallelism: true,
 		sequence: {

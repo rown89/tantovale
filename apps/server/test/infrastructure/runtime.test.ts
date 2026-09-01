@@ -60,10 +60,11 @@ const runtime: TestRuntime = {
 };
 
 describe('test runtime resources', () => {
-	it('provisions exactly four isolated local provider pairs without serializing close functions', () => {
+	it('provisions exactly two isolated local provider pairs without serializing close functions', () => {
 		const providedRuntime = inject('testRuntime');
 		const urls = [...providedRuntime.providers.trustapUrls, ...providedRuntime.providers.shippoUrls];
 
+		expect(API_TEST_WORKERS).toBe(2);
 		expect(providedRuntime.providers.trustapUrls).toHaveLength(API_TEST_WORKERS);
 		expect(providedRuntime.providers.shippoUrls).toHaveLength(API_TEST_WORKERS);
 		expect(new Set(urls).size).toBe(API_TEST_WORKERS * 2);
