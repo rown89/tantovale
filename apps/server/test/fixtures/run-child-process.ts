@@ -42,7 +42,7 @@ if (mode === 'leader-exits-first') {
 	try {
 		process.exitCode = await runChildProcess(
 			process.execPath,
-			['--import', tsxLoaderPath, signalTreeFixturePath, forwardedSignal, process.argv[4] === '2' ? '2' : '1'],
+			['--import', tsxLoaderPath, signalTreeFixturePath, forwardedSignal, process.argv[4] ?? '1'],
 			undefined,
 			{ signalBurstMode: resolveSignalBurstMode(process.env) },
 		);

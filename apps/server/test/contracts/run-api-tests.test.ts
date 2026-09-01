@@ -147,6 +147,10 @@ function startCommandFixture(command: string, args: string[], environment: NodeJ
 	let closedTreeConfirmed = false;
 	const confirmClosedTree = () => {
 		if (closeResult === undefined) return false;
+		const trackedDescendantProcessIds = [...output.matchAll(/(?:TREE_CHILD_PID|DESCENDANT_PID):(\d+)/g)]
+			.map((match) => Number(match[1]))
+			.filter((processId) => processId !== fixture.pid);
+		if (trackedDescendantProcessIds.some(isProcessAlive)) return false;
 		closedTreeConfirmed = true;
 		return true;
 	};
@@ -173,7 +177,11 @@ function startCommandFixture(command: string, args: string[], environment: NodeJ
 	return { close, confirmClosedTree, ensureStopped, fixture, getOutput: () => output, waitForOutput };
 }
 
-async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM', pressureWrapper = false) {
+async function startPnpmFixture(
+	signal: 'SIGINT' | 'SIGTERM',
+	pressureWrapper = false,
+	expectedSignalCount: 1 | 2 | 3 = 2,
+) {
 	const packageDirectory = await mkdtemp(path.join(tmpdir(), 'tantovale-pnpm-signal-'));
 	try {
 		const script = [
@@ -183,7 +191,7 @@ async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM', pressureWrapper = 
 			JSON.stringify(fixturePath),
 			'process-tree',
 			signal,
-			'2',
+			String(expectedSignalCount),
 			pressureWrapper ? 'pressure' : 'idle',
 		].join(' ');
 		await writeFile(
@@ -216,6 +224,7 @@ async function runFixture(mode: string): Promise<ProcessResult & { output: strin
 	const running = startFixture(mode);
 	try {
 		const result = await waitWithTimeout(running.close, `Fixture ${mode} did not close`);
+		if (!running.confirmClosedTree()) throw new Error(`Fixture ${mode} closed with a live descendant`);
 		return { ...result, output: running.getOutput() };
 	} finally {
 		await running.ensureStopped();
@@ -319,10 +328,10 @@ describe('API test process runner', () => {
 		const lifecyclePolicy = createSignalBurstPolicy('pnpm-lifecycle', (callback) => lifecycleTurns.push(callback));
 		expect(SIGNAL_BURST_COALESCE_TURNS).toBe(2);
 		expect(lifecyclePolicy('SIGTERM')).toBe(true);
+		expect(lifecyclePolicy('SIGINT')).toBe(true);
 		expect(lifecyclePolicy('SIGTERM')).toBe(false);
-		lifecycleTurns.shift()!();
-		expect(lifecyclePolicy('SIGTERM')).toBe(false);
-		lifecycleTurns.shift()!();
+		expect(lifecyclePolicy('SIGINT')).toBe(false);
+		while (lifecycleTurns.length > 0) lifecycleTurns.shift()!();
 		expect(lifecyclePolicy('SIGTERM')).toBe(true);
 		expect(lifecyclePolicy('SIGINT')).toBe(true);
 	});
@@ -336,7 +345,7 @@ describe('API test process runner', () => {
 				await running.waitForOutput('WRAPPER_PRESSURE:READY');
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, signal);
-				await running.waitForOutput('DESCENDANT:COUNT:1');
+				await Promise.all([running.waitForOutput('CHILD:COUNT:1'), running.waitForOutput('DESCENDANT:COUNT:1')]);
 				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 				const output = running.getOutput();
 				expect(output).not.toContain('COUNT:2');
@@ -349,7 +358,61 @@ describe('API test process runner', () => {
 	);
 
 	it.runIf(process.platform !== 'win32')(
-		'forwards a later SIGTERM through the pnpm lifecycle after the structural burst gate closes',
+		'tears down the nested tree when cancellation targets the pnpm process instead of its group',
+		async () => {
+			const running = await startPnpmFixture('SIGTERM', false, 1);
+
+			try {
+				await running.waitForOutput('TREE:READY');
+				process.kill(running.fixture.pid!, 'SIGTERM');
+				await Promise.all([running.waitForOutput('CHILD:COUNT:1'), running.waitForOutput('DESCENDANT:COUNT:1')]);
+				await waitWithTimeout(running.close, 'pnpm PID cancellation did not close the process tree');
+				await expectFixtureTreeGone(running.getOutput(), running.confirmClosedTree);
+			} finally {
+				await running.cleanup();
+			}
+		},
+	);
+
+	it.runIf(process.platform !== 'win32')(
+		'forwards an immediate SIGINT escalation without reopening the pnpm SIGTERM burst',
+		async () => {
+			const running = await startPnpmFixture('SIGTERM', true, 3);
+
+			try {
+				await running.waitForOutput('WRAPPER_PRESSURE:READY');
+				await running.waitForOutput('TREE:READY');
+				process.kill(-running.fixture.pid!, 'SIGTERM');
+				await Promise.all([running.waitForOutput('CHILD:COUNT:1'), running.waitForOutput('DESCENDANT:COUNT:1')]);
+				await new Promise<void>((resolve) => setTimeout(resolve, 5));
+				process.kill(-running.fixture.pid!, 'SIGINT');
+				await Promise.all([
+					running.waitForOutput('CHILD:SIGINT:COUNT:1'),
+					running.waitForOutput('DESCENDANT:SIGINT:COUNT:1'),
+				]);
+				await new Promise<void>((resolve) => setTimeout(resolve, 50));
+				expect(running.getOutput()).not.toContain('COUNT:3');
+
+				process.kill(-running.fixture.pid!, 'SIGTERM');
+				await waitWithTimeout(running.close, 'pnpm lifecycle ignored the later SIGTERM cancellation');
+				const output = running.getOutput();
+
+				expect(output).toContain('CHILD:SIGTERM:COUNT:1');
+				expect(output).toContain('DESCENDANT:SIGTERM:COUNT:1');
+				expect(output).toContain('CHILD:SIGINT:COUNT:1');
+				expect(output).toContain('DESCENDANT:SIGINT:COUNT:1');
+				expect(output).toContain('CHILD:SIGTERM:COUNT:2');
+				expect(output).toContain('DESCENDANT:SIGTERM:COUNT:2');
+				expect(output).not.toContain('COUNT:4');
+				await expectFixtureTreeGone(output, running.confirmClosedTree);
+			} finally {
+				await running.cleanup();
+			}
+		},
+	);
+
+	it.runIf(process.platform !== 'win32')(
+		'coalesces same-signal pnpm burst delivery but forwards it after the structural gate closes',
 		async () => {
 			const running = await startPnpmFixture('SIGTERM', true);
 
@@ -357,10 +420,13 @@ describe('API test process runner', () => {
 				await running.waitForOutput('WRAPPER_PRESSURE:READY');
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, 'SIGTERM');
-				await running.waitForOutput('DESCENDANT:COUNT:1');
-				await new Promise<void>((resolve) => setTimeout(resolve, 75));
+				await Promise.all([running.waitForOutput('CHILD:COUNT:1'), running.waitForOutput('DESCENDANT:COUNT:1')]);
+				await new Promise<void>((resolve) => setTimeout(resolve, 5));
+				process.kill(-running.fixture.pid!, 'SIGTERM');
+				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 				expect(running.getOutput()).not.toContain('COUNT:2');
 
+				await new Promise<void>((resolve) => setTimeout(resolve, 25));
 				process.kill(-running.fixture.pid!, 'SIGTERM');
 				const closeResult = await waitWithTimeout(running.close, 'pnpm lifecycle ignored the later cancellation');
 				const output = running.getOutput();
@@ -391,6 +457,7 @@ describe('API test process runner', () => {
 
 				expect(isProcessAlive(leaderProcessId)).toBe(false);
 				expect(isProcessAlive(descendantProcessId)).toBe(true);
+				expect(running.confirmClosedTree()).toBe(false);
 				await running.ensureStopped();
 				expect(isProcessAlive(descendantProcessId)).toBe(false);
 				const firstCleanupSignals = killSpy.mock.calls.filter(([, signal]) => signal === 'SIGKILL').length;
@@ -426,7 +493,13 @@ describe('API test process runner', () => {
 	);
 
 	it('preserves successful and nonzero child exit codes without synchronous fixtures', async () => {
-		await expect(runFixture('success')).resolves.toMatchObject({ signal: null, code: 0 });
+		const postClosureKillSpy = vi.spyOn(process, 'kill');
+		try {
+			await expect(runFixture('success')).resolves.toMatchObject({ signal: null, code: 0 });
+			expect(postClosureKillSpy).not.toHaveBeenCalled();
+		} finally {
+			postClosureKillSpy.mockRestore();
+		}
 		await expect(runFixture('failure')).resolves.toMatchObject({ signal: null, code: 7 });
 	});
 
@@ -473,8 +546,7 @@ describe('API test process runner', () => {
 			try {
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, 'SIGTERM');
-				await running.waitForOutput('DESCENDANT:COUNT:1');
-				expect(running.getOutput()).toContain('CHILD:COUNT:1');
+				await Promise.all([running.waitForOutput('CHILD:COUNT:1'), running.waitForOutput('DESCENDANT:COUNT:1')]);
 				expect(running.fixture.exitCode).toBeNull();
 				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 

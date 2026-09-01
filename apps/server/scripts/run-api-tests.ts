@@ -10,8 +10,10 @@ export type ForwardedSignal = 'SIGINT' | 'SIGTERM';
 
 // A lifecycle group signal reaches this wrapper directly and can then be proxied by
 // pnpm. Keeping the same-signal gate across two check-phase boundaries groups those
-// deliveries even when the wrapper event loop is briefly blocked, without applying
-// any debounce to direct callers or to a different signal.
+// deliveries even when the wrapper event loop is briefly blocked. Node does not
+// expose a signal sender, so a repeated same-signal delivery inside that bounded
+// burst is intentionally one cancellation; a different signal remains an immediate
+// escalation. Direct callers never use this coalescing policy.
 export const SIGNAL_BURST_COALESCE_TURNS = 2;
 
 export type SignalBurstMode = 'direct' | 'pnpm-lifecycle';
@@ -20,21 +22,22 @@ export function createSignalBurstPolicy(
 	mode: SignalBurstMode,
 	scheduleTurn: (callback: () => void) => void,
 ): (signal: ForwardedSignal) => boolean {
-	let burstGeneration = 0;
-	let guardedSignal: ForwardedSignal | null = null;
+	const burstGenerations = new Map<ForwardedSignal, number>();
+	const guardedSignals = new Set<ForwardedSignal>();
 
 	return (signal) => {
 		if (mode === 'direct') return true;
-		if (guardedSignal === signal) return false;
+		if (guardedSignals.has(signal)) return false;
 
-		guardedSignal = signal;
-		const generation = ++burstGeneration;
+		guardedSignals.add(signal);
+		const generation = (burstGenerations.get(signal) ?? 0) + 1;
+		burstGenerations.set(signal, generation);
 		let remainingTurns = SIGNAL_BURST_COALESCE_TURNS;
 		const advanceTurn = () => {
 			scheduleTurn(() => {
-				if (generation !== burstGeneration) return;
+				if (generation !== burstGenerations.get(signal)) return;
 				remainingTurns -= 1;
-				if (remainingTurns === 0) guardedSignal = null;
+				if (remainingTurns === 0) guardedSignals.delete(signal);
 				else advanceTurn();
 			});
 		};
