@@ -271,13 +271,16 @@ describe('canonical OpenAPI export', () => {
 		const directory = await temporaryDirectory();
 		const target = path.join(directory, 'tantovale.openapi.json');
 		await writeFile(target, 'previous-complete-artifact\n', 'utf8');
-		await chmod(target, 0o640);
+		if (process.platform !== 'win32') await chmod(target, 0o640);
 
 		await exporterModule.atomicWriteFile(target, Buffer.from('replacement-complete-artifact\n'), {
 			syncDirectory: async () => undefined,
 		});
 
-		expect((await stat(target)).mode & 0o777).toBe(0o640);
+		expect(await readFile(target, 'utf8')).toBe('replacement-complete-artifact\n');
+		const replacementMode = (await stat(target)).mode & 0o777;
+		if (process.platform === 'win32') expect(replacementMode & 0o200).toBe(0o200);
+		else expect(replacementMode).toBe(0o640);
 	});
 
 	it('uses normal 0666-masked creation permissions for a new artifact', async () => {
@@ -289,7 +292,10 @@ describe('canonical OpenAPI export', () => {
 			syncDirectory: async () => undefined,
 		});
 
-		expect((await stat(target)).mode & 0o777).toBe(expectedMode);
+		expect(await readFile(target, 'utf8')).toBe('new-complete-artifact\n');
+		const createdMode = (await stat(target)).mode & 0o777;
+		if (process.platform === 'win32') expect(createdMode & 0o200).toBe(0o200);
+		else expect(createdMode).toBe(expectedMode);
 	});
 
 	it('synchronizes the parent directory after publishing the replacement', async () => {
@@ -326,35 +332,56 @@ describe('canonical OpenAPI export', () => {
 
 	it('only classifies documented directory open/fsync failures as unsupported', () => {
 		const isUnsupportedDirectorySyncError = Reflect.get(exporterModule, 'isUnsupportedDirectorySyncError') as
-			| ((error: unknown) => boolean)
+			| ((error: unknown, platform: NodeJS.Platform) => boolean)
 			| undefined;
 		expect(isUnsupportedDirectorySyncError, 'directory-sync compatibility classifier export').toBeTypeOf('function');
 		if (!isUnsupportedDirectorySyncError) return;
 
 		expect(
-			isUnsupportedDirectorySyncError(Object.assign(new Error('directory open'), { code: 'EISDIR', syscall: 'open' })),
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('directory open'), { code: 'EISDIR', syscall: 'open' }),
+				'linux',
+			),
 		).toBe(true);
 		expect(
 			isUnsupportedDirectorySyncError(
 				Object.assign(new Error('directory fsync'), { code: 'EINVAL', syscall: 'fsync' }),
+				'darwin',
 			),
 		).toBe(true);
 		expect(
 			isUnsupportedDirectorySyncError(
 				Object.assign(new Error('directory fsync'), { code: 'ENOTSUP', syscall: 'fsync' }),
+				'win32',
 			),
 		).toBe(true);
 		expect(
 			isUnsupportedDirectorySyncError(
-				Object.assign(new Error('permission denied'), { code: 'EPERM', syscall: 'open' }),
+				Object.assign(new Error('Windows directory fsync'), { code: 'EPERM', syscall: 'fsync' }),
+				'win32',
+			),
+		).toBe(true);
+		for (const platform of ['darwin', 'linux'] as const) {
+			expect(
+				isUnsupportedDirectorySyncError(
+					Object.assign(new Error('POSIX permission denied'), { code: 'EPERM', syscall: 'fsync' }),
+					platform,
+				),
+			).toBe(false);
+		}
+		expect(
+			isUnsupportedDirectorySyncError(
+				Object.assign(new Error('Windows open permission denied'), { code: 'EPERM', syscall: 'open' }),
+				'win32',
 			),
 		).toBe(false);
 		expect(
 			isUnsupportedDirectorySyncError(
 				Object.assign(new Error('wrong operation'), { code: 'EINVAL', syscall: 'write' }),
+				'linux',
 			),
 		).toBe(false);
-		expect(isUnsupportedDirectorySyncError(new Error('unclassified failure'))).toBe(false);
+		expect(isUnsupportedDirectorySyncError(new Error('unclassified failure'), 'win32')).toBe(false);
 	});
 
 	it('keeps the complete previous bytes visible until the atomic rename publishes complete replacement bytes', async () => {

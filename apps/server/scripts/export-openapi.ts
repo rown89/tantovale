@@ -156,11 +156,14 @@ async function removeTemporaryFile(temporaryPath: string, originalError: unknown
 	throw originalError;
 }
 
-export function isUnsupportedDirectorySyncError(error: unknown): boolean {
+export function isUnsupportedDirectorySyncError(error: unknown, platform: NodeJS.Platform): boolean {
 	const filesystemError = error as NodeJS.ErrnoException;
 	return (
 		(filesystemError.syscall === 'open' && filesystemError.code === 'EISDIR') ||
-		(filesystemError.syscall === 'fsync' && (filesystemError.code === 'EINVAL' || filesystemError.code === 'ENOTSUP'))
+		(filesystemError.syscall === 'fsync' &&
+			(filesystemError.code === 'EINVAL' ||
+				filesystemError.code === 'ENOTSUP' ||
+				(platform === 'win32' && filesystemError.code === 'EPERM')))
 	);
 }
 
@@ -170,10 +173,10 @@ async function syncParentDirectory(directoryPath: string): Promise<void> {
 		directoryHandle = await open(directoryPath, 'r');
 		await directoryHandle.sync();
 	} catch (error) {
-		// Windows cannot open directories as files (EISDIR), while some filesystems
-		// explicitly reject directory fsync with EINVAL/ENOTSUP. All other errors
-		// indicate an actual durability failure and remain visible to the caller.
-		if (!isUnsupportedDirectorySyncError(error)) throw error;
+		// Directory handles may be unavailable (EISDIR), some filesystems reject
+		// their fsync (EINVAL/ENOTSUP), and Windows reports EPERM for that fsync.
+		// EPERM anywhere else remains a real permission failure.
+		if (!isUnsupportedDirectorySyncError(error, process.platform)) throw error;
 	} finally {
 		await directoryHandle?.close();
 	}
