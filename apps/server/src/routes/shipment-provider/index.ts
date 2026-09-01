@@ -80,7 +80,9 @@ async function readLabelPaymentGraph(tx: ItemTransaction, orderId: number, itemI
 	return graph;
 }
 
-function labelPaymentGraphIsReady(graph: Awaited<ReturnType<typeof readLabelPaymentGraph>>): boolean {
+export type LabelPaymentGraph = NonNullable<Awaited<ReturnType<typeof readLabelPaymentGraph>>>;
+
+export function labelPaymentGraphIsReady(graph: LabelPaymentGraph | undefined): boolean {
 	return Boolean(
 		graph &&
 			(graph.status === ORDER_PHASES.PAYMENT_CONFIRMED || graph.status === ORDER_PHASES.SHIPPING_PENDING) &&

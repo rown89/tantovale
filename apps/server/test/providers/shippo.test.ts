@@ -17,6 +17,7 @@ import {
 	PAYMENT_CANCELLATION_STATES,
 	PAYMENT_CREATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
+import { labelPaymentGraphIsReady, type LabelPaymentGraph } from '../../src/routes/shipment-provider/index';
 import { ShipmentService, ShippoProviderError } from '../../src/routes/shipment-provider/shipment.service';
 import { environment, SHIPPING_UNITS } from '../../src/utils/constants';
 import {
@@ -96,9 +97,55 @@ type LabelOrderFixture = Awaited<ReturnType<typeof prepareLabelOrder>>;
 
 type ClaimReadinessMutation = {
 	name: string;
+	requiresOrderGraphConstraintBypass?: boolean;
 	requiresProviderGraphConstraintBypass?: boolean;
 	mutate: (fixture: LabelOrderFixture) => Promise<void>;
 };
+
+const readyLabelPaymentGraph = {
+	id: 44,
+	item_id: 101,
+	buyer_id: 202,
+	seller_id: 303,
+	buyer_address: 404,
+	seller_address: 505,
+	shipping_label_id: 'shipment-test',
+	shipping_price: 750,
+	shipping_quote_id: '00000000-0000-4000-8000-000000000001',
+	status: ORDER_PHASES.PAYMENT_CONFIRMED,
+	payment_creation_state: PAYMENT_CREATION_STATES.CREATED,
+	payment_cancellation_state: PAYMENT_CANCELLATION_STATES.NONE,
+	payment_transaction_id: '8000000000000001',
+	payment_attempt_id: '00000000-0000-4000-8000-000000000002',
+	item_price: 12_000,
+	platform_charge: 600,
+	payment_provider_charge: 630,
+	buyer_provider_id: 'trustap-buyer-202',
+	seller_provider_id: 'trustap-seller-303',
+	provider_entity_id: 101,
+	item_title: 'Ready label item',
+	provider_transaction_id: '8000000000000001',
+	provider_transaction_type: 'online_payment',
+	provider_buyer_id: 'trustap-buyer-202',
+	provider_seller_id: 'trustap-seller-303',
+	provider_status: entityTrustapTransactionTypeValues.PAID,
+	provider_price: 12_600,
+	provider_charge: 630,
+	provider_charge_seller: 0,
+	provider_currency: 'eur',
+	provider_quarantined: false,
+	provider_entity_title: 'Ready label item',
+} satisfies LabelPaymentGraph;
+
+const labelGraphNonNullFields = [
+	'payment_transaction_id',
+	'payment_attempt_id',
+	'item_id',
+	'buyer_id',
+	'seller_id',
+	'buyer_address',
+	'seller_address',
+] as const satisfies ReadonlyArray<keyof LabelPaymentGraph>;
 
 const claimReadinessMutations: ClaimReadinessMutation[] = [
 	{
@@ -108,6 +155,41 @@ const claimReadinessMutations: ClaimReadinessMutation[] = [
 				.db.update(orders)
 				.set({ payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED })
 				.where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'payment transaction id is null',
+		requiresOrderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase().db.update(orders).set({ payment_transaction_id: null }).where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'payment attempt id is null',
+		requiresOrderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase().db.update(orders).set({ payment_attempt_id: null }).where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'buyer id is null',
+		requiresOrderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase().db.update(orders).set({ buyer_id: null }).where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'buyer address is null',
+		requiresOrderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase().db.update(orders).set({ buyer_address: null }).where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'seller address is null',
+		requiresOrderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase().db.update(orders).set({ seller_address: null }).where(eq(orders.id, order.id));
 		},
 	},
 	...(
@@ -288,22 +370,41 @@ const claimReadinessMutations: ClaimReadinessMutation[] = [
 	},
 ];
 
-async function withoutProviderGraphConstraint<T>(run: () => Promise<T>): Promise<T> {
-	const { client, db } = getTestDatabase();
-	const constraintName = 'entity_trustap_transactions_active_graph_check';
+async function withoutCheckConstraint<T>(
+	tableName: 'entity_trustap_transactions' | 'orders',
+	constraintName: 'entity_trustap_transactions_active_graph_check' | 'orders_operational_graph_check',
+	cleanup: () => Promise<unknown>,
+	run: () => Promise<T>,
+): Promise<T> {
+	const { client } = getTestDatabase();
 	const constraint = await client.query<{ definition: string }>(
-		`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'entity_trustap_transactions'::regclass AND conname = $1`,
-		[constraintName],
+		`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = $1::regclass AND conname = $2`,
+		[tableName, constraintName],
 	);
 	const definition = constraint.rows[0]?.definition;
-	if (!definition) throw new Error('Provider graph constraint definition is unavailable');
-	await client.query(`ALTER TABLE entity_trustap_transactions DROP CONSTRAINT ${constraintName}`);
+	if (!definition) throw new Error(`${constraintName} definition is unavailable`);
+	await client.query(`ALTER TABLE ${tableName} DROP CONSTRAINT ${constraintName}`);
 	try {
 		return await run();
 	} finally {
-		await db.delete(entityTrustapTransactions);
-		await client.query(`ALTER TABLE entity_trustap_transactions ADD CONSTRAINT ${constraintName} ${definition}`);
+		await cleanup();
+		await client.query(`ALTER TABLE ${tableName} ADD CONSTRAINT ${constraintName} ${definition}`);
 	}
+}
+
+async function withoutProviderGraphConstraint<T>(run: () => Promise<T>): Promise<T> {
+	const { db } = getTestDatabase();
+	return withoutCheckConstraint(
+		'entity_trustap_transactions',
+		'entity_trustap_transactions_active_graph_check',
+		() => db.delete(entityTrustapTransactions),
+		run,
+	);
+}
+
+async function withoutOrderGraphConstraint<T>(run: () => Promise<T>): Promise<T> {
+	const { db } = getTestDatabase();
+	return withoutCheckConstraint('orders', 'orders_operational_graph_check', () => db.delete(orders), run);
 }
 
 function exactShipmentBody(
@@ -416,6 +517,33 @@ async function postTrustapStatus(transactionId: string, status: string): Promise
 }
 
 describe('Shippo 2018-02-08 mounted boundary', () => {
+	it('accepts the fully correlated label payment graph', () => {
+		expect(labelPaymentGraphIsReady(readyLabelPaymentGraph)).toBe(true);
+	});
+
+	it.each(labelGraphNonNullFields)('requires non-null label payment graph field %s', (field) => {
+		expect(labelPaymentGraphIsReady({ ...readyLabelPaymentGraph, [field]: null })).toBe(false);
+	});
+
+	it('requires transaction identity equality even while every LEFT JOIN row remains present', () => {
+		const graphWithMismatchedProviderTransaction = {
+			...readyLabelPaymentGraph,
+			provider_transaction_id: '8000000000000002',
+		};
+		expect({
+			providerRow: graphWithMismatchedProviderTransaction.provider_status,
+			itemRow: graphWithMismatchedProviderTransaction.item_title,
+			buyerProfileRow: graphWithMismatchedProviderTransaction.buyer_provider_id,
+			sellerProfileRow: graphWithMismatchedProviderTransaction.seller_provider_id,
+		}).toEqual({
+			providerRow: entityTrustapTransactionTypeValues.PAID,
+			itemRow: 'Ready label item',
+			buyerProfileRow: 'trustap-buyer-202',
+			sellerProfileRow: 'trustap-seller-303',
+		});
+		expect(labelPaymentGraphIsReady(graphWithMismatchedProviderTransaction)).toBe(false);
+	});
+
 	it('documents the exact active-carrier key and optional tracking fields', async () => {
 		const response = await app.request('/openapi');
 		expect(response.status).toBe(200);
@@ -594,7 +722,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 
 	it.each(claimReadinessMutations)(
 		'rejects label claim when $name',
-		async ({ mutate, requiresProviderGraphConstraintBypass }) => {
+		async ({ mutate, requiresOrderGraphConstraintBypass, requiresProviderGraphConstraintBypass }) => {
 			const exerciseClaim = async () => {
 				const fixture = await prepareLabelOrder();
 				const { actors, order } = fixture;
@@ -615,10 +743,47 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 				).toEqual([]);
 			};
 
-			if (requiresProviderGraphConstraintBypass) await withoutProviderGraphConstraint(exerciseClaim);
+			if (requiresOrderGraphConstraintBypass) await withoutOrderGraphConstraint(exerciseClaim);
+			else if (requiresProviderGraphConstraintBypass) await withoutProviderGraphConstraint(exerciseClaim);
 			else await exerciseClaim();
 		},
 	);
+
+	it.each([
+		{
+			name: 'item id',
+			mutate: async (orderId: number) => {
+				await getTestDatabase().db.update(orders).set({ item_id: null }).where(eq(orders.id, orderId));
+			},
+		},
+		{
+			name: 'seller id',
+			mutate: async (orderId: number) => {
+				await getTestDatabase().db.update(orders).set({ seller_id: null }).where(eq(orders.id, orderId));
+			},
+		},
+	])('keeps corrupted null $name pre-readiness failures private', async ({ mutate }) => {
+		await withoutOrderGraphConstraint(async () => {
+			const { actors, order } = await prepareLabelOrder();
+			await mutate(order.id);
+			const beforeRequests = await getProviderRequests(shippoUrl());
+
+			const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+				order_id: order.id,
+				rate_id: 'rate-test',
+			});
+
+			expect(response.status).toBe(404);
+			expect(await response.json()).toEqual({ message: 'Order not found' });
+			expect(await getProviderRequests(shippoUrl())).toEqual(beforeRequests);
+			expect(
+				await getTestDatabase()
+					.db.select()
+					.from(shipping_label_purchases)
+					.where(eq(shipping_label_purchases.order_id, order.id)),
+			).toEqual([]);
+		});
+	});
 
 	it('rejects a caller rate different from the consumed quote before provider I/O', async () => {
 		const { actors, order } = await prepareLabelOrder();
