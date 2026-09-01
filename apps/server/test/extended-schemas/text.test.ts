@@ -20,6 +20,12 @@ describe('Unicode text limits', () => {
 		expect(visited).toBe(4);
 	});
 
+	it('counts every Unicode code point across iterable text chunks', () => {
+		expect(hasAtMostUnicodeCodePoints(['ab'], 1)).toBe(false);
+		expect(hasAtMostUnicodeCodePoints(['a😀', 'bc'], 4)).toBe(true);
+		expect(hasAtMostUnicodeCodePoints(['a😀', 'bc'], 3)).toBe(false);
+	});
+
 	it.each([
 		['chat', ChatMessageSchema.shape.message],
 		['proposal', create_order_proposal_schema.shape.message],
