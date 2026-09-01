@@ -9,7 +9,12 @@ export function normalizeForwardedVitestArguments(args: string[]): string[] {
 
 export type ForwardedSignal = 'SIGINT' | 'SIGTERM';
 
-export const SIGNAL_BURST_COALESCE_WINDOW_MS = 200;
+// pnpm can proxy the same terminal signal after the kernel has already delivered it
+// to the lifecycle process group. The observed duplicate was <=0.276ms; 10ms keeps
+// a bounded scheduler margin without swallowing a deliberate rapid escalation.
+export const SIGNAL_BURST_COALESCE_WINDOW_MS = 10;
+
+export type SignalBurstMode = 'direct' | 'pnpm-lifecycle';
 
 export type ObservedSignalEvent = {
 	observedAt: number;
@@ -17,13 +22,22 @@ export type ObservedSignalEvent = {
 };
 
 export function shouldForwardSignalEvent(
+	mode: SignalBurstMode,
 	lastForwarded: ObservedSignalEvent | null,
 	current: ObservedSignalEvent,
 	windowMs = SIGNAL_BURST_COALESCE_WINDOW_MS,
 ): boolean {
+	if (mode === 'direct') return true;
 	if (lastForwarded === null || lastForwarded.signal !== current.signal) return true;
 	const elapsed = current.observedAt - lastForwarded.observedAt;
 	return elapsed < 0 || elapsed >= windowMs;
+}
+
+export function resolveSignalBurstMode(environment: Readonly<Record<string, string | undefined>>): SignalBurstMode {
+	return (environment['npm_lifecycle_event']?.length ?? 0) > 0 &&
+		environment['npm_config_user_agent']?.startsWith('pnpm/') === true
+		? 'pnpm-lifecycle'
+		: 'direct';
 }
 
 type ManagedChildProcess = Pick<ChildProcess, 'exitCode' | 'pid' | 'signalCode'> & {
@@ -51,6 +65,10 @@ export type ProcessSignalPolicy = {
 	proxySignals: boolean;
 };
 
+export type RunChildProcessOptions = {
+	signalBurstMode?: SignalBurstMode;
+};
+
 export function resolveProcessSignalPolicy(platform: NodeJS.Platform): ProcessSignalPolicy {
 	return platform === 'win32' ? { detached: false, proxySignals: false } : { detached: true, proxySignals: true };
 }
@@ -73,6 +91,7 @@ export async function runChildProcess(
 	command: string,
 	args: string[],
 	runtime: ProcessRunnerRuntime = processRunnerRuntime,
+	options: RunChildProcessOptions = {},
 ): Promise<number | undefined> {
 	return new Promise<number | undefined>((resolve, reject) => {
 		const signalPolicy = resolveProcessSignalPolicy(runtime.platform);
@@ -119,7 +138,7 @@ export async function runChildProcess(
 		};
 		const deliverSignal = (event: ObservedSignalEvent) => {
 			if (child?.pid === undefined) return;
-			if (!shouldForwardSignalEvent(lastForwardedSignal, event)) return;
+			if (!shouldForwardSignalEvent(options.signalBurstMode ?? 'direct', lastForwardedSignal, event)) return;
 			lastForwardedSignal = event;
 
 			try {
@@ -213,11 +232,16 @@ function isDirectExecution(): boolean {
 
 if (isDirectExecution()) {
 	const vitestEntrypoint = fileURLToPath(import.meta.resolve('vitest/vitest.mjs'));
-	process.exitCode = await runChildProcess(process.execPath, [
-		vitestEntrypoint,
-		'run',
-		'--config',
-		'vitest.config.ts',
-		...normalizeForwardedVitestArguments(process.argv.slice(2)),
-	]);
+	process.exitCode = await runChildProcess(
+		process.execPath,
+		[
+			vitestEntrypoint,
+			'run',
+			'--config',
+			'vitest.config.ts',
+			...normalizeForwardedVitestArguments(process.argv.slice(2)),
+		],
+		processRunnerRuntime,
+		{ signalBurstMode: resolveSignalBurstMode(process.env) },
+	);
 }

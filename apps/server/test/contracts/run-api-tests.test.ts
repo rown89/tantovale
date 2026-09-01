@@ -4,11 +4,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
 	runChildProcess,
+	resolveSignalBurstMode,
 	SIGNAL_BURST_COALESCE_WINDOW_MS,
 	shouldForwardSignalEvent,
 	type ProcessRunnerRuntime,
@@ -89,12 +91,20 @@ async function terminateFixtureTree(fixture: ChildProcess, output: string): Prom
 }
 
 function startFixture(mode: string, ...args: string[]) {
-	return startCommandFixture(process.execPath, ['--import', tsxLoaderPath, fixturePath, mode, ...args]);
+	const directEnvironment = { ...process.env };
+	Reflect.deleteProperty(directEnvironment, 'npm_lifecycle_event');
+	Reflect.deleteProperty(directEnvironment, 'npm_config_user_agent');
+	return startCommandFixture(
+		process.execPath,
+		['--import', tsxLoaderPath, fixturePath, mode, ...args],
+		directEnvironment,
+	);
 }
 
-function startCommandFixture(command: string, args: string[]) {
+function startCommandFixture(command: string, args: string[], environment: NodeJS.ProcessEnv = process.env) {
 	const fixture = spawn(command, args, {
 		detached: process.platform !== 'win32',
+		env: environment,
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	let output = '';
@@ -134,19 +144,23 @@ function startCommandFixture(command: string, args: string[]) {
 		);
 	};
 
-	const ensureStopped = async () => {
-		let cleanupError: unknown;
-		try {
-			await terminateFixtureTree(fixture, output);
-		} catch (error) {
-			cleanupError = error;
-		}
-		try {
-			await waitWithTimeout(close, 'Fixture did not close during cleanup');
-		} catch (error) {
-			cleanupError ??= error;
-		}
-		if (cleanupError !== undefined) throw cleanupError;
+	let stopPromise: Promise<void> | undefined;
+	const ensureStopped = () => {
+		stopPromise ??= (async () => {
+			let cleanupError: unknown;
+			try {
+				await terminateFixtureTree(fixture, output);
+			} catch (error) {
+				cleanupError = error;
+			}
+			try {
+				await waitWithTimeout(close, 'Fixture did not close during cleanup');
+			} catch (error) {
+				cleanupError ??= error;
+			}
+			if (cleanupError !== undefined) throw cleanupError;
+		})();
+		return stopPromise;
 	};
 
 	return { close, ensureStopped, fixture, getOutput: () => output, waitForOutput };
@@ -170,14 +184,18 @@ async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM') {
 		);
 
 		const running = startCommandFixture('pnpm', ['--dir', packageDirectory, 'run', 'signal']);
+		let cleanupPromise: Promise<void> | undefined;
 		return {
 			...running,
-			cleanup: async () => {
-				try {
-					await running.ensureStopped();
-				} finally {
-					await rm(packageDirectory, { force: true, recursive: true });
-				}
+			cleanup: () => {
+				cleanupPromise ??= (async () => {
+					try {
+						await running.ensureStopped();
+					} finally {
+						await rm(packageDirectory, { force: true, recursive: true });
+					}
+				})();
+				return cleanupPromise;
 			},
 		};
 	} catch (error) {
@@ -200,6 +218,11 @@ function readProcessId(output: string, marker: string): number {
 	const match = new RegExp(`${marker}:(\\d+)`).exec(output);
 	if (match === null) throw new Error(`Missing ${marker} in fixture output`);
 	return Number(match[1]);
+}
+
+function applyBriefCpuPressure(durationMs = 15): void {
+	const deadline = performance.now() + durationMs;
+	while (performance.now() < deadline) Math.sqrt(deadline);
 }
 
 function isProcessAlive(processId: number): boolean {
@@ -276,20 +299,33 @@ describe('API test process runner', () => {
 	it('coalesces only same-signal events inside the monotonic burst window', () => {
 		const initial = { observedAt: 1_000, signal: 'SIGTERM' as const };
 
+		expect(resolveSignalBurstMode({})).toBe('direct');
+		expect(resolveSignalBurstMode({ npm_config_user_agent: 'pnpm/10.12.1' })).toBe('direct');
+		expect(resolveSignalBurstMode({ npm_lifecycle_event: 'test:api' })).toBe('direct');
+		expect(resolveSignalBurstMode({ npm_config_user_agent: 'pnpm/10.12.1', npm_lifecycle_event: '' })).toBe('direct');
 		expect(
-			shouldForwardSignalEvent(initial, {
+			resolveSignalBurstMode({ npm_config_user_agent: 'pnpm/10.12.1 npm/? node/v22', npm_lifecycle_event: 'test:api' }),
+		).toBe('pnpm-lifecycle');
+		expect(
+			shouldForwardSignalEvent('direct', initial, {
+				observedAt: 1_000,
+				signal: 'SIGTERM',
+			}),
+		).toBe(true);
+		expect(
+			shouldForwardSignalEvent('pnpm-lifecycle', initial, {
 				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS - 1,
 				signal: 'SIGTERM',
 			}),
 		).toBe(false);
 		expect(
-			shouldForwardSignalEvent(initial, {
+			shouldForwardSignalEvent('pnpm-lifecycle', initial, {
 				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS,
 				signal: 'SIGTERM',
 			}),
 		).toBe(true);
-		expect(shouldForwardSignalEvent(initial, { observedAt: 1_001, signal: 'SIGINT' })).toBe(true);
-		expect(shouldForwardSignalEvent(initial, { observedAt: 999, signal: 'SIGTERM' })).toBe(true);
+		expect(shouldForwardSignalEvent('pnpm-lifecycle', initial, { observedAt: 1_001, signal: 'SIGINT' })).toBe(true);
+		expect(shouldForwardSignalEvent('pnpm-lifecycle', initial, { observedAt: 999, signal: 'SIGTERM' })).toBe(true);
 	});
 
 	it.runIf(process.platform !== 'win32').each(['SIGINT', 'SIGTERM'] as const)(
@@ -300,11 +336,15 @@ describe('API test process runner', () => {
 			try {
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, signal);
+				applyBriefCpuPressure();
 				await running.waitForOutput('DESCENDANT:COUNT:1');
-				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 100));
-				expect(running.getOutput()).not.toContain('COUNT:2');
+				await new Promise<void>((resolve) => setTimeout(resolve, 50));
+				const output = running.getOutput();
+				expect(output).not.toContain('COUNT:2');
 			} finally {
-				await running.cleanup();
+				const cleanup = running.cleanup();
+				expect(running.cleanup()).toBe(cleanup);
+				await cleanup;
 			}
 		},
 	);
@@ -317,8 +357,9 @@ describe('API test process runner', () => {
 			try {
 				await running.waitForOutput('TREE:READY');
 				process.kill(-running.fixture.pid!, 'SIGTERM');
+				applyBriefCpuPressure();
 				await running.waitForOutput('DESCENDANT:COUNT:1');
-				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 100));
+				await new Promise<void>((resolve) => setTimeout(resolve, 75));
 				expect(running.getOutput()).not.toContain('COUNT:2');
 
 				process.kill(-running.fixture.pid!, 'SIGTERM');
@@ -337,9 +378,10 @@ describe('API test process runner', () => {
 	);
 
 	it.runIf(process.platform !== 'win32')(
-		'cleans a process group after its positive leader PID has already exited',
+		'cleans a process group once after its positive leader PID has already exited',
 		async () => {
 			const running = startFixture('leader-exits-first');
+			const killSpy = vi.spyOn(process, 'kill');
 
 			try {
 				await running.waitForOutput('LEADER:EXITING');
@@ -352,7 +394,11 @@ describe('API test process runner', () => {
 				expect(isProcessAlive(descendantProcessId)).toBe(true);
 				await running.ensureStopped();
 				expect(isProcessAlive(descendantProcessId)).toBe(false);
+				const firstCleanupSignals = killSpy.mock.calls.filter(([, signal]) => signal === 'SIGKILL').length;
+				await running.ensureStopped();
+				expect(killSpy.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(firstCleanupSignals);
 			} finally {
+				killSpy.mockRestore();
 				await running.ensureStopped();
 			}
 		},
@@ -401,7 +447,7 @@ describe('API test process runner', () => {
 				await running.waitForOutput('DESCENDANT:COUNT:1');
 				expect(running.getOutput()).toContain('CHILD:COUNT:1');
 				expect(running.fixture.exitCode).toBeNull();
-				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 25));
+				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
 				process.kill(-running.fixture.pid!, 'SIGTERM');
 				const closeResult = await waitWithTimeout(running.close, 'Wrapper ignored the second termination event');
@@ -443,6 +489,28 @@ describe('API test process runner', () => {
 		]);
 		expect(selfSignals).toEqual(['SIGTERM']);
 		expect(listeners).toEqual(new Map());
+	});
+
+	it('forwards consecutive same-signal events for direct API callers even at one monotonic instant', async () => {
+		const child = createFakeChild(74);
+		const forwarded: Array<[number, NodeJS.Signals]> = [];
+		const { listeners, runtime } = createRuntimeWithListeners(child, {
+			monotonicNow: () => 1_000,
+			signalProcess: (processId, signal) => forwarded.push([processId, signal]),
+			signalSelf: () => undefined,
+			spawnChild: () => {
+				listeners.get('SIGTERM')?.();
+				listeners.get('SIGTERM')?.();
+				queueMicrotask(() => child.emit('close', 0, null));
+				return child;
+			},
+		});
+
+		await expect(runChildProcess(process.execPath, [], runtime)).resolves.toBeUndefined();
+		expect(forwarded).toEqual([
+			[-74, 'SIGTERM'],
+			[-74, 'SIGTERM'],
+		]);
 	});
 
 	it('uses non-intercepting shared-console signal ownership on Windows', async () => {

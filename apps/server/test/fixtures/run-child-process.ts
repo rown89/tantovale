@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { runChildProcess } from '../../scripts/run-api-tests';
+import { resolveSignalBurstMode, runChildProcess } from '../../scripts/run-api-tests';
 
 const mode = process.argv[2];
 const tsxLoaderPath = createRequire(import.meta.url).resolve('tsx');
@@ -17,13 +17,13 @@ if (mode === 'leader-exits-first') {
 	process.stdout.write('LEADER:EXITING\n');
 	setImmediate(() => process.exit(0));
 } else if (mode === 'process-tree') {
-	process.exitCode = await runChildProcess(process.execPath, [
-		'--import',
-		tsxLoaderPath,
-		signalTreeFixturePath,
-		process.argv[3] === 'SIGINT' ? 'SIGINT' : 'SIGTERM',
-		process.argv[4] === '2' ? '2' : '1',
-	]);
+	const forwardedSignal = process.argv[3] === 'SIGINT' ? 'SIGINT' : 'SIGTERM';
+	process.exitCode = await runChildProcess(
+		process.execPath,
+		['--import', tsxLoaderPath, signalTreeFixturePath, forwardedSignal, process.argv[4] === '2' ? '2' : '1'],
+		undefined,
+		{ signalBurstMode: resolveSignalBurstMode(process.env) },
+	);
 } else {
 	const childSource =
 		mode === 'success'
