@@ -1,12 +1,30 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export function normalizeForwardedVitestArguments(args: string[]): string[] {
 	return args.filter((argument) => argument !== '--');
 }
 
-type ForwardedSignal = 'SIGINT' | 'SIGTERM';
+export type ForwardedSignal = 'SIGINT' | 'SIGTERM';
+
+export const SIGNAL_BURST_COALESCE_WINDOW_MS = 200;
+
+export type ObservedSignalEvent = {
+	observedAt: number;
+	signal: ForwardedSignal;
+};
+
+export function shouldForwardSignalEvent(
+	lastForwarded: ObservedSignalEvent | null,
+	current: ObservedSignalEvent,
+	windowMs = SIGNAL_BURST_COALESCE_WINDOW_MS,
+): boolean {
+	if (lastForwarded === null || lastForwarded.signal !== current.signal) return true;
+	const elapsed = current.observedAt - lastForwarded.observedAt;
+	return elapsed < 0 || elapsed >= windowMs;
+}
 
 type ManagedChildProcess = Pick<ChildProcess, 'exitCode' | 'pid' | 'signalCode'> & {
 	once(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): ManagedChildProcess;
@@ -20,6 +38,7 @@ type ChildSpawnOptions = {
 
 export type ProcessRunnerRuntime = {
 	addSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
+	monotonicNow?: () => number;
 	platform: NodeJS.Platform;
 	removeSignalListener: (signal: ForwardedSignal, listener: () => void) => void;
 	signalProcess: (processId: number, signal: NodeJS.Signals) => void;
@@ -38,6 +57,7 @@ export function resolveProcessSignalPolicy(platform: NodeJS.Platform): ProcessSi
 
 const processRunnerRuntime: ProcessRunnerRuntime = {
 	addSignalListener: (signal, listener) => process.on(signal, listener),
+	monotonicNow: () => performance.now(),
 	platform: process.platform,
 	removeSignalListener: (signal, listener) => process.off(signal, listener),
 	signalProcess: (processId, signal) => process.kill(processId, signal),
@@ -57,8 +77,9 @@ export async function runChildProcess(
 	return new Promise<number | undefined>((resolve, reject) => {
 		const signalPolicy = resolveProcessSignalPolicy(runtime.platform);
 		let child: ManagedChildProcess | undefined;
-		const pendingSignals: ForwardedSignal[] = [];
+		const pendingSignals: ObservedSignalEvent[] = [];
 		let firstReceivedSignal: ForwardedSignal | null = null;
+		let lastForwardedSignal: ObservedSignalEvent | null = null;
 		let flushingSignals = false;
 		let forcedCleanupError: unknown;
 		let forcedCleanupStarted = false;
@@ -96,16 +117,18 @@ export async function runChildProcess(
 				}
 			}
 		};
-		const deliverSignal = (signal: ForwardedSignal) => {
+		const deliverSignal = (event: ObservedSignalEvent) => {
 			if (child?.pid === undefined) return;
+			if (!shouldForwardSignalEvent(lastForwardedSignal, event)) return;
+			lastForwardedSignal = event;
 
 			try {
-				runtime.signalProcess(-child.pid, signal);
+				runtime.signalProcess(-child.pid, event.signal);
 			} catch (groupError) {
 				if (isNoSuchProcessError(groupError)) return;
 
 				try {
-					runtime.signalProcess(child.pid, signal);
+					runtime.signalProcess(child.pid, event.signal);
 				} catch (directError) {
 					if (isNoSuchProcessError(directError)) return;
 					forceCleanup(directError);
@@ -134,7 +157,7 @@ export async function runChildProcess(
 		};
 		const receiveSignal = (signal: ForwardedSignal) => {
 			firstReceivedSignal ??= signal;
-			pendingSignals.push(signal);
+			pendingSignals.push({ observedAt: runtime.monotonicNow?.() ?? performance.now(), signal });
 			forwardPendingSignals();
 		};
 		const forwardInterrupt = () => receiveSignal('SIGINT');

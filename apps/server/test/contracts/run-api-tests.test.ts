@@ -1,10 +1,18 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { runChildProcess, type ProcessRunnerRuntime } from '../../scripts/run-api-tests';
+import {
+	runChildProcess,
+	SIGNAL_BURST_COALESCE_WINDOW_MS,
+	shouldForwardSignalEvent,
+	type ProcessRunnerRuntime,
+} from '../../scripts/run-api-tests';
 
 const tsxLoaderPath = createRequire(import.meta.url).resolve('tsx');
 const fixturePath = fileURLToPath(new URL('../fixtures/run-child-process.ts', import.meta.url));
@@ -25,18 +33,48 @@ function waitWithTimeout<T>(promise: Promise<T>, message: string, timeoutMs = 5_
 async function terminateFixtureTree(fixture: ChildProcess, output: string): Promise<void> {
 	if (process.platform !== 'win32') {
 		const nestedProcessId = /TREE_CHILD_PID:(\d+)/.exec(output)?.[1];
+		const descendantProcessId = /DESCENDANT_PID:(\d+)/.exec(output)?.[1];
 		const processGroups = [
-			nestedProcessId === undefined ? undefined : Number(nestedProcessId),
-			fixture.exitCode === null && fixture.signalCode === null ? fixture.pid : undefined,
+			...new Set([nestedProcessId === undefined ? undefined : Number(nestedProcessId), fixture.pid]),
 		];
+		let cleanupError: unknown;
 		for (const processGroup of processGroups) {
-			if (processGroup === undefined || !isProcessAlive(processGroup)) continue;
+			if (processGroup === undefined) continue;
 			try {
 				process.kill(-processGroup, 'SIGKILL');
 			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+				if ((error as NodeJS.ErrnoException).code === 'ESRCH') continue;
+				cleanupError ??= error;
+				try {
+					process.kill(processGroup, 'SIGKILL');
+				} catch (fallbackError) {
+					if ((fallbackError as NodeJS.ErrnoException).code !== 'ESRCH') cleanupError ??= fallbackError;
+				}
 			}
 		}
+		if (descendantProcessId !== undefined) {
+			try {
+				process.kill(Number(descendantProcessId), 'SIGKILL');
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== 'ESRCH') cleanupError ??= error;
+			}
+		}
+		try {
+			await waitWithTimeout(
+				(async () => {
+					while (
+						processGroups.some((processGroup) => processGroup !== undefined && isProcessAlive(processGroup)) ||
+						(descendantProcessId !== undefined && isProcessAlive(Number(descendantProcessId)))
+					) {
+						await new Promise<void>((resolve) => setImmediate(resolve));
+					}
+				})(),
+				'Fixture process group remained alive during cleanup',
+			);
+		} catch (error) {
+			cleanupError ??= error;
+		}
+		if (cleanupError !== undefined) throw cleanupError;
 		return;
 	}
 	if (fixture.pid === undefined || fixture.exitCode !== null || fixture.signalCode !== null) return;
@@ -51,7 +89,11 @@ async function terminateFixtureTree(fixture: ChildProcess, output: string): Prom
 }
 
 function startFixture(mode: string, ...args: string[]) {
-	const fixture = spawn(process.execPath, ['--import', tsxLoaderPath, fixturePath, mode, ...args], {
+	return startCommandFixture(process.execPath, ['--import', tsxLoaderPath, fixturePath, mode, ...args]);
+}
+
+function startCommandFixture(command: string, args: string[]) {
+	const fixture = spawn(command, args, {
 		detached: process.platform !== 'win32',
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
@@ -93,11 +135,55 @@ function startFixture(mode: string, ...args: string[]) {
 	};
 
 	const ensureStopped = async () => {
-		await terminateFixtureTree(fixture, output);
-		await waitWithTimeout(close, 'Fixture did not close during cleanup');
+		let cleanupError: unknown;
+		try {
+			await terminateFixtureTree(fixture, output);
+		} catch (error) {
+			cleanupError = error;
+		}
+		try {
+			await waitWithTimeout(close, 'Fixture did not close during cleanup');
+		} catch (error) {
+			cleanupError ??= error;
+		}
+		if (cleanupError !== undefined) throw cleanupError;
 	};
 
 	return { close, ensureStopped, fixture, getOutput: () => output, waitForOutput };
+}
+
+async function startPnpmFixture(signal: 'SIGINT' | 'SIGTERM') {
+	const packageDirectory = await mkdtemp(path.join(tmpdir(), 'tantovale-pnpm-signal-'));
+	try {
+		const script = [
+			JSON.stringify(process.execPath),
+			'--import',
+			JSON.stringify(tsxLoaderPath),
+			JSON.stringify(fixturePath),
+			'process-tree',
+			signal,
+			'2',
+		].join(' ');
+		await writeFile(
+			path.join(packageDirectory, 'package.json'),
+			JSON.stringify({ name: 'tantovale-pnpm-signal-fixture', private: true, scripts: { signal: script } }),
+		);
+
+		const running = startCommandFixture('pnpm', ['--dir', packageDirectory, 'run', 'signal']);
+		return {
+			...running,
+			cleanup: async () => {
+				try {
+					await running.ensureStopped();
+				} finally {
+					await rm(packageDirectory, { force: true, recursive: true });
+				}
+			},
+		};
+	} catch (error) {
+		await rm(packageDirectory, { force: true, recursive: true });
+		throw error;
+	}
 }
 
 async function runFixture(mode: string): Promise<ProcessResult & { output: string }> {
@@ -187,6 +273,91 @@ async function cleanupActualChild(child: ChildProcess | undefined): Promise<void
 }
 
 describe('API test process runner', () => {
+	it('coalesces only same-signal events inside the monotonic burst window', () => {
+		const initial = { observedAt: 1_000, signal: 'SIGTERM' as const };
+
+		expect(
+			shouldForwardSignalEvent(initial, {
+				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS - 1,
+				signal: 'SIGTERM',
+			}),
+		).toBe(false);
+		expect(
+			shouldForwardSignalEvent(initial, {
+				observedAt: 1_000 + SIGNAL_BURST_COALESCE_WINDOW_MS,
+				signal: 'SIGTERM',
+			}),
+		).toBe(true);
+		expect(shouldForwardSignalEvent(initial, { observedAt: 1_001, signal: 'SIGINT' })).toBe(true);
+		expect(shouldForwardSignalEvent(initial, { observedAt: 999, signal: 'SIGTERM' })).toBe(true);
+	});
+
+	it.runIf(process.platform !== 'win32').each(['SIGINT', 'SIGTERM'] as const)(
+		'coalesces one %s burst through the actual pnpm lifecycle',
+		async (signal) => {
+			const running = await startPnpmFixture(signal);
+
+			try {
+				await running.waitForOutput('TREE:READY');
+				process.kill(-running.fixture.pid!, signal);
+				await running.waitForOutput('DESCENDANT:COUNT:1');
+				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 100));
+				expect(running.getOutput()).not.toContain('COUNT:2');
+			} finally {
+				await running.cleanup();
+			}
+		},
+	);
+
+	it.runIf(process.platform !== 'win32')(
+		'forwards a later SIGTERM through the pnpm lifecycle after the burst window',
+		async () => {
+			const running = await startPnpmFixture('SIGTERM');
+
+			try {
+				await running.waitForOutput('TREE:READY');
+				process.kill(-running.fixture.pid!, 'SIGTERM');
+				await running.waitForOutput('DESCENDANT:COUNT:1');
+				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 100));
+				expect(running.getOutput()).not.toContain('COUNT:2');
+
+				process.kill(-running.fixture.pid!, 'SIGTERM');
+				const closeResult = await waitWithTimeout(running.close, 'pnpm lifecycle ignored the later cancellation');
+				const output = running.getOutput();
+
+				expect(closeResult).toEqual({ code: null, signal: 'SIGTERM' });
+				expect(output).toContain('CHILD:COUNT:2');
+				expect(output).toContain('DESCENDANT:COUNT:2');
+				expect(output).not.toContain('COUNT:3');
+				await expectFixtureTreeGone(output);
+			} finally {
+				await running.cleanup();
+			}
+		},
+	);
+
+	it.runIf(process.platform !== 'win32')(
+		'cleans a process group after its positive leader PID has already exited',
+		async () => {
+			const running = startFixture('leader-exits-first');
+
+			try {
+				await running.waitForOutput('LEADER:EXITING');
+				await waitWithTimeout(running.close, 'Leader fixture did not exit');
+				const output = running.getOutput();
+				const leaderProcessId = readProcessId(output, 'TREE_CHILD_PID');
+				const descendantProcessId = readProcessId(output, 'DESCENDANT_PID');
+
+				expect(isProcessAlive(leaderProcessId)).toBe(false);
+				expect(isProcessAlive(descendantProcessId)).toBe(true);
+				await running.ensureStopped();
+				expect(isProcessAlive(descendantProcessId)).toBe(false);
+			} finally {
+				await running.ensureStopped();
+			}
+		},
+	);
+
 	it('preserves successful and nonzero child exit codes without synchronous fixtures', async () => {
 		await expect(runFixture('success')).resolves.toMatchObject({ signal: null, code: 0 });
 		await expect(runFixture('failure')).resolves.toMatchObject({ signal: null, code: 7 });
@@ -230,6 +401,7 @@ describe('API test process runner', () => {
 				await running.waitForOutput('DESCENDANT:COUNT:1');
 				expect(running.getOutput()).toContain('CHILD:COUNT:1');
 				expect(running.fixture.exitCode).toBeNull();
+				await new Promise<void>((resolve) => setTimeout(resolve, SIGNAL_BURST_COALESCE_WINDOW_MS + 25));
 
 				process.kill(-running.fixture.pid!, 'SIGTERM');
 				const closeResult = await waitWithTimeout(running.close, 'Wrapper ignored the second termination event');
