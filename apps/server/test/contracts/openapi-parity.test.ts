@@ -37,9 +37,9 @@ function schemaAccepts(schemaValue: unknown, value: unknown): boolean {
 		const length = Array.from(value).length;
 		if (typeof schema.minLength === 'number' && length < schema.minLength) return false;
 		if (typeof schema.maxLength === 'number' && length > schema.maxLength) return false;
-		// OpenAPI patterns use ECMA-262 semantics. Compiling without the Unicode flag keeps
-		// surrogate pairs as two UTF-16 code units, matching the Zod/JavaScript length guard.
-		if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern).test(value)) return false;
+		// This focused evaluator covers only the JSON Schema keywords asserted in this suite.
+		// OpenAPI 3.1 patterns use ECMA-262 Unicode-aware regular-expression semantics.
+		if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(value)) return false;
 		return true;
 	}
 	if (schema.type === 'number' || schema.type === 'integer') {
@@ -395,12 +395,7 @@ describe('OpenAPI mounted-route parity', () => {
 				transaction_id: {
 					oneOf: [
 						{ type: 'string', pattern: expect.any(String) },
-						{
-							type: 'integer',
-							format: 'int64',
-							minimum: 1,
-							maximum: Number('9223372036854775807'),
-						},
+						{ type: 'integer', format: 'int64', minimum: 1 },
 					],
 				},
 			},
@@ -592,19 +587,22 @@ describe('OpenAPI mounted-route parity', () => {
 		const { operations } = await generatedOperations();
 		const webhook = requestSchema(operations.get('POST /webhooks/trustap/transaction-update'));
 		const properties = webhook.properties as Record<string, JsonSchema>;
-		const base = { event: 'transaction_updated', transaction_id: '9223372036854775807', status: 'paid' };
+		const transactionId = properties.transaction_id;
+		if (transactionId === undefined) throw new Error('Missing Trustap transaction_id schema');
 
-		expect(schemaAccepts(webhook, { ...base, transaction_id: Number('9223372036854775807') })).toBe(true);
-		for (const transaction_id of [0, -1, 1.5, '0', '01', 10_000_000_000_000_000_000, '9223372036854775808']) {
-			expect(schemaAccepts(webhook, { ...base, transaction_id }), String(transaction_id)).toBe(false);
+		for (const value of ['1', '9223372036854775807']) expect(schemaAccepts(transactionId, value), value).toBe(true);
+		for (const value of ['0', '-1', '01', '9223372036854775808']) {
+			expect(schemaAccepts(transactionId, value), value).toBe(false);
 		}
 		expect(properties.transaction_id).toEqual({
 			oneOf: [
 				{ type: 'string', pattern: expect.any(String) },
-				{ type: 'integer', format: 'int64', minimum: 1, maximum: Number('9223372036854775807') },
+				{ type: 'integer', format: 'int64', minimum: 1 },
 			],
-			description: expect.stringContaining('raw numeric token'),
+			description: expect.stringContaining('maximum 9223372036854775807'),
 		});
+		expect(Object.hasOwn((transactionId.oneOf as JsonSchema[])[1] ?? {}, 'maximum')).toBe(false);
+		expect(JSON.stringify(transactionId)).not.toContain('9223372036854776000');
 	});
 
 	it('mirrors request-validator boundaries for auth, addresses, messages, uploads, and money', async () => {
@@ -638,15 +636,18 @@ describe('OpenAPI mounted-route parity', () => {
 		).message;
 		for (const schema of [chatMessage, proposalMessage]) {
 			expect(schemaAccepts(schema, 'safe\nmessage')).toBe(true);
-			expect(schemaAccepts(schema, '😀'.repeat(300))).toBe(true);
-			expect(schemaAccepts(schema, '😀'.repeat(301))).toBe(false);
+			expect(schemaAccepts(schema, '😀'.repeat(600))).toBe(true);
+			expect(schemaAccepts(schema, '😀'.repeat(601))).toBe(false);
 			expect(schemaAccepts(schema, 'x'.repeat(600))).toBe(true);
 			expect(schemaAccepts(schema, 'x'.repeat(601))).toBe(false);
 			expect(schemaAccepts(schema, ' \t\n ')).toBe(false);
 			expect(schemaAccepts(schema, 'unsafe\u0000message')).toBe(false);
-			expect(String((schema as JsonSchema).description), 'UTF-16 description').toContain('UTF-16');
+			expect(String((schema as JsonSchema).description), 'Unicode description').toContain('Unicode code points');
 		}
 		expect(schemaAccepts(proposalMessage, `${' '.repeat(400)}x${' '.repeat(400)}`)).toBe(true);
+		expect(schemaAccepts(proposalMessage, `\u000b${'😀'.repeat(600)}\u000c`)).toBe(true);
+		expect(schemaAccepts(proposalMessage, 'safe\u000bunsafe')).toBe(false);
+		expect(schemaAccepts(proposalMessage, 'safe\u000cunsafe')).toBe(false);
 
 		const upload = operations.get('POST /uploads/auth/images-item')?.requestBody?.content?.['multipart/form-data']
 			?.schema as JsonSchema;

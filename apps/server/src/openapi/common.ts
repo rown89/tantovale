@@ -89,15 +89,10 @@ export const losslessTrustapIdSchema = {
 export const inboundTrustapIdSchema = {
 	oneOf: [
 		{ type: 'string', pattern: boundedPositiveDecimalPattern('9223372036854775807') },
-		{
-			type: 'integer',
-			format: 'int64',
-			minimum: 1,
-			maximum: Number('9223372036854775807'),
-		},
+		{ type: 'integer', format: 'int64', minimum: 1 },
 	],
 	description:
-		'Positive signed-int64 Trustap identifier; the webhook raw numeric token is preserved losslessly before JSON parsing.',
+		'Positive signed-int64 Trustap identifier (maximum 9223372036854775807); the webhook raw numeric token is preserved losslessly before JSON parsing.',
 } as const satisfies ManualSchema;
 
 export const emptyArraySchema = {
@@ -112,16 +107,16 @@ export const chatMessageInputSchema = {
 	type: 'string',
 	minLength: 1,
 	maxLength: 600,
-	pattern: `^(?=[\\s\\S]{1,600}$)(?=[\\s\\S]*\\S)${safeMessageCharacters}+$`,
-	description: 'Message must contain 1 to 600 safe JavaScript UTF-16 code units and cannot be whitespace-only.',
+	pattern: `^(?=[\\s\\S]*\\S)${safeMessageCharacters}+$`,
+	description: 'Message must contain 1 to 600 safe Unicode code points and cannot be whitespace-only.',
 } as const satisfies ManualSchema;
 
 export const proposalMessageInputSchema = {
 	type: 'string',
 	minLength: 1,
-	pattern: `^(?=[\\s\\S]*\\S)(?=\\s*[\\s\\S]{1,600}\\s*$)${safeMessageCharacters}+$`,
+	pattern: `^\\s*(?=[\\s\\S]*\\S)${safeMessageCharacters}{1,600}\\s*$`,
 	description:
-		'Message is trimmed before validation; the trimmed value must contain 1 to 600 safe JavaScript UTF-16 code units.',
+		'Message is trimmed before validation; the trimmed value must contain 1 to 600 safe Unicode code points.',
 } as const satisfies ManualSchema;
 
 export const securityRequirements: Record<ApiSecurity, Array<Record<string, never[]>>> = {
