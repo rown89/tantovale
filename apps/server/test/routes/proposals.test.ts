@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { app } from '../../src/app';
+import { create_order_proposal_schema } from '../../src/extended_schemas/order_proposals';
 import {
 	entityTrustapTransactionTypeValues,
 	itemStatus,
@@ -682,6 +683,23 @@ describe('proposal routes', () => {
 			expect(response.status).toBe(400);
 		},
 	);
+
+	it('validates proposal message limits by Unicode code point after ECMAScript trimming', () => {
+		const base = {
+			item_id: 1,
+			proposal_price: 10_000,
+			shipping_label_id: 'shipment-test',
+		};
+		const parse = (message: string) => create_order_proposal_schema.safeParse({ ...base, message });
+
+		expect(parse('x'.repeat(600)).success).toBe(true);
+		expect(parse('x'.repeat(601)).success).toBe(false);
+		const unicodeBoundary = parse(`\u000b${'😀'.repeat(600)}\u000c`);
+		expect(unicodeBoundary.success).toBe(true);
+		if (unicodeBoundary.success) expect(unicodeBoundary.data.message).toBe('😀'.repeat(600));
+		expect(parse('😀'.repeat(601)).success).toBe(false);
+		expect(parse('safe\u000bunsafe').success).toBe(false);
+	});
 
 	it('recovers correlated no-provider evidence that agrees with an already terminal order phase', async () => {
 		const { proposal, provider, reservation, transactionId } = await createExistingCreatedRecoveryReservation(

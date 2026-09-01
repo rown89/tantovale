@@ -1,6 +1,7 @@
 import { ORDER_PROPOSAL_PHASES } from '#database/schemas/enumerated_values';
 import { ordersProposalsSelectSchema } from '#database/schemas/orders_proposals';
 import { z } from 'zod/v4';
+import { hasAtMostUnicodeCodePoints } from '../text';
 
 export const create_order_proposal_schema = z.object({
 	item_id: z.number().int().positive().max(2_147_483_647),
@@ -11,7 +12,9 @@ export const create_order_proposal_schema = z.object({
 		.string()
 		.trim()
 		.min(1)
-		.max(600)
+		.refine((value) => hasAtMostUnicodeCodePoints(value, 600), {
+			message: 'Message must contain at most 600 Unicode code points',
+		})
 		.refine(
 			(value) =>
 				Array.from(value).every((character) => {

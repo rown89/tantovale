@@ -870,7 +870,7 @@ describe('chat routes', () => {
 	});
 
 	describe('message validation', () => {
-		it.each(['', '   ', '\n\t', 'x'.repeat(601)])('rejects invalid text %#', async (message) => {
+		it.each(['', '   ', '\n\t', 'x'.repeat(601), '😀'.repeat(601)])('rejects invalid text %#', async (message) => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
 			const roomResponse = await createRoom(actors.buyer.jar, item.id);
@@ -889,6 +889,19 @@ describe('chat routes', () => {
 			const roomResponse = await createRoom(actors.buyer.jar, item.id);
 			const { id } = (await roomResponse.json()) as { id: number };
 			const message = 'x'.repeat(600);
+
+			const response = await sendMessage(actors.buyer.jar, id, message);
+
+			expect(response.status).toBe(200);
+			expect((await messageRows(id))[0]?.message).toBe(message);
+		});
+
+		it('accepts exactly 600 Unicode code points even when they use surrogate pairs', async () => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const roomResponse = await createRoom(actors.buyer.jar, item.id);
+			const { id } = (await roomResponse.json()) as { id: number };
+			const message = '😀'.repeat(600);
 
 			const response = await sendMessage(actors.buyer.jar, id, message);
 
