@@ -9,6 +9,7 @@ import {
 	orders,
 	shipping_label_purchases,
 	shipping_quotes,
+	SHIPPING_LABEL_PURCHASE_STATES,
 } from '../../src/database/schemas/schema';
 import {
 	entityTrustapTransactionTypeValues,
@@ -89,6 +90,220 @@ async function prepareLabelOrder(
 
 async function prepareProviderBackedLabelOrder() {
 	return prepareLabelOrder(ORDER_PHASES.PAYMENT_CONFIRMED);
+}
+
+type LabelOrderFixture = Awaited<ReturnType<typeof prepareLabelOrder>>;
+
+type ClaimReadinessMutation = {
+	name: string;
+	requiresProviderGraphConstraintBypass?: boolean;
+	mutate: (fixture: LabelOrderFixture) => Promise<void>;
+};
+
+const claimReadinessMutations: ClaimReadinessMutation[] = [
+	{
+		name: 'payment creation is not resolved',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(orders)
+				.set({ payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED })
+				.where(eq(orders.id, order.id));
+		},
+	},
+	...(
+		[
+			PAYMENT_CANCELLATION_STATES.CANCELLING,
+			PAYMENT_CANCELLATION_STATES.RECONCILIATION_REQUIRED,
+			PAYMENT_CANCELLATION_STATES.CANCELLED,
+		] as const
+	).map(
+		(paymentCancellationState): ClaimReadinessMutation => ({
+			name: `payment cancellation is ${paymentCancellationState}`,
+			mutate: async ({ order }) => {
+				await getTestDatabase()
+					.db.update(orders)
+					.set({ payment_cancellation_state: paymentCancellationState })
+					.where(eq(orders.id, order.id));
+			},
+		}),
+	),
+	{
+		name: 'provider evidence is quarantined',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ quarantined: true })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider status is not paid',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ status: entityTrustapTransactionTypeValues.JOINED })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider transaction type is not online payment',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ transactionType: 'guest_user' })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider transaction id no longer matches the order link',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ transactionId: (BigInt(order.payment_transaction_id!) + 1n).toString() })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'order transaction link no longer resolves provider evidence',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(orders)
+				.set({ payment_transaction_id: (BigInt(order.payment_transaction_id!) + 2n).toString() })
+				.where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'provider entity references another item',
+		mutate: async ({ actors, order }) => {
+			const otherItem = await createItemFixture(actors, { commons: { title: 'Other label readiness item' } });
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ entityId: otherItem.id })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider entity title differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ entityTitle: 'Mismatched durable item title' })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider buyer identity differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ buyerId: 'mismatched-label-buyer' })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider seller identity differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ sellerId: 'mismatched-label-seller' })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider participant roles are swapped',
+		mutate: async ({ actors, order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({
+					buyerId: actors.seller.profile.payment_provider_id,
+					sellerId: actors.buyer.profile.payment_provider_id,
+				})
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider currency differs',
+		requiresProviderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ currency: 'usd' })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'provider item amount differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ price: order.item_price + order.platform_charge + 1 })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'order item amount differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(orders)
+				.set({ item_price: order.item_price + 1 })
+				.where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'order platform fee differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(orders)
+				.set({ platform_charge: order.platform_charge + 1 })
+				.where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'provider charge differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ charge: order.payment_provider_charge + 1 })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+	{
+		name: 'order provider charge differs',
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(orders)
+				.set({ payment_provider_charge: order.payment_provider_charge + 1 })
+				.where(eq(orders.id, order.id));
+		},
+	},
+	{
+		name: 'provider seller charge is nonzero',
+		requiresProviderGraphConstraintBypass: true,
+		mutate: async ({ order }) => {
+			await getTestDatabase()
+				.db.update(entityTrustapTransactions)
+				.set({ chargeSeller: 1 })
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		},
+	},
+];
+
+async function withoutProviderGraphConstraint<T>(run: () => Promise<T>): Promise<T> {
+	const { client, db } = getTestDatabase();
+	const constraintName = 'entity_trustap_transactions_active_graph_check';
+	const constraint = await client.query<{ definition: string }>(
+		`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'entity_trustap_transactions'::regclass AND conname = $1`,
+		[constraintName],
+	);
+	const definition = constraint.rows[0]?.definition;
+	if (!definition) throw new Error('Provider graph constraint definition is unavailable');
+	await client.query(`ALTER TABLE entity_trustap_transactions DROP CONSTRAINT ${constraintName}`);
+	try {
+		return await run();
+	} finally {
+		await db.delete(entityTrustapTransactions);
+		await client.query(`ALTER TABLE entity_trustap_transactions ADD CONSTRAINT ${constraintName} ${definition}`);
+	}
 }
 
 function exactShipmentBody(
@@ -377,46 +592,33 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		});
 	});
 
-	it.each([
-		['unresolved payment creation', 'creation'],
-		['active payment cancellation', 'cancellation'],
-		['quarantined provider evidence', 'quarantine'],
-		['non-paid provider evidence', 'provider-status'],
-	] as const)('rejects label claim with %s before provider I/O', async (_case, mutation) => {
-		const { actors, order } = await prepareLabelOrder();
-		const { db } = getTestDatabase();
-		if (mutation === 'creation') {
-			await db
-				.update(orders)
-				.set({ payment_creation_state: PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED })
-				.where(eq(orders.id, order.id));
-		} else if (mutation === 'cancellation') {
-			await db
-				.update(orders)
-				.set({ payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLING })
-				.where(eq(orders.id, order.id));
-		} else {
-			await db
-				.update(entityTrustapTransactions)
-				.set(mutation === 'quarantine' ? { quarantined: true } : { status: entityTrustapTransactionTypeValues.JOINED })
-				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
-		}
-		const beforeTransactions = (await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions');
+	it.each(claimReadinessMutations)(
+		'rejects label claim when $name',
+		async ({ mutate, requiresProviderGraphConstraintBypass }) => {
+			const exerciseClaim = async () => {
+				const fixture = await prepareLabelOrder();
+				const { actors, order } = fixture;
+				const { db } = getTestDatabase();
+				await mutate(fixture);
+				const beforeRequests = await getProviderRequests(shippoUrl());
 
-		const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
-			order_id: order.id,
-			rate_id: 'rate-test',
-		});
+				const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+					order_id: order.id,
+					rate_id: 'rate-test',
+				});
 
-		expect(response.status).toBe(409);
-		expect(await response.json()).toEqual({ message: 'Order is not ready for label purchase' });
-		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toEqual(
-			beforeTransactions,
-		);
-		expect(
-			await db.select().from(shipping_label_purchases).where(eq(shipping_label_purchases.order_id, order.id)),
-		).toEqual([]);
-	});
+				expect(response.status).toBe(409);
+				expect(await response.json()).toEqual({ message: 'Order is not ready for label purchase' });
+				expect(await getProviderRequests(shippoUrl())).toEqual(beforeRequests);
+				expect(
+					await db.select().from(shipping_label_purchases).where(eq(shipping_label_purchases.order_id, order.id)),
+				).toEqual([]);
+			};
+
+			if (requiresProviderGraphConstraintBypass) await withoutProviderGraphConstraint(exerciseClaim);
+			else await exerciseClaim();
+		},
+	);
 
 	it('rejects a caller rate different from the consumed quote before provider I/O', async () => {
 		const { actors, order } = await prepareLabelOrder();
@@ -534,6 +736,51 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 			.from(shipping_label_purchases)
 			.where(eq(shipping_label_purchases.order_id, order.id));
 		expect(intent?.state).toBe('reconciliation_required');
+	});
+
+	it('rechecks provider correlation after rate retrieval and blocks POST when the durable title changes', async () => {
+		const { actors, order } = await prepareLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-rate-barrier');
+		const purchase = authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(await waitForRateBarrier(1)).toBe(true);
+		await getTestDatabase()
+			.db.update(entityTrustapTransactions)
+			.set({ entityTitle: 'Changed while Shippo rate was in flight' })
+			.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		await releaseRateBarrier();
+
+		const response = await purchase;
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ message: 'Shipping label purchase requires reconciliation' });
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/transactions')).toEqual([]);
+		const [intent] = await getTestDatabase()
+			.db.select({
+				orderId: shipping_label_purchases.order_id,
+				itemId: shipping_label_purchases.item_id,
+				rateId: shipping_label_purchases.shippo_rate_id,
+				state: shipping_label_purchases.state,
+				providerTransactionId: shipping_label_purchases.provider_transaction_id,
+				providerStatus: shipping_label_purchases.provider_status,
+				labelUrl: shipping_label_purchases.label_url,
+				trackingNumber: shipping_label_purchases.tracking_number,
+				trackingUrl: shipping_label_purchases.tracking_url,
+			})
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(intent).toEqual({
+			orderId: order.id,
+			itemId: order.item_id,
+			rateId: 'rate-test',
+			state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED,
+			providerTransactionId: null,
+			providerStatus: null,
+			labelUrl: null,
+			trackingNumber: null,
+			trackingUrl: null,
+		});
 	});
 
 	it('defers a terminal webhook during Shippo POST until the purchased intent is durable', async () => {
@@ -986,6 +1233,9 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		expect(response.status).toBe(409);
 		expect(await response.json()).toEqual({ message: 'Order is not ready for label purchase' });
 		await expectNoNewProviderRequests(beforeCount);
+		expect(
+			await db.select().from(shipping_label_purchases).where(eq(shipping_label_purchases.order_id, order.id)),
+		).toEqual([]);
 	});
 
 	it.each([
