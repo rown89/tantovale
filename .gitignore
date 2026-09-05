@@ -19,6 +19,9 @@ node_modules
 # Testing
 coverage
 
+# Local documentation and generated planning artifacts
+docs/
+
 # Turbo
 .turbo
 
