@@ -1,18 +1,21 @@
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import { createRouter } from '#lib/create-app';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
 import { authPath, environment } from '#utils/constants';
 import { calculatePlatformCosts } from '#utils/platform-costs';
+import { platformCostsOpenApi } from '../../openapi/routes';
 
 const calculatePlatformCostsSchema = z.object({
-	price: z.number().min(0.01),
-	shipping_price: z.number().min(0.01),
+	price: z.number().int().positive().max(2_147_483_647),
+	shipping_price: z.number().int().nonnegative().max(2_147_483_647),
 });
 
 export const platformsCostsRoute = createRouter().post(
 	`${authPath}/calculate_platform_costs`,
+	describeRoute(platformCostsOpenApi.calculate),
 	authMiddleware,
 	zValidator('json', calculatePlatformCostsSchema),
 	async (c) => {
@@ -27,6 +30,9 @@ export const platformsCostsRoute = createRouter().post(
 
 			// Calculate payment provider charge with the total amount (including platform charge)
 			const transactionPreviewPrice = price + platform_charge_amount!;
+			if (!Number.isSafeInteger(transactionPreviewPrice) || transactionPreviewPrice > 2_147_483_647) {
+				return c.json({ error: 'Price exceeds the supported range' }, 400);
+			}
 
 			const { payment_provider_charge } = await calculatePlatformCosts(
 				{

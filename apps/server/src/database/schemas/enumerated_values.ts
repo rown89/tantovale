@@ -17,6 +17,33 @@ export const ORDER_PHASES = {
 	EXPIRED: 'expired',
 } as const;
 
+export const PAYMENT_CREATION_STATES = {
+	PREPARING: 'preparing',
+	CREATING: 'creating',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CREATED: 'created',
+} as const;
+
+export const PAYMENT_CANCELLATION_STATES = {
+	NONE: 'none',
+	CANCELLING: 'cancelling',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CANCELLED: 'cancelled',
+} as const;
+
+export const PAYMENT_INVITATION_STATES = {
+	PENDING: 'pending',
+	SENDING: 'sending',
+	SENT: 'sent',
+} as const;
+
+export const PAYMENT_PROVIDER_IDENTITY_STATES = {
+	UNINITIALIZED: 'uninitialized',
+	CREATING: 'creating',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	CREATED: 'created',
+} as const;
+
 /**
  * States that are blocked for the user to place a new order
  */

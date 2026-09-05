@@ -1,9 +1,7 @@
-import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { pgTable, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { createInsertSchema, createSelectSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
-import { chat_messages } from './chat_messages';
 import { profiles } from './profiles';
 
 export const chat_rooms = pgTable(
@@ -19,23 +17,8 @@ export const chat_rooms = pgTable(
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(table) => [
-		// Composite index for chat room lookups: item_id + buyer_id
-		index('chat_rooms_item_buyer_idx').on(table.item_id, table.buyer_id),
-	],
+	(table) => [uniqueIndex('chat_rooms_item_buyer_idx').on(table.item_id, table.buyer_id)],
 );
-
-export const chatRoomRelations = relations(chat_rooms, ({ one, many }) => ({
-	item: one(items, {
-		fields: [chat_rooms.item_id],
-		references: [items.id],
-	}),
-	buyer: one(profiles, {
-		fields: [chat_rooms.buyer_id],
-		references: [profiles.id],
-	}),
-	messages: many(chat_messages),
-}));
 
 export type SelectChatRoom = typeof chat_rooms.$inferSelect;
 export type InsertChatRoom = typeof chat_rooms.$inferInsert;

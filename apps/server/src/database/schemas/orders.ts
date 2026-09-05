@@ -1,11 +1,15 @@
-import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-import { relations } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { bigint, check, pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
 import { addresses } from './addresses';
 import { items } from './items';
 import { ORDER_PHASES } from './enumerated_values';
+import { PAYMENT_CREATION_STATES } from './enumerated_values';
+import { PAYMENT_CANCELLATION_STATES } from './enumerated_values';
+import { orders_proposals } from './orders_proposals';
+import { shipping_quotes } from './shipping_quotes';
 
 export const orders = pgTable(
 	'orders',
@@ -35,46 +39,61 @@ export const orders = pgTable(
 			onDelete: 'cascade',
 			onUpdate: 'cascade',
 		}),
-		payment_transaction_id: integer('payment_transaction_id'),
+		payment_transaction_id: bigint('payment_transaction_id', { mode: 'string' }),
+		legacy_payment_transaction_id: bigint('legacy_payment_transaction_id', { mode: 'string' }),
+		payment_attempt_id: uuid('payment_attempt_id').unique(),
+		payment_creation_state: text('payment_creation_state').notNull().default(PAYMENT_CREATION_STATES.CREATED),
+		payment_cancellation_state: text('payment_cancellation_state').notNull().default(PAYMENT_CANCELLATION_STATES.NONE),
+		item_price: integer('item_price').notNull(),
+		order_proposal_id: integer('order_proposal_id')
+			.unique()
+			.references(() => orders_proposals.id, {
+				onDelete: 'restrict',
+				onUpdate: 'cascade',
+			}),
+		shipping_quote_id: uuid('shipping_quote_id').references(() => shipping_quotes.id, {
+			onDelete: 'restrict',
+			onUpdate: 'cascade',
+		}),
 		status: text('status').notNull().default(ORDER_PHASES.PAYMENT_PENDING),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
 	(table) => [
-		foreignKey({
-			columns: [table.buyer_id],
-			foreignColumns: [profiles.id],
-			name: 'orders_buyer_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.seller_id],
-			foreignColumns: [profiles.id],
-			name: 'orders_seller_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.buyer_address],
-			foreignColumns: [addresses.id],
-			name: 'orders_buyer_address_fkey',
-		}),
-		foreignKey({
-			columns: [table.seller_address],
-			foreignColumns: [addresses.id],
-			name: 'orders_seller_address_fkey',
-		}),
+		check(
+			'orders_payment_creation_state_check',
+			sql`${table.payment_creation_state} IN ('preparing', 'creating', 'reconciliation_required', 'created')`,
+		),
+		check(
+			'orders_payment_cancellation_state_check',
+			sql`${table.payment_cancellation_state} IN ('none', 'cancelling', 'reconciliation_required', 'cancelled')`,
+		),
+		check(
+			'orders_status_check',
+			sql`${table.status} IN ('payment_pending', 'payment_confirmed', 'payment_failed', 'payment_refunded', 'shipping_pending', 'shipping_confirmed', 'completed', 'cancelled', 'expired')`,
+		),
+		check('orders_item_price_positive', sql`${table.item_price} > 0`),
+		check(
+			'orders_operational_graph_check',
+			sql`${table.payment_creation_state} = 'reconciliation_required' OR (
+				${table.item_id} IS NOT NULL AND ${table.buyer_id} IS NOT NULL AND ${table.seller_id} IS NOT NULL
+				AND ${table.buyer_address} IS NOT NULL AND ${table.seller_address} IS NOT NULL
+				AND ${table.payment_attempt_id} IS NOT NULL
+				AND ((${table.payment_creation_state} = 'created' AND ${table.payment_transaction_id} IS NOT NULL)
+					OR (${table.payment_creation_state} IN ('preparing', 'creating') AND ${table.payment_transaction_id} IS NULL))
+			)`,
+		),
 		index('orders_status_idx').on(table.status),
+		uniqueIndex('orders_payment_transaction_id_idx')
+			.on(table.payment_transaction_id)
+			.where(sql`${table.payment_transaction_id} IS NOT NULL`),
+		uniqueIndex('orders_active_item_idx')
+			.on(table.item_id)
+			.where(
+				sql`${table.status} IN ('payment_pending', 'payment_confirmed', 'shipping_pending', 'shipping_confirmed', 'completed')`,
+			),
 	],
 );
-
-export const ordersRelations = relations(orders, ({ one }) => ({
-	buyer: one(profiles, {
-		fields: [orders.buyer_id],
-		references: [profiles.id],
-	}),
-	seller: one(profiles, {
-		fields: [orders.seller_id],
-		references: [profiles.id],
-	}),
-}));
 
 export type SelectOrder = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;

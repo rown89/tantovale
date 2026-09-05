@@ -3,25 +3,29 @@ import { expand } from 'dotenv-expand';
 import path from 'path';
 import { z } from 'zod/v4';
 
-// Load .env first
-expand(
-	config({
-		path: path.resolve(process.cwd(), '.env'),
-	}),
-);
+const initialNodeEnv = process.env.NODE_ENV;
 
-// In development, also load .env.local which will override .env values
-// Check the initial NODE_ENV, not the one potentially set by .env file
-if (process.env.NODE_ENV === 'development') {
+if (initialNodeEnv !== 'test') {
+	// Load .env first
 	expand(
 		config({
-			path: path.resolve(process.cwd(), '.env.local'),
-			override: true,
+			path: path.resolve(process.cwd(), '.env'),
 		}),
 	);
+
+	// In development, also load .env.local which will override .env values.
+	// Check NODE_ENV after loading .env because it may set development mode.
+	if (process.env.NODE_ENV === 'development') {
+		expand(
+			config({
+				path: path.resolve(process.cwd(), '.env.local'),
+				override: true,
+			}),
+		);
+	}
 }
 
-const EnvSchema = z.object({
+const EnvSchemaObject = z.object({
 	PROJECT_NAME: z.string().default('Tantovale'),
 	NODE_ENV: z.string().default('development'),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
@@ -44,12 +48,15 @@ const EnvSchema = z.object({
 	PAYMENT_PROVIDER_API_KEY: z.string(),
 	PAYMENT_PROVIDER_CLIENT_ID: z.string(),
 	PAYMENT_PROVIDER_CLIENT_SECRET: z.string(),
-	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string(),
+	PAYMENT_PROVIDER_WEBHOOK_USERNAME: z.string().min(1).default('trustap'),
+	PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string().min(1),
 	PAYMENT_PROVIDER_PAY_PAGE_URL: z.string(),
 	POST_PAYMENT_REDIRECT_URL: z.string(),
+	PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 	// SHIPPPING
 	SHIPPING_PROVIDER_API_KEY: z.string(),
 	SHIPPING_PROVIDER_WEBHOOK_SECRET: z.string(),
+	SHIPPING_PROVIDER_API_URL: z.url().optional(),
 	// AUTH
 	ACCESS_TOKEN_SECRET: z.string(),
 	REFRESH_TOKEN_SECRET: z.string(),
@@ -61,21 +68,47 @@ const EnvSchema = z.object({
 	AWS_ACCESS_KEY: z.string(),
 	AWS_BUCKET_NAME: z.string(),
 	AWS_SECRET_ACCESS_KEY: z.string(),
+	AWS_ENDPOINT: z.url().optional(),
+	AWS_FORCE_PATH_STYLE: z
+		.enum(['true', 'false'])
+		.default('false')
+		.transform((value) => value === 'true'),
 	// SMTP
 	SMTP_HOST: z.string(),
 	SMTP_PORT: z.coerce.number().default(465),
 	SMTP_USER: z.string(),
 	SMTP_PASS: z.string(),
+	SMTP_FROM: z.string().optional(),
+	SMTP_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
 	// CRON
-	DAILY_ORDER_CHECK_SECRET_KEY: z.string(),
-	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string(),
-	TRANSACTIONS_SYNC_SECRET_KEY: z.string(),
+	DAILY_ORDER_CHECK_SECRET_KEY: z.string().min(1),
+	DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY: z.string().min(1),
+	TRANSACTIONS_SYNC_SECRET_KEY: z.string().min(1),
 	// TOLLERANCES
 	PROPOSALS_HANDLING_TOLLERANCE_IN_HOURS: z.coerce.number().default(96),
 	ORDERS_PAYMENT_HANDLING_TOLLERANCE_IN_HOURS: z.coerce.number().default(48),
 });
 
-export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
+const EnvSchema = EnvSchemaObject.transform((environment) => ({
+	...environment,
+	SMTP_FROM: environment.SMTP_FROM ?? `"Tantovale" <${environment.SMTP_USER}>`,
+}));
+
+type ParseEnvOptions = { runtime?: boolean };
+
+function assertRuntimeCronSecretIsolation(environment: z.output<typeof EnvSchema>): void {
+	if (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') return;
+	const cronSecrets = [
+		environment.DAILY_ORDER_CHECK_SECRET_KEY,
+		environment.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY,
+		environment.TRANSACTIONS_SYNC_SECRET_KEY,
+	];
+	if (new Set(cronSecrets).size !== cronSecrets.length) {
+		throw new Error('❌ Invalid env - Cron job secrets must be pairwise distinct outside development and test');
+	}
+}
+
+export function parseEnv(data: z.input<typeof EnvSchema> | NodeJS.ProcessEnv, options: ParseEnvOptions = {}) {
 	const { data: env, error } = EnvSchema.safeParse(data);
 
 	if (error) {
@@ -84,8 +117,9 @@ export function parseEnv(data: z.infer<typeof EnvSchema> | NodeJS.ProcessEnv) {
 			.join(' | ')}`;
 		throw new Error(errorMessage);
 	}
+	if (options.runtime) assertRuntimeCronSecretIsolation(env);
 
 	return env;
 }
 
-export type Environment = z.infer<typeof EnvSchema>;
+export type Environment = z.output<typeof EnvSchema>;

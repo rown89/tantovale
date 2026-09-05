@@ -1,18 +1,18 @@
 import type { Context } from 'hono';
 import { getFiltersForSubcategory, getSubcategoryPropertiesById } from './subcategory-propertiess.service';
 
+import { parsePositivePostgresInt } from '../../lib/parse-positive-postgres-int';
 import type { AppBindings } from '../../lib/types';
 
 export const getFiterSubcategoryByIdController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (!id) return c.json({ error: 'subcategory id is required' }, 400);
-	if (isNaN(id)) return c.json({ message: 'Invalid subcategory ID' }, 400);
+	if (id === null) return c.json({ error: 'subcategory id is required' }, 400);
 
 	try {
 		const filters = await getSubcategoryPropertiesById(c, id);
 
-		if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 500);
+		if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 404);
 
 		return c.json(filters, 200);
 	} catch (error) {
@@ -21,11 +21,12 @@ export const getFiterSubcategoryByIdController = async (c: Context<AppBindings>)
 };
 
 export const getFiltersForSubcategoryController = async (c: Context<AppBindings>) => {
-	const id = Number(c.req.param('id'));
+	const id = parsePositivePostgresInt(c.req.param('id'));
 
-	if (!id) return c.json({ error: 'filter id is required' }, 400);
-	if (isNaN(id)) return c.json({ message: 'Invalid filter ID' }, 400);
+	if (id === null) return c.json({ error: 'filter id is required' }, 400);
 
 	const filters = await getFiltersForSubcategory(c, id);
+	if (!filters.length) return c.json({ message: 'Missing subcategoryFilters' }, 404);
+
 	return c.json(filters);
 };

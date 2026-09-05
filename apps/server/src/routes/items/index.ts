@@ -1,12 +1,11 @@
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
-import { getCookie } from 'hono/cookie';
-import { env } from 'hono/adapter';
-import { verify } from 'hono/jwt';
 import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
 import {
+	categories,
 	items,
 	users,
 	cities,
@@ -27,6 +26,7 @@ import { authPath } from '../../utils/constants';
 
 import type { ItemWithProperties } from './types';
 import { itemStatus } from '#database/schemas/enumerated_values';
+import { itemsOpenApi } from '../../openapi/routes';
 
 export const itemTypeSchema = z.object({
 	published: z.boolean(),
@@ -34,25 +34,15 @@ export const itemTypeSchema = z.object({
 
 export const itemsRoute = createRouter()
 	// get logged user selling items
-	.post(`${authPath}/user/selling_items`, zValidator('json', itemTypeSchema), authMiddleware, async (c) => {
-		const { ACCESS_TOKEN_SECRET } = env<{
-			ACCESS_TOKEN_SECRET: string;
-		}>(c);
-
-		const params = await c.req.json();
-
-		const accessToken = getCookie(c, 'access_token');
-		const payload = await verify(accessToken!, ACCESS_TOKEN_SECRET);
-		const user_id = Number(payload.id);
-
-		if (!user_id) return c.json({ message: 'Invalid user id' }, 401);
-
+	.post(
+		`${authPath}/user/selling_items`,
+		describeRoute(itemsOpenApi.selling),
+		zValidator('json', itemTypeSchema),
+		authMiddleware,
+		async (c) => {
+		const params = c.req.valid('json');
+		const user = c.var.user;
 		const { db } = createClient();
-
-		// get profile id from user id
-		const [profile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.user_id, user_id)).limit(1);
-
-		if (!profile) return c.json({ message: 'Profile not found' }, 404);
 
 		try {
 			const profileItems = await db
@@ -73,7 +63,7 @@ export const itemsRoute = createRouter()
 						isNull(items.deleted_at),
 						eq(items.published, params.published),
 						eq(items.status, itemStatus.AVAILABLE),
-						eq(items.profile_id, profile.id),
+						eq(items.profile_id, user.profile_id),
 						eq(items_images.size, 'thumbnail'),
 						eq(items_images.order_position, 0),
 					),
@@ -91,26 +81,21 @@ export const itemsRoute = createRouter()
 				500,
 			);
 		}
-	})
+		},
+	)
 	// get all user favorite items
-	.get(`${authPath}/user/favorites`, authMiddleware, async (c) => {
+	.get(`${authPath}/user/favorites`, describeRoute(itemsOpenApi.favorites), authMiddleware, async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
 
 		try {
-			const [profile] = await db
-				.select({ id: profiles.id })
-				.from(profiles)
-				.where(eq(profiles.user_id, user.id))
-				.limit(1);
-
-			if (!profile) return c.json({ message: 'Profile not found' }, 404);
-
 			const userFavorites = await db
 				.select()
 				.from(profiles_items_favorites)
-				.where(eq(profiles_items_favorites.profile_id, profile.id));
+				.where(eq(profiles_items_favorites.profile_id, user.profile_id));
+
+			if (userFavorites.length === 0) return c.json([], 200);
 
 			const userFavoritesItems = await db
 				.select({
@@ -123,6 +108,8 @@ export const itemsRoute = createRouter()
 				})
 				.from(items)
 				.innerJoin(items_images, eq(items_images.item_id, items.id))
+				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(categories, eq(categories.id, subcategories.category_id))
 				.where(
 					and(
 						inArray(
@@ -133,6 +120,9 @@ export const itemsRoute = createRouter()
 						eq(items_images.order_position, 0),
 						eq(items.status, itemStatus.AVAILABLE),
 						eq(items.published, true),
+						eq(subcategories.published, true),
+						eq(categories.published, true),
+						isNull(items.deleted_at),
 					),
 				);
 
@@ -144,7 +134,7 @@ export const itemsRoute = createRouter()
 		}
 	})
 	// get specific user published selling items
-	.get(`/:username`, async (c) => {
+	.get(`/:username`, describeRoute(itemsOpenApi.byUsername), async (c) => {
 		const username = c.req.param('username');
 
 		const { db } = createClient();
@@ -156,7 +146,7 @@ export const itemsRoute = createRouter()
 				.where(eq(users.username, username))
 				.limit(1);
 
-			if (!existingUsername.length) return c.json({ message: 'No user found' }, 400);
+			if (!existingUsername.length) return c.json({ message: 'No user found' }, 404);
 
 			const userId = Number(existingUsername?.[0]?.id);
 
@@ -185,10 +175,13 @@ export const itemsRoute = createRouter()
 					property_slug: properties.slug,
 					property_name: properties.name,
 					property_value: property_values.value,
+					property_boolean_value: property_values.boolean_value,
+					property_numeric_value: property_values.numeric_value,
 					imageUrl: items_images.url,
 				})
 				.from(items)
 				.innerJoin(subcategories, eq(subcategories.id, items.subcategory_id))
+				.innerJoin(categories, eq(categories.id, subcategories.category_id))
 				.innerJoin(addresses, eq(addresses.id, items.address_id))
 				.innerJoin(city, eq(city.id, addresses.city_id))
 				.innerJoin(province, eq(province.id, addresses.province_id))
@@ -200,7 +193,16 @@ export const itemsRoute = createRouter()
 					items_images,
 					and(eq(items_images.item_id, items.id), eq(items_images.order_position, 0), eq(items_images.size, 'medium')),
 				)
-				.where(and(eq(items.profile_id, profile.id), eq(items.published, true), eq(items.status, itemStatus.AVAILABLE)))
+				.where(
+					and(
+						eq(items.profile_id, profile.id),
+						eq(items.published, true),
+						eq(items.status, itemStatus.AVAILABLE),
+						eq(subcategories.published, true),
+						eq(categories.published, true),
+						isNull(items.deleted_at),
+					),
+				)
 				.orderBy(items.created_at);
 
 			// Group properties by item and organize by filter_slug
@@ -234,6 +236,10 @@ export const itemsRoute = createRouter()
 				// Add filter value to the appropriate filter_slug array
 				if (row.property_slug) {
 					const item = itemsMap.get(row.id);
+					const projectedPropertyValue =
+						row.property_value ??
+						(row.property_numeric_value === null ? undefined : String(row.property_numeric_value)) ??
+						(row.property_boolean_value === null ? undefined : String(row.property_boolean_value));
 
 					if (item && item.properties) {
 						// Initialize the array for this property_slug if it doesn't exist
@@ -242,8 +248,11 @@ export const itemsRoute = createRouter()
 						}
 
 						// Add the filter value to the array if it's not already there
-						if (row.property_value && !item.properties[row.property_slug]!.includes(row.property_value)) {
-							item.properties[row.property_slug]!.push(row.property_value);
+						if (
+							projectedPropertyValue !== undefined &&
+							!item.properties[row.property_slug]!.includes(projectedPropertyValue)
+						) {
+							item.properties[row.property_slug]!.push(projectedPropertyValue);
 						}
 					}
 				}

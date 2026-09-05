@@ -1,10 +1,11 @@
 import type { Context } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { createClient } from '../../database';
 import { properties } from '../../database/schemas/properties';
 import { subcategory_properties } from '../../database/schemas/subcategory_properties';
 import { property_values } from '../../database/schemas/properties_values';
+import { subcategories } from '../../database/schemas/subcategories';
 
 import type { AppBindings } from '../../lib/types';
 
@@ -17,7 +18,7 @@ export const getPropertiesByIdService = async (c: Context<AppBindings>, id: numb
 			.from(properties)
 			.where(eq(properties.id, Number(id)));
 
-		if (!propertiesList.length) return c.json({ message: 'Missing properties' }, 500);
+		if (!propertiesList.length) return c.json({ message: 'Missing properties' }, 404);
 
 		return c.json(propertiesList, 200);
 	} catch (error) {
@@ -46,7 +47,8 @@ export const getPropertiesBySubcategoryPropertiesIdService = async (c: Context<A
 		.from(subcategory_properties)
 		.innerJoin(properties, eq(subcategory_properties.property_id, properties.id))
 		.innerJoin(property_values, eq(property_values.property_id, properties.id))
-		.where(eq(subcategory_properties.subcategory_id, id));
+		.innerJoin(subcategories, eq(subcategory_properties.subcategory_id, subcategories.id))
+		.where(and(eq(subcategory_properties.subcategory_id, id), eq(subcategories.published, true)));
 
 	type PropertyRow = (typeof propertiesRequest)[number];
 
@@ -78,10 +80,12 @@ export const getPropertiesBySubcategoryPropertiesIdService = async (c: Context<A
 			};
 		}
 
-		let value: PropertyWithValues['options'][number]['value'] = row.fv_value;
-
-		if (row.fv_boolean_value) value = row.fv_boolean_value;
-		if (row.fv_number_value) value = row.fv_number_value;
+		const value =
+			row.fv_boolean_value !== null
+				? row.fv_boolean_value
+				: row.fv_number_value !== null
+					? row.fv_number_value
+					: row.fv_value;
 
 		propertiesLookup[row.property_id]?.options.push({
 			id: row.fv_id,

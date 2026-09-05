@@ -11,5 +11,10 @@ jobs:
 
     steps:
       - name: Call Hono endpoint
+        env:
+          CRON_ORIGIN: https://${{ secrets.SERVER_HOSTNAME }}
+          CRON_KEY: ${{ secrets.DAILY_ORDER_CHECK_SECRET_KEY }}
         run: |
-          curl -s -X GET "https://${{ secrets.SERVER_HOSTNAME }}/cron/expired-orders-check?key=${{ secrets.DAILY_ORDER_CHECK_SECRET_KEY }}"
+          curl --fail-with-body --silent --show-error --get \
+            --data-urlencode "key=${CRON_KEY}" \
+            "${CRON_ORIGIN}/cron/auth/expired-orders-check"

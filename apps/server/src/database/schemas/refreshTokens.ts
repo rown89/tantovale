@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 import { sql } from 'drizzle-orm';
 
 import { users } from './users';

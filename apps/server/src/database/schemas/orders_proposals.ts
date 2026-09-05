@@ -1,10 +1,11 @@
-import { relations } from 'drizzle-orm';
-import { pgTable, integer, timestamp, foreignKey, text, index } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { sql } from 'drizzle-orm';
+import { check, pgTable, integer, timestamp, text, index, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
 import { ordersProposalStatusEnum } from './enumerated_types';
 import { profiles } from './profiles';
+import { shipping_quotes } from './shipping_quotes';
 import { ORDER_PROPOSAL_PHASES } from './enumerated_values';
 
 export const orders_proposals = pgTable(
@@ -24,35 +25,26 @@ export const orders_proposals = pgTable(
 		payment_provider_charge: integer('payment_provider_charge').notNull(),
 		platform_charge: integer('platform_charge').notNull(),
 		shipping_label_id: text('shipping_label_id').notNull(),
+		shipping_quote_id: uuid('shipping_quote_id').references(() => shipping_quotes.id, {
+			onDelete: 'restrict',
+			onUpdate: 'cascade',
+		}),
+		shipping_price: integer('shipping_price'),
 		status: ordersProposalStatusEnum('status').notNull().default(ORDER_PROPOSAL_PHASES.pending),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
 	(table) => [
-		foreignKey({
-			columns: [table.item_id],
-			foreignColumns: [items.id],
-			name: 'orders_proposals_item_id_fkey',
-		}),
-		foreignKey({
-			columns: [table.profile_id],
-			foreignColumns: [profiles.id],
-			name: 'orders_proposals_profile_id_fkey',
-		}),
+		check(
+			'orders_proposals_pending_quote_check',
+			sql`${table.status} <> 'pending' OR (${table.shipping_quote_id} IS NOT NULL AND ${table.shipping_price} IS NOT NULL AND ${table.shipping_price} > 0)`,
+		),
 		index('orders_proposals_status_idx').on(table.status),
+		uniqueIndex('orders_proposals_pending_item_buyer_idx')
+			.on(table.item_id, table.profile_id)
+			.where(sql`${table.status} = 'pending'`),
 	],
 );
-
-export const orders_proposalsRelations = relations(orders_proposals, ({ one }) => ({
-	item: one(items, {
-		fields: [orders_proposals.item_id],
-		references: [items.id],
-	}),
-	profile: one(profiles, {
-		fields: [orders_proposals.profile_id],
-		references: [profiles.id],
-	}),
-}));
 
 export type SelectOrderProposal = typeof orders_proposals.$inferSelect;
 export type InsertOrderProposal = typeof orders_proposals.$inferInsert;

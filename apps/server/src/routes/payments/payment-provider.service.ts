@@ -7,41 +7,275 @@ import {
 	CreateGuestUserProps,
 	GetTransactionStatusResponse,
 	CreateTransactionWithBothUsersProps,
+	CancelGuestTransactionProps,
+	TrackGuestTransactionProps,
 } from './types';
+import {
+	trustapChargeResponseSchema,
+	trustapGuestUserResponseSchema,
+	trustapSupportedCarriersResponseSchema,
+	trustapTransactionResponseSchema,
+} from './provider.schemas';
+import { parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
+
+export type PaymentProviderOperation =
+	| 'create_guest_user'
+	| 'calculate_charge'
+	| 'create_transaction'
+	| 'fetch_transaction'
+	| 'cancel_transaction'
+	| 'list_supported_carriers'
+	| 'track_transaction'
+	| 'provider_request';
+
+export type PaymentProviderErrorCategory = 'http' | 'invalid_response' | 'network' | 'ambiguous';
+
+export class PaymentProviderError extends Error {
+	readonly provider = 'trustap' as const;
+
+	constructor(
+		message: string,
+		readonly operation: PaymentProviderOperation,
+		readonly category: PaymentProviderErrorCategory,
+	) {
+		super(message);
+		this.name = 'PaymentProviderError';
+	}
+}
+
+export class PaymentProviderHttpError extends PaymentProviderError {
+	constructor(
+		message: string,
+		readonly status: number,
+		operation: PaymentProviderOperation = 'provider_request',
+	) {
+		super(message, operation, 'http');
+		this.name = 'PaymentProviderHttpError';
+	}
+}
+
+export class PaymentProviderInvalidResponseError extends PaymentProviderError {
+	constructor(operation: PaymentProviderOperation) {
+		super('Payment provider returned an invalid response', operation, 'invalid_response');
+		this.name = 'PaymentProviderInvalidResponseError';
+	}
+}
+
+export class PaymentProviderNetworkError extends PaymentProviderError {
+	constructor(operation: PaymentProviderOperation) {
+		super('Payment provider request failed', operation, 'network');
+		this.name = 'PaymentProviderNetworkError';
+	}
+}
+
+export class PaymentProviderAmbiguousError extends PaymentProviderError {
+	constructor(
+		message = 'Payment provider transaction outcome requires reconciliation',
+		operation: PaymentProviderOperation = 'create_transaction',
+	) {
+		super(message, operation, 'ambiguous');
+		this.name = 'PaymentProviderAmbiguousError';
+	}
+}
+
+function providerSignal(): AbortSignal {
+	return AbortSignal.timeout(environment.PROVIDER_REQUEST_TIMEOUT_MS);
+}
+
+const deterministicCreateFailureStatuses = new Set([400, 401, 403, 404]);
+
+function carrierIdentity(value: string): string {
+	return value
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/gu, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/gu, '');
+}
+
+type ExpectedTrustapParticipants = { buyer_id: string; seller_id: string };
+
+function correlatedTrustapTransaction(
+	data: unknown,
+	expected?: ExpectedTrustapParticipants,
+): CreateTransactionResponse | undefined {
+	const parsed = trustapTransactionResponseSchema.safeParse(data);
+	if (!parsed.success) return undefined;
+	const buyerId = parsed.data.buyer_id ?? expected?.buyer_id;
+	const sellerId = parsed.data.seller_id ?? expected?.seller_id;
+	if (
+		!buyerId ||
+		!sellerId ||
+		(expected !== undefined && (buyerId !== expected.buyer_id || sellerId !== expected.seller_id))
+	) {
+		return undefined;
+	}
+	return { ...parsed.data, buyer_id: buyerId, seller_id: sellerId };
+}
+
+export function buildGuestPaymentUrl(transactionId: TrustapId, orderId: number): string {
+	const base = new URL(environment.PAYMENT_PROVIDER_PAY_PAGE_URL);
+	const basePath = base.pathname.replace(/\/$/u, '');
+	const transactionBase = basePath.endsWith('/online/transactions') ? basePath : `${basePath}/online/transactions`;
+	base.pathname = `${transactionBase}/${encodeURIComponent(String(transactionId))}/guest_pay`;
+	base.search = '';
+	const redirect = new URL('/auth/profile/orders', environment.POST_PAYMENT_REDIRECT_URL);
+	redirect.searchParams.set('highlight', String(orderId));
+	base.searchParams.set('redirect_uri', redirect.toString());
+	return base.toString();
+}
 
 export class PaymentProviderService {
 	private api_url = environment.PAYMENT_PROVIDER_API_URL;
 	private api_version = environment.PAYMENT_PROVIDER_API_VERSION;
 	private api_key = environment.PAYMENT_PROVIDER_API_KEY;
 
+	private authorization(): string {
+		return `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`;
+	}
+
+	async resolveSupportedCarrierCode(providerName: string): Promise<string> {
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/supported_carriers`, {
+				method: 'GET',
+				headers: { Authorization: this.authorization() },
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('list_supported_carriers');
+		}
+		if (!response.ok) {
+			throw new PaymentProviderHttpError(
+				'Payment provider supported carriers request failed',
+				response.status,
+				'list_supported_carriers',
+			);
+		}
+		let data: unknown;
+		try {
+			data = await response.json();
+		} catch {
+			throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		}
+		const parsed = trustapSupportedCarriersResponseSchema.safeParse(data);
+		if (!parsed.success) throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		const providerIdentity = carrierIdentity(providerName);
+		const carrier = parsed.data.find(
+			(candidate) =>
+				carrierIdentity(candidate.name) === providerIdentity || carrierIdentity(candidate.code) === providerIdentity,
+		);
+		if (!carrier) throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		return carrier.code;
+	}
+
+	async trackGuestTransaction({
+		transaction_id,
+		acting_provider_user_id,
+		buyer_provider_user_id,
+		carrier,
+		tracking_code,
+	}: TrackGuestTransactionProps): Promise<CreateTransactionResponse> {
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.api_url}/${this.api_version}/transactions/${transaction_id}/track_with_guest_seller`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: this.authorization(),
+						'Content-Type': 'application/json',
+						'Trustap-User': acting_provider_user_id,
+					},
+					body: JSON.stringify({ carrier, tracking_code }),
+					signal: providerSignal(),
+				},
+			);
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		if (!response.ok) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		const parsed = correlatedTrustapTransaction(data, {
+			buyer_id: buyer_provider_user_id,
+			seller_id: acting_provider_user_id,
+		});
+		if (
+			!parsed ||
+			parsed.id !== transaction_id ||
+			parsed.status !== 'tracked' ||
+			parsed.tracking?.carrier !== carrier ||
+			parsed.tracking.tracking_code !== tracking_code
+		) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		return parsed;
+	}
+
 	/**
 	 * Create a guest user for the payment provider
 	 */
 	async createGuestUser({ ...props }: CreateGuestUserProps): Promise<CreateUserGuestResponse> {
-		const { id, email, first_name, last_name, country_code, tos_acceptance } = props;
-		const response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-			body: JSON.stringify({
-				id,
-				email,
-				first_name,
-				last_name,
-				country_code,
-				tos_acceptance,
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error('Failed to create guest user');
+		const { email, first_name, last_name, country_code, tos_acceptance } = props;
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				body: JSON.stringify({
+					email,
+					first_name,
+					last_name,
+					country_code,
+					tos_acceptance,
+				}),
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('create_guest_user');
 		}
 
-		const data = (await response.json()) as { created_at: string; email: string; id: string };
+		if (!response.ok) {
+			throw new PaymentProviderHttpError(
+				'Payment provider guest user request failed',
+				response.status,
+				'create_guest_user',
+			);
+		}
 
-		return data;
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderInvalidResponseError('create_guest_user');
+		}
+		const parsed = trustapGuestUserResponseSchema.safeParse(data);
+		if (!parsed.success || parsed.data.email !== email) {
+			throw new PaymentProviderInvalidResponseError('create_guest_user');
+		}
+
+		return parsed.data;
 	}
 
 	/**
@@ -52,24 +286,39 @@ export class PaymentProviderService {
 	}: CalculateTransactionFeeProps): Promise<CalculateTransactionFeeResponse | undefined> {
 		const { price = 0, currency = 'eur', postage_fee = 0, use_hr_post = false } = props;
 
-		const response = await fetch(
-			`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
-			{
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.api_url}/${this.api_version}/charge?price=${price}&currency=${currency}&postage_fee=${postage_fee}&use_hr_post=${use_hr_post}`,
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+					},
+					signal: providerSignal(),
 				},
-			},
-		);
-
-		if (!response.ok) {
-			throw new Error('Failed to calculate transaction fee');
+			);
+		} catch {
+			throw new PaymentProviderNetworkError('calculate_charge');
 		}
 
-		const data = (await response.json()) as CalculateTransactionFeeResponse | undefined;
+		if (!response.ok) {
+			throw new PaymentProviderHttpError('Payment provider charge request failed', response.status, 'calculate_charge');
+		}
 
-		return data;
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderInvalidResponseError('calculate_charge');
+		}
+		const parsed = trustapChargeResponseSchema.safeParse(data);
+		if (!parsed.success || parsed.data.currency !== currency || parsed.data.price !== price) {
+			throw new PaymentProviderInvalidResponseError('calculate_charge');
+		}
+
+		return parsed.data;
 	}
 
 	/**
@@ -88,76 +337,175 @@ export class PaymentProviderService {
 			postage_fee,
 			charge,
 			charge_calculator_version,
+			features,
 		} = props;
+		const transactionFeatures = new Set(features);
+		if (postage_fee > 0) transactionFeatures.add('use_custom_postage_fee');
 
-		const response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
-			method: 'POST',
-			headers: {
-				'Trustap-User': seller_id,
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-			body: JSON.stringify({
-				seller_id,
-				buyer_id,
-				creator_role,
-				currency,
-				description,
-				price,
-				postage_fee,
-				charge,
-				charge_calculator_version,
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error('Failed to create transaction');
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/me/transactions/create_with_guest_user`, {
+				method: 'POST',
+				headers: {
+					'Trustap-User': creator_role === 'buyer' ? buyer_id : seller_id,
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				body: JSON.stringify({
+					seller_id,
+					buyer_id,
+					creator_role,
+					currency,
+					description,
+					price,
+					postage_fee,
+					charge,
+					charge_calculator_version,
+					...(transactionFeatures.size === 0 ? {} : { features: [...transactionFeatures] }),
+				}),
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderAmbiguousError();
 		}
 
-		const data = (await response.json()) as CreateTransactionResponse | undefined;
+		if (!response.ok) {
+			if (deterministicCreateFailureStatuses.has(response.status)) {
+				throw new PaymentProviderHttpError(
+					'Payment provider transaction request failed',
+					response.status,
+					'create_transaction',
+				);
+			}
+			throw new PaymentProviderAmbiguousError();
+		}
 
-		return data;
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderAmbiguousError();
+		}
+		const parsed = correlatedTrustapTransaction(data, { buyer_id, seller_id });
+		if (
+			!parsed ||
+			parsed.currency !== currency ||
+			parsed.price !== price ||
+			parsed.charge !== charge ||
+			parsed.charge_seller !== 0 ||
+			(postage_fee > 0 && (parsed.charge_postage_buyer !== postage_fee || parsed.charge_postage_client !== 0)) ||
+			parsed.description !== description
+		) {
+			throw new PaymentProviderAmbiguousError();
+		}
+
+		return parsed;
 	}
 
 	/**
 	 * Get transaction status
 	 */
-	async getTransactionStatus(transactionId: number): Promise<GetTransactionStatusResponse | undefined> {
-		const response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
-			method: 'GET',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
-			},
-		});
+	async getTransactionStatus(
+		transactionId: TrustapId,
+		expectedParticipants?: ExpectedTrustapParticipants,
+	): Promise<GetTransactionStatusResponse | undefined> {
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+				},
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('fetch_transaction');
+		}
 
 		if (!response.ok) {
-			throw new Error('Failed to get transaction status');
+			throw new PaymentProviderHttpError(
+				'Payment provider transaction fetch failed',
+				response.status,
+				'fetch_transaction',
+			);
 		}
 
-		const data = (await response.json()) as GetTransactionStatusResponse | undefined;
-
-		return data;
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderInvalidResponseError('fetch_transaction');
+		}
+		const parsed = correlatedTrustapTransaction(data, expectedParticipants);
+		if (!parsed || parsed.id !== transactionId) {
+			throw new PaymentProviderInvalidResponseError('fetch_transaction');
+		}
+		return parsed;
 	}
 
-	/**
-	 * Verify webhook signature (implement based on Trustap documentation)
-	 */
-	verifyWebhookSignature(payload: unknown, signature: string | undefined): boolean {
-		// TODO: Implement webhook signature verification based on Trustap documentation
-		// This is a placeholder - you should implement proper signature verification
-		if (!signature) {
-			console.warn('No webhook signature provided');
-			return false;
+	async cancelGuestTransaction({
+		transaction_id,
+		acting_provider_user_id,
+		buyer_id,
+		seller_id,
+		currency,
+		description,
+		price,
+		charge,
+		charge_seller,
+	}: CancelGuestTransactionProps): Promise<CreateTransactionResponse> {
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.api_url}/${this.api_version}/transactions/${transaction_id}/cancel_with_guest_user`,
+				{
+					method: 'POST',
+					headers: {
+						'Trustap-User': acting_provider_user_id,
+						'Content-Type': 'application/json',
+						Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
+					},
+					signal: providerSignal(),
+				},
+			);
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
 		}
-
-		// Example implementation (adjust based on Trustap's signature method):
-		// const expectedSignature = crypto
-		//   .createHmac('sha256', this.webhook_secret)
-		//   .update(JSON.stringify(payload))
-		//   .digest('hex');
-		// return signature === expectedSignature;
-
-		return true; // Placeholder - implement proper verification
+		if (!response.ok) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
+		}
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
+		}
+		const parsed = correlatedTrustapTransaction(data, { buyer_id, seller_id });
+		if (
+			!parsed ||
+			parsed.id !== transaction_id ||
+			parsed.status !== 'cancelled' ||
+			parsed.currency !== currency ||
+			parsed.description !== description ||
+			parsed.price !== price ||
+			parsed.charge !== charge ||
+			parsed.charge_seller !== charge_seller
+		) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider cancellation outcome requires reconciliation',
+				'cancel_transaction',
+			);
+		}
+		return parsed;
 	}
 }

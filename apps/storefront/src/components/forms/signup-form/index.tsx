@@ -44,7 +44,7 @@ export default function SignupForm() {
 
 			router.replace('/');
 		}
-	}, [state]);
+	}, [router, state]);
 
 	return (
 		<div className='container mx-auto flex h-full items-center justify-center p-2 sm:h-[calc(100vh-56px)] xl:p-0'>

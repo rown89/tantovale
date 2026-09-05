@@ -14,6 +14,7 @@
 		"outDir": "./dist",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"types": ["node", "vitest/globals"],
 
 		"lib": ["esnext"],
 		"jsx": "react-jsx",

@@ -22,6 +22,8 @@ import { ShareSocialModal } from '@workspace/ui/components/social-share-dialog/s
 import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 
 import { useSellingItems } from './hooks';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
+import { useAuth } from '#providers/auth-providers';
 
 export interface Item {
 	id: number;
@@ -32,6 +34,7 @@ export interface Item {
 }
 
 export default function UserSellingItemsComponent() {
+	const { user } = useAuth();
 	const [filters, setFilters] = useState<{
 		publishedType: 'published' | 'unpublished';
 	}>({
@@ -39,7 +42,8 @@ export default function UserSellingItemsComponent() {
 	});
 
 	const { data, isLoading, isError, refetch } = useQuery({
-		queryKey: ['user-selling-items', filters],
+		queryKey: privateQueryKeys.sellingItems(user?.profile_id, filters.publishedType),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.items.auth.user.selling_items.$post({
 				json: {

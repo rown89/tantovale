@@ -3,7 +3,12 @@
 import { client } from '@workspace/server/client-rpc';
 import refreshTokens from '../utils/refreshTokens';
 import { useRouter } from 'next/navigation';
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { shouldRemovePrivateQuery } from '@workspace/shared/utils/private-query-keys';
+import useTantovaleStore from '#stores';
+import { commitClientIdentity, logoutClientSession } from '#utils/client-logout';
+import { initializeAuthSession } from '#utils/auth-initialization';
 
 export interface User {
 	id: number;
@@ -26,62 +31,89 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ isLogged, children }: { isLogged: boolean; children: ReactNode }) => {
 	const router = useRouter();
-	const [user, setUser] = useState<User | null>(null);
+	const queryClient = useQueryClient();
+	const [user, setUserState] = useState<User | null>(null);
+	const userRef = useRef<User | null>(null);
+	const authGenerationRef = useRef(0);
 	const [loadingUser, setLoadingUser] = useState(true);
+	const commitIdentity = useCallback((nextIdentity: User | null) => {
+		commitClientIdentity({
+			currentIdentity: userRef.current,
+			nextIdentity,
+			resetPrivateCommerceState: useTantovaleStore.getState().resetPrivateCommerceState,
+			commit: (identity) => {
+				userRef.current = identity;
+				setUserState(identity);
+			},
+		});
+	}, []);
+	const setUser = useCallback<React.Dispatch<React.SetStateAction<User | null>>>(
+		(nextAction) => {
+			authGenerationRef.current += 1;
+			const nextIdentity = typeof nextAction === 'function' ? nextAction(userRef.current) : nextAction;
+			commitIdentity(nextIdentity);
+		},
+		[commitIdentity],
+	);
 
-	async function initializeAuth() {
-		try {
-			// Attempt to verify the user with the current token.
-			let res = await client.verify.$get({
-				credentials: 'include',
-			});
+	const logout = useCallback(() => {
+		authGenerationRef.current += 1;
+		logoutClientSession({
+			queryClient,
+			resetPrivateCommerceState: useTantovaleStore.getState().resetPrivateCommerceState,
+			clearIdentity: () => {
+				userRef.current = null;
+				setUserState(null);
+			},
+			navigateToLogout: () => router.push('/api/logout'),
+		});
+		setLoadingUser(false);
+	}, [queryClient, router]);
 
-			// If verification fails, attempt to refresh the token.
-			if (!res.ok) {
-				const refreshed = await refreshTokens();
+	useEffect(() => {
+		queryClient.removeQueries({
+			predicate: ({ queryKey }) => shouldRemovePrivateQuery(queryKey, user?.profile_id),
+		});
+	}, [queryClient, user?.profile_id]);
 
-				// If refresh fails, log out the user.
-				if (!refreshed) logout();
-
-				// After a successful refresh, try verifying again.
-				res = await client.verify.$get({
-					credentials: 'include',
+	const initializeAuth = useCallback(
+		async (generation: number) => {
+			const isCurrent = () => authGenerationRef.current === generation;
+			try {
+				await initializeAuthSession<User>({
+					verify: () => client.verify.$get({ credentials: 'include' }),
+					refresh: refreshTokens,
+					logout,
+					logoutBackend: () => client.logout.auth.$post({ credentials: 'include' }),
+					commit: commitIdentity,
+					isCurrent,
 				});
+			} catch (error) {
+				if (isCurrent()) {
+					console.error('Error during authentication initialization:', error);
+					commitIdentity(null);
+				}
+			} finally {
+				if (isCurrent()) setLoadingUser(false);
 			}
-
-			// If verification is ok set the user
-			if (res.ok) {
-				const data = await res.json();
-
-				setUser(data.user);
-			} else {
-				// If verification still fails, log out.
-				await client.logout.auth.$post({
-					credentials: 'include',
-				});
-
-				setUser(null);
-			}
-		} catch (error) {
-			console.error('Error during authentication initialization:', error);
-			setUser(null);
-		} finally {
-			setLoadingUser(false);
-		}
-	}
-
-	function logout() {
-		setUser(null);
-		router.push('/api/logout');
-	}
+		},
+		[commitIdentity, logout],
+	);
 
 	useEffect(() => {
 		if (isLogged) {
-			initializeAuth();
+			const generation = authGenerationRef.current + 1;
+			authGenerationRef.current = generation;
+			setLoadingUser(true);
+			void initializeAuth(generation);
+			return () => {
+				if (authGenerationRef.current === generation) authGenerationRef.current += 1;
+			};
 		} else {
+			authGenerationRef.current += 1;
 			setLoadingUser(false);
 		}
-	}, [isLogged]);
+	}, [initializeAuth, isLogged]);
 
 	return <AuthContext.Provider value={{ user, loadingUser, setUser, logout }}>{children}</AuthContext.Provider>;
 };

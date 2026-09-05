@@ -1,0 +1,15 @@
+export { addressesOpenApi } from './addresses';
+export { authenticationOpenApi } from './authentication';
+export { catalogOpenApi } from './catalog';
+export { chatOpenApi } from './chat';
+export { cronOpenApi } from './cron';
+export { documentationOpenApi } from './documentation';
+export { favoritesOpenApi } from './favorites';
+export { itemsOpenApi } from './items';
+export { ordersOpenApi } from './orders';
+export { platformCostsOpenApi } from './platform-costs';
+export { profilesOpenApi } from './profiles';
+export { proposalsOpenApi } from './proposals';
+export { shippingOpenApi } from './shipping';
+export { uploadsOpenApi } from './uploads';
+export { webhooksOpenApi } from './webhooks';

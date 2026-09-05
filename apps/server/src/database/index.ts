@@ -1,10 +1,10 @@
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import * as schema from './schemas/schema';
+import { relations } from './schemas/relations';
 import { environment } from '#utils/constants';
 
 export type DrizzleClient = {
-	db: NodePgDatabase<typeof schema>;
+	db: NodePgDatabase<typeof relations>;
 	client: typeof pg.Pool;
 };
 
@@ -21,8 +21,9 @@ const pool = new pg.Pool(dbConnection);
 export function createClient() {
 	const client = pool;
 
-	const db = drizzle(client, {
-		schema,
+	const db = drizzle({
+		client,
+		relations,
 		// logger: new DefaultLogger({ writer: new ConsoleLogWriter() }),
 	});
 

@@ -5,7 +5,9 @@ import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { getShippingCost } from '#queries/get-shipping-cost';
 import useTantovaleStore from '#stores';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
+import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -20,23 +22,50 @@ import {
 import { Label } from '@workspace/ui/components/label';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { toast } from 'sonner';
+import { isCommerceActionReady, platformCostsQueryKey, shippingQuoteQueryKey } from '#utils/commerce-query-state';
+import { buyNowRequestMatches, captureBuyNowRequest } from '#stores/buy-now-store';
+import {
+	BuyNowPaymentActionHandle,
+	finishBuyNowAction,
+	scheduleBuyNowPaymentAction,
+} from '#utils/buy-now-payment-action';
 
 export function BuyNowDialog() {
 	const { user } = useAuth();
-
 	const { handleBuyNow, item, isBuyNowModalOpen, isCreatingOrder, setIsBuyNowModalOpen } = useTantovaleStore();
+	const pendingPaymentAction = useRef<BuyNowPaymentActionHandle | null>(null);
+	useEffect(
+		() => () => {
+			pendingPaymentAction.current?.cancel();
+			pendingPaymentAction.current = null;
+		},
+		[],
+	);
+	const { userAddress, isUserAddressLoading, isUserAddressError, isUserAddressFetching } = useAddressesRetrieval({
+		profileId: user?.profile_id,
+		status: 'active',
+		enabled: isBuyNowModalOpen && !!user,
+	});
 
 	const userIsNotSeller = !!user && !!item && user.profile_id !== item.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item?.id && !!item?.price;
 	const itemId = item?.id;
 	const itemPrice = item?.price;
+	const activeAddressId = userAddress?.[0]?.id;
+	const canQuoteShipping = hasMandatoryArguments && !!activeAddressId && !isUserAddressLoading && !isUserAddressError;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
+		isFetching: isFetchingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', itemId],
+		queryKey: shippingQuoteQueryKey({
+			flow: 'buy_now',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
+			itemId,
+		}),
 		queryFn: async () => {
 			if (!itemId) return null;
 
@@ -44,16 +73,26 @@ export function BuyNowDialog() {
 
 			return shippingCost;
 		},
-		enabled: isBuyNowModalOpen && hasMandatoryArguments,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		enabled: isBuyNowModalOpen && canQuoteShipping,
+		staleTime: 10 * 60 * 1_000,
+		refetchOnMount: true,
 	});
 
 	const {
 		data: platformsCosts,
 		isLoading: isLoadingPlatformsCosts,
+		isFetching: isFetchingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', shippingCost, itemId, itemPrice],
+		queryKey: platformCostsQueryKey({
+			flow: 'buy_now',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
+			itemId,
+			price: itemPrice,
+			shippingQuoteId: shippingCost?.shipping_quote_id,
+			shippingAmount: shippingCost?.amount,
+		}),
 		queryFn: async () => {
 			if (!itemPrice) return null;
 
@@ -63,8 +102,23 @@ export function BuyNowDialog() {
 
 			return platformsCosts;
 		},
-		enabled: isBuyNowModalOpen && hasMandatoryArguments && !!shippingCost,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		enabled: isBuyNowModalOpen && canQuoteShipping && !!shippingCost,
+		staleTime: 10 * 60 * 1_000,
+	});
+	const canCreateOrder = isCommerceActionReady({
+		hasMandatoryArguments,
+		canQuoteShipping,
+		activeAddressId,
+		hasShippingQuote: !!shippingCost,
+		hasPlatformCosts: !!platformsCosts,
+		isShippingLoading: isLoadingShippingCost,
+		isPlatformLoading: isLoadingPlatformsCosts,
+		isAddressFetching: isUserAddressFetching,
+		isShippingFetching: isFetchingShippingCost,
+		isPlatformFetching: isFetchingPlatformsCosts,
+		hasShippingError: !!errorShippingCost,
+		hasPlatformError: !!errorPlatformsCosts,
+		isMutating: isCreatingOrder,
 	});
 
 	if (!item) return null;
@@ -152,35 +206,37 @@ export function BuyNowDialog() {
 				</div>
 				<DialogFooter>
 					<Button
-						disabled={isLoadingPlatformsCosts || isLoadingShippingCost || !!errorShippingCost || !!errorPlatformsCosts}
+						disabled={!canCreateOrder}
 						onClick={async () => {
-							try {
-								const response = await handleBuyNow(item.id);
-								const { payment_url } = response;
-
-								if (payment_url) {
-									toast.success('Order created successfully!', {
-										description: 'Please wait while we redirect you to the payment page.',
-										duration: 8000,
+							pendingPaymentAction.current?.cancel();
+							const requestPromise = handleBuyNow(item.id);
+							const requestSnapshot = captureBuyNowRequest(useTantovaleStore.getState());
+							const requestIsCurrent = () => buyNowRequestMatches(useTantovaleStore.getState(), requestSnapshot);
+							await finishBuyNowAction({
+								request: requestPromise,
+								isCurrent: requestIsCurrent,
+								onPaymentUrl: (paymentUrl) => {
+									pendingPaymentAction.current = scheduleBuyNowPaymentAction({
+										paymentUrl,
+										isCurrent: requestIsCurrent,
+										subscribe: (listener) => useTantovaleStore.subscribe(listener),
+										onPending: () =>
+											toast.success('Order created successfully!', {
+												description: 'Please wait while we redirect you to the payment page.',
+												duration: 8000,
+											}),
+										onCancel: (notificationId) => toast.dismiss(notificationId),
+										open: (url) => window.open(url, '_blank', 'noopener,noreferrer'),
 									});
-
-									setTimeout(() => {
-										window.open(payment_url, '_blank');
-									}, 3000);
-								} else {
+								},
+								onError: () => {
 									toast.error('Oops!', {
 										description: 'Error creating order, please try again later.',
 										duration: 8000,
 									});
-								}
-							} catch {
-								toast.error('Oops!', {
-									description: 'Error creating order, please try again later.',
-									duration: 8000,
-								});
-							} finally {
-								setIsBuyNowModalOpen(false);
-							}
+								},
+								close: () => setIsBuyNowModalOpen(false),
+							});
 						}}>
 						{!isCreatingOrder ? 'Add to Orders' : <Spinner size='small' className='text-white' />}
 					</Button>

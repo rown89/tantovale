@@ -1,9 +1,7 @@
 import { pgTable, varchar, numeric, integer } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-import { relations } from 'drizzle-orm';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { countries } from './countries';
-import { cities } from './cities';
 
 export const states = pgTable('states', {
 	id: integer('id').primaryKey().notNull(),
@@ -20,14 +18,6 @@ export const states = pgTable('states', {
 	latitude: numeric('latitude', { precision: 10, scale: 8 }),
 	longitude: numeric('longitude', { precision: 11, scale: 8 }),
 });
-
-export const statesRelations = relations(states, ({ one, many }) => ({
-	country: one(countries, {
-		fields: [states.country_id],
-		references: [countries.id],
-	}),
-	cities: many(cities),
-}));
 
 export type SelectState = typeof states.$inferSelect;
 export type InsertState = typeof states.$inferInsert;

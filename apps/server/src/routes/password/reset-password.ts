@@ -1,53 +1,89 @@
-import { verify } from 'hono/jwt';
 import { env } from 'hono/adapter';
-import { eq } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod/v4';
+import { describeRoute } from 'hono-openapi';
 
+import { passwordSchema } from '../../extended_schemas/password';
 import { hashPassword } from '../../lib/password';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
 import { createClient } from '../../database';
-import { users, password_reset_tokens } from '../../database/schemas/schema';
+import { users, password_reset_tokens, refreshTokens } from '../../database/schemas/schema';
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
-import { authMiddleware } from '../../middlewares/authMiddleware';
+import { findVerifiedResetToken } from './reset-token.service';
+import { authenticationOpenApi } from '../../openapi/routes';
+
+const resetPasswordSchema = z.object({
+	token: z.string().min(1),
+	newPassword: passwordSchema,
+});
 
 export const passwordResetRoute = createRouter()
 	// Update Password
-	.post(`/${authPath}/reset`, authMiddleware, async (c) => {
+	.post(
+		`/${authPath}/reset`,
+		describeRoute(authenticationOpenApi.resetPassword),
+		zValidator('json', resetPasswordSchema),
+		async (c) => {
 		const { RESET_TOKEN_SECRET } = env<{
 			RESET_TOKEN_SECRET: string;
 		}>(c);
 
-		const { token, newPassword } = await c.req.json();
+		const { token, newPassword } = c.req.valid('json');
 
-		if (!token || !newPassword) {
-			return c.json({ error: 'Token and new password required' }, 400);
+		let storedToken;
+		try {
+			storedToken = await findVerifiedResetToken(token, RESET_TOKEN_SECRET);
+		} catch {
+			return c.json({ error: 'Unable to reset password' }, 500);
+		}
+		if (!storedToken) {
+			return c.json({ error: 'Invalid or expired token' }, 400);
 		}
 
 		try {
-			const payload = await verify(token, RESET_TOKEN_SECRET);
-
+			const hashedPassword = await hashPassword(newPassword);
 			const { db } = createClient();
-			// Check if token exists in DB
-			const storedToken = await db.query.password_reset_tokens.findFirst({
-				where: (tbl) => eq(tbl.token, token),
+			const updated = await db.transaction(async (tx) => {
+				await acquireUserTransactionLock(tx, storedToken.user_id);
+				const consumed = await tx
+					.delete(password_reset_tokens)
+					.where(
+						and(
+							eq(password_reset_tokens.token, token),
+							eq(password_reset_tokens.user_id, storedToken.user_id),
+							gt(password_reset_tokens.expires_at, new Date()),
+						),
+					)
+					.returning({ userId: password_reset_tokens.user_id });
+
+				if (consumed.length !== 1 || consumed[0]?.userId !== storedToken.user_id) {
+					return false;
+				}
+
+				const changed = await tx
+					.update(users)
+					.set({ password: hashedPassword, email_verified: true, updated_at: new Date() })
+					.where(eq(users.id, storedToken.user_id))
+					.returning({ id: users.id, username: users.username });
+
+				if (changed.length !== 1) {
+					throw new Error('Reset user no longer exists');
+				}
+
+				await tx.delete(refreshTokens).where(eq(refreshTokens.username, changed[0]!.username));
+
+				return true;
 			});
 
-			if (!storedToken) {
+			if (!updated) {
 				return c.json({ error: 'Invalid or expired token' }, 400);
 			}
 
-			const hashedPassword = await hashPassword(newPassword);
-
-			// Update user password
-			await db
-				.update(users)
-				.set({ password: hashedPassword })
-				.where(eq(users.id, Number(payload.id)));
-
-			// Delete reset token from DB
-			await db.delete(password_reset_tokens).where(eq(password_reset_tokens.token, token));
-
 			return c.json({ message: 'Password updated successfully!' });
-		} catch (error) {
-			return c.json({ error: 'Invalid or expired token' }, 400);
+		} catch {
+			return c.json({ error: 'Unable to reset password' }, 500);
 		}
-	});
+		},
+	);

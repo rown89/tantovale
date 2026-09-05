@@ -1,6 +1,14 @@
 import type { Config } from 'drizzle-kit';
 import { defineConfig } from 'drizzle-kit';
-import { dbConnection } from '.';
+import { environment } from '../utils/constants';
+
+const dbConnection = {
+	host: environment.DATABASE_HOST,
+	port: environment.DATABASE_PORT,
+	user: environment.POSTGRES_USER,
+	password: environment.POSTGRES_PASSWORD,
+	database: environment.POSTGRES_DB,
+};
 
 export default defineConfig({
 	dialect: 'postgresql',
@@ -16,7 +24,6 @@ export default defineConfig({
 	},
 
 	migrations: {
-		prefix: 'timestamp',
 		table: '__drizzle_migrations__',
 		schema: 'public',
 	},

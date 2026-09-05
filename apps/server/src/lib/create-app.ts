@@ -9,6 +9,14 @@ import { parseEnv } from '../env';
 
 import type { AppBindings } from './types';
 
+const EXACT_AUTH_DISPATCH_BYPASSES = new Set([
+	'/refresh/auth',
+	'/logout/auth',
+	'/password/auth/reset-verify-token',
+	'/password/auth/reset',
+]);
+const CRON_AUTH_DISPATCH_PREFIX = '/cron/auth/';
+
 export function createRouter() {
 	return new Hono<AppBindings>();
 }
@@ -17,7 +25,7 @@ export function createApp() {
 	const app = createRouter();
 
 	app.use((c, next) => {
-		c.env = parseEnv(Object.assign(c.env || {}, process.env));
+		c.env = parseEnv(Object.assign(c.env || {}, process.env), { runtime: true });
 		return next();
 	});
 
@@ -49,9 +57,16 @@ export function createApp() {
 	// paths that require authorization starts with authPath
 	// app.use(`/${authPath}/*`, authMiddleware);
 
-	// Apply authMiddleware to any route containing authPath
+	// Refresh rotates explicitly and logout revokes explicitly, each exactly once per request.
+	// Password reset verifies its one-time token. Scheduled jobs below the exact cron prefix
+	// use their dedicated per-job secrets; all other paths containing authPath keep the
+	// legacy global cookie-protection contract.
 	app.use((c, next) => {
-		if (c.req.path.includes(authPath)) {
+		if (
+			!EXACT_AUTH_DISPATCH_BYPASSES.has(c.req.path) &&
+			!c.req.path.startsWith(CRON_AUTH_DISPATCH_PREFIX) &&
+			c.req.path.includes(authPath)
+		) {
 			return authMiddleware(c, next);
 		}
 		return next();

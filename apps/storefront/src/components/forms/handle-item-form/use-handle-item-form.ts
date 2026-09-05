@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AnyFieldApi, useForm } from '@tanstack/react-form';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -136,18 +136,21 @@ export function useHandleItemForm({ subcategory, subCatProperties, defaultValues
 		form.setFieldValue('shipping.item_height', 0);
 	}
 
-	function handleSubCategorySelect(subcategory?: Partial<Category>) {
-		if (!subcategory) return;
+	const handleSubCategorySelect = useCallback(
+		(subcategory?: Partial<Category>) => {
+			if (!subcategory) return;
 
-		setSelectedSubCategory(subcategory);
-		const field = form.getFieldValue('commons.subcategory_id');
+			setSelectedSubCategory(subcategory);
+			const field = form.getFieldValue('commons.subcategory_id');
 
-		if (subcategory?.id && field && typeof field === 'object' && 'setValue' in field) {
-			(field as { setValue: (value: number) => void }).setValue(subcategory.id);
-		}
+			if (subcategory?.id && field && typeof field === 'object' && 'setValue' in field) {
+				(field as { setValue: (value: number) => void }).setValue(subcategory.id);
+			}
 
-		handleQueryParamChange('cat', subcategory?.id?.toString() ?? '', searchParams, router);
-	}
+			handleQueryParamChange('cat', subcategory?.id?.toString() ?? '', searchParams, router);
+		},
+		[form, router, searchParams],
+	);
 
 	function handleEasyPayChange(checked: boolean, field: AnyFieldApi, propertiesField: AnyFieldApi) {
 		// Update the Easy Pay form field value

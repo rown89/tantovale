@@ -1,6 +1,5 @@
-import { pgTable, integer, timestamp, index } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { pgTable, integer, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { profiles } from './profiles';
 import { items } from './items';
@@ -21,20 +20,9 @@ export const profiles_items_favorites = pgTable(
 	(table) => [
 		index('profiles_favorites_profile_id_idx').on(table.profile_id),
 		index('profiles_favorites_item_id_idx').on(table.item_id),
-		index('profiles_favorites_unique_profile_item_idx').on(table.profile_id, table.item_id),
+		uniqueIndex('profiles_favorites_unique_profile_item_idx').on(table.profile_id, table.item_id),
 	],
 );
-
-export const profiles_items_favoritesRelations = relations(profiles_items_favorites, ({ one }) => ({
-	profile: one(profiles, {
-		fields: [profiles_items_favorites.profile_id],
-		references: [profiles.id],
-	}),
-	item: one(items, {
-		fields: [profiles_items_favorites.item_id],
-		references: [items.id],
-	}),
-}));
 
 export type SelectUserFavorite = typeof profiles_items_favorites.$inferSelect;
 export type InsertUserFavorite = typeof profiles_items_favorites.$inferInsert;

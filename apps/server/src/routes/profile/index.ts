@@ -1,6 +1,7 @@
 import { count, eq, and } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { zValidator } from '@hono/zod-validator';
+import { describeRoute } from 'hono-openapi';
 
 import { createClient } from '../../database';
 import { addresses, cities, items, profiles, users } from '../../database/schemas/schema';
@@ -8,10 +9,11 @@ import { createRouter } from '../../lib/create-app';
 import { UserProfileSchema } from '../../extended_schemas/users';
 import { authPath } from '../../utils/constants';
 import { authMiddleware } from '../../middlewares/authMiddleware';
+import { profilesOpenApi } from '../../openapi/routes';
 
 export const profileRoute = createRouter()
 	// get authenticated user
-	.get(`/${authPath}`, authMiddleware, async (c) => {
+	.get(`/${authPath}`, describeRoute(profilesOpenApi.detail), authMiddleware, async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
@@ -36,7 +38,7 @@ export const profileRoute = createRouter()
 			})
 			.from(users)
 			.innerJoin(profiles, eq(users.id, profiles.user_id))
-			.innerJoin(addresses, eq(addresses.profile_id, profiles.id))
+			.innerJoin(addresses, and(eq(addresses.profile_id, profiles.id), eq(addresses.status, 'active')))
 			.innerJoin(city, eq(addresses.city_id, city.id))
 			.innerJoin(province, eq(addresses.province_id, province.id))
 			.where(eq(users.id, user.id))
@@ -48,7 +50,11 @@ export const profileRoute = createRouter()
 
 		return c.json(userProfileData, 200);
 	})
-	.get(`/${authPath}/profile_active_address_id`, authMiddleware, async (c) => {
+	.get(
+		`/${authPath}/profile_active_address_id`,
+		describeRoute(profilesOpenApi.activeAddress),
+		authMiddleware,
+		async (c) => {
 		const user = c.var.user;
 
 		const { db } = createClient();
@@ -75,9 +81,10 @@ export const profileRoute = createRouter()
 			console.error('Error checking user address:', error);
 			return c.json({ message: 'Failed to check address status' }, 500);
 		}
-	})
+		},
+	)
 	// get by username (compact data)
-	.get('/compact/:username', async (c) => {
+	.get('/compact/:username', describeRoute(profilesOpenApi.compact), async (c) => {
 		const { username } = c.req.param();
 
 		const { db } = createClient();
@@ -110,7 +117,7 @@ export const profileRoute = createRouter()
 					province_name: province.name,
 				})
 				.from(profiles)
-				.innerJoin(addresses, eq(addresses.profile_id, profiles.id))
+				.innerJoin(addresses, and(eq(addresses.profile_id, profiles.id), eq(addresses.status, 'active')))
 				.innerJoin(city, eq(addresses.city_id, city.id))
 				.innerJoin(province, eq(addresses.province_id, province.id))
 				.where(eq(profiles.user_id, userData.id));
@@ -148,6 +155,7 @@ export const profileRoute = createRouter()
 	// update profile
 	.put(
 		`/${authPath}`,
+		describeRoute(profilesOpenApi.update),
 		authMiddleware,
 		zValidator(
 			'json',

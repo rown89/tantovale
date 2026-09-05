@@ -1,13 +1,13 @@
 import { env } from 'hono/adapter';
-import { verify } from 'hono/jwt';
-
 import { createRouter } from '../../lib/create-app';
 import { authPath } from '../../utils/constants';
-import { authMiddleware } from '../../middlewares/authMiddleware';
+import { findVerifiedResetToken } from './reset-token.service';
+import { describeRoute } from 'hono-openapi';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const passwordResetVerifyToken = createRouter()
 	// Verify Reset Token
-	.get(`/${authPath}/reset-verify-token`, authMiddleware, async (c) => {
+	.get(`/${authPath}/reset-verify-token`, describeRoute(authenticationOpenApi.verifyResetToken), async (c) => {
 		const { RESET_TOKEN_SECRET } = env<{
 			RESET_TOKEN_SECRET: string;
 		}>(c);
@@ -17,9 +17,13 @@ export const passwordResetVerifyToken = createRouter()
 		if (!token) return c.json({ error: 'Token required' }, 400);
 
 		try {
-			const payload = await verify(token, RESET_TOKEN_SECRET);
-			return c.json({ valid: true, id: payload.id });
-		} catch (error) {
-			return c.json({ error: 'Invalid or expired token' }, 400);
+			const storedToken = await findVerifiedResetToken(token, RESET_TOKEN_SECRET);
+			if (!storedToken) {
+				return c.json({ error: 'Invalid or expired token' }, 400);
+			}
+
+			return c.json({ valid: true, id: storedToken.user_id });
+		} catch {
+			return c.json({ error: 'Unable to verify reset token' }, 500);
 		}
 	});

@@ -10,6 +10,8 @@ import { client } from '@workspace/server/client-rpc';
 import { ChatMessageSchema } from '@workspace/server/extended_schemas';
 
 import { FieldInfo } from '../../forms/utils/field-info';
+import { useAuth } from '#providers/auth-providers';
+import { createChatMessageMutationOptions } from './chat-message-mutation';
 
 interface ChatInputProps {
 	chatRoomId: number;
@@ -17,21 +19,22 @@ interface ChatInputProps {
 
 export function ChatInput({ chatRoomId }: ChatInputProps) {
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 
 	const sendMessage = useMutation({
-		mutationFn: async (message: string) => {
-			await client.chat.auth.rooms[':roomId'].messages.$post({
-				param: {
-					roomId: chatRoomId?.toString(),
-				},
-				json: { message },
-			});
-		},
-		onSuccess: () => {
-			form.reset();
-
-			queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
-		},
+		...createChatMessageMutationOptions({
+			profileId: user?.profile_id,
+			roomId: chatRoomId,
+			post: (message) =>
+				client.chat.auth.rooms[':roomId'].messages.$post({
+					param: {
+						roomId: chatRoomId.toString(),
+					},
+					json: { message },
+				}),
+			queryClient,
+			reset: () => form.reset(),
+		}),
 		onError: (error) => {
 			console.error('Failed to send message:', error);
 		},

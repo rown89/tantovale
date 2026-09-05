@@ -1,0 +1,20 @@
+name: Daily Trustap Transactions Sync
+
+on:
+  schedule:
+    - cron: '15 5 * * *' # Every day at 5:15 UTC
+  workflow_dispatch: # optional, to run manually
+
+jobs:
+  ping-cron-endpoint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Reconcile Trustap transactions
+        env:
+          CRON_ORIGIN: https://${{ secrets.SERVER_HOSTNAME }}
+          CRON_KEY: ${{ secrets.TRANSACTIONS_SYNC_SECRET_KEY }}
+        run: |
+          curl --fail-with-body --silent --show-error --get \
+            --data-urlencode "key=${CRON_KEY}" \
+            "${CRON_ORIGIN}/cron/auth/sync-transactions"

@@ -1,6 +1,6 @@
 'use server';
 
-import { UserProfileSchema } from '@workspace/server/extended_schemas';
+import { SignupUserProfileSchema } from '@workspace/server/extended_schemas';
 import { client } from '@workspace/server/client-rpc';
 
 import { SignupActionResponse, SignupFormData } from './types';
@@ -21,7 +21,7 @@ export async function signupAction(
 			marketing_policy: Boolean(formData.get('marketing_policy')) as boolean,
 		};
 
-		const validatedFields = UserProfileSchema.safeParse(rawData);
+		const validatedFields = SignupUserProfileSchema.safeParse(rawData);
 
 		if (!validatedFields.success) {
 			return {
@@ -36,13 +36,11 @@ export async function signupAction(
 			json: validatedFields.data,
 		});
 
-		const data = await response?.json();
-
 		if (response?.status === 422) {
 			return {
 				success: false,
 				inputs: rawData,
-				message: data?.message || 'An error occurred',
+				message: 'Unable to create this account',
 				errors: {
 					username: ['Username already exist'],
 				},
@@ -51,7 +49,7 @@ export async function signupAction(
 			return {
 				success: false,
 				inputs: rawData,
-				message: data?.message || 'An error occurred',
+				message: 'Unable to create this account',
 				errors: {
 					email: ['Email already exist'],
 				},
@@ -60,19 +58,25 @@ export async function signupAction(
 			return {
 				success: false,
 				inputs: rawData,
-				message: data?.message || 'Internal Server Error',
+				message: 'Internal Server Error',
 			};
-		} else {
+		} else if (!response?.ok) {
 			return {
-				success: true,
+				success: false,
 				inputs: rawData,
-				message: 'Signup successful! Check your email for verification.',
+				message: 'Unable to complete signup. Please check your details and try again.',
 			};
 		}
-	} catch (error) {
+
+		return {
+			success: true,
+			inputs: rawData,
+			message: 'Signup successful! Check your email for verification.',
+		};
+	} catch {
 		return {
 			success: false,
-			message: `An unexpected error occurred with signup form: \n ${error instanceof Error ? error.message : 'Unknown error'}`,
+			message: 'An unexpected error occurred with signup form',
 		};
 	}
 }

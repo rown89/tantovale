@@ -1,4 +1,6 @@
+import { eq } from 'drizzle-orm';
 import { env } from 'hono/adapter';
+import { setCookie } from 'hono/cookie';
 import { sign } from 'hono/jwt';
 import { describeRoute } from 'hono-openapi';
 
@@ -13,31 +15,26 @@ import {
 import { createClient } from '../../database';
 import { profiles, users } from '../../database/schemas/schema';
 import { sendVerifyEmail } from '../../mailer/templates/verify-email';
-import { deleteCookie, setCookie } from 'hono/cookie';
 import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
 
 import { createRouter } from '../../lib/create-app';
-import { UserProfileSchema } from '../../extended_schemas/users';
+import { SignupUserProfileSchema } from '../../extended_schemas/users';
 import { zValidator } from '@hono/zod-validator';
+import { authenticationOpenApi } from '../../openapi/routes';
 
 export const signupRoute = createRouter().post(
 	'/',
-	describeRoute({
-		description: 'Create a user',
-		responses: {
-			200: {
-				description: 'Successful Signup',
-			},
-		},
-	}),
-	zValidator('json', UserProfileSchema),
+	describeRoute(authenticationOpenApi.signup),
+	zValidator('json', SignupUserProfileSchema),
 	async (c) => {
 		const { NODE_ENV, EMAIL_VERIFY_TOKEN_SECRET } = env<{
 			NODE_ENV: string;
 			EMAIL_VERIFY_TOKEN_SECRET: string;
 		}>(c);
 
-		const { isProductionMode, isStagingMode } = getNodeEnvMode(NODE_ENV);
+		const { isProductionMode } = getNodeEnvMode(NODE_ENV);
+		const { db } = createClient();
+		let createdUserId: number | undefined;
 
 		try {
 			const values = c.req.valid('json');
@@ -55,53 +52,53 @@ export const signupRoute = createRouter().post(
 
 			const hashedPassword = await hashPassword(password);
 
-			const { db } = createClient();
-			// Create new user
-			const [results] = await db
-				.insert(users)
-				.values({ ...values, password: hashedPassword })
-				.returning();
+			const createdUser = await db.transaction(async (tx) => {
+				const [createdUser] = await tx
+					.insert(users)
+					.values({ ...values, password: hashedPassword })
+					.returning();
 
-			if (!results) {
-				return c.json({ message: "Signup procedure can't create user" }, 500);
-			}
+				if (!createdUser) {
+					throw new Error("Signup procedure can't create user");
+				}
 
-			const [profile] = await db
-				.insert(profiles)
-				.values({
-					user_id: results.id,
-					...rest,
-				})
-				.returning();
+				const [createdProfile] = await tx
+					.insert(profiles)
+					.values({
+						user_id: createdUser.id,
+						...rest,
+					})
+					.returning();
 
-			if (!profile) {
-				return c.json({ message: "Signup procedure can't create user" }, 500);
-			}
+				if (!createdProfile) {
+					throw new Error("Signup procedure can't create user");
+				}
 
-			// Generate JWT token for email verification
-			const tmp_token_payload = {
-				id: Number(results?.id),
-				username: results?.username,
-				type: 'email_verification',
-				expiresIn: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS(),
-			};
+				return createdUser;
+			});
+			createdUserId = createdUser.id;
 
-			const email_activation_token = await sign(tmp_token_payload, EMAIL_VERIFY_TOKEN_SECRET);
+			const emailActivationTokenExpires = DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES();
+			const emailActivationToken = await sign(
+				{
+					id: createdUser.id,
+					username: createdUser.username,
+					type: 'email_verification',
+					auth_epoch: createdUser.updated_at.getTime(),
+					exp: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES_IN_MS(),
+				},
+				EMAIL_VERIFY_TOKEN_SECRET,
+			);
+			const verificationLink = `${environment.STOREFRONT_HOSTNAME}/api/verify/email?token=${emailActivationToken}`;
 
-			setCookie(c, 'email_activation_token', email_activation_token, {
+			await sendVerifyEmail(email, verificationLink);
+
+			setCookie(c, 'email_activation_token', emailActivationToken, {
 				...getAuthTokenOptions({
 					isProductionMode,
-					expires: DEFAULT_EMAIL_ACTIVATION_TOKEN_EXPIRES(),
+					expires: emailActivationTokenExpires,
 				}),
 			});
-
-			const verificationLink = `${environment.STOREFRONT_HOSTNAME}/api/verify/email?token=${email_activation_token}`;
-
-			if (isProductionMode || isStagingMode) {
-				await sendVerifyEmail(email, verificationLink);
-			} else {
-				console.log('\nverificationLink: ', verificationLink, '\n');
-			}
 
 			return c.json(
 				{
@@ -109,19 +106,19 @@ export const signupRoute = createRouter().post(
 				},
 				201,
 			);
-		} catch (error) {
-			console.error(error);
-
-			// Clear email activation token on error
-			deleteCookie(c, 'email_activation_token');
-
-			return c.json(
-				{
-					message: 'Internal server error',
-					error,
-				},
-				500,
-			);
+		} catch {
+			if (createdUserId !== undefined) {
+				const userIdToDelete = createdUserId;
+				try {
+					await db.transaction(async (tx) => {
+						// profiles.user_id cascades on delete, so one exact delete compensates both committed inserts.
+						await tx.delete(users).where(eq(users.id, userIdToDelete));
+					});
+				} catch {
+					// Without an outbox/dead-letter migration, a simultaneous DB outage can defeat compensation.
+				}
+			}
+			return c.json({ message: 'Internal server error' }, 500);
 		}
 	},
 );

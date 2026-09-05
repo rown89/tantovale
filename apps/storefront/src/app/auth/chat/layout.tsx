@@ -7,14 +7,18 @@ import { client } from '@workspace/server/client-rpc';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { SidebarProvider } from '@workspace/ui/components/sidebar';
 import { ChatSidebar } from '#components/chat/chat-sidebar/index';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
 	const router = useRouter();
 	const pathname = usePathname();
+	const { user } = useAuth();
 
 	// Fetch current user data
 	const { data: currentUser, isError: isUserError } = useQuery({
-		queryKey: ['currentUser'],
+		queryKey: privateQueryKeys.currentUser(user?.profile_id),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.user.auth.$get();
 			if (!response.ok) {
@@ -27,7 +31,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 
 	// Fetch chat rooms
 	const { data: chatRooms, isError: isRoomsError } = useQuery({
-		queryKey: ['chatRooms'],
+		queryKey: privateQueryKeys.chatRooms(user?.profile_id),
 		queryFn: async () => {
 			const response = await client.chat.auth.rooms.$get();
 
@@ -39,7 +43,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
 			return await response.json();
 		},
 		// Only fetch chat rooms if we have a current user
-		enabled: !!currentUser,
+		enabled: user !== null && !!currentUser,
 	});
 
 	// Handle authentication and data loading errors

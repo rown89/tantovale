@@ -1,8 +1,14 @@
 import { createRouter } from '../../lib/create-app';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { authPath } from '../../utils/constants';
+import { describeRoute } from 'hono-openapi';
+import { authenticationOpenApi } from '../../openapi/routes';
 
-export const userRoute = createRouter().get(`/${authPath}`, authMiddleware, async (c) => {
+export const userRoute = createRouter().get(
+	`/${authPath}`,
+	describeRoute(authenticationOpenApi.user),
+	authMiddleware,
+	async (c) => {
 	const user = c.var.user;
 
 	try {
@@ -24,4 +30,5 @@ export const userRoute = createRouter().get(`/${authPath}`, authMiddleware, asyn
 			500,
 		);
 	}
-});
+	},
+);

@@ -9,15 +9,19 @@ import OrderPreviewCard from '@workspace/ui/components/order-preview-card/index'
 import { ORDER_PHASES } from '@workspace/server/enumerated_values';
 
 import { ShippingDialog } from '#components/dialogs/shipping-dialog';
+import { useAuth } from '#providers/auth-providers';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
 
 export default function UserSellingItemsComponent() {
+	const { user } = useAuth();
 	const statusFilter: (typeof ORDER_PHASES)[keyof typeof ORDER_PHASES] | 'all' = 'all';
 	const [selectedOrder, setSelectedOrder] = useState<OrderType | null>(null);
 
 	const [isShippingDialogOpen, setIsShippingDialogOpen] = useState(false);
 
 	const { data: orders = [] } = useQuery({
-		queryKey: ['orders', statusFilter],
+		queryKey: privateQueryKeys.orders(user?.profile_id, statusFilter),
+		enabled: user !== null,
 		queryFn: async () => {
 			const userOrderListResponse = await client.orders.auth.status[':status'].$get({
 				param: {
@@ -43,7 +47,13 @@ export default function UserSellingItemsComponent() {
 	type OrderType = (typeof orders)[number];
 
 	const handleCompletePayment = (order: OrderType) => {
-		setSelectedOrder(order);
+		if (!('payment_url' in order) || typeof order.payment_url !== 'string') {
+			toast.error('Payment link unavailable', {
+				description: 'Refresh the order or try again later.',
+			});
+			return;
+		}
+		window.open(order.payment_url, '_blank', 'noopener,noreferrer');
 	};
 
 	const handleShipping = (order: OrderType) => {
@@ -75,7 +85,11 @@ export default function UserSellingItemsComponent() {
 						<>
 							<OrderPreviewCard
 								order={order}
-								onCompletePayment={() => handleCompletePayment(order)}
+								onCompletePayment={
+									'payment_url' in order && typeof order.payment_url === 'string'
+										? () => handleCompletePayment(order)
+										: undefined
+								}
 								onCancel={() => handleCancel(order)}
 								onRequestAssistance={() => handleRequestAssistance(order)}
 								onViewShipment={() => handleShipping(order)}
@@ -85,8 +99,6 @@ export default function UserSellingItemsComponent() {
 
 				{orders && orders.length && (
 					<>
-						{/* TODO: Add payment dialog or redirect to payment page */}
-
 						<ShippingDialog
 							isOpen={isShippingDialogOpen}
 							setIsOpen={setIsShippingDialogOpen}

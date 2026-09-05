@@ -1,112 +1,314 @@
-import { eq } from 'drizzle-orm';
-import { Context } from 'hono';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { sign } from 'hono/jwt';
+import { randomUUID } from 'node:crypto';
 
-import { getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
-import { tokenPayload } from '../../lib/tokenPayload';
-import { AppBindings } from '../../lib/types';
-import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS } from '../../utils/constants';
-import { DrizzleClient } from '../../database/index';
+import { and, eq, gt } from 'drizzle-orm';
+import type { Context } from 'hono';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { sign, verify } from 'hono/jwt';
+
+import type { DrizzleClient } from '../../database/index';
+import { profiles } from '../../database/schemas/profiles';
 import { refreshTokens } from '../../database/schemas/refreshTokens';
 import { users } from '../../database/schemas/users';
-import { profiles } from '../../database/schemas/profiles';
+import { getAuthTokenDeleteOptions, getAuthTokenOptions } from '../../lib/getAuthTokenOptions';
+import { tokenPayload } from '../../lib/tokenPayload';
+import { acquireUserTransactionLock } from '../../lib/user-transaction-lock';
+import type { AppBindings, User } from '../../lib/types';
+import { DEFAULT_ACCESS_TOKEN_EXPIRES, DEFAULT_REFRESH_TOKEN_EXPIRES } from '../../utils/constants';
 
-// Helper function to clean up and invalidate tokens
-export async function invalidateTokens(c: Context<AppBindings>, db: DrizzleClient['db']) {
-	const refresh_token = getCookie(c, 'refresh_token');
+export type AuthTokenClaims = User & {
+	exp: number;
+	jti?: string;
+	sid?: string;
+};
 
-	if (refresh_token) {
-		// Delete refresh token from database if it exists
-		await db.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
+export class InvalidRefreshSessionError extends Error {
+	constructor() {
+		super('Invalid refresh session');
 	}
-
-	// Remove cookies
-	deleteCookie(c, 'access_token');
-	deleteCookie(c, 'refresh_token');
 }
 
-// Helper function to verify and get refresh token details
-export async function validateRefreshToken(c: Context<AppBindings>, db: DrizzleClient['db']) {
-	const refresh_token = getCookie(c, 'refresh_token');
+function validateAuthTokenClaims(payload: Awaited<ReturnType<typeof verify>>): AuthTokenClaims {
+	const claims = {
+		id: payload.id,
+		profile_id: payload.profile_id,
+		email: payload.email,
+		username: payload.username,
+		email_verified: payload.email_verified,
+		phone_verified: payload.phone_verified,
+		exp: payload.exp,
+		jti: payload.jti,
+		sid: payload.sid,
+	};
 
-	if (!refresh_token) {
-		throw new Error('No refresh token');
+	if (
+		!Number.isSafeInteger(claims.id) ||
+		!Number.isSafeInteger(claims.profile_id) ||
+		typeof claims.email !== 'string' ||
+		claims.email.length === 0 ||
+		typeof claims.username !== 'string' ||
+		claims.username.length === 0 ||
+		typeof claims.email_verified !== 'boolean' ||
+		typeof claims.phone_verified !== 'boolean' ||
+		typeof claims.exp !== 'number' ||
+		!Number.isFinite(claims.exp) ||
+		claims.exp * 1_000 <= Date.now() ||
+		(claims.jti !== undefined && (typeof claims.jti !== 'string' || claims.jti.length === 0)) ||
+		(claims.sid !== undefined && (typeof claims.sid !== 'string' || claims.sid.length === 0))
+	) {
+		throw new Error('Invalid authentication token claims');
 	}
 
-	const storedRefreshToken = await db.query.refreshTokens.findFirst({
-		where: eq(refreshTokens.token, refresh_token),
-	});
-
-	if (!storedRefreshToken) {
-		throw new Error('Invalid refresh token');
-	}
-
-	const refreshTokenExpiry = new Date(storedRefreshToken.expires_at);
-
-	if (refreshTokenExpiry < new Date()) {
-		await db.delete(refreshTokens).where(eq(refreshTokens.token, refresh_token));
-		throw new Error('Refresh token expired');
-	}
-
-	return storedRefreshToken;
+	return claims as AuthTokenClaims;
 }
 
-// Helper function to create a new access token
-export async function createNewAccessToken(
-	c: Context<AppBindings>,
-	db: DrizzleClient['db'],
-	username: string,
-	ACCESS_TOKEN_SECRET: string,
-	isProductionMode: boolean,
-) {
-	const [existingUser] = await db
-		.select({
-			id: users.id,
-			email: users.email,
-			username: users.username,
-			email_verified: users.email_verified,
-			phone_verified: users.phone_verified,
-			profile_id: profiles.id,
-		})
-		.from(users)
-		.innerJoin(profiles, eq(users.id, profiles.user_id))
-		.where(eq(users.username, username))
+export async function verifyAccessTokenClaims(token: string, secret: string): Promise<AuthTokenClaims> {
+	return validateAuthTokenClaims(await verify(token, secret));
+}
+
+export async function verifyRefreshTokenClaims(token: string, secret: string): Promise<AuthTokenClaims> {
+	const claims = validateAuthTokenClaims(await verify(token, secret));
+	if (!claims.jti) {
+		throw new Error('Invalid refresh token claims');
+	}
+	return claims;
+}
+
+export function getRefreshSessionFamilyId(claims: Pick<AuthTokenClaims, 'jti' | 'sid'>): string {
+	if (claims.sid) return claims.sid;
+	if (claims.jti) return claims.jti;
+	throw new Error('Refresh token has no session family');
+}
+
+type LiveRefreshSessionOptions = {
+	db: DrizzleClient['db'];
+	refreshToken: string;
+	refreshTokenSecret: string;
+	accessClaims: AuthTokenClaims;
+	user: Pick<User, 'id' | 'profile_id' | 'username'>;
+};
+
+export async function hasLiveMatchingRefreshSession({
+	db,
+	refreshToken,
+	refreshTokenSecret,
+	accessClaims,
+	user,
+}: LiveRefreshSessionOptions): Promise<boolean> {
+	let refreshClaims: AuthTokenClaims;
+	try {
+		refreshClaims = await verifyRefreshTokenClaims(refreshToken, refreshTokenSecret);
+	} catch {
+		return false;
+	}
+
+	if (
+		accessClaims.id !== user.id ||
+		accessClaims.profile_id !== user.profile_id ||
+		accessClaims.username !== user.username ||
+		refreshClaims.id !== user.id ||
+		refreshClaims.profile_id !== user.profile_id ||
+		refreshClaims.username !== user.username
+	) {
+		return false;
+	}
+
+	const [storedSession] = await db
+		.select({ username: refreshTokens.username })
+		.from(refreshTokens)
+		.where(and(eq(refreshTokens.token, refreshToken), gt(refreshTokens.expires_at, new Date())))
 		.limit(1);
 
-	if (!existingUser) {
-		throw new Error('User not found');
+	return storedSession?.username === user.username;
+}
+
+type OptionalLiveSessionOptions = {
+	db: DrizzleClient['db'];
+	accessToken?: string;
+	refreshToken?: string;
+	accessTokenSecret: string;
+	refreshTokenSecret: string;
+};
+
+export async function resolveOptionalLiveSessionUser({
+	db,
+	accessToken,
+	refreshToken,
+	accessTokenSecret,
+	refreshTokenSecret,
+}: OptionalLiveSessionOptions): Promise<User | undefined> {
+	if (!accessToken || !refreshToken) {
+		return undefined;
 	}
 
-	const access_token_payload = tokenPayload({
-		id: existingUser.id,
-		profile_id: existingUser.profile_id,
-		email: existingUser.email,
-		username: existingUser.username,
-		email_verified: existingUser.email_verified,
-		phone_verified: existingUser.phone_verified,
-		exp: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS(),
-	});
+	try {
+		const accessClaims = await verifyAccessTokenClaims(accessToken, accessTokenSecret);
+		const [existingUser] = await db
+			.select({
+				id: users.id,
+				email: users.email,
+				username: users.username,
+				email_verified: users.email_verified,
+				phone_verified: users.phone_verified,
+				profile_id: profiles.id,
+				is_banned: users.is_banned,
+			})
+			.from(users)
+			.innerJoin(profiles, eq(users.id, profiles.user_id))
+			.where(eq(users.id, accessClaims.id))
+			.limit(1);
 
-	const new_access_token = await sign(access_token_payload, ACCESS_TOKEN_SECRET);
+		if (
+			!existingUser ||
+			existingUser.is_banned ||
+			!(await hasLiveMatchingRefreshSession({
+				db,
+				refreshToken,
+				refreshTokenSecret,
+				accessClaims,
+				user: existingUser,
+			}))
+		) {
+			return undefined;
+		}
 
-	// Set the new access token in cookies
-	setCookie(c, 'access_token', new_access_token, {
-		...getAuthTokenOptions({
-			isProductionMode,
-			expires: DEFAULT_ACCESS_TOKEN_EXPIRES(),
-		}),
-	});
-
-	return {
-		user: {
+		return {
 			id: existingUser.id,
 			profile_id: existingUser.profile_id,
 			email: existingUser.email,
 			username: existingUser.username,
 			email_verified: existingUser.email_verified,
 			phone_verified: existingUser.phone_verified,
-		},
-		payload: access_token_payload,
-	};
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+export async function invalidateTokens(c: Context<AppBindings>, db: DrizzleClient['db'], isProductionMode?: boolean) {
+	const refreshToken = getCookie(c, 'refresh_token');
+
+	if (refreshToken) {
+		await db.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+	}
+
+	const deleteOptions = getAuthTokenDeleteOptions({ isProductionMode });
+	deleteCookie(c, 'access_token', deleteOptions);
+	deleteCookie(c, 'refresh_token', deleteOptions);
+}
+
+type RotateRefreshSessionOptions = {
+	c: Context<AppBindings>;
+	db: DrizzleClient['db'];
+	refreshToken: string;
+	accessTokenSecret: string;
+	refreshTokenSecret: string;
+	isProductionMode: boolean;
+};
+
+export async function rotateRefreshSession({
+	c,
+	db,
+	refreshToken,
+	accessTokenSecret,
+	refreshTokenSecret,
+	isProductionMode,
+}: RotateRefreshSessionOptions): Promise<User> {
+	let claims: AuthTokenClaims;
+	try {
+		claims = await verifyRefreshTokenClaims(refreshToken, refreshTokenSecret);
+	} catch {
+		await db.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+		throw new InvalidRefreshSessionError();
+	}
+
+	const rotation = await db.transaction(async (tx) => {
+		await acquireUserTransactionLock(tx, claims.id);
+		const sessionFamilyId = getRefreshSessionFamilyId(claims);
+		const [existingUser] = await tx
+			.select({
+				id: users.id,
+				email: users.email,
+				username: users.username,
+				email_verified: users.email_verified,
+				phone_verified: users.phone_verified,
+				profile_id: profiles.id,
+				is_banned: users.is_banned,
+			})
+			.from(users)
+			.innerJoin(profiles, eq(users.id, profiles.user_id))
+			.where(eq(users.id, claims.id))
+			.limit(1);
+
+		if (
+			!existingUser ||
+			existingUser.is_banned ||
+			existingUser.username !== claims.username ||
+			existingUser.profile_id !== claims.profile_id
+		) {
+			await tx.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+			return undefined;
+		}
+
+		const [consumedToken] = await tx
+			.delete(refreshTokens)
+			.where(and(eq(refreshTokens.token, refreshToken), gt(refreshTokens.expires_at, new Date())))
+			.returning();
+
+		if (
+			!consumedToken ||
+			consumedToken.username !== claims.username ||
+			consumedToken.username !== existingUser.username
+		) {
+			await tx.delete(refreshTokens).where(eq(refreshTokens.token, refreshToken));
+			return undefined;
+		}
+
+		const user: User = {
+			id: existingUser.id,
+			profile_id: existingUser.profile_id,
+			email: existingUser.email,
+			username: existingUser.username,
+			email_verified: existingUser.email_verified,
+			phone_verified: existingUser.phone_verified,
+		};
+		const accessTokenExpires = DEFAULT_ACCESS_TOKEN_EXPIRES();
+		const refreshTokenExpires = DEFAULT_REFRESH_TOKEN_EXPIRES();
+		const accessToken = await sign(
+			{
+				...tokenPayload({ ...user, exp: Math.floor(accessTokenExpires.getTime() / 1_000) }),
+				jti: randomUUID(),
+			},
+			accessTokenSecret,
+		);
+		const replacementRefreshToken = await sign(
+			{
+				...tokenPayload({ ...user, exp: Math.floor(refreshTokenExpires.getTime() / 1_000) }),
+				jti: randomUUID(),
+				sid: sessionFamilyId,
+			},
+			refreshTokenSecret,
+		);
+
+		await tx.insert(refreshTokens).values({
+			username: existingUser.username,
+			token: replacementRefreshToken,
+			expires_at: refreshTokenExpires,
+		});
+
+		return { user, accessToken, replacementRefreshToken, accessTokenExpires, refreshTokenExpires };
+	});
+
+	if (!rotation) {
+		throw new InvalidRefreshSessionError();
+	}
+
+	setCookie(c, 'access_token', rotation.accessToken, {
+		...getAuthTokenOptions({ isProductionMode, expires: rotation.accessTokenExpires }),
+	});
+	setCookie(c, 'refresh_token', rotation.replacementRefreshToken, {
+		...getAuthTokenOptions({ isProductionMode, expires: rotation.refreshTokenExpires }),
+	});
+	c.set('user', rotation.user);
+
+	return rotation.user;
 }

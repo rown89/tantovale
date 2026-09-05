@@ -12,6 +12,8 @@ import { linkBuilder } from '@workspace/shared/utils/linkBuilder';
 import { Separator } from '@workspace/ui/components/separator';
 import { Spinner } from '@workspace/ui/components/spinner';
 import { ShareSocialModal } from '@workspace/ui/components/social-share-dialog/social-share-dialog';
+import { privateQueryKeys } from '@workspace/shared/utils/private-query-keys';
+import { useAuth } from '#providers/auth-providers';
 
 export interface Item {
 	id: number;
@@ -22,10 +24,12 @@ export interface Item {
 }
 
 export default function ProfileFavorites() {
+	const { user } = useAuth();
 	const [shareItem, setShareItem] = useState<Item | null>(null);
 
 	const { data: favorites, isLoading } = useQuery({
-		queryKey: ['get_user_favorites'],
+		queryKey: privateQueryKeys.favorites(user?.profile_id),
+		enabled: user !== null,
 		queryFn: async () => {
 			const response = await client.items.auth.user.favorites.$get();
 

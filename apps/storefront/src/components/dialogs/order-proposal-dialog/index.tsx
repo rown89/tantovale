@@ -4,6 +4,8 @@ import { z } from 'zod/v4';
 import { useField, useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@workspace/ui/components/button';
 import {
@@ -21,24 +23,38 @@ import { Textarea } from '@workspace/ui/components/textarea';
 import { formatPrice, formatPriceToCents } from '@workspace/server/price-formatter';
 import { create_order_proposal_schema } from '@workspace/server/extended_schemas';
 import { Spinner } from '@workspace/ui/components/spinner';
+import { useAddressesRetrieval } from '@workspace/shared/hooks/use-user-address-retrieval';
 
 import { FieldInfo } from '#components/forms/utils/field-info';
 import useTantovaleStore from '#stores';
 import { getPlatformsCosts } from '#queries/get-platforms-costs';
 import { useAuth } from '#providers/auth-providers';
 import { getShippingCost } from '#queries/get-shipping-cost';
+import {
+	isCommerceActionReady,
+	platformCostsQueryKey,
+	shippingQuoteQueryKey,
+	shippingQuoteQueryRoot,
+} from '#utils/commerce-query-state';
 
 export function ProposalDialog() {
 	const { user } = useAuth();
+	const queryClient = useQueryClient();
 
 	const { setChatId, item, isProposalModalOpen, isCreatingProposal, setIsProposalModalOpen, handleProposal } =
 		useTantovaleStore();
+	const { userAddress, isUserAddressLoading, isUserAddressError, isUserAddressFetching } = useAddressesRetrieval({
+		profileId: user?.profile_id,
+		status: 'active',
+		enabled: isProposalModalOpen && !!user,
+	});
 
 	const formSchema = create_order_proposal_schema.extend({
 		proposal_price: z
 			.number()
 			.min(0.01)
 			.max(item?.price ? formatPrice(item?.price - 1) : 0),
+		shipping_quote_id: z.uuid(),
 	});
 
 	const form = useForm({
@@ -47,6 +63,7 @@ export function ProposalDialog() {
 			proposal_price: !item?.price ? 0 : formatPrice(item.price - 1),
 			message: 'Hello, I would like to buy your item, can you make it cheaper?',
 			shipping_label_id: '',
+			shipping_quote_id: '',
 		},
 		validators: {
 			onSubmit: formSchema,
@@ -63,6 +80,7 @@ export function ProposalDialog() {
 					item_id,
 					proposal_price,
 					shipping_label_id: value.shipping_label_id,
+					shipping_quote_id: value.shipping_quote_id,
 					message,
 				});
 
@@ -74,6 +92,8 @@ export function ProposalDialog() {
 						description: 'The seller will be notified to Accept or Reject the proposal.',
 						duration: 8000,
 					});
+				} else {
+					await queryClient.invalidateQueries({ queryKey: shippingQuoteQueryRoot(user?.profile_id) });
 				}
 			} catch {
 				toast.error('Failed to submit proposal :(', {
@@ -90,34 +110,51 @@ export function ProposalDialog() {
 	const userIsNotSeller = !!user && user?.profile_id !== item?.user.id;
 	const hasMandatoryArguments = userIsNotSeller && !!item && !!item?.id && !!item?.price;
 	const itemId = item?.id;
+	const activeAddressId = userAddress?.[0]?.id;
+	const canQuoteShipping = hasMandatoryArguments && !!activeAddressId && !isUserAddressLoading && !isUserAddressError;
 
 	const {
 		data: shippingCost,
 		isLoading: isLoadingShippingCost,
+		isFetching: isFetchingShippingCost,
 		error: errorShippingCost,
 	} = useQuery({
-		queryKey: ['shipping_cost', itemId],
+		queryKey: shippingQuoteQueryKey({
+			flow: 'proposal',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
+			itemId,
+		}),
 		queryFn: async () => {
 			if (!itemId) return null;
-
-			const shippingCost = await getShippingCost(itemId);
-
-			if (shippingCost?.shipment_label_id) {
-				form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
-			}
-
-			return shippingCost;
+			return getShippingCost(itemId);
 		},
-		enabled: isProposalModalOpen && hasMandatoryArguments,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		enabled: isProposalModalOpen && canQuoteShipping,
+		staleTime: 10 * 60 * 1_000,
+		refetchOnMount: true,
 	});
+
+	useEffect(() => {
+		if (!isProposalModalOpen || !shippingCost) return;
+		form.setFieldValue('shipping_label_id', shippingCost.shipment_label_id);
+		form.setFieldValue('shipping_quote_id', shippingCost.shipping_quote_id);
+	}, [form, isProposalModalOpen, shippingCost]);
 
 	const {
 		data: platformsCosts,
 		isLoading: isLoadingPlatformsCosts,
+		isFetching: isFetchingPlatformsCosts,
 		error: errorPlatformsCosts,
 	} = useQuery({
-		queryKey: ['platforms_costs', formPrice, shippingCost, item?.id],
+		queryKey: platformCostsQueryKey({
+			flow: 'proposal',
+			profileId: user?.profile_id,
+			addressId: activeAddressId,
+			itemId: item?.id,
+			price: formPrice,
+			shippingQuoteId: shippingCost?.shipping_quote_id,
+			shippingAmount: shippingCost?.amount,
+		}),
 		queryFn: async () => {
 			const shippingCostValue = shippingCost?.amount ? formatPriceToCents(shippingCost.amount) : 0;
 			const totalPrice = formatPriceToCents(formPrice);
@@ -126,8 +163,23 @@ export function ProposalDialog() {
 
 			return platformsCosts;
 		},
-		enabled: isProposalModalOpen && hasMandatoryArguments && !!shippingCost,
-		staleTime: 1000 * 60 * 60 * 24, // 24 hours
+		enabled: isProposalModalOpen && canQuoteShipping && !!shippingCost,
+		staleTime: 10 * 60 * 1_000,
+	});
+	const commerceActionIsReady = isCommerceActionReady({
+		hasMandatoryArguments,
+		canQuoteShipping,
+		activeAddressId,
+		hasShippingQuote: !!shippingCost,
+		hasPlatformCosts: !!platformsCosts,
+		isShippingLoading: isLoadingShippingCost,
+		isPlatformLoading: isLoadingPlatformsCosts,
+		isAddressFetching: isUserAddressFetching,
+		isShippingFetching: isFetchingShippingCost,
+		isPlatformFetching: isFetchingPlatformsCosts,
+		hasShippingError: !!errorShippingCost,
+		hasPlatformError: !!errorPlatformsCosts,
+		isMutating: isCreatingProposal,
 	});
 
 	if (!item) return null;
@@ -307,17 +359,7 @@ export function ProposalDialog() {
 							{(state) => {
 								const { canSubmit, isSubmitting } = state;
 								return (
-									<Button
-										type='submit'
-										disabled={
-											isSubmitting ||
-											!canSubmit ||
-											isLoadingPlatformsCosts ||
-											isLoadingShippingCost ||
-											!shippingCost ||
-											!platformsCosts?.platform_charge ||
-											!!errorPlatformsCosts
-										}>
+									<Button type='submit' disabled={isSubmitting || !canSubmit || !commerceActionIsReady}>
 										{form.state.isSubmitting ? 'Submitting...' : 'Send'}
 									</Button>
 								);

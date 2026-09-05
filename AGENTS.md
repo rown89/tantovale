@@ -27,42 +27,50 @@
 - Paths containing `auth` are subject to global authentication middleware, and many routes explicitly add it as well. Do not rename or reorganize protected route paths casually.
 - Use the existing Drizzle schemas and transactions for multi-write workflows. Do not run `db:push`, migrations, or seeders without explicit approval.
 - Payment, shipping, S3 upload, SMTP, cron, webhook, and token flows are external-system boundaries. Treat endpoint paths, cookie options, expiry, state enums, and provider payloads as compatibility-sensitive.
-- OpenAPI/Scalar coverage is partial. Keep descriptions and schemas accurate when modifying an already documented endpoint; do not assume every route is documented.
+- OpenAPI/Scalar covers all 63 mounted API operations. Keep handler metadata and runtime behavior aligned, update the canonical `docs/api/tantovale.openapi.json` artifact when contracts change, and run `pnpm --filter @workspace/server api:check` to detect drift.
 
 ## Quality and safety
 
-- There is currently no automated test suite. Do not claim test coverage or assume CI runs linting/type checks; CI presently builds only.
+- The backend has an automated API suite backed by disposable Docker services and local provider stubs. Use `pnpm --filter @workspace/server test:api` for the full suite and `pnpm --filter @workspace/server test:api:coverage` for the CI coverage gate; the enforced minimums are 90% lines, 90% functions, and 85% branches.
+- `.github/workflows/backend-api.yml` gates backend pull requests and pushes to `main` with server lint, typecheck, build, API coverage, and the canonical OpenAPI check. Keep the documented Node 22 and frozen pnpm install contract working.
+- Backend tests must use disposable Postgres/MinIO/Mailpit instances and local Trustap/Shippo/SMTP stubs. Never point automated tests at live external services or real credentials.
 - `next lint` was removed in Next 16. Run `pnpm --filter @workspace/storefront lint`, which invokes ESLint directly; `.next` must remain excluded from lint input.
 - Workspace scripts use `typecheck`, while Turbo declares `check-types`; verify the actual command for a task rather than relying on Turbo task names.
 - Prettier runs through the pre-commit hook; use the repository formatting configuration. Conventional Commit messages are enforced at commit time.
 - Never expose or log `.env` values, JWTs, cookies, payment/shipping credentials, or webhook secrets.
-- Do not assume scheduled workflows, webhook verification, migrations, or every exported route are operational; audit the relevant integration before relying on it.
+- Do not assume deployment schedules, provider configuration, webhook delivery, or migrations are operational merely because their local contracts are tested; audit the relevant deployed integration before relying on it.
 
 ## Dependency upgrades
 
 - Treat later Next.js major upgrades as a dedicated, frontend-first change. The repository is on Next 16.3/React 19.2; review the official upgrade guide, generated agent rules, async request APIs, proxy conventions, and direct ESLint integration before changing versions.
 - Keep Hono and its adapter/validator/OpenAPI packages compatible and update them together in a focused change. The repository mixes `hono-openapi` with a beta `@hono/zod-openapi`; do not consolidate those libraries without a separate API-documentation design.
 
+## Test authoring guardrails
+
+- Treat LLM-generated tests as untrusted code requiring the same review as production changes. A passing test or increased coverage is not evidence that its oracle is correct.
+- Test observable behavior and durable business invariants. Do not inspect source text or AST shape, reproduce the implementation inside the assertion, or add tests whose only purpose is proving that test fixtures, mocks, or other tests work.
+- Every new test must demonstrate a distinct failure mode. Prefer one representative per equivalence class over matrices of HTTP codes, malformed values, or provider failures that all follow the same branch.
+- Keep full state-transition matrices in pure unit tests. At API, webhook, polling, and workflow layers, test only that the boundary is wired correctly plus boundary-specific persistence, authorization, and failure behavior.
+- Preserve tests for authorization, money, concurrency, idempotency, rollback, ambiguous provider outcomes, reconciliation, credentials, and external contract compatibility. These are not candidates for coverage-driven pruning.
+- Coverage is a regression floor, not a test-generation target. When an LLM adds tests, review assertion strength and verify that a plausible behavioral mutation would make the relevant test fail.
+
 <claude-mem-context>
 # Memory Context
 
-# [tantovale] recent context, 2026-08-21 8:30pm GMT+2
+# [tantovale] recent context, 2026-09-05 9:42pm GMT+2
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 31 obs (10,554t read) | 594,441t work | 98% savings
+Stats: 50 obs (17,605t read) | 928,778t work | 98% savings
 
 ### Aug 21, 2026
 
-20837 5:05p 🔵 pnpm packageManager entry uses incorrect SHA512 hash for version 10.12.1
-20838 " 🔵 Corepack cache directory permission error blocks package manager initialization
 20839 7:09p 🔴 Fixed pnpm checksum mismatch in package.json
 20840 " 🔵 Comprehensive audit of Tantovale monorepo architecture and constraints
 20841 " ✅ Created AGENTS.md with repository operating constraints and modernization guidance
 20842 " 🔵 Mapped S3 integration scope and local development constraints
-20843 " ✅ Created local development environment files with inert external service credentials
 20844 7:13p 🔵 Dev script missing Node ESM import condition configuration
 20845 7:17p 🔵 Local development baseline verified working with known constraints
 20846 7:24p 🔵 Address toast triggered by browser-side check failure, not missing data
@@ -87,6 +95,28 @@ Stats: 31 obs (10,554t read) | 594,441t work | 98% savings
 20865 8:30p 🟣 ESLint Configuration and Lint Coverage Complete Across All Packages
 20866 " 🔴 Fixed API Contract Violation in Address Form Submission
 20867 " ⚖️ Drizzle ORM v1 Upgrade Strategy: Staged Approach
+20868 8:35p ⚖️ Drizzle v0→v1 upgrade scoped as single comprehensive change
+20869 8:41p 🔵 Drizzle v0.x baseline captured; tsx socket permissions block database introspection
+20870 8:45p 🔵 pnpm store location mismatch blocking Drizzle upgrade
+20871 8:49p 🔵 Drizzle v1 migration task blocked by missing explicit local configuration
+20872 8:50p 🟣 Drizzle ORM upgraded from v0 to v1.0.0-rc.4
+20873 " 🔵 Local development database confirmed at localhost:5432/tantovale_dev
+20874 " ⚖️ Drizzle v1 migration split into phased tasks to isolate breaking API changes
+20875 8:53p ✅ Drizzle config decoupled from legacy schema import
+20876 " 🔵 Legacy database state confirmed untracked and unbootstrapped
+20877 8:57p 🔵 Drizzle-kit v1 CLI constraint: --config and --out flags mutually exclusive
+20878 " 🔵 Codex baseline: 22 legacy relation-owning schema modules identified for Drizzle v1 migration
+20879 9:06p 🟣 Implemented centralized RQB v2 relation map for Drizzle database
+20880 " 🔴 Resolved relation name collision in countries schema
+20881 " 🔴 Removed orphaned profiles.city relation without backing foreign key
+20882 " ✅ Removed v1-incompatible migration config prefix setting
+20883 " 🔵 Validated all 23 table relations load without errors at runtime
+20884 " ✅ Updated database client initialization to use RQB v2 relation map
+20885 " ✅ Confirmed no remaining relation definition artifacts in schema layer
+20886 " ⚖️ Preserved Task 5 scope boundary: RQB v1 callback-filter sites left untouched
+20887 9:08p 🔄 Drizzle ORM v1→v2 Runtime Query Filter Migration
+20888 9:23p 🔵 Duplicate FK relation definitions identified in generated relations.ts
+20889 9:27p 🟣 Drizzle ORM Relations Schema Audit and Completion
 
-Access 594k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 929k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

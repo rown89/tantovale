@@ -1,5 +1,7 @@
+import type { TrustapChargeResponse, TrustapGuestUserResponse, TrustapTransactionResponse } from './provider.schemas';
+import type { TrustapId } from './trustap-int64';
+
 export interface CreateGuestUserProps {
-	id: number;
 	email: string;
 	first_name: string;
 	last_name: string;
@@ -10,11 +12,7 @@ export interface CreateGuestUserProps {
 	};
 }
 
-export interface CreateUserGuestResponse {
-	created_at: string;
-	email: string;
-	id: string;
-}
+export type CreateUserGuestResponse = TrustapGuestUserResponse;
 
 export interface CalculateTransactionFeeProps {
 	price: number;
@@ -23,13 +21,12 @@ export interface CalculateTransactionFeeProps {
 	use_hr_post?: boolean;
 }
 
-export interface CalculateTransactionFeeResponse {
-	charge: number;
-	charge_calculator_version: number;
-	charge_seller: string;
-	currency: string;
-	price: number;
-}
+export type CalculateTransactionFeeResponse = TrustapChargeResponse;
+
+// Tantovale owns shipping through Shippo and must not enable Trustap's managed `use_shippo` feature.
+// Trustap v1 requires `use_custom_postage_fee` for an externally purchased label's postage_fee to be retained.
+// The field is accepted by the v1 API even though its public Feature enum does not currently list it.
+export type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_custom_postage_fee' | 'use_hr_post';
 
 export interface CreateTransactionWithBothUsersProps {
 	buyer_id: string;
@@ -41,52 +38,29 @@ export interface CreateTransactionWithBothUsersProps {
 	postage_fee: number;
 	charge: number;
 	charge_calculator_version: number;
+	features?: TrustapTransactionFeature[];
 }
 
-export interface CreateTransactionResponse {
+export type CreateTransactionResponse = TrustapTransactionResponse;
+
+export type GetTransactionStatusResponse = TrustapTransactionResponse;
+
+export interface CancelGuestTransactionProps {
+	transaction_id: TrustapId;
+	acting_provider_user_id: string;
 	buyer_id: string;
-	charge: number;
-	charge_seller: number;
-	client_id: string;
-	created: string;
-	currency: string;
+	seller_id: string;
+	currency: 'eur';
 	description: string;
-	funds_released: string;
-	id: number;
-	is_payment_in_progress: boolean;
-	joined: string;
-	paid: string;
 	price: number;
-	quantity: number;
-	seller_id: string;
-	status: string;
-}
-
-export interface GetTransactionStatusResponse {
-	buyer_id: string;
 	charge: number;
 	charge_seller: number;
-	client_id: string;
-	created: string;
-	currency: string;
-	delivered: string;
-	description: string;
-	fund_released: string;
-	id: number;
-	is_payment_in_progress: boolean;
-	joined: string;
-	paid: string;
-	posta_hr_tracking: {
-		barcode: string;
-		barcode_generated: string;
-	};
-	pirce: number;
-	quantity: number;
-	seller_id: string;
-	status: string;
-	tracked: string;
-	tracking: {
-		carrier: string;
-		tracking_code: string;
-	};
+}
+
+export interface TrackGuestTransactionProps {
+	transaction_id: TrustapId;
+	acting_provider_user_id: string;
+	buyer_provider_user_id: string;
+	carrier: string;
+	tracking_code: string;
 }

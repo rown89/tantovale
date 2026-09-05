@@ -1,5 +1,5 @@
 import { integer, pgTable, text } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 export const properties = pgTable('properties', {
 	id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

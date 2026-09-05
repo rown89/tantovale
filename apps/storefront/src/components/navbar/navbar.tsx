@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Heart, LogOut, MessageSquare, Plus, User } from 'lucide-react';
 
 import { Button } from '@workspace/ui/components/button';
@@ -21,6 +21,8 @@ import AddressProtectedRoute from '#utils/address-protected';
 import { toast } from 'sonner';
 import useTantovaleStore from '#stores';
 import { Spinner } from '@workspace/ui/components/spinner';
+import { createAddressPreflightController } from '#utils/address-preflight-lifecycle';
+import { captureCommerceOwner, commerceOwnerMatches } from '#stores/commerce-ownership';
 
 export default function NavBar() {
 	const { user, loadingUser, logout } = useAuth();
@@ -29,6 +31,10 @@ export default function NavBar() {
 	const { setIsAddressLoading, isAddressLoading, setAddressId } = useTantovaleStore();
 
 	const [open, setOpen] = useState(false);
+	const addressPreflight = useMemo(() => createAddressPreflightController(), []);
+	const profileIdRef = useRef(user?.profile_id);
+	profileIdRef.current = user?.profile_id;
+	useEffect(() => () => addressPreflight.invalidate(), [addressPreflight]);
 
 	return (
 		<div className='container mx-auto flex min-h-[72px] items-center justify-between px-4 py-4 xl:px-0'>
@@ -48,21 +54,31 @@ export default function NavBar() {
 							if (!user) {
 								router.push('/login');
 							} else {
-								setIsAddressLoading(true);
-
-								const address_id = await AddressProtectedRoute();
-
-								if (address_id) {
-									setAddressId(address_id);
-									router.push('/auth/item/new');
-								} else {
-									toast.error('Oops!', {
-										description: 'You must have an active address to sell or buy.',
-										duration: 8000,
-									});
-									router.push('/auth/profile-setup/address');
-								}
-								setIsAddressLoading(false);
+								const profileId = user.profile_id;
+								const owner = captureCommerceOwner(useTantovaleStore.getState());
+								await addressPreflight.run({
+									request: AddressProtectedRoute,
+									isOwnerCurrent: () =>
+										profileIdRef.current === profileId && commerceOwnerMatches(useTantovaleStore.getState(), owner),
+									setLoading: setIsAddressLoading,
+									onAddress: (addressId) => {
+										setAddressId(addressId);
+										router.push('/auth/item/new');
+									},
+									onMissing: () => {
+										toast.error('Oops!', {
+											description: 'You must have an active address to sell or buy.',
+											duration: 8000,
+										});
+										router.push('/auth/profile-setup/address');
+									},
+									onError: () => {
+										toast.error('Oops!', {
+											description: 'Unable to verify your active address.',
+											duration: 8000,
+										});
+									},
+								});
 							}
 						}}>
 						{isAddressLoading ? (

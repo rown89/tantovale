@@ -1,9 +1,5 @@
-import { relations } from 'drizzle-orm';
 import { pgTable, varchar, json, integer } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-
-import { countries } from './countries';
-import { subRegions } from './subRegions';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 export const regions = pgTable('regions', {
 	id: integer('id').primaryKey().notNull(),
@@ -11,11 +7,6 @@ export const regions = pgTable('regions', {
 	translations: json('translations').notNull(),
 	wikiDataId: varchar('wiki_data_id', { length: 255 }).notNull(),
 });
-
-export const regionsRelations = relations(regions, ({ many }) => ({
-	countries: many(countries),
-	subRegions: many(subRegions),
-}));
 
 export type SelectRegion = typeof regions.$inferSelect;
 export type InsertRegion = typeof regions.$inferInsert;

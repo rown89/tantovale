@@ -1,8 +1,11 @@
 import { createClient } from '../../database';
 import { categories } from '../../database/schemas/categories';
 import { createRouter } from '../../lib/create-app';
+import { eq } from 'drizzle-orm';
+import { describeRoute } from 'hono-openapi';
+import { catalogOpenApi } from '../../openapi/routes';
 
-export const categoriesRoute = createRouter().get('/', async (c) => {
+export const categoriesRoute = createRouter().get('/', describeRoute(catalogOpenApi.categories), async (c) => {
 	try {
 		const { db } = createClient();
 
@@ -12,7 +15,8 @@ export const categoriesRoute = createRouter().get('/', async (c) => {
 				name: categories.name,
 				menu_order: categories.menu_order,
 			})
-			.from(categories);
+			.from(categories)
+			.where(eq(categories.published, true));
 
 		if (!categoryList.length) {
 			return c.json({ message: 'Missing categoryList' }, 404);

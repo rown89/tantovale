@@ -1,6 +1,6 @@
-import { pgTable, integer, timestamp, text, boolean, varchar, foreignKey } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
-import { relations } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { bigint, check, pgTable, integer, timestamp, text, boolean, varchar, uniqueIndex } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { items } from './items';
 import { entityTrustapTransactionTypeEnum } from './enumerated_types';
@@ -15,7 +15,7 @@ export const entityTrustapTransactions = pgTable(
 		}),
 		sellerId: text('seller_id'),
 		buyerId: text('buyer_id'),
-		transactionId: integer('transaction_id').notNull(),
+		transactionId: bigint('transaction_id', { mode: 'string' }).notNull(),
 		transactionType: varchar('transaction_type', { length: 255 }).notNull().default('online_payment'),
 		status: entityTrustapTransactionTypeEnum('status').notNull(),
 		price: integer('price').notNull(),
@@ -26,24 +26,18 @@ export const entityTrustapTransactions = pgTable(
 		claimedBySeller: boolean('claimed_by_seller').notNull().default(false),
 		claimedByBuyer: boolean('claimed_by_buyer').notNull().default(false),
 		complaintPeriodDeadline: timestamp('complaint_period_deadline'),
+		quarantined: boolean('quarantined').notNull().default(false),
 		created_at: timestamp('created_at').notNull().defaultNow(),
 		updated_at: timestamp('updated_at').notNull().defaultNow(),
 	},
 	(table) => [
-		foreignKey({
-			columns: [table.entityId],
-			foreignColumns: [items.id],
-			name: 'entity_trustap_transactions_entity_id_fkey',
-		}),
+		uniqueIndex('entity_trustap_transactions_transaction_id_idx').on(table.transactionId),
+		check(
+			'entity_trustap_transactions_active_graph_check',
+			sql`${table.quarantined} OR (${table.entityId} IS NOT NULL AND ${table.sellerId} IS NOT NULL AND ${table.buyerId} IS NOT NULL AND ${table.currency} = 'eur' AND ${table.price} > 0 AND ${table.charge} >= 0 AND ${table.chargeSeller} = 0)`,
+		),
 	],
 );
-
-export const entityTrustapTransactionsRelations = relations(entityTrustapTransactions, ({ one }) => ({
-	item: one(items, {
-		fields: [entityTrustapTransactions.entityId],
-		references: [items.id],
-	}),
-}));
 
 export type SelectEntityTrustapTransaction = typeof entityTrustapTransactions.$inferSelect;
 export type InsertEntityTrustapTransaction = typeof entityTrustapTransactions.$inferInsert;

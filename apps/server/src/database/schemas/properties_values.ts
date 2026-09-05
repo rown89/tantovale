@@ -1,6 +1,6 @@
-import { relations, sql } from 'drizzle-orm';
-import { pgTable, integer, text, index, boolean } from 'drizzle-orm/pg-core';
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod';
+import { sql } from 'drizzle-orm';
+import { pgTable, integer, text, index, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
+import { createSelectSchema, createInsertSchema } from 'drizzle-orm/zod';
 
 import { properties } from './properties';
 
@@ -21,6 +21,7 @@ export const property_values = pgTable(
 	},
 	(table) => [
 		index('value_id_idx').on(table.value),
+		uniqueIndex('property_values_property_id_value_unique').on(table.property_id, table.value),
 		// Constraint Reminder: value & boolean_value can't both co-exist, only one is allowed.
 		sql`CHECK (
       (value IS NOT NULL AND boolean_value IS NULL) OR 
@@ -28,13 +29,6 @@ export const property_values = pgTable(
     )`,
 	],
 );
-
-export const property_valuesRelations = relations(property_values, ({ one }) => ({
-	property: one(properties, {
-		fields: [property_values.property_id],
-		references: [properties.id],
-	}),
-}));
 
 export type SelectPropertyValue = typeof property_values.$inferSelect;
 export type InsertPropertyValue = typeof property_values.$inferInsert;

@@ -20,6 +20,9 @@ import { ProposalDialog } from '#components/dialogs/order-proposal-dialog';
 import { useAuth } from '#providers/auth-providers';
 import useTantovaleStore from '#stores';
 import AddressProtectedRoute from '#utils/address-protected';
+import { createAddressPreflightController } from '#utils/address-preflight-lifecycle';
+import { captureCommerceOwner, commerceOwnerMatches } from '#stores/commerce-ownership';
+import { visibleServerProposal } from '#utils/proposal-visibility';
 
 export default function ItemWDetailWrapper({
 	item,
@@ -36,22 +39,29 @@ export default function ItemWDetailWrapper({
 		clientBuyNowOrderStatus,
 		clientProposalId,
 		clientProposalCreatedAt,
+		dismissedServerProposalId,
 		setItem,
 		setItemOwnerData,
 		setOrderProposal,
-		resetAllItemDetail,
 		setIsAddressLoading,
 		isAddressLoading,
 		setAddressId,
+		commerceOwnerProfileId,
+		commerceOwnerItemId,
+		setCommerceContext,
+		resetPrivateCommerceState,
 	} = useTantovaleStore();
 
-	const orderProposal = item.orderProposal;
+	const orderProposal = visibleServerProposal(item.orderProposal, dismissedServerProposalId);
+	const profileId = user?.profile_id ?? null;
+	const ownsCurrentCommerceState = commerceOwnerProfileId === profileId && commerceOwnerItemId === item.id;
 
-	const proposalId = orderProposal?.id || clientProposalId || 0;
-	const proposalCreatedAt = orderProposal?.created_at || clientProposalCreatedAt || '';
+	const proposalId = orderProposal?.id || (ownsCurrentCommerceState ? clientProposalId : undefined) || 0;
+	const proposalCreatedAt =
+		orderProposal?.created_at || (ownsCurrentCommerceState ? clientProposalCreatedAt : undefined) || '';
 
-	const orderId = item.order.id || clientBuyNowOrderId || 0;
-	const orderStatus = item.order.status || clientBuyNowOrderStatus;
+	const orderId = item.order.id || (ownsCurrentCommerceState ? clientBuyNowOrderId : 0) || 0;
+	const orderStatus = item.order.status || (ownsCurrentCommerceState ? clientBuyNowOrderStatus : '');
 
 	// Use null as initial state to match SSR
 	const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -60,12 +70,14 @@ export default function ItemWDetailWrapper({
 
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const infoBoxRef = useRef<HTMLDivElement>(null);
+	const addressPreflight = useMemo(() => createAddressPreflightController(), []);
 
 	const { setIsProposalModalOpen, setIsBuyNowModalOpen } = useTantovaleStore();
 
 	// Effect to check if the UserInfoBox is in view
 	useEffect(() => {
-		if (!infoBoxRef.current) return;
+		const infoBox = infoBoxRef.current;
+		if (!infoBox) return;
 
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -76,25 +88,35 @@ export default function ItemWDetailWrapper({
 			{ threshold: 0.01 }, // Consider visible when 10% is in view
 		);
 
-		observer.observe(infoBoxRef.current);
+		observer.observe(infoBox);
 
 		return () => {
-			if (infoBoxRef.current) {
-				observer.unobserve(infoBoxRef.current);
-			}
+			observer.unobserve(infoBox);
 		};
 	}, []);
 
 	useEffect(() => {
+		setCommerceContext(profileId, item.id);
 		setItem(item);
 		setItemOwnerData(itemOwnerData);
-
-		if (orderProposal) setOrderProposal(orderProposal);
+		setOrderProposal(item.orderProposal);
 
 		return () => {
-			resetAllItemDetail();
+			resetPrivateCommerceState();
 		};
-	}, [item, itemOwnerData, orderProposal]);
+	}, [
+		item,
+		itemOwnerData,
+		item.orderProposal,
+		profileId,
+		resetPrivateCommerceState,
+		setCommerceContext,
+		setItem,
+		setItemOwnerData,
+		setOrderProposal,
+	]);
+
+	useEffect(() => () => addressPreflight.invalidate(), [addressPreflight]);
 
 	// Create a list of memoized image nodes
 	const imagesNodeList = useMemo(() => {
@@ -122,51 +144,57 @@ export default function ItemWDetailWrapper({
 		if (!user) {
 			router.push('/login');
 		} else {
-			setIsAddressLoading(true);
-
-			const address_id = await AddressProtectedRoute();
-
-			if (address_id) {
-				setAddressId(address_id);
-				// Open the proposal modal
-				setIsProposalModalOpen(true);
-			} else {
-				toast.error('Oops!', {
-					description: 'You must have an active address to sell or buy.',
-					duration: 8000,
-				});
-
-				router.push('/auth/profile-setup/address');
-			}
-
-			setIsAddressLoading(false);
+			const owner = captureCommerceOwner(useTantovaleStore.getState());
+			if (owner.commerceOwnerProfileId !== user.profile_id || owner.commerceOwnerItemId !== item.id) return;
+			await addressPreflight.run({
+				request: AddressProtectedRoute,
+				isOwnerCurrent: () => commerceOwnerMatches(useTantovaleStore.getState(), owner),
+				setLoading: setIsAddressLoading,
+				onAddress: (addressId) => {
+					setAddressId(addressId);
+					setIsProposalModalOpen(true);
+				},
+				onMissing: () => {
+					toast.error('Oops!', {
+						description: 'You must have an active address to sell or buy.',
+						duration: 8000,
+					});
+					router.push('/auth/profile-setup/address');
+				},
+				onError: () => {
+					toast.error('Oops!', { description: 'Unable to verify your active address.', duration: 8000 });
+				},
+			});
 		}
-	}, [user, router, setIsAddressLoading, setAddressId, setIsProposalModalOpen]);
+	}, [addressPreflight, item.id, user, router, setIsAddressLoading, setAddressId, setIsProposalModalOpen]);
 
 	const handlePayment = useCallback(async () => {
 		if (!user) {
 			router.push('/login');
 		} else {
-			setIsAddressLoading(true);
-
-			const address_id = await AddressProtectedRoute();
-
-			if (address_id) {
-				setAddressId(address_id);
-				// Open the buy now modal
-				setIsBuyNowModalOpen(true);
-			} else {
-				toast.error('Oops!', {
-					description: 'You must have an active address to sell or buy.',
-					duration: 8000,
-				});
-
-				router.push('/auth/profile-setup/address');
-			}
-
-			setIsAddressLoading(false);
+			const owner = captureCommerceOwner(useTantovaleStore.getState());
+			if (owner.commerceOwnerProfileId !== user.profile_id || owner.commerceOwnerItemId !== item.id) return;
+			await addressPreflight.run({
+				request: AddressProtectedRoute,
+				isOwnerCurrent: () => commerceOwnerMatches(useTantovaleStore.getState(), owner),
+				setLoading: setIsAddressLoading,
+				onAddress: (addressId) => {
+					setAddressId(addressId);
+					setIsBuyNowModalOpen(true);
+				},
+				onMissing: () => {
+					toast.error('Oops!', {
+						description: 'You must have an active address to sell or buy.',
+						duration: 8000,
+					});
+					router.push('/auth/profile-setup/address');
+				},
+				onError: () => {
+					toast.error('Oops!', { description: 'Unable to verify your active address.', duration: 8000 });
+				},
+			});
 		}
-	}, [user, router, setIsAddressLoading, setAddressId, setIsBuyNowModalOpen]);
+	}, [addressPreflight, item.id, user, router, setIsAddressLoading, setAddressId, setIsBuyNowModalOpen]);
 
 	return (
 		<div className='container mx-auto my-4 flex flex-col px-4 xl:px-0'>
@@ -199,7 +227,7 @@ export default function ItemWDetailWrapper({
 								status: orderStatus,
 							},
 							orderProposal: {
-								...item.orderProposal,
+								...orderProposal,
 								id: proposalId,
 								created_at: proposalCreatedAt,
 							},
@@ -227,7 +255,7 @@ export default function ItemWDetailWrapper({
 				)}
 			</div>
 
-			{item?.easy_pay && (
+			{item?.easy_pay && ownsCurrentCommerceState && (
 				<>
 					<BuyNowDialog />
 					<ProposalDialog />

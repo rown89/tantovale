@@ -2,42 +2,56 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { client } from '@workspace/server/client-rpc';
 
-export async function GET(request: NextRequest) {
+type VerifyEmailDependencies = {
+	verifyGet(input: { query: { token: string } }): Promise<Response>;
+	getCookieStore(): ReturnType<typeof cookies>;
+};
+
+type VerifyEmailRouteContext = {
+	params: Promise<unknown>;
+	dependencies?: VerifyEmailDependencies;
+};
+
+const defaultVerifyEmailDependencies: VerifyEmailDependencies = {
+	verifyGet: (input) => client.verify.email.$get(input),
+	getCookieStore: cookies,
+};
+
+export async function GET(request: NextRequest, context: VerifyEmailRouteContext) {
+	const dependencies = context.dependencies ?? defaultVerifyEmailDependencies;
 	const token = request.nextUrl.searchParams.get('token');
 
 	if (!token) {
-		return NextResponse.json({ error: 'No token provided' });
+		return NextResponse.json({ error: 'No token provided' }, { status: 400 });
 	}
 
-	const response = await client.verify.email.$get({
-		query: { token },
-	});
+	let response: Response;
+	try {
+		response = await dependencies.verifyGet({ query: { token } });
+	} catch {
+		return NextResponse.json({ error: 'Unable to verify email' }, { status: 502 });
+	}
+
+	if (response.status >= 400 && response.status < 500) {
+		return NextResponse.json({ error: 'Invalid verify email token provided' }, { status: response.status });
+	}
 
 	if (response.status !== 200) {
-		return NextResponse.json({ error: 'Invalid verify email token provided' });
+		return NextResponse.json({ error: 'Unable to verify email' }, { status: 502 });
 	}
 
-	const cookieHeader = response.headers.get('Set-Cookie');
-
-	if (!cookieHeader) {
-		return NextResponse.json({ error: 'Invalid token provided' });
-	}
-
-	const cookieReader = await cookies();
-
-	cookieHeader.split(/,(?=[^;]+?=)/).forEach((cookie) => {
-		const [pair] = cookie.split(';');
-		const [name, value] = pair?.split('=') ?? [];
-		const trimmedName = name?.trim();
-		const trimmedValue = value?.trim();
-
-		if (trimmedName === 'access_token' || trimmedName === 'refresh_token') {
-			console.log(`🔑 Setting cookie: ${trimmedName} = ${trimmedValue}`);
-			if (trimmedValue) {
-				cookieReader.set(trimmedName, trimmedValue);
-			}
-		}
+	const cookieReader = await dependencies.getCookieStore();
+	cookieReader.set({
+		name: 'email_activation_token',
+		value: '',
+		expires: new Date(0),
+		maxAge: 0,
+		httpOnly: true,
+		secure: true,
+		sameSite: 'none',
+		path: '/',
+		...(process.env.NODE_ENV === 'production' ? { domain: 'tantovale.it' } : {}),
 	});
 
-	return NextResponse.redirect(new URL('/', request.url));
+	return NextResponse.redirect(new URL('/login', request.url));
 }

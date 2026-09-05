@@ -1,5 +1,5 @@
 import { createClient } from '../../..';
-import fs from 'fs';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -11,20 +11,22 @@ import { countries, states, cities, regions, subRegions } from '../../../../data
 // Configuration
 const BATCH_SIZE = 1000;
 const DATA_DIR = './data';
+const ARCHIVE_PATH = path.resolve(__dirname, DATA_DIR, 'countries.zip');
 
 // Initialize database client
 const { db } = createClient();
 
 // Helper function to read JSON data with type inference
 function readJsonFile<T>(filename: string): T[] {
-	const filePath = path.resolve(__dirname, DATA_DIR, filename);
-	// Use resolve to ensure the correct path
-
 	try {
-		return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T[];
+		const json = execFileSync('unzip', ['-p', ARCHIVE_PATH, filename.replace(/^\.\//, '')], {
+			encoding: 'utf-8',
+			maxBuffer: 128 * 1024 * 1024,
+		});
+		if (!json.trim()) throw new Error('archive entry is empty or missing');
+		return JSON.parse(json) as T[];
 	} catch (error) {
-		console.error(`Error reading ${filename}:`, (error as Error).message);
-		return [] as T[];
+		throw new Error(`Unable to read ${filename} from ${ARCHIVE_PATH}: ${(error as Error).message}`);
 	}
 }
 
