@@ -150,6 +150,8 @@ function isPollingCorrelationValid(
 		remote.price === transaction.providerPrice &&
 		remote.charge === transaction.providerCharge &&
 		remote.charge_seller === transaction.providerChargeSeller &&
+		(remote.charge_postage_buyer ?? 0) === transaction.orderShippingPrice &&
+		(remote.charge_postage_client ?? 0) === 0 &&
 		(transaction.orderAttemptId === null || remote.description.includes(transaction.orderAttemptId))
 	);
 }
@@ -423,7 +425,10 @@ export class TransactionSyncService {
 
 			try {
 				// The provider request intentionally happens before opening a database transaction or taking the item lock.
-				const remote = await this.paymentProviderService.getTransactionStatus(transactionId);
+				const remote = await this.paymentProviderService.getTransactionStatus(transactionId, {
+					buyer_id: candidate.buyerProviderId,
+					seller_id: candidate.sellerProviderId,
+				});
 				if (!remote || !isTrustapStatus(remote.status)) throw new Error('Invalid Trustap transaction response');
 				const remoteStatus = remote.status as EntityTrustapTransactionStatus;
 				const recoveredProposalStatus = proposalStatusForRecoveredTransaction(remoteStatus);
@@ -595,6 +600,8 @@ export class TransactionSyncService {
 						remote.price !== refreshedExpectedPrice ||
 						remote.charge !== reservation.providerCharge ||
 						remote.charge_seller !== 0 ||
+						(remote.charge_postage_buyer ?? 0) !== reservation.shippingPrice ||
+						(remote.charge_postage_client ?? 0) !== 0 ||
 						!remote.description.includes(reservation.paymentAttemptId)
 					) {
 						await auditRecoveryConflict('runtime_transaction_correlation_mismatch');
@@ -1074,7 +1081,10 @@ export class TransactionSyncService {
 				Boolean(cancellationSettlement) ||
 				remoteStatus === entityTrustapTransactionTypeValues.COMPLAINED ||
 				resolvesCreationReconciliation;
-			if (mayMutateOrderState && (await shippingLabelPurchaseDefersOrderTransition(tx, current.orderId))) {
+			if (
+				mayMutateOrderState &&
+				(await shippingLabelPurchaseDefersOrderTransition(tx, current.orderId, remote.tracking))
+			) {
 				return { outcome: 'deferred' };
 			}
 			const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
@@ -1179,7 +1189,14 @@ export class TransactionSyncService {
 			for (const transaction of staleTransactions) {
 				try {
 					// Provider I/O must never hold a database transaction or the item commerce lock.
-					const trustapStatus = await this.paymentProviderService.getTransactionStatus(transaction.transactionId);
+					const expectedParticipants =
+						transaction.buyerProviderId && transaction.sellerProviderId
+							? { buyer_id: transaction.buyerProviderId, seller_id: transaction.sellerProviderId }
+							: undefined;
+					const trustapStatus = await this.paymentProviderService.getTransactionStatus(
+						transaction.transactionId,
+						expectedParticipants,
+					);
 					if (!trustapStatus) {
 						console.warn(`Could not get status for transaction ${transaction.transactionId}`);
 						continue;
@@ -1249,7 +1266,11 @@ export class TransactionSyncService {
 		}
 
 		// Get current status from Trustap
-		const trustapStatus = await this.paymentProviderService.getTransactionStatus(transactionId);
+		const expectedParticipants =
+			transaction.buyerId && transaction.sellerId
+				? { buyer_id: transaction.buyerId, seller_id: transaction.sellerId }
+				: undefined;
+		const trustapStatus = await this.paymentProviderService.getTransactionStatus(transactionId, expectedParticipants);
 
 		return {
 			local: transaction,

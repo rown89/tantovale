@@ -21,7 +21,7 @@ import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
-import { assertShipmentDateWithinWindow, type ProviderOperationWindow } from '../helpers/provider-contract';
+import { assertShipmentDateIsNextBusinessDay, type ProviderOperationWindow } from '../helpers/provider-contract';
 import { getProviderRequests } from '../helpers/providers';
 import { PROVIDER_TEST_CREDENTIALS, type CapturedRequest } from '../infrastructure/provider-stubs';
 
@@ -43,7 +43,7 @@ function normalizeProviderRequests(requests: CapturedRequest[], shipmentOperatio
 			const shipmentDate = body.shipment_date;
 			const operationWindow = shipmentOperations[shipmentOperationIndex++];
 			if (!operationWindow) throw new Error('Missing API operation window for Shippo request');
-			assertShipmentDateWithinWindow(shipmentDate, operationWindow);
+			assertShipmentDateIsNextBusinessDay(shipmentDate, operationWindow);
 			normalizedBody = { ...body, shipment_date: '<iso-date>' };
 		}
 
@@ -562,6 +562,7 @@ describe('independent Buy Now workflow', () => {
 					postage_fee: shippingPrice,
 					charge: paymentProviderCharge,
 					charge_calculator_version: 1,
+					features: ['use_custom_postage_fee'],
 				},
 			},
 		]);

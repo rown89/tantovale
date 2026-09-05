@@ -2,7 +2,6 @@ import type { TrustapChargeResponse, TrustapGuestUserResponse, TrustapTransactio
 import type { TrustapId } from './trustap-int64';
 
 export interface CreateGuestUserProps {
-	id: number;
 	email: string;
 	first_name: string;
 	last_name: string;
@@ -24,7 +23,10 @@ export interface CalculateTransactionFeeProps {
 
 export type CalculateTransactionFeeResponse = TrustapChargeResponse;
 
-export type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_hr_post' | 'use_shippo';
+// Tantovale owns shipping through Shippo and must not enable Trustap's managed `use_shippo` feature.
+// Trustap v1 requires `use_custom_postage_fee` for an externally purchased label's postage_fee to be retained.
+// The field is accepted by the v1 API even though its public Feature enum does not currently list it.
+export type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_custom_postage_fee' | 'use_hr_post';
 
 export interface CreateTransactionWithBothUsersProps {
 	buyer_id: string;
@@ -53,4 +55,12 @@ export interface CancelGuestTransactionProps {
 	price: number;
 	charge: number;
 	charge_seller: number;
+}
+
+export interface TrackGuestTransactionProps {
+	transaction_id: TrustapId;
+	acting_provider_user_id: string;
+	buyer_provider_user_id: string;
+	carrier: string;
+	tracking_code: string;
 }

@@ -24,7 +24,12 @@ import {
 } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
-import { getProviderRequests, setProviderScenario, setTrustapTransactionStatus } from '../helpers/providers';
+import {
+	getProviderRequests,
+	setProviderScenario,
+	setTrustapTransactionStatus,
+	trustapV1WebhookPayload,
+} from '../helpers/providers';
 import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { app } from '../../src/app';
 import { environment } from '../../src/utils/constants';
@@ -191,6 +196,8 @@ async function createStaleProviderBackedOrder(updatedAt = new Date(0)) {
 	});
 	await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), trustapTransactionFixture.id, 'created', {
 		description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
+		charge_postage_buyer: trustapPostageFeeFixture,
+		charge_postage_client: 0,
 	});
 	return { actors, order };
 }
@@ -218,11 +225,9 @@ describe('commerce expiry cron routes', () => {
 						Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 						'Content-Type': 'application/json',
 					},
-					body: JSON.stringify({
-						event: 'transaction_updated',
-						transaction_id: snapshot.transaction_id,
-						status: entityTrustapTransactionTypeValues.PAID,
-					}),
+					body: JSON.stringify(
+						trustapV1WebhookPayload(snapshot.transaction_id, entityTrustapTransactionTypeValues.PAID),
+					),
 				});
 				expect(webhookResponse.status).toBe(200);
 				throw new Error('Simulated ambiguous cancellation response after paid webhook');
@@ -463,11 +468,7 @@ describe('commerce expiry cron routes', () => {
 				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: trustapTransactionFixture.id,
-				status: 'cancelled',
-			}),
+			body: JSON.stringify(trustapV1WebhookPayload(trustapTransactionFixture.id, 'cancelled')),
 		});
 		expect(webhookResponse.status).toBe(200);
 		releaseProvider();
@@ -544,11 +545,7 @@ describe('commerce expiry cron routes', () => {
 						Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 						'Content-Type': 'application/json',
 					},
-					body: JSON.stringify({
-						event: 'transaction_updated',
-						transaction_id: trustapTransactionFixture.id,
-						status: providerStatus,
-					}),
+					body: JSON.stringify(trustapV1WebhookPayload(trustapTransactionFixture.id, providerStatus)),
 				});
 				expect(webhook.status).toBe(200);
 				releaseProvider();
@@ -723,11 +720,7 @@ describe('commerce expiry cron routes', () => {
 					Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					event: 'transaction_updated',
-					transaction_id: trustapTransactionFixture.id,
-					status: providerStatus,
-				}),
+				body: JSON.stringify(trustapV1WebhookPayload(trustapTransactionFixture.id, providerStatus)),
 			});
 			expect(webhookResponse.status).toBe(200);
 			releaseProvider();
@@ -951,11 +944,7 @@ describe('commerce expiry cron routes', () => {
 				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: transactionId,
-				status: entityTrustapTransactionTypeValues.PAID,
-			}),
+			body: JSON.stringify(trustapV1WebhookPayload(transactionId, entityTrustapTransactionTypeValues.PAID)),
 		});
 
 		expect(webhookResponse.status).toBe(200);
@@ -1046,11 +1035,7 @@ describe('commerce expiry cron routes', () => {
 				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: transactionId,
-				status: entityTrustapTransactionTypeValues.PAID,
-			}),
+			body: JSON.stringify(trustapV1WebhookPayload(transactionId, entityTrustapTransactionTypeValues.PAID)),
 		});
 		expect(webhookResponse.status).toBe(200);
 		expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([
@@ -1272,11 +1257,7 @@ describe('commerce expiry cron routes', () => {
 					Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					event: 'transaction_updated',
-					transaction_id: originalTransactionId,
-					status: entityTrustapTransactionTypeValues.PAID,
-				}),
+				body: JSON.stringify(trustapV1WebhookPayload(originalTransactionId, entityTrustapTransactionTypeValues.PAID)),
 			});
 			expect(webhookResponse.status).toBe(200);
 			expect(await db.select().from(orders).where(eq(orders.id, order.id))).toEqual([

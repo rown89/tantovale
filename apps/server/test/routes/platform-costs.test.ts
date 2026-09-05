@@ -557,8 +557,6 @@ describe('buy-now route', () => {
 		'transaction-rate-limit',
 		'transaction-invalid-json',
 		'transaction-invalid-body',
-		'transaction-buyer-missing',
-		'transaction-seller-missing',
 		'transaction-delay',
 		'transaction-disconnect',
 	] as const)('never retries an ambiguous Trustap outcome: %s', async (scenario) => {
@@ -580,6 +578,19 @@ describe('buy-now route', () => {
 		);
 		expect(transactionRequests).toHaveLength(1);
 	});
+
+	it.each(['transaction-buyer-missing', 'transaction-seller-missing'] as const)(
+		'accepts an official Trustap create response with an optional participant omitted: %s',
+		async (scenario) => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			await setTrustapTransactionScenario(scenario);
+
+			expect((await buyNow(actors.buyer.jar, item.id)).status).toBe(200);
+			const [order] = await getTestDatabase().db.select().from(orders).where(eq(orders.item_id, item.id));
+			expect(order).toMatchObject({ payment_creation_state: 'created' });
+		},
+	);
 
 	it('keeps a durable reservation when Trustap creates remotely but the response is lost', async () => {
 		const actors = await createCommerceActors();

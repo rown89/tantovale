@@ -111,8 +111,27 @@ async function postWebhookBody(
 	});
 }
 
+function trustapV1WebhookPayload(
+	transactionId: string,
+	status: string,
+	targetPreview: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		code: `basic_tx.${status}`,
+		user_id: 'guest-buyer-test',
+		target_id: transactionId,
+		target_preview: {
+			id: transactionId,
+			status,
+			...targetPreview,
+		},
+		time: '2026-08-30T12:00:00.000Z',
+		metadata: {},
+	};
+}
+
 async function postStatus(transactionId: string, status: string): Promise<Response> {
-	return postWebhookBody(JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }));
+	return postWebhookBody(JSON.stringify(trustapV1WebhookPayload(transactionId, status)));
 }
 
 describe('Trustap transaction webhook state mapping', () => {
@@ -198,7 +217,7 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(orderAfterDuplicate?.payment_cancellation_state).toBe(PAYMENT_CANCELLATION_STATES.CANCELLING);
 	});
 
-	it('persists a numeric max-int64 webhook id without precision loss', async () => {
+	it('persists a max-int64 v1 webhook id without precision loss', async () => {
 		const actors = await createCommerceActors();
 		const item = await createItemFixture(actors);
 		const transactionId = '9223372036854775807';
@@ -226,7 +245,7 @@ describe('Trustap transaction webhook state mapping', () => {
 				'content-type': 'application/json',
 				authorization: webhookAuthorization,
 			},
-			body: `{"event":"transaction_updated","transaction_id":${transactionId},"status":"paid"}`,
+			body: JSON.stringify(trustapV1WebhookPayload(transactionId, 'paid')),
 		});
 
 		expect(response.status).toBe(200);
@@ -312,96 +331,69 @@ describe('Trustap transaction webhook state mapping', () => {
 	it.each([
 		['invalid JSON', '{invalid-json'],
 		[
-			'legacy event name',
-			JSON.stringify({ event: 'transaction_status_updated', transaction_id: '1900001', status: 'paid' }),
+			'legacy invented envelope',
+			JSON.stringify({ event: 'transaction_updated', transaction_id: '1900001', status: 'paid' }),
 		],
-		['unknown event name', JSON.stringify({ event: 'some_other_event', transaction_id: '1900001', status: 'paid' })],
-		['unknown status', JSON.stringify({ event: 'transaction_updated', transaction_id: '1900001', status: 'unknown' })],
-		['invalid transaction id', JSON.stringify({ event: 'transaction_updated', transaction_id: '01', status: 'paid' })],
+		['invalid target id', JSON.stringify(trustapV1WebhookPayload('01', 'paid'))],
 		[
-			'invalid paid timestamp',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				paid: 'not-a-timestamp',
-			}),
+			'mismatched event status',
+			JSON.stringify({ ...trustapV1WebhookPayload('1900001', 'paid'), code: 'basic_tx.tracked' }),
 		],
-		[
-			'invalid funds-released timestamp',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'funds_released',
-				funds_released: 'not-a-timestamp',
-			}),
-		],
-		[
-			'invalid complaint deadline',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				complaint_period_deadline: 'not-a-timestamp',
-			}),
-		],
+		['mismatched preview id', JSON.stringify(trustapV1WebhookPayload('1900001', 'paid', { id: '1900002' }))],
+		['invalid paid timestamp', JSON.stringify(trustapV1WebhookPayload('1900001', 'paid', { paid: 'not-a-timestamp' }))],
 		[
 			'v2 payload',
 			JSON.stringify({
 				code: 'tx.paid',
-				target_id: 'transaction:1900001',
-				target_preview: { id: 1, status: 'paid' },
-			}),
-		],
-		[
-			'v2 fields grafted onto an otherwise valid v1 payload',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				code: 'tx.paid',
-				target_id: 'transaction:1900001',
-				target_preview: { id: 1, status: 'paid' },
-			}),
-		],
-		[
-			'v2 code grafted onto an otherwise valid v1 payload',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				code: 'tx.paid',
-			}),
-		],
-		[
-			'v2 target id grafted onto an otherwise valid v1 payload',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				target_id: 'transaction:1900001',
-			}),
-		],
-		[
-			'v2 target preview grafted onto an otherwise valid v1 payload',
-			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: '1900001',
-				status: 'paid',
-				target_preview: { id: 1, status: 'paid' },
+				target_id: 'tx_01kq9gj63sf4pbpesq9kna5ysa',
+				target_preview: {
+					id: 'tx_01kq9gj63sf4pbpesq9kna5ysa',
+					buyer: { id: 'guest-buyer-test', is_guest: true },
+					status: 'paid',
+				},
 			}),
 		],
 	] as const)('rejects %s as a non-v1 payload', async (_case, body) => {
 		expect((await postWebhookBody(body)).status).toBe(400);
 	});
 
-	it.each(trustapV1TimestampFields)('validates the known v1 %s timestamp when present', async (field) => {
-		const body = JSON.stringify({
-			event: 'transaction_updated',
-			transaction_id: '9223372036854775806',
-			status: 'paid',
-			[field]: '2026-08-30T12:00:00+25:00',
+	it('acknowledges and quarantines an unknown future v1 transaction status without mutating the order', async () => {
+		const { order, transactionId } = await createProviderBackedOrder();
+		const response = await postStatus(transactionId, 'provider_future_status');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			success: true,
+			message: 'Unknown transaction status quarantined',
 		});
+		const { db } = getTestDatabase();
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_PENDING);
+		expect(storedProvider).toMatchObject({
+			status: entityTrustapTransactionTypeValues.CREATED,
+			quarantined: true,
+		});
+		expect(
+			await db
+				.select({ conflictType: commerce_reconciliation_audit.conflict_type })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toEqual([
+			{ conflictType: 'runtime_unknown_provider_status' },
+			{ conflictType: 'runtime_unknown_provider_status' },
+		]);
+	});
+
+	it.each(trustapV1TimestampFields)('validates the known v1 %s timestamp when present', async (field) => {
+		const body = JSON.stringify(
+			trustapV1WebhookPayload('9223372036854775806', 'paid', {
+				[field]: '2026-08-30T12:00:00+25:00',
+			}),
+		);
 
 		expect((await postWebhookBody(body)).status).toBe(400);
 	});
@@ -418,12 +410,7 @@ describe('Trustap transaction webhook state mapping', () => {
 				.where(eq(entityTrustapTransactions.transactionId, transactionId));
 
 			const response = await postWebhookBody(
-				JSON.stringify({
-					event: 'transaction_updated',
-					transaction_id: transactionId,
-					status: 'paid',
-					complaint_period_deadline: timestamp,
-				}),
+				JSON.stringify(trustapV1WebhookPayload(transactionId, 'paid', { complaint_period_deadline: timestamp })),
 			);
 
 			expect(response.status).toBe(400);
@@ -438,9 +425,9 @@ describe('Trustap transaction webhook state mapping', () => {
 	);
 
 	it.each([
-		`{"event":"transaction_updated","transaction_id":1900001,"transaction_id":"9223372036854775807","status":"paid"}`,
-		`{"event":"transaction_updated","transaction_id":"9223372036854775807","transaction_id":1900001,"status":"paid"}`,
-	])('rejects duplicate webhook transaction IDs without applying JSON first/last-key semantics', async (body) => {
+		`{"code":"basic_tx.paid","target_id":"1900001","target_id":"9223372036854775807","target_preview":{"id":"1900001","status":"paid"}}`,
+		`{"code":"basic_tx.paid","target_id":"9223372036854775807","target_id":"1900001","target_preview":{"id":"1900001","status":"paid"}}`,
+	])('rejects duplicate webhook target IDs without applying JSON first/last-key semantics', async (body) => {
 		const { order, transactionId } = await createProviderBackedOrder();
 		const { db } = getTestDatabase();
 		const [orderBefore] = await db.select().from(orders).where(eq(orders.id, order.id));
@@ -490,19 +477,20 @@ describe('Trustap transaction webhook state mapping', () => {
 		expect(providerAfter).toEqual(providerBefore);
 	});
 
-	it('accepts an enriched v1 payload, strips benign extras, and applies the current transition atomically', async () => {
+	it('accepts the official flat v1 envelope, strips benign extras, and applies the transition atomically', async () => {
 		const { order, transactionId } = await createProviderBackedOrder();
 		const complaintDeadline = '2026-09-01T12:00:00.000Z';
 
 		const response = await postWebhookBody(
 			JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: transactionId,
-				status: entityTrustapTransactionTypeValues.PAID,
-				created: '2026-08-30T10:00:00.000Z',
-				joined: '2026-08-30T11:00:00.000Z',
-				paid: '2026-08-30T12:00:00.000Z',
-				complaint_period_deadline: complaintDeadline,
+				...trustapV1WebhookPayload(transactionId, entityTrustapTransactionTypeValues.PAID, {
+					buyer_id: 'guest-buyer-test',
+					seller_id: 'guest-seller-test',
+					created: '2026-08-30T10:00:00.000Z',
+					joined: '2026-08-30T11:00:00.000Z',
+					paid: '2026-08-30T12:00:00.000Z',
+					complaint_period_deadline: complaintDeadline,
+				}),
 				webhook_delivery_id: 'benign-v1-delivery-metadata',
 			}),
 		);
@@ -692,22 +680,6 @@ describe('Trustap transaction webhook state mapping', () => {
 				.from(entityTrustapTransactions)
 				.where(eq(entityTrustapTransactions.transactionId, transactionId)),
 		).toEqual([providerBefore]);
-	});
-
-	it.each(mappedStatuses)('maps Trustap %s to order phase %s', async (remoteStatus, expectedOrderStatus) => {
-		const { order, transactionId } = await createProviderBackedOrder();
-
-		const response = await postStatus(transactionId, remoteStatus);
-
-		expect(response.status).toBe(200);
-		const { db } = getTestDatabase();
-		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
-		const [storedProvider] = await db
-			.select()
-			.from(entityTrustapTransactions)
-			.where(eq(entityTrustapTransactions.transactionId, transactionId));
-		expect(storedOrder?.status).toBe(expectedOrderStatus);
-		expect(storedProvider?.status).toBe(remoteStatus);
 	});
 
 	it('fail-closes a complaint without lying about the current order phase', async () => {
@@ -911,12 +883,15 @@ describe('Trustap transaction webhook state mapping', () => {
 		});
 	});
 
-	it('rejects an unknown provider state without corrupting the order or provider row', async () => {
+	it('keeps subsequent unknown provider states idempotent after quarantining the transaction', async () => {
 		const { order, transactionId } = await createProviderBackedOrder();
 
-		const response = await postStatus(transactionId, 'provider_added_a_new_state');
+		const first = await postStatus(transactionId, 'provider_added_a_new_state');
+		const second = await postStatus(transactionId, 'provider_added_another_state');
 
-		expect(response.status).toBe(400);
+		expect(first.status).toBe(200);
+		expect(second.status).toBe(200);
+		expect(await second.json()).toEqual({ success: true, message: 'Quarantined transaction update ignored' });
 		const { db } = getTestDatabase();
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		const [storedProvider] = await db
@@ -924,7 +899,16 @@ describe('Trustap transaction webhook state mapping', () => {
 			.from(entityTrustapTransactions)
 			.where(eq(entityTrustapTransactions.transactionId, transactionId));
 		expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_PENDING);
-		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.CREATED);
+		expect(storedProvider).toMatchObject({
+			status: entityTrustapTransactionTypeValues.CREATED,
+			quarantined: true,
+		});
+		expect(
+			await db
+				.select({ id: commerce_reconciliation_audit.id })
+				.from(commerce_reconciliation_audit)
+				.where(eq(commerce_reconciliation_audit.original_reference, transactionId)),
+		).toHaveLength(2);
 	});
 
 	it('serializes out-of-order updates through the exact item advisory lock and a re-read provider row lock', async () => {

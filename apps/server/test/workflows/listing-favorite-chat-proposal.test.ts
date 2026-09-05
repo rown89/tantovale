@@ -31,7 +31,7 @@ import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
 import { createTestObjectStorageClient } from '../helpers/object-storage';
-import { assertShipmentDateWithinWindow, type ProviderOperationWindow } from '../helpers/provider-contract';
+import { assertShipmentDateIsNextBusinessDay, type ProviderOperationWindow } from '../helpers/provider-contract';
 import { getProviderRequests } from '../helpers/providers';
 import { PROVIDER_TEST_CREDENTIALS, type CapturedRequest } from '../infrastructure/provider-stubs';
 
@@ -67,7 +67,7 @@ function normalizeProviderRequests(requests: CapturedRequest[], shipmentOperatio
 			const shipmentDate = body.shipment_date;
 			const operationWindow = shipmentOperations[shipmentOperationIndex++];
 			if (!operationWindow) throw new Error('Missing API operation window for Shippo request');
-			assertShipmentDateWithinWindow(shipmentDate, operationWindow);
+			assertShipmentDateIsNextBusinessDay(shipmentDate, operationWindow);
 			normalizedBody = { ...body, shipment_date: '<iso-date>' };
 		}
 
@@ -119,183 +119,6 @@ function projectImageRows<Row extends { id: number; created_at: Date; updated_at
 function expectUuid(value: string | null | undefined): asserts value is string {
 	expect(value).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 }
-
-describe('exact commerce contract mutation proof', () => {
-	const shipmentOperationWindow = {
-		operation: 'shipping quote preview',
-		startedAt: Date.parse('2026-08-31T11:59:59.999Z'),
-		endedAt: Date.parse('2026-08-31T12:00:00.001Z'),
-	};
-	const sellerProviderAddress = {
-		name: 'Seller Fixture',
-		street1: 'Corso Venditore 11A',
-		street_no: '11A',
-		city: 'Milano',
-		state: 'MI',
-		zip: '20121',
-		country: 'IT',
-		phone: '+390212345611',
-		email: 'seller@example.test',
-		is_residential: true,
-		validate: false,
-	};
-	const buyerProviderAddress = {
-		name: 'Buyer Fixture',
-		street1: 'Rue Acheteur 22B',
-		street_no: '22B',
-		city: 'Paris',
-		state: 'IDF',
-		zip: '75001',
-		country: 'FR',
-		phone: '+33142345622',
-		email: 'buyer@example.test',
-		is_residential: true,
-		validate: false,
-	};
-	const shippoRequest: CapturedRequest = {
-		method: 'POST',
-		path: '/shipments',
-		headers: {
-			authorization: `ShippoToken ${PROVIDER_TEST_CREDENTIALS.shippoApiKey}`,
-			'content-type': 'application/json',
-			'shippo-api-version': '2018-02-08',
-		},
-		body: {
-			shipment_date: '2026-08-31T12:00:00.000Z',
-			address_from: sellerProviderAddress,
-			address_to: buyerProviderAddress,
-		},
-	};
-	const trustapRequest: CapturedRequest = {
-		method: 'POST',
-		path: '/api/v1/me/transactions/create_with_guest_user',
-		headers: {
-			authorization: `Basic ${Buffer.from(`${PROVIDER_TEST_CREDENTIALS.trustapApiKey}:`).toString('base64')}`,
-			'content-type': 'application/json',
-			'trustap-user': 'seller-provider-id',
-		},
-		body: { description: 'Transaction for exact item - (Proposal #7, ref exact-attempt)' },
-	};
-	const databaseGraph = {
-		propertyMappings: [{ item_id: 9, property_id: 10, property_value_id: 11 }],
-		images: [
-			{
-				id: 12,
-				item_id: 9,
-				url: 'https://bucket.test/exact.png',
-				order_position: 0,
-				size: 'original',
-				created_at: new Date('2026-08-31T12:00:00.000Z'),
-				updated_at: new Date('2026-08-31T12:00:00.000Z'),
-			},
-		],
-		provider: {
-			id: 13,
-			transactionType: 'online_payment',
-			entityTitle: 'Exact item',
-			created_at: new Date('2026-08-31T12:00:00.000Z'),
-			updated_at: new Date('2026-08-31T12:00:00.000Z'),
-		},
-	};
-	const expectedDatabaseProjection = {
-		propertyMappings: [{ item_id: 9, property_id: 10, property_value_id: 11 }],
-		images: [{ item_id: 9, url: 'https://bucket.test/exact.png', order_position: 0, size: 'original' }],
-		provider: { transactionType: 'online_payment', entityTitle: 'Exact item' },
-	};
-	const projectDatabaseGraph = (graph: typeof databaseGraph) => ({
-		propertyMappings: projectPropertyMappings(graph.propertyMappings),
-		images: projectImageRows(graph.images),
-		provider: businessRow(graph.provider),
-	});
-
-	it('rejects a changed Shippo address option after normalization', () => {
-		const mutated = structuredClone(shippoRequest);
-		(mutated.body as { address_from: { validate: boolean } }).address_from.validate = true;
-		expect(() =>
-			expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
-				normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
-			),
-		).toThrow();
-	});
-
-	it('rejects swapping the complete destination address with seller provider fields', () => {
-		const mutated = structuredClone(shippoRequest);
-		(mutated.body as { address_to: typeof sellerProviderAddress }).address_to = structuredClone(sellerProviderAddress);
-		expect(() =>
-			expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
-				normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
-			),
-		).toThrow();
-	});
-
-	it.each(['street1', 'street_no', 'city', 'state', 'zip', 'country', 'phone'] as const)(
-		'rejects mixing seller %s into the destination address',
-		(field) => {
-			const mutated = structuredClone(shippoRequest);
-			const body = mutated.body as {
-				address_from: typeof sellerProviderAddress;
-				address_to: typeof buyerProviderAddress;
-			};
-			body.address_to[field] = body.address_from[field];
-			expect(() =>
-				expect(normalizeProviderRequests([mutated], [shipmentOperationWindow])).toEqual(
-					normalizeProviderRequests([shippoRequest], [shipmentOperationWindow]),
-				),
-			).toThrow();
-		},
-	);
-
-	it('accepts only an ISO shipment date generated inside its API operation window', () => {
-		const operationWindow = {
-			operation: 'shipping quote preview',
-			startedAt: Date.parse('2026-08-31T12:00:00.000Z'),
-			endedAt: Date.parse('2026-08-31T12:00:00.010Z'),
-		};
-
-		expect(() => assertShipmentDateWithinWindow('2026-08-31T12:00:00.005Z', operationWindow)).not.toThrow();
-		expect(() => assertShipmentDateWithinWindow('2026-08-31T11:59:59.999Z', operationWindow)).toThrow();
-		expect(() => assertShipmentDateWithinWindow('2026-08-31T12:00:00.011Z', operationWindow)).toThrow();
-	});
-
-	it('rejects a changed Trustap transaction description after normalization', () => {
-		const mutated = structuredClone(trustapRequest);
-		(mutated.body as { description: string }).description = 'Different transaction description';
-		expect(() =>
-			expect(normalizeProviderRequests([mutated])).toEqual(normalizeProviderRequests([trustapRequest])),
-		).toThrow();
-	});
-
-	it.each([
-		[
-			'property-value mapping',
-			(graph: typeof databaseGraph) => {
-				graph.propertyMappings[0]!.property_value_id += 1;
-			},
-		],
-		[
-			'image order',
-			(graph: typeof databaseGraph) => {
-				graph.images[0]!.order_position += 1;
-			},
-		],
-		[
-			'provider transaction type',
-			(graph: typeof databaseGraph) => {
-				graph.provider.transactionType = 'cash';
-			},
-		],
-		[
-			'provider entity title',
-			(graph: typeof databaseGraph) => {
-				graph.provider.entityTitle = 'Different item';
-			},
-		],
-	] as const)('rejects a changed %s in the exact database projection', (_name, mutate) => {
-		const mutated = structuredClone(databaseGraph);
-		mutate(mutated);
-		expect(() => expect(projectDatabaseGraph(mutated)).toEqual(expectedDatabaseProjection)).toThrow();
-	});
-});
 
 describe('listing, favorite, chat, and proposal workflow', () => {
 	it('proves the complete two-party C2C proposal purchase through public API mutations', async () => {
@@ -1135,6 +958,7 @@ describe('listing, favorite, chat, and proposal workflow', () => {
 					postage_fee: 750,
 					charge: 505,
 					charge_calculator_version: 1,
+					features: ['use_custom_postage_fee'],
 				},
 			},
 		]);

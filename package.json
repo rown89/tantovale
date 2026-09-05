@@ -48,7 +48,7 @@
 		"drizzle-kit": "1.0.0-rc.4",
 		"drizzle-orm": "1.0.0-rc.4",
 		"hono": "^4.8.2",
-		"shippo": "^2.15.0",
+		"shippo": "2.18.0",
 		"zod": "^3.25.67"
 	},
 	"devDependencies": {

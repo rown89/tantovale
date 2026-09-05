@@ -321,7 +321,7 @@ describe('M07 commerce migration', () => {
 				`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
 				[database],
 			);
-			await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(database)}`);
+			await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(database)} WITH (FORCE)`);
 			await admin.end();
 		}
 	});

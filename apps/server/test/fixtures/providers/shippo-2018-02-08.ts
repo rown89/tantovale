@@ -86,6 +86,7 @@ export const shippoTransactionFixture = {
 	label_file_type: 'PDF',
 	label_url: 'https://labels.test/label-transaction-test.pdf',
 	messages: [],
+	metadata: 'tv-label:1:00000000-0000-4000-8000-000000000001',
 	object_created: fixtureTimestamp,
 	object_id: 'label-transaction-test',
 	object_owner: 'shippo-test@tantovale.test',
@@ -96,4 +97,14 @@ export const shippoTransactionFixture = {
 	test: true,
 	tracking_number: 'TRACK-TEST-1',
 	tracking_url_provider: 'https://tracking.test/TRACK-TEST-1',
+} as const;
+
+export const shippoRefundFixture = {
+	object_created: fixtureTimestamp,
+	object_id: 'refund-test',
+	object_owner: 'shippo-test@tantovale.test',
+	object_updated: fixtureTimestamp,
+	status: 'SUCCESS',
+	test: true,
+	transaction: shippoTransactionFixture.object_id,
 } as const;

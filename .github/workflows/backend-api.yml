@@ -40,7 +40,7 @@ jobs:
         run: pnpm --filter @workspace/server build
 
       - name: Verify API coverage
-        run: pnpm --filter @workspace/server test:api:coverage -- --sequence.shuffle --sequence.seed=211
+        run: pnpm --filter @workspace/server test:api:coverage --sequence.shuffle --sequence.seed=211
 
       - name: Verify OpenAPI artifact
         run: pnpm --filter @workspace/server api:check

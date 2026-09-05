@@ -15,6 +15,7 @@ import {
 	shipping_quotes,
 	SHIPPING_LABEL_PURCHASE_STATES,
 } from '#db-schema';
+import { SHIPPING_LABEL_REFUND_STATES } from '../../database/schemas/shipping_label_purchases';
 import {
 	entityTrustapTransactionTypeValues,
 	ORDER_PHASES,
@@ -23,10 +24,11 @@ import {
 } from '#database/schemas/enumerated_values';
 import { authPath, SHIPPING_ERROR_MESSAGES } from '#utils/constants';
 import { authMiddleware } from '#middlewares/authMiddleware/index';
-import { ShipmentService, ShippoProviderError } from './shipment.service';
+import { ShipmentService, ShippoProviderError, shippingLabelTransactionMetadata } from './shipment.service';
 import { acquireItemCommerceLock } from '#lib/item-commerce-lock';
 import { alias } from 'drizzle-orm/pg-core';
 import { shippingOpenApi } from '../../openapi/routes';
+import { PaymentProviderService } from '../payments/payment-provider.service';
 
 const postgresIntegerMax = 2_147_483_647;
 const definitelyRejectedShippoStatuses = new Set([400, 401, 403, 404, 422]);
@@ -118,6 +120,34 @@ const createLabelSchema = z.object({
 	order_id: z.number().int().positive().max(postgresIntegerMax),
 	rate_id: z.string().trim().min(1),
 });
+
+const refundLabelSchema = z.object({
+	order_id: z.number().int().positive().max(postgresIntegerMax),
+});
+
+const refundableOrderPhases = new Set<string>([ORDER_PHASES.PAYMENT_REFUNDED, ORDER_PHASES.CANCELLED]);
+
+function refundStateForProviderStatus(status: 'QUEUED' | 'PENDING' | 'SUCCESS' | 'ERROR') {
+	if (status === 'SUCCESS') return SHIPPING_LABEL_REFUND_STATES.REFUNDED;
+	if (status === 'ERROR') return SHIPPING_LABEL_REFUND_STATES.REJECTED;
+	return SHIPPING_LABEL_REFUND_STATES.PENDING;
+}
+
+function refundResponse(refund: {
+	provider_refund_id: string;
+	provider_refund_status: string;
+	provider_transaction_id: string;
+	refund_state: string;
+}) {
+	return {
+		refund: {
+			id: refund.provider_refund_id,
+			state: refund.refund_state,
+			provider_status: refund.provider_refund_status,
+			transaction_id: refund.provider_transaction_id,
+		},
+	};
+}
 
 type LabelProjection = {
 	id: string;
@@ -287,6 +317,9 @@ export const shipmentProviderRoute = createRouter()
 					rateId: quote.shippo_rate_id,
 					shipmentId: quote.shippo_shipment_id,
 					amount: quote.amount,
+					transactionId: order.payment_transaction_id!,
+					buyerProviderId: order.buyer_provider_id!,
+					sellerProviderId: order.seller_provider_id!,
 				};
 			});
 
@@ -350,10 +383,37 @@ export const shipmentProviderRoute = createRouter()
 					if (!stored) throw new Error('Shipping label purchase claim was lost');
 				});
 			};
+			const recordClaimProviderEvidence = async (
+				providerEvidence: Extract<Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>, { status: 'SUCCESS' }>,
+			) => {
+				await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					const [stored] = await tx
+						.update(shipping_label_purchases)
+						.set({
+							provider_transaction_id: providerEvidence.objectId,
+							provider_status: providerEvidence.status,
+							label_url: providerEvidence.labelUrl,
+							tracking_number: providerEvidence.trackingNumber ?? null,
+							tracking_url: providerEvidence.trackingUrlProvider ?? null,
+							updated_at: new Date(),
+						})
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								eq(shipping_label_purchases.purchase_attempt_id, attemptId),
+								eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.CREATING),
+							),
+						)
+						.returning({ id: shipping_label_purchases.id });
+					if (!stored) throw new Error('Shipping label purchase claim was lost');
+				});
+			};
 
 			const shipmentService = new ShipmentService();
+			let verifiedRate: Awaited<ReturnType<ShipmentService['verifyRateForPurchase']>>;
 			try {
-				await shipmentService.verifyRateForPurchase({
+				verifiedRate = await shipmentService.verifyRateForPurchase({
 					rateId: claim.rateId,
 					shipmentId: claim.shipmentId,
 					amount: claim.amount,
@@ -396,7 +456,10 @@ export const shipmentProviderRoute = createRouter()
 
 			let outcome: Awaited<ReturnType<ShipmentService['purchaseVerifiedLabel']>>;
 			try {
-				outcome = await shipmentService.purchaseVerifiedLabel(claim.rateId);
+				outcome = await shipmentService.purchaseVerifiedLabel(
+					claim.rateId,
+					shippingLabelTransactionMetadata(order_id, attemptId),
+				);
 			} catch (error) {
 				const definiteRejection =
 					error instanceof ShippoProviderError &&
@@ -412,16 +475,40 @@ export const shipmentProviderRoute = createRouter()
 				return c.json({ message: 'Shipping provider request failed' }, 502);
 			}
 			const transaction = outcome;
+			if (!transaction.trackingNumber) {
+				await markClaimForReconciliation(transaction);
+				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 502);
+			}
+			try {
+				await recordClaimProviderEvidence(transaction);
+				const paymentProvider = new PaymentProviderService();
+				const carrier = await paymentProvider.resolveSupportedCarrierCode(verifiedRate.provider);
+				await paymentProvider.trackGuestTransaction({
+					transaction_id: claim.transactionId,
+					acting_provider_user_id: claim.sellerProviderId,
+					buyer_provider_user_id: claim.buyerProviderId,
+					carrier,
+					tracking_code: transaction.trackingNumber,
+				});
+			} catch {
+				try {
+					await markClaimForReconciliation(transaction);
+				} catch {
+					// The untouched durable claim remains fail-closed.
+				}
+				return c.json({ message: 'Shipping label purchase requires reconciliation' }, 502);
+			}
 
 			let stored;
 			try {
 				stored = await db.transaction(async (tx) => {
 					await acquireItemCommerceLock(tx, claim.itemId);
 					const paymentGraph = await readLabelPaymentGraph(tx, order_id, claim.itemId);
+					const ready = labelPaymentGraphIsReady(paymentGraph);
 					const [purchase] = await tx
 						.update(shipping_label_purchases)
 						.set({
-							state: labelPaymentGraphIsReady(paymentGraph)
+							state: ready
 								? SHIPPING_LABEL_PURCHASE_STATES.PURCHASED
 								: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED,
 							provider_transaction_id: transaction.objectId,
@@ -440,6 +527,24 @@ export const shipmentProviderRoute = createRouter()
 						)
 						.returning();
 					if (!purchase) throw new Error('Shipping label purchase claim was lost');
+					if (!ready) return purchase;
+					const [provider] = await tx
+						.update(entityTrustapTransactions)
+						.set({ status: entityTrustapTransactionTypeValues.TRACKED, updated_at: new Date() })
+						.where(
+							and(
+								eq(entityTrustapTransactions.transactionId, claim.transactionId),
+								eq(entityTrustapTransactions.status, entityTrustapTransactionTypeValues.PAID),
+								eq(entityTrustapTransactions.quarantined, false),
+							),
+						)
+						.returning({ id: entityTrustapTransactions.id });
+					const [updatedOrder] = await tx
+						.update(orders)
+						.set({ status: ORDER_PHASES.SHIPPING_CONFIRMED, updated_at: new Date() })
+						.where(eq(orders.id, order_id))
+						.returning({ id: orders.id });
+					if (!provider || !updatedOrder) throw new Error('Failed to finalize Trustap tracking state');
 					return purchase;
 				});
 			} catch {
@@ -467,6 +572,218 @@ export const shipmentProviderRoute = createRouter()
 					...(stored.tracking_url ? { tracking_url: stored.tracking_url } : {}),
 				}),
 				201,
+			);
+		},
+	)
+	.post(
+		`/${authPath}/refund_label`,
+		describeRoute(shippingOpenApi.refund),
+		zValidator('json', refundLabelSchema),
+		async (c) => {
+			const user = c.get('user');
+			if (!user) return c.json({ message: 'User not authenticated' }, 401);
+			const { order_id } = c.req.valid('json');
+			const { db } = createClient();
+			const [candidate] = await db
+				.select({ item_id: orders.item_id })
+				.from(orders)
+				.where(and(eq(orders.id, order_id), eq(orders.seller_id, user.profile_id)))
+				.limit(1);
+			if (!candidate?.item_id) return c.json({ message: 'Order not found' }, 404);
+
+			const attemptId = randomUUID();
+			const claim = await db.transaction(async (tx) => {
+				await acquireItemCommerceLock(tx, candidate.item_id!);
+				const [order] = await tx
+					.select({ id: orders.id, status: orders.status, seller_id: orders.seller_id })
+					.from(orders)
+					.where(eq(orders.id, order_id))
+					.for('update')
+					.limit(1);
+				if (!order || order.seller_id !== user.profile_id) return { kind: 'not_found' as const };
+
+				const [purchase] = await tx
+					.select()
+					.from(shipping_label_purchases)
+					.where(eq(shipping_label_purchases.order_id, order.id))
+					.for('update')
+					.limit(1);
+				if (
+					!purchase ||
+					purchase.state !== SHIPPING_LABEL_PURCHASE_STATES.PURCHASED ||
+					!purchase.provider_transaction_id
+				) {
+					return { kind: 'missing_label' as const };
+				}
+				if (purchase.refund_state === SHIPPING_LABEL_REFUND_STATES.NONE) {
+					if (!refundableOrderPhases.has(order.status)) return { kind: 'wrong_state' as const };
+					const requestedAt = new Date();
+					const [claimed] = await tx
+						.update(shipping_label_purchases)
+						.set({
+							refund_state: SHIPPING_LABEL_REFUND_STATES.REQUESTING,
+							refund_attempt_id: attemptId,
+							refund_requested_at: requestedAt,
+							updated_at: requestedAt,
+						})
+						.where(eq(shipping_label_purchases.id, purchase.id))
+						.returning({ id: shipping_label_purchases.id });
+					if (!claimed) throw new Error('Failed to claim shipping label refund');
+					return {
+						kind: 'create' as const,
+						itemId: candidate.item_id!,
+						purchaseId: purchase.id,
+						transactionId: purchase.provider_transaction_id,
+					};
+				}
+				if (purchase.refund_state === SHIPPING_LABEL_REFUND_STATES.PENDING && purchase.provider_refund_id) {
+					return {
+						kind: 'refresh' as const,
+						itemId: candidate.item_id!,
+						purchaseId: purchase.id,
+						refundId: purchase.provider_refund_id,
+						transactionId: purchase.provider_transaction_id,
+					};
+				}
+				if (
+					(purchase.refund_state === SHIPPING_LABEL_REFUND_STATES.REFUNDED ||
+						purchase.refund_state === SHIPPING_LABEL_REFUND_STATES.REJECTED) &&
+					purchase.provider_refund_id &&
+					purchase.provider_refund_status
+				) {
+					return { kind: 'known' as const, refund: purchase };
+				}
+				return { kind: 'reconciliation' as const };
+			});
+
+			if (claim.kind === 'not_found') return c.json({ message: 'Order not found' }, 404);
+			if (claim.kind === 'missing_label') return c.json({ message: 'Order has no purchased shipping label' }, 409);
+			if (claim.kind === 'wrong_state') return c.json({ message: 'Order is not eligible for label refund' }, 409);
+			if (claim.kind === 'reconciliation') {
+				return c.json({ message: 'Shipping label refund requires reconciliation' }, 409);
+			}
+			if (claim.kind === 'known') {
+				return c.json(
+					refundResponse({
+						provider_refund_id: claim.refund.provider_refund_id!,
+						provider_refund_status: claim.refund.provider_refund_status!,
+						provider_transaction_id: claim.refund.provider_transaction_id!,
+						refund_state: claim.refund.refund_state,
+					}),
+					200,
+				);
+			}
+
+			const shipmentService = new ShipmentService();
+			let providerRefund: Awaited<ReturnType<ShipmentService['createVerifiedRefund']>>;
+			if (claim.kind === 'refresh') {
+				try {
+					providerRefund = await shipmentService.getVerifiedRefund(claim.refundId, claim.transactionId);
+				} catch {
+					return c.json({ message: 'Shipping provider request failed' }, 502);
+				}
+			} else {
+				try {
+					providerRefund = await shipmentService.createVerifiedRefund(claim.transactionId);
+				} catch (error) {
+					const definiteRejection =
+						error instanceof ShippoProviderError &&
+						error.category === 'http' &&
+						error.status !== undefined &&
+						definitelyRejectedShippoStatuses.has(error.status);
+					await db.transaction(async (tx) => {
+						await acquireItemCommerceLock(tx, claim.itemId);
+						await tx
+							.update(shipping_label_purchases)
+							.set(
+								definiteRejection
+									? {
+											refund_state: SHIPPING_LABEL_REFUND_STATES.NONE,
+											refund_attempt_id: null,
+											refund_requested_at: null,
+											updated_at: new Date(),
+										}
+									: {
+											refund_state: SHIPPING_LABEL_REFUND_STATES.RECONCILIATION_REQUIRED,
+											updated_at: new Date(),
+										},
+							)
+							.where(
+								and(
+									eq(shipping_label_purchases.id, claim.purchaseId),
+									eq(shipping_label_purchases.refund_attempt_id, attemptId),
+									eq(shipping_label_purchases.refund_state, SHIPPING_LABEL_REFUND_STATES.REQUESTING),
+								),
+							);
+					});
+					return c.json({ message: 'Shipping provider request failed' }, 502);
+				}
+			}
+
+			const nextRefundState = refundStateForProviderStatus(providerRefund.status);
+			let stored;
+			try {
+				stored = await db.transaction(async (tx) => {
+					await acquireItemCommerceLock(tx, claim.itemId);
+					const [updated] = await tx
+						.update(shipping_label_purchases)
+						.set({
+							refund_state: nextRefundState,
+							provider_refund_id: providerRefund.objectId,
+							provider_refund_status: providerRefund.status,
+							updated_at: new Date(),
+						})
+						.where(
+							and(
+								eq(shipping_label_purchases.id, claim.purchaseId),
+								claim.kind === 'create'
+									? and(
+											eq(shipping_label_purchases.refund_attempt_id, attemptId),
+											eq(shipping_label_purchases.refund_state, SHIPPING_LABEL_REFUND_STATES.REQUESTING),
+										)
+									: and(
+											eq(shipping_label_purchases.provider_refund_id, claim.refundId),
+											eq(shipping_label_purchases.refund_state, SHIPPING_LABEL_REFUND_STATES.PENDING),
+										),
+							),
+						)
+						.returning();
+					if (!updated) throw new Error('Shipping label refund claim was lost');
+					return updated;
+				});
+			} catch {
+				if (claim.kind === 'create') {
+					try {
+						await db
+							.update(shipping_label_purchases)
+							.set({
+								refund_state: SHIPPING_LABEL_REFUND_STATES.RECONCILIATION_REQUIRED,
+								provider_refund_id: providerRefund.objectId,
+								provider_refund_status: providerRefund.status,
+								updated_at: new Date(),
+							})
+							.where(
+								and(
+									eq(shipping_label_purchases.id, claim.purchaseId),
+									eq(shipping_label_purchases.refund_attempt_id, attemptId),
+									eq(shipping_label_purchases.refund_state, SHIPPING_LABEL_REFUND_STATES.REQUESTING),
+								),
+							);
+					} catch {
+						// The REQUESTING claim remains a durable retry barrier.
+					}
+				}
+				return c.json({ message: 'Shipping label refund requires reconciliation' }, 502);
+			}
+
+			return c.json(
+				refundResponse({
+					provider_refund_id: stored.provider_refund_id!,
+					provider_refund_status: stored.provider_refund_status!,
+					provider_transaction_id: stored.provider_transaction_id!,
+					refund_state: stored.refund_state,
+				}),
+				200,
 			);
 		},
 	);

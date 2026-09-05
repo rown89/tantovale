@@ -33,16 +33,29 @@ export const trustapChargeResponseSchema = z.object({
 	charge: postgresInteger,
 	charge_buyer_client: postgresInteger,
 	charge_calculator_version: positivePostgresInteger,
+	charge_config: positivePostgresInteger.optional(),
+	charge_postage_buyer: postgresInteger.optional(),
+	charge_postage_client: postgresInteger.optional(),
 	charge_seller: z.literal(0),
 	charge_seller_client: postgresInteger,
 	currency: z.literal('eur'),
+	payment_method: z.string().trim().min(1).optional(),
 	price: positivePostgresInteger,
 });
+
+export const trustapSupportedCarriersResponseSchema = z.array(
+	z.object({
+		code: z.string().trim().min(1),
+		name: z.string().trim().min(1),
+	}),
+);
 
 export const trustapTransactionResponseSchema = z.object({
 	buyer_id: providerUserId.optional(),
 	charge: postgresInteger,
 	charge_buyer_client: postgresInteger,
+	charge_postage_buyer: postgresInteger.optional(),
+	charge_postage_client: postgresInteger.optional(),
 	charge_seller: postgresInteger,
 	charge_seller_client: postgresInteger,
 	client_id: z.string().trim().min(1),

@@ -351,7 +351,8 @@ describe('item and listing routes', () => {
 			const guestRequest = requests.find(({ path }) => path === '/api/v1/guest_users');
 
 			expect(response.status).toBe(201);
-			expect(guestRequest?.body).toMatchObject({ id: actors.seller.profile.id, country_code: 'DE' });
+			expect(guestRequest?.body).toMatchObject({ country_code: 'DE' });
+			expect(guestRequest?.body).not.toHaveProperty('id');
 		});
 
 		it('keeps a response-lost guest provision in manual reconciliation without a second POST', async () => {
@@ -377,7 +378,7 @@ describe('item and listing routes', () => {
 				payment_provider_identity_state: PAYMENT_PROVIDER_IDENTITY_STATES.RECONCILIATION_REQUIRED,
 			});
 			expect(await getTrustapGuestIdentities(providerUrl)).toEqual([
-				expect.objectContaining({ client_id: actors.seller.profile.id, id: `guest-${actors.seller.profile.id}` }),
+				expect.objectContaining({ email: actors.seller.user.email, id: expect.stringMatching(/^guest-\d+$/u) }),
 			]);
 
 			await setProviderScenario(providerUrl, 'success');

@@ -114,6 +114,7 @@ export const routeContracts = [
 		suite: 'shipping',
 	},
 	{ method: 'POST', path: '/shipment_provider/auth/create_label', auth: 'access-refresh-cookie', suite: 'shipping' },
+	{ method: 'POST', path: '/shipment_provider/auth/refund_label', auth: 'access-refresh-cookie', suite: 'shipping' },
 	{ method: 'POST', path: '/signup', auth: 'public', suite: 'authentication' },
 	{ method: 'GET', path: '/subcategories', auth: 'public', suite: 'catalog' },
 	{ method: 'GET', path: '/subcategories/:id', auth: 'public', suite: 'catalog' },

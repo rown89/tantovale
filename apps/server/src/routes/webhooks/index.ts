@@ -7,6 +7,7 @@ import { createRouter } from 'src/lib/create-app';
 import { createClient } from 'src/database';
 import { commerce_reconciliation_audit, entityTrustapTransactions, orders, orders_proposals } from '#db-schema';
 import {
+	type EntityTrustapTransactionStatus,
 	entityTrustapTransactionStatusValues,
 	entityTrustapTransactionTypeValues,
 	ORDER_PROPOSAL_PHASES,
@@ -33,6 +34,10 @@ import { webhooksOpenApi } from '../../openapi/routes';
 
 // Trustap v1 webhook JSON is small; bound buffering before parsing to 64 KiB.
 const maxWebhookBodySize = 64 * 1024;
+const knownTrustapStatuses: ReadonlySet<string> = new Set(entityTrustapTransactionStatusValues);
+function isKnownTrustapStatus(value: string): value is EntityTrustapTransactionStatus {
+	return knownTrustapStatuses.has(value);
+}
 const trustapTimestamp = z
 	.string()
 	.datetime({ offset: true })
@@ -42,19 +47,25 @@ const trustapTimestamp = z
 		context.addIssue({ code: 'custom', message: 'Invalid provider timestamp' });
 		return z.NEVER;
 	});
-const trustapV1WebhookSchema = z.object({
-	event: z.literal('transaction_updated'),
-	transaction_id: z.union([z.string(), z.number()]).transform((value, context) => {
-		const id = canonicalTrustapId(value);
-		if (id) return id;
-		context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
-		return z.NEVER;
-	}),
-	status: z.enum(entityTrustapTransactionStatusValues),
+const trustapWebhookTransactionId = z.union([z.string(), z.number()]).transform((value, context) => {
+	const id = canonicalTrustapId(value);
+	if (id) return id;
+	context.addIssue({ code: 'custom', message: 'Invalid transaction id' });
+	return z.NEVER;
+});
+const trustapV1TransactionPreviewSchema = z.object({
+	id: trustapWebhookTransactionId,
+	status: z.string().trim().min(1).max(100),
 	created: trustapTimestamp.optional(),
 	joined: trustapTimestamp.optional(),
 	paid: trustapTimestamp.optional(),
 	tracked: trustapTimestamp.optional(),
+	tracking: z
+		.object({
+			carrier: z.string().trim().min(1),
+			tracking_code: z.string().trim().min(1),
+		})
+		.optional(),
 	delivered: trustapTimestamp.optional(),
 	complained: trustapTimestamp.optional(),
 	funds_released: trustapTimestamp.optional(),
@@ -65,18 +76,42 @@ const trustapV1WebhookSchema = z.object({
 	cancelled_with_payment: trustapTimestamp.optional(),
 	payment_refunded: trustapTimestamp.optional(),
 });
-const v2WebhookMarkers = ['code', 'target_id', 'target_preview'] as const;
 const trustapWebhookSchema = z
-	.unknown()
-	.superRefine((value, context) => {
-		if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
-		for (const marker of v2WebhookMarkers) {
-			if (Object.hasOwn(value, marker)) {
-				context.addIssue({ code: 'custom', message: 'Trustap v2 payload is not supported' });
-			}
+	.object({
+		code: z.string().regex(/^basic_tx\.[a-z_]+$/u),
+		user_id: z.string().trim().min(1).optional(),
+		target_id: trustapWebhookTransactionId,
+		target_preview: trustapV1TransactionPreviewSchema,
+		time: trustapTimestamp.optional(),
+		metadata: z.record(z.string(), z.unknown()).optional(),
+	})
+	.superRefine((payload, context) => {
+		if (payload.target_id !== payload.target_preview.id) {
+			context.addIssue({ code: 'custom', message: 'Trustap webhook target mismatch' });
+		}
+		if (payload.code !== `basic_tx.${payload.target_preview.status}`) {
+			context.addIssue({ code: 'custom', message: 'Trustap webhook status mismatch' });
 		}
 	})
-	.pipe(trustapV1WebhookSchema);
+	.transform(({ code, target_id, target_preview }) => ({
+		code,
+		transaction_id: target_id,
+		status: target_preview.status,
+		created: target_preview.created,
+		joined: target_preview.joined,
+		paid: target_preview.paid,
+		tracked: target_preview.tracked,
+		tracking: target_preview.tracking,
+		delivered: target_preview.delivered,
+		complained: target_preview.complained,
+		funds_released: target_preview.funds_released,
+		complaint_period_deadline: target_preview.complaint_period_deadline,
+		complaint_period_ended: target_preview.complaint_period_ended,
+		rejected: target_preview.rejected,
+		cancelled: target_preview.cancelled,
+		cancelled_with_payment: target_preview.cancelled_with_payment,
+		payment_refunded: target_preview.payment_refunded,
+	}));
 
 export const webhooksRoute = createRouter().post(
 	'/trustap/transaction-update',
@@ -89,7 +124,7 @@ export const webhooksRoute = createRouter().post(
 	async (c) => {
 		let parsedBody: unknown;
 		try {
-			parsedBody = parseJsonWithTopLevelTrustapId(await c.req.text(), 'transaction_id');
+			parsedBody = parseJsonWithTopLevelTrustapId(await c.req.text(), 'target_id');
 		} catch (error) {
 			if (error instanceof Error && error.name === 'BodyLimitError') throw error;
 			return c.json({ error: 'Invalid payload' }, 400);
@@ -145,6 +180,38 @@ export const webhooksRoute = createRouter().post(
 				if (order.itemId !== identity.entityId) {
 					return c.json({ error: 'Order transaction conflict' }, 409);
 				}
+				const incomingStatus = payload.status;
+				if (!isKnownTrustapStatus(incomingStatus)) {
+					const snapshot = {
+						order: { id: order.id, itemId: order.itemId, status: order.status },
+						provider: trustapTransaction,
+						incomingCode: payload.code,
+						incomingStatus,
+					};
+					await tx.insert(commerce_reconciliation_audit).values([
+						{
+							conflict_type: 'runtime_unknown_provider_status',
+							source_table: 'entity_trustap_transactions',
+							source_row_id: trustapTransaction.id,
+							canonical_row_id: order.id,
+							original_reference: payload.transaction_id,
+							snapshot,
+						},
+						{
+							conflict_type: 'runtime_unknown_provider_status',
+							source_table: 'orders',
+							source_row_id: order.id,
+							canonical_row_id: trustapTransaction.id,
+							original_reference: payload.transaction_id,
+							snapshot,
+						},
+					]);
+					await tx
+						.update(entityTrustapTransactions)
+						.set({ quarantined: true, updated_at: new Date() })
+						.where(eq(entityTrustapTransactions.id, trustapTransaction.id));
+					return c.json({ success: true, message: 'Unknown transaction status quarantined' }, 200);
+				}
 				const [linkedProposal] =
 					order.proposalId === null
 						? []
@@ -155,10 +222,10 @@ export const webhooksRoute = createRouter().post(
 								.for('update')
 								.limit(1);
 				const linkedProposalIsPending = linkedProposal?.status === ORDER_PROPOSAL_PHASES.pending;
-				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, payload.status);
+				const transition = resolveTrustapOrderTransition(trustapTransaction.status, order.status, incomingStatus);
 				const providerLineageApplies = isReachableOrSameTrustapTransition(
 					trustapTransaction.status,
-					payload.status,
+					incomingStatus,
 					transition,
 				);
 				if (!providerLineageApplies) {
@@ -168,7 +235,7 @@ export const webhooksRoute = createRouter().post(
 					!isTrustapTransitionCompatibleWithTerminalOrder(
 						trustapTransaction.status,
 						order.status,
-						payload.status,
+						incomingStatus,
 						order.paymentCancellationState,
 						transition,
 					)
@@ -182,7 +249,7 @@ export const webhooksRoute = createRouter().post(
 							paymentCreationState: order.paymentCreationState,
 						},
 						provider: trustapTransaction,
-						incomingStatus: payload.status,
+						incomingStatus,
 					};
 					await tx.insert(commerce_reconciliation_audit).values([
 						{
@@ -211,19 +278,19 @@ export const webhooksRoute = createRouter().post(
 				const cancellationSettlement = resolveCronCancellationSettlement(
 					order.paymentCancellationState,
 					trustapTransaction.status,
-					payload.status,
+					incomingStatus,
 					transition,
 				);
 				const resolvesCreationReconciliation =
 					order.paymentCreationState === PAYMENT_CREATION_STATES.RECONCILIATION_REQUIRED &&
-					isAuthoritativeCreationResolutionStatus(payload.status) &&
+					isAuthoritativeCreationResolutionStatus(incomingStatus) &&
 					!linkedProposalIsPending;
 				const mayMutateOrderState =
 					transition.apply ||
 					Boolean(cancellationSettlement) ||
-					payload.status === entityTrustapTransactionTypeValues.COMPLAINED ||
+					incomingStatus === entityTrustapTransactionTypeValues.COMPLAINED ||
 					resolvesCreationReconciliation;
-				if (mayMutateOrderState && (await shippingLabelPurchaseDefersOrderTransition(tx, order.id))) {
+				if (mayMutateOrderState && (await shippingLabelPurchaseDefersOrderTransition(tx, order.id, payload.tracking))) {
 					return c.json({ error: SHIPPING_LABEL_TRANSITION_DEFERRED }, 503);
 				}
 				const complaintReconciliation = await complaintRequiresDurableReconciliation(tx, {
@@ -231,7 +298,7 @@ export const webhooksRoute = createRouter().post(
 					providerId: trustapTransaction.id,
 					transactionId: payload.transaction_id,
 					currentProviderStatus: trustapTransaction.status,
-					incomingProviderStatus: payload.status,
+					incomingProviderStatus: incomingStatus,
 				});
 				const complaintRequiresReconciliation = complaintReconciliation.required;
 				if (
@@ -275,7 +342,7 @@ export const webhooksRoute = createRouter().post(
 						...(cancellationSettlement
 							? { payment_cancellation_state: cancellationSettlement.paymentCancellationState }
 							: order.paymentCancellationState !== PAYMENT_CANCELLATION_STATES.CANCELLING &&
-								  isAuthoritativeCancellationStatus(payload.status)
+								  isAuthoritativeCancellationStatus(incomingStatus)
 								? { payment_cancellation_state: PAYMENT_CANCELLATION_STATES.CANCELLED }
 								: {}),
 						updated_at: new Date(),
@@ -286,7 +353,7 @@ export const webhooksRoute = createRouter().post(
 				if (!updatedOrder) throw new Error('Failed to update order status');
 
 				// Handle specific status changes
-				switch (payload.status) {
+				switch (incomingStatus) {
 					case 'paid':
 						// Transaction has been paid, buyer can now claim
 						console.log(`Transaction ${payload.transaction_id} has been paid`);
@@ -303,7 +370,7 @@ export const webhooksRoute = createRouter().post(
 						break;
 
 					default:
-						console.log(`Transaction ${payload.transaction_id} status updated to: ${payload.status}`);
+						console.log(`Transaction ${payload.transaction_id} status updated to: ${incomingStatus}`);
 				}
 
 				return c.json({ success: true, message: 'Transaction updated successfully' }, 200);

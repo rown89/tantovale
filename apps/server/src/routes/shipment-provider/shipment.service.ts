@@ -6,6 +6,9 @@ import { shipmentsCreate } from 'shippo/funcs/shipmentsCreate.js';
 import { shipmentsGet } from 'shippo/funcs/shipmentsGet.js';
 import { carrierAccountsList } from 'shippo/funcs/carrierAccountsList.js';
 import { ratesGet } from 'shippo/funcs/ratesGet.js';
+import { ratesListShipmentRatesByCurrencyCode } from 'shippo/funcs/ratesListShipmentRatesByCurrencyCode.js';
+import { refundsCreate } from 'shippo/funcs/refundsCreate.js';
+import { refundsGet } from 'shippo/funcs/refundsGet.js';
 import { transactionsCreate } from 'shippo/funcs/transactionsCreate.js';
 import z from 'zod/v4';
 
@@ -36,7 +39,15 @@ const ERROR_MESSAGES = {
 	SHIPPING_DIMENSIONS_NOT_FOUND: 'Shipping dimensions not found',
 } as const;
 
-export type ShippoOperation = 'list_carriers' | 'create_shipment' | 'get_shipment' | 'get_rate' | 'create_label';
+export type ShippoOperation =
+	| 'list_carriers'
+	| 'create_shipment'
+	| 'get_shipment'
+	| 'get_rate'
+	| 'list_rates_in_currency'
+	| 'create_label'
+	| 'create_refund'
+	| 'get_refund';
 export type ShippoErrorCategory = 'http' | 'invalid_response' | 'network';
 
 export class ShippoProviderError extends Error {
@@ -64,6 +75,9 @@ const rateSchema = z.object({
 	shipment: z.string().min(1),
 	amount: z.string().min(1),
 	currency: z.string().min(1),
+	amountLocal: z.string().min(1).optional(),
+	currencyLocal: z.string().min(1).optional(),
+	provider: z.string().trim().min(1),
 });
 const labelTransactionRateSchema = z.union([
 	z.string().min(1),
@@ -72,6 +86,7 @@ const labelTransactionRateSchema = z.union([
 const successfulLabelTransactionSchema = z.object({
 	objectId: z.string().min(1),
 	status: z.literal('SUCCESS'),
+	metadata: z.string().min(1),
 	labelUrl: z.string().url(),
 	rate: labelTransactionRateSchema,
 	trackingNumber: z.string().min(1).nullish(),
@@ -81,6 +96,7 @@ const rejectedLabelTransactionSchema = z
 	.object({
 		objectId: z.string().min(1),
 		status: z.literal('ERROR'),
+		metadata: z.string().min(1),
 		rate: labelTransactionRateSchema,
 		commercialInvoiceUrl: z.unknown().optional(),
 		labelUrl: z.unknown().optional(),
@@ -122,9 +138,20 @@ const labelTransactionSchema = z
 	})
 	.transform((transaction) =>
 		transaction.status === 'ERROR'
-			? { objectId: transaction.objectId, rate: transaction.rate, status: transaction.status }
+			? {
+					objectId: transaction.objectId,
+					metadata: transaction.metadata,
+					rate: transaction.rate,
+					status: transaction.status,
+				}
 			: transaction,
 	);
+
+const refundSchema = z.object({
+	objectId: z.string().min(1),
+	status: z.enum(['QUEUED', 'PENDING', 'SUCCESS', 'ERROR']),
+	transaction: z.string().min(1),
+});
 
 function shippoErrorStatus(error: unknown): number | undefined {
 	if (typeof error !== 'object' || error === null || !('statusCode' in error)) return undefined;
@@ -159,6 +186,20 @@ type DatabaseQuery = Pick<ReturnType<typeof createClient>['db'], 'select'>;
 const shippingQuoteTtlMs = 15 * 60 * 1_000;
 const postgresIntegerMax = 2_147_483_647n;
 
+export function nextShippingBusinessDay(now = new Date()): string {
+	const shipmentDate = new Date(now);
+	shipmentDate.setUTCDate(shipmentDate.getUTCDate() + 1);
+	while (shipmentDate.getUTCDay() === 0 || shipmentDate.getUTCDay() === 6) {
+		shipmentDate.setUTCDate(shipmentDate.getUTCDate() + 1);
+	}
+	shipmentDate.setUTCHours(12, 0, 0, 0);
+	return shipmentDate.toISOString();
+}
+
+export function shippingLabelTransactionMetadata(orderId: number, attemptId: string): string {
+	return `tv-label:${orderId}:${attemptId}`;
+}
+
 export function parseProviderDecimalToCents(amount: string): number | undefined {
 	const match = /^(\d+)(?:\.(\d+))?$/.exec(amount);
 	if (!match) return undefined;
@@ -166,6 +207,30 @@ export function parseProviderDecimalToCents(amount: string): number | undefined 
 	if (fraction.length > 2 && /[^0]/.test(fraction.slice(2))) return undefined;
 	const cents = BigInt(match[1]!) * 100n + BigInt((fraction.slice(0, 2) + '00').slice(0, 2));
 	return cents > 0n && cents <= postgresIntegerMax ? Number(cents) : undefined;
+}
+
+type RateAmount = {
+	amount: string;
+	amountLocal?: string;
+	currency: string;
+	currencyLocal?: string;
+};
+
+export function rateAmountInCurrency(rate: RateAmount, currency: string): string | undefined {
+	if (rate.currency === currency) return rate.amount;
+	if (rate.currencyLocal === currency) return rate.amountLocal;
+	return undefined;
+}
+
+function providerDecimalMatchesInteger(value: string | undefined, expected: number | null): boolean {
+	if (value === undefined || expected === null || !Number.isSafeInteger(expected)) return false;
+	const match = /^(\d+)(?:\.(\d+))?$/.exec(value);
+	return Boolean(match && BigInt(match[1]!) === BigInt(expected) && !/[^0]/.test(match[2] ?? ''));
+}
+
+function canonicalPhone(value: string | null | undefined): string {
+	const digits = (value ?? '').replace(/\D/gu, '');
+	return digits.startsWith('00') ? digits.slice(2) : digits;
 }
 
 export function shippingSnapshotFingerprint({ itemData, buyerProfile }: ShipmentCalculationData): string {
@@ -219,19 +284,19 @@ export function shipmentMatchesShippingState(shipment: Shipment, state: Shipment
 		shipment.addressFrom.state === itemData.seller_province_code &&
 		shipment.addressFrom.zip === itemData.seller_postal_code.toString() &&
 		shipment.addressFrom.country === itemData.seller_country_code &&
-		shipment.addressFrom.phone === itemData.seller_phone &&
+		canonicalPhone(shipment.addressFrom.phone) === canonicalPhone(itemData.seller_phone) &&
 		shipment.addressTo.street1 === `${buyerProfile.street_address} ${buyerProfile.civic_number}` &&
 		shipment.addressTo.city === buyerProfile.city_name &&
 		shipment.addressTo.state === buyerProfile.province_code &&
 		shipment.addressTo.zip === buyerProfile.postal_code.toString() &&
 		shipment.addressTo.country === buyerProfile.country_code &&
-		shipment.addressTo.phone === buyerProfile.phone &&
+		canonicalPhone(shipment.addressTo.phone) === canonicalPhone(buyerProfile.phone) &&
 		parcel?.massUnit === SHIPPING_UNITS.MASS &&
 		parcel.distanceUnit === SHIPPING_UNITS.DISTANCE &&
-		parcel.weight === String(itemData.item_weight) &&
-		parcel.height === String(itemData.item_height) &&
-		parcel.length === String(itemData.item_length) &&
-		parcel.width === String(itemData.item_width)
+		providerDecimalMatchesInteger(parcel.weight, itemData.item_weight) &&
+		providerDecimalMatchesInteger(parcel.height, itemData.item_height) &&
+		providerDecimalMatchesInteger(parcel.length, itemData.item_length) &&
+		providerDecimalMatchesInteger(parcel.width, itemData.item_width)
 	);
 }
 
@@ -251,28 +316,76 @@ export class ShipmentService {
 		const rateValue = await executeShippoRequest('get_rate', () => ratesGet(shippoClient, expectation.rateId));
 		const rate = rateSchema.safeParse(rateValue);
 		if (!rate.success) throw new ShippoProviderError('get_rate', 'invalid_response');
-		const amount = parseProviderDecimalToCents(rate.data.amount);
-		if (
-			rate.data.objectId !== expectation.rateId ||
-			rate.data.shipment !== expectation.shipmentId ||
-			amount !== expectation.amount ||
-			rate.data.currency !== expectation.currency
-		) {
+		if (rate.data.objectId !== expectation.rateId || rate.data.shipment !== expectation.shipmentId) {
 			throw new ShippoProviderError('get_rate', 'invalid_response');
+		}
+
+		let rateInExpectedCurrency = rate.data;
+		if (!rateAmountInCurrency(rateInExpectedCurrency, expectation.currency)) {
+			const rateListValue = await executeShippoRequest('list_rates_in_currency', () =>
+				ratesListShipmentRatesByCurrencyCode(shippoClient, {
+					shipmentId: expectation.shipmentId,
+					currencyCode: expectation.currency,
+					page: 1,
+					results: 100,
+				}),
+			);
+			const candidate = rateSchema.safeParse(
+				(rateListValue.results ?? []).find((listedRate) => listedRate.objectId === expectation.rateId),
+			);
+			if (
+				!candidate.success ||
+				candidate.data.shipment !== expectation.shipmentId ||
+				candidate.data.provider !== rate.data.provider
+			) {
+				throw new ShippoProviderError('list_rates_in_currency', 'invalid_response');
+			}
+			rateInExpectedCurrency = candidate.data;
+		}
+
+		const amountInCurrency = rateAmountInCurrency(rateInExpectedCurrency, expectation.currency);
+		const amount = amountInCurrency ? parseProviderDecimalToCents(amountInCurrency) : undefined;
+		if (amount !== expectation.amount) {
+			throw new ShippoProviderError(
+				rateInExpectedCurrency === rate.data ? 'get_rate' : 'list_rates_in_currency',
+				'invalid_response',
+			);
 		}
 		return rate.data;
 	}
 
-	async purchaseVerifiedLabel(rateId: string) {
+	async purchaseVerifiedLabel(rateId: string, metadata: string) {
 		const transactionValue = await executeShippoRequest('create_label', () =>
-			transactionsCreate(shippoClient, { rate: rateId, async: false, labelFileType: 'PDF' }),
+			transactionsCreate(shippoClient, { rate: rateId, async: false, labelFileType: 'PDF', metadata }),
 		);
 		const transaction = labelTransactionSchema.safeParse(transactionValue);
 		if (!transaction.success) throw new ShippoProviderError('create_label', 'invalid_response');
 		const purchasedRateId =
 			typeof transaction.data.rate === 'string' ? transaction.data.rate : transaction.data.rate.objectId;
-		if (purchasedRateId !== rateId) throw new ShippoProviderError('create_label', 'invalid_response');
+		if (purchasedRateId !== rateId || transaction.data.metadata !== metadata) {
+			throw new ShippoProviderError('create_label', 'invalid_response');
+		}
 		return transaction.data;
+	}
+
+	async createVerifiedRefund(transactionId: string) {
+		const refundValue = await executeShippoRequest('create_refund', () =>
+			refundsCreate(shippoClient, { transaction: transactionId, async: false }),
+		);
+		const refund = refundSchema.safeParse(refundValue);
+		if (!refund.success || refund.data.transaction !== transactionId) {
+			throw new ShippoProviderError('create_refund', 'invalid_response');
+		}
+		return refund.data;
+	}
+
+	async getVerifiedRefund(refundId: string, transactionId: string) {
+		const refundValue = await executeShippoRequest('get_refund', () => refundsGet(shippoClient, refundId));
+		const refund = refundSchema.safeParse(refundValue);
+		if (!refund.success || refund.data.objectId !== refundId || refund.data.transaction !== transactionId) {
+			throw new ShippoProviderError('get_refund', 'invalid_response');
+		}
+		return refund.data;
 	}
 
 	/**
@@ -402,7 +515,7 @@ export class ShipmentService {
 		return {
 			async: false,
 			metadata: metadata ?? 'Tantovale shipping preview',
-			shipmentDate: new Date().toISOString(),
+			shipmentDate: nextShippingBusinessDay(),
 			addressFrom: {
 				name: `${itemData.seller_name} ${itemData.seller_surname}`,
 				street1: `${itemData.seller_street_address} ${itemData.seller_civic_number}`,
@@ -461,26 +574,40 @@ export class ShipmentService {
 			throw new ShippoProviderError('create_shipment', 'invalid_response');
 		}
 		const shipmentId = responseValue.objectId;
-		const validRates = responseValue.rates
-			?.filter((candidate) => {
-				const cents = candidate.amount ? parseProviderDecimalToCents(candidate.amount) : undefined;
-				return (
-					Boolean(candidate.objectId) &&
-					candidate.shipment === shipmentId &&
-					candidate.currency === 'EUR' &&
-					cents !== undefined &&
-					Number.isSafeInteger(cents) &&
-					cents > 0
-				);
+		const requestedCurrency = 'EUR' as const;
+		const initialRates = responseValue.rates ?? [];
+		const rateCandidates = initialRates.some((candidate) => rateAmountInCurrency(candidate, requestedCurrency))
+			? initialRates
+			: ((
+					await executeShippoRequest('list_rates_in_currency', () =>
+						ratesListShipmentRatesByCurrencyCode(shippoClient, {
+							shipmentId,
+							currencyCode: requestedCurrency,
+							page: 1,
+							results: 100,
+						}),
+					)
+				).results ?? []);
+		const validRates = rateCandidates
+			.map((candidate) => {
+				const amountValue = rateAmountInCurrency(candidate, requestedCurrency);
+				const amount = amountValue ? parseProviderDecimalToCents(amountValue) : undefined;
+				return amountValue && amount !== undefined && Number.isSafeInteger(amount) && amount > 0
+					? { amount, amountValue, rate: candidate }
+					: undefined;
 			})
-			.sort((left, right) => left.objectId.localeCompare(right.objectId));
-		const rate = validRates?.find((candidate) => candidate.attributes?.includes('BESTVALUE')) ?? validRates?.[0];
-		const amount = rate?.amount ? parseProviderDecimalToCents(rate.amount) : undefined;
+			.filter(
+				(candidate): candidate is NonNullable<typeof candidate> =>
+					candidate !== undefined && Boolean(candidate.rate.objectId) && candidate.rate.shipment === shipmentId,
+			)
+			.sort((left, right) => left.rate.objectId.localeCompare(right.rate.objectId));
+		const selected = validRates.find((candidate) => candidate.rate.attributes?.includes('BESTVALUE')) ?? validRates[0];
+		if (!selected) throw new ShippoProviderError('create_shipment', 'invalid_response');
+		const { amount, rate } = selected;
 		if (
 			!shipmentId ||
 			!rate?.objectId ||
 			rate.shipment !== shipmentId ||
-			rate.currency !== 'EUR' ||
 			amount === undefined ||
 			!Number.isSafeInteger(amount) ||
 			amount <= 0
@@ -509,13 +636,18 @@ export class ShipmentService {
 				shippo_shipment_id: shipmentId,
 				shippo_rate_id: rate.objectId,
 				amount,
-				currency: rate.currency,
+				currency: requestedCurrency,
 				snapshot_fingerprint: fingerprint,
 				expires_at: expiresAt,
 			});
 		});
 
-		return { amount: rate.amount, currency: rate.currency, shipment_label_id: shipmentId, shipping_quote_id: quoteId };
+		return {
+			amount: selected.amountValue,
+			currency: requestedCurrency,
+			shipment_label_id: shipmentId,
+			shipping_quote_id: quoteId,
+		};
 	}
 
 	/**

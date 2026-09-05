@@ -58,10 +58,6 @@ describe('worker state isolation', () => {
 		await expectCurrentResidue();
 	});
 
-	it('retains only its own database and object-storage residue', async () => {
-		await expectCurrentResidue();
-	});
-
 	it('refuses an assigned worker bucket that differs from the environment', async () => {
 		const wrongBucket = runtime.resourceNames.workerBuckets.find((candidate) => candidate !== bucket);
 

@@ -11,6 +11,15 @@ export const SHIPPING_LABEL_PURCHASE_STATES = {
 	PURCHASED: 'purchased',
 } as const;
 
+export const SHIPPING_LABEL_REFUND_STATES = {
+	NONE: 'none',
+	REQUESTING: 'requesting',
+	RECONCILIATION_REQUIRED: 'reconciliation_required',
+	PENDING: 'pending',
+	REFUNDED: 'refunded',
+	REJECTED: 'rejected',
+} as const;
+
 export const shipping_label_purchases = pgTable(
 	'shipping_label_purchases',
 	{
@@ -29,6 +38,11 @@ export const shipping_label_purchases = pgTable(
 		provider_status: text('provider_status'),
 		tracking_number: text('tracking_number'),
 		tracking_url: text('tracking_url'),
+		refund_state: text('refund_state').notNull().default(SHIPPING_LABEL_REFUND_STATES.NONE),
+		refund_attempt_id: uuid('refund_attempt_id'),
+		provider_refund_id: text('provider_refund_id'),
+		provider_refund_status: text('provider_refund_status'),
+		refund_requested_at: timestamp('refund_requested_at', { withTimezone: true }),
 		created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
@@ -38,7 +52,14 @@ export const shipping_label_purchases = pgTable(
 		uniqueIndex('shipping_label_purchases_provider_transaction_id_idx')
 			.on(table.provider_transaction_id)
 			.where(sql`${table.provider_transaction_id} IS NOT NULL`),
+		uniqueIndex('shipping_label_purchases_refund_attempt_id_idx')
+			.on(table.refund_attempt_id)
+			.where(sql`${table.refund_attempt_id} IS NOT NULL`),
+		uniqueIndex('shipping_label_purchases_provider_refund_id_idx')
+			.on(table.provider_refund_id)
+			.where(sql`${table.provider_refund_id} IS NOT NULL`),
 		index('shipping_label_purchases_state_idx').on(table.state),
+		index('shipping_label_purchases_refund_state_idx').on(table.refund_state),
 		check(
 			'shipping_label_purchases_state_check',
 			sql`${table.state} IN ('creating', 'reconciliation_required', 'purchased')`,
@@ -65,6 +86,60 @@ export const shipping_label_purchases = pgTable(
 				AND ${table.label_url} IS NOT NULL
 				AND ${table.provider_status} IS NOT NULL
 				AND ${table.provider_status} = 'SUCCESS'
+			)`,
+		),
+		check(
+			'shipping_label_purchases_refund_state_check',
+			sql`${table.refund_state} IN ('none', 'requesting', 'reconciliation_required', 'pending', 'refunded', 'rejected')`,
+		),
+		check(
+			'shipping_label_purchases_refund_requires_purchase_check',
+			sql`${table.refund_state} = 'none' OR ${table.state} = 'purchased'`,
+		),
+		check(
+			'shipping_label_purchases_refund_provider_status_check',
+			sql`${table.provider_refund_status} IS NULL OR ${table.provider_refund_status} IN ('QUEUED', 'PENDING', 'SUCCESS', 'ERROR')`,
+		),
+		check(
+			'shipping_label_purchases_refund_graph_check',
+			sql`(
+				${table.refund_state} = 'none'
+				AND ${table.refund_attempt_id} IS NULL
+				AND ${table.provider_refund_id} IS NULL
+				AND ${table.provider_refund_status} IS NULL
+				AND ${table.refund_requested_at} IS NULL
+			) OR (
+				${table.refund_state} = 'requesting'
+				AND ${table.refund_attempt_id} IS NOT NULL
+				AND ${table.provider_refund_id} IS NULL
+				AND ${table.provider_refund_status} IS NULL
+				AND ${table.refund_requested_at} IS NOT NULL
+			) OR (
+				${table.refund_state} = 'reconciliation_required'
+				AND ${table.refund_attempt_id} IS NOT NULL
+				AND ${table.refund_requested_at} IS NOT NULL
+				AND (
+					(${table.provider_refund_id} IS NULL AND ${table.provider_refund_status} IS NULL)
+					OR (${table.provider_refund_id} IS NOT NULL AND ${table.provider_refund_status} IS NOT NULL)
+				)
+			) OR (
+				${table.refund_state} = 'pending'
+				AND ${table.refund_attempt_id} IS NOT NULL
+				AND ${table.provider_refund_id} IS NOT NULL
+				AND ${table.provider_refund_status} IN ('QUEUED', 'PENDING')
+				AND ${table.refund_requested_at} IS NOT NULL
+			) OR (
+				${table.refund_state} = 'refunded'
+				AND ${table.refund_attempt_id} IS NOT NULL
+				AND ${table.provider_refund_id} IS NOT NULL
+				AND ${table.provider_refund_status} = 'SUCCESS'
+				AND ${table.refund_requested_at} IS NOT NULL
+			) OR (
+				${table.refund_state} = 'rejected'
+				AND ${table.refund_attempt_id} IS NOT NULL
+				AND ${table.provider_refund_id} IS NOT NULL
+				AND ${table.provider_refund_status} = 'ERROR'
+				AND ${table.refund_requested_at} IS NOT NULL
 			)`,
 		),
 	],

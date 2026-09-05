@@ -4,6 +4,7 @@ import { DistanceUnitEnum, WeightUnitEnum } from 'shippo/models/components/index
 import {
 	shippoCarrierAccountsFixture,
 	shippoRateFixture,
+	shippoRefundFixture,
 	shippoShipmentFixture,
 	shippoTransactionFixture,
 } from '../fixtures/providers/shippo-2018-02-08';
@@ -35,6 +36,13 @@ export type StubScenario =
 	| 'guest-disconnect-after-create'
 	| 'guest-invalid-body'
 	| 'guest-malformed-json'
+	| 'trustap-carriers-unsupported'
+	| 'trustap-carriers-invalid-body'
+	| 'trustap-carriers-malformed-json'
+	| 'trustap-track-provider-error'
+	| 'trustap-track-malformed-json'
+	| 'trustap-track-id-mismatch'
+	| 'trustap-track-disconnect'
 	| 'shippo-delay'
 	| 'shippo-disconnect'
 	| 'shippo-carriers-invalid-body'
@@ -81,12 +89,22 @@ export type StubScenario =
 	| 'shippo-label-without-tracking'
 	| 'shippo-label-disconnect-after-create'
 	| 'shippo-label-barrier'
+	| 'shippo-label-metadata-mismatch'
+	| 'shippo-refund-pending'
+	| 'shippo-refund-status-error'
+	| 'shippo-refund-invalid-body'
+	| 'shippo-refund-transaction-mismatch'
+	| 'shippo-refund-disconnect-after-create'
+	| 'shippo-refund-client-error'
+	| 'shippo-refund-provider-error'
+	| 'shippo-refund-get-provider-error'
 	| 'shippo-reordered-rates'
 	| 'shippo-address-mismatch'
 	| 'shippo-create-metadata-mismatch'
 	| 'shippo-create-address-mismatch'
 	| 'shippo-create-parcel-mismatch'
 	| 'shippo-create-reordered-rates'
+	| 'shippo-create-rate-convertible-usd'
 	| 'shippo-create-rate-currency-mismatch'
 	| 'shippo-create-rate-amount-mismatch'
 	| 'shippo-create-rate-shipment-mismatch'
@@ -143,7 +161,6 @@ type TrustapChargeRequest = {
 };
 
 type TrustapGuestRequest = {
-	id: number;
 	email: string;
 };
 
@@ -162,7 +179,12 @@ type TrustapTransactionRequest = {
 	features?: TrustapTransactionFeature[];
 };
 
-type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_hr_post' | 'use_shippo';
+type TrustapTrackingRequest = {
+	carrier: string;
+	tracking_code: string;
+};
+
+type TrustapTransactionFeature = 'require_seller_acceptance' | 'use_custom_postage_fee' | 'use_hr_post';
 
 type TrustapTransactionResource = Omit<
 	typeof trustapTransactionFixture,
@@ -171,23 +193,38 @@ type TrustapTransactionResource = Omit<
 	buyer_id: string;
 	charge: number;
 	description: string;
-	id: number;
+	id: number | string;
 	price: number;
 	seller_id: string;
 	status: string;
+	charge_postage_buyer?: number;
+	charge_postage_client?: number;
+	tracked?: string;
+	tracking?: TrustapTrackingRequest;
+};
+
+type ShippoRefundResource = Omit<typeof shippoRefundFixture, 'object_id' | 'status' | 'transaction'> & {
+	object_id: string;
+	status: 'QUEUED' | 'PENDING' | 'SUCCESS' | 'ERROR';
+	transaction: string;
 };
 
 type ProviderRoute =
 	| { name: 'trustap-guest-user' }
 	| { name: 'trustap-charge' }
 	| { name: 'trustap-create-transaction' }
-	| { name: 'trustap-get-transaction'; transactionId: number }
-	| { name: 'trustap-cancel-transaction'; transactionId: number }
+	| { name: 'trustap-supported-carriers' }
+	| { name: 'trustap-get-transaction'; transactionId: string }
+	| { name: 'trustap-cancel-transaction'; transactionId: string }
+	| { name: 'trustap-track-transaction'; transactionId: string }
 	| { name: 'shippo-carrier-accounts' }
 	| { name: 'shippo-create-shipment' }
+	| { name: 'shippo-list-rates-in-currency'; shipmentId: string; currencyCode: string }
 	| { name: 'shippo-get-shipment'; shipmentId: string }
 	| { name: 'shippo-get-rate'; rateId: string }
-	| { name: 'shippo-create-transaction' };
+	| { name: 'shippo-create-transaction' }
+	| { name: 'shippo-create-refund' }
+	| { name: 'shippo-get-refund'; refundId: string };
 
 const JSON_BODY_LIMIT_BYTES = 64 * 1024;
 const scenarios: ReadonlySet<StubScenario> = new Set([
@@ -211,6 +248,13 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'guest-disconnect-after-create',
 	'guest-invalid-body',
 	'guest-malformed-json',
+	'trustap-carriers-unsupported',
+	'trustap-carriers-invalid-body',
+	'trustap-carriers-malformed-json',
+	'trustap-track-provider-error',
+	'trustap-track-malformed-json',
+	'trustap-track-id-mismatch',
+	'trustap-track-disconnect',
 	'shippo-delay',
 	'shippo-disconnect',
 	'shippo-carriers-invalid-body',
@@ -257,12 +301,22 @@ const scenarios: ReadonlySet<StubScenario> = new Set([
 	'shippo-label-without-tracking',
 	'shippo-label-disconnect-after-create',
 	'shippo-label-barrier',
+	'shippo-label-metadata-mismatch',
+	'shippo-refund-pending',
+	'shippo-refund-status-error',
+	'shippo-refund-invalid-body',
+	'shippo-refund-transaction-mismatch',
+	'shippo-refund-disconnect-after-create',
+	'shippo-refund-client-error',
+	'shippo-refund-provider-error',
+	'shippo-refund-get-provider-error',
 	'shippo-reordered-rates',
 	'shippo-address-mismatch',
 	'shippo-create-metadata-mismatch',
 	'shippo-create-address-mismatch',
 	'shippo-create-parcel-mismatch',
 	'shippo-create-reordered-rates',
+	'shippo-create-rate-convertible-usd',
 	'shippo-create-rate-currency-mismatch',
 	'shippo-create-rate-amount-mismatch',
 	'shippo-create-rate-shipment-mismatch',
@@ -386,6 +440,12 @@ function isSafeInteger(value: unknown, minimum: number): value is number {
 	return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum;
 }
 
+function canonicalStubTrustapId(value: unknown): string | undefined {
+	if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : undefined;
+	if (typeof value !== 'string' || !/^[1-9]\d*$/u.test(value)) return undefined;
+	return BigInt(value) <= 9_223_372_036_854_775_807n ? value : undefined;
+}
+
 function parseIntegerParameter(value: string | null, minimum: number): number | undefined {
 	if (value === null || !/^(0|[1-9][0-9]*)$/.test(value)) return undefined;
 	const integer = Number(value);
@@ -396,20 +456,26 @@ function resolveProviderRoute(kind: ProviderStubKind, method: string, pathname: 
 	if (kind === 'trustap') {
 		if (method === 'POST' && pathname === '/api/v1/guest_users') return { name: 'trustap-guest-user' };
 		if (method === 'GET' && pathname === '/api/v1/charge') return { name: 'trustap-charge' };
+		if (method === 'GET' && pathname === '/api/v1/supported_carriers') return { name: 'trustap-supported-carriers' };
 		if (method === 'POST' && pathname === '/api/v1/me/transactions/create_with_guest_user') {
 			return { name: 'trustap-create-transaction' };
 		}
 		if (method === 'POST') {
+			const trackMatch = /^\/api\/v1\/transactions\/([0-9]+)\/track_with_guest_seller$/.exec(pathname);
+			const trackingTransactionId = canonicalStubTrustapId(trackMatch?.[1]);
+			if (trackingTransactionId) {
+				return { name: 'trustap-track-transaction', transactionId: trackingTransactionId };
+			}
 			const cancelMatch = /^\/api\/v1\/transactions\/([0-9]+)\/cancel_with_guest_user$/.exec(pathname);
-			const transactionId = cancelMatch ? Number(cancelMatch[1]) : Number.NaN;
-			if (Number.isSafeInteger(transactionId) && transactionId > 0) {
+			const transactionId = canonicalStubTrustapId(cancelMatch?.[1]);
+			if (transactionId) {
 				return { name: 'trustap-cancel-transaction', transactionId };
 			}
 		}
 		if (method === 'GET') {
 			const transactionMatch = /^\/api\/v1\/transactions\/([0-9]+)$/.exec(pathname);
-			const transactionId = transactionMatch ? Number(transactionMatch[1]) : Number.NaN;
-			if (Number.isSafeInteger(transactionId) && transactionId > 0) {
+			const transactionId = canonicalStubTrustapId(transactionMatch?.[1]);
+			if (transactionId) {
 				return { name: 'trustap-get-transaction', transactionId };
 			}
 		}
@@ -419,12 +485,23 @@ function resolveProviderRoute(kind: ProviderStubKind, method: string, pathname: 
 	if (method === 'GET' && pathname === '/carrier_accounts') return { name: 'shippo-carrier-accounts' };
 	if (method === 'POST' && pathname === '/shipments') return { name: 'shippo-create-shipment' };
 	if (method === 'GET') {
+		const ratesInCurrencyMatch = /^\/shipments\/([^/]+)\/rates\/([^/]+)$/.exec(pathname);
+		if (ratesInCurrencyMatch?.[1] && ratesInCurrencyMatch[2]) {
+			return {
+				name: 'shippo-list-rates-in-currency',
+				shipmentId: ratesInCurrencyMatch[1],
+				currencyCode: ratesInCurrencyMatch[2],
+			};
+		}
 		const shipmentMatch = /^\/shipments\/([^/]+)$/.exec(pathname);
 		if (shipmentMatch?.[1]) return { name: 'shippo-get-shipment', shipmentId: shipmentMatch[1] };
 		const rateMatch = /^\/rates\/([^/]+)$/.exec(pathname);
 		if (rateMatch?.[1]) return { name: 'shippo-get-rate', rateId: rateMatch[1] };
+		const refundMatch = /^\/refunds\/([^/]+)$/.exec(pathname);
+		if (refundMatch?.[1]) return { name: 'shippo-get-refund', refundId: refundMatch[1] };
 	}
 	if (method === 'POST' && pathname === '/transactions') return { name: 'shippo-create-transaction' };
+	if (method === 'POST' && pathname === '/refunds') return { name: 'shippo-create-refund' };
 	return undefined;
 }
 
@@ -447,7 +524,7 @@ function hasJsonContentType(headers: Record<string, string>): boolean {
 function parseTrustapGuest(body: unknown): TrustapGuestRequest | undefined {
 	if (!isRecord(body) || !isRecord(body.tos_acceptance)) return undefined;
 	if (
-		!isSafeInteger(body.id, 1) ||
+		'id' in body ||
 		!isNonemptyString(body.email) ||
 		!body.email.includes('@') ||
 		!isNonemptyString(body.first_name) ||
@@ -460,7 +537,7 @@ function parseTrustapGuest(body: unknown): TrustapGuestRequest | undefined {
 		return undefined;
 	}
 
-	return { id: body.id, email: body.email };
+	return { email: body.email };
 }
 
 function parseTrustapCharge(url: URL): TrustapChargeRequest | undefined {
@@ -515,10 +592,15 @@ function parseTrustapTransaction(body: unknown): TrustapTransactionRequest | und
 	};
 }
 
+function parseTrustapTracking(body: unknown): TrustapTrackingRequest | undefined {
+	if (!isRecord(body) || !isNonemptyString(body.carrier) || !isNonemptyString(body.tracking_code)) return undefined;
+	return { carrier: body.carrier, tracking_code: body.tracking_code };
+}
+
 const trustapTransactionFeatures: ReadonlySet<string> = new Set([
 	'require_seller_acceptance',
+	'use_custom_postage_fee',
 	'use_hr_post',
-	'use_shippo',
 ]);
 
 function hasSupportedTrustapFeatures(value: unknown): value is TrustapTransactionFeature[] | undefined {
@@ -562,11 +644,22 @@ function isPositiveFiniteNumericString(value: unknown): value is string {
 	return Number.isFinite(numericValue) && numericValue > 0;
 }
 
-function parseShippoTransaction(body: unknown): { rate: string } | undefined {
-	if (!isRecord(body) || !isNonemptyString(body.rate) || body.async !== false || body.label_file_type !== 'PDF') {
+function parseShippoTransaction(body: unknown): { metadata: string; rate: string } | undefined {
+	if (
+		!isRecord(body) ||
+		!isNonemptyString(body.rate) ||
+		!isNonemptyString(body.metadata) ||
+		body.async !== false ||
+		body.label_file_type !== 'PDF'
+	) {
 		return undefined;
 	}
-	return { rate: body.rate };
+	return { metadata: body.metadata, rate: body.rate };
+}
+
+function parseShippoRefund(body: unknown): { transaction: string } | undefined {
+	if (!isRecord(body) || !isNonemptyString(body.transaction) || body.async !== false) return undefined;
+	return { transaction: body.transaction };
 }
 
 function trustapHandshakeKey(input: Pick<TrustapTransactionRequest, 'price' | 'currency' | 'postage_fee'>): string {
@@ -598,7 +691,7 @@ function trustapCancellationResponse(
 	scenario: StubScenario,
 ): Record<string, unknown> {
 	const mutations: Partial<Record<StubScenario, Record<string, unknown>>> = {
-		'transaction-cancel-id-mismatch': { id: transaction.id + 1 },
+		'transaction-cancel-id-mismatch': { id: (BigInt(String(transaction.id)) + 1n).toString() },
 		'transaction-cancel-buyer-mismatch': { buyer_id: 'unrelated-cancel-buyer' },
 		'transaction-cancel-seller-mismatch': { seller_id: 'unrelated-cancel-seller' },
 		'transaction-cancel-price-mismatch': { price: transaction.price + 1 },
@@ -642,6 +735,13 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'guest-disconnect-after-create':
 		case 'guest-invalid-body':
 		case 'guest-malformed-json':
+		case 'trustap-carriers-unsupported':
+		case 'trustap-carriers-invalid-body':
+		case 'trustap-carriers-malformed-json':
+		case 'trustap-track-provider-error':
+		case 'trustap-track-malformed-json':
+		case 'trustap-track-id-mismatch':
+		case 'trustap-track-disconnect':
 			return false;
 		case 'shippo-delay':
 		case 'shippo-disconnect':
@@ -689,12 +789,22 @@ function injectedScenarioResponse(kind: ProviderStubKind, scenario: StubScenario
 		case 'shippo-label-without-tracking':
 		case 'shippo-label-disconnect-after-create':
 		case 'shippo-label-barrier':
+		case 'shippo-label-metadata-mismatch':
+		case 'shippo-refund-pending':
+		case 'shippo-refund-status-error':
+		case 'shippo-refund-invalid-body':
+		case 'shippo-refund-transaction-mismatch':
+		case 'shippo-refund-disconnect-after-create':
+		case 'shippo-refund-client-error':
+		case 'shippo-refund-provider-error':
+		case 'shippo-refund-get-provider-error':
 		case 'shippo-reordered-rates':
 		case 'shippo-address-mismatch':
 		case 'shippo-create-metadata-mismatch':
 		case 'shippo-create-address-mismatch':
 		case 'shippo-create-parcel-mismatch':
 		case 'shippo-create-reordered-rates':
+		case 'shippo-create-rate-convertible-usd':
 		case 'shippo-create-rate-currency-mismatch':
 		case 'shippo-create-rate-amount-mismatch':
 		case 'shippo-create-rate-shipment-mismatch':
@@ -736,16 +846,20 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 	let scenario: StubScenario = 'success';
 	let requests: CapturedRequest[] = [];
 	const trustapHandshakes = new Map<string, { charge: number; version: number }>();
-	const trustapGuests = new Map<number, TrustapGuestResource>();
-	const trustapTransactions = new Map<number, TrustapTransactionResource>([
-		[trustapTransactionFixture.id, trustapTransactionFixture],
+	const trustapGuests = new Map<string, TrustapGuestResource>();
+	const trustapTransactions = new Map<string, TrustapTransactionResource>([
+		[String(trustapTransactionFixture.id), trustapTransactionFixture],
 	]);
 	let nextTrustapTransactionId = trustapTransactionFixture.id + 1;
+	let nextTrustapGuestId = 101;
 	const shippoShipments = new Map<string, typeof shippoShipmentFixture>();
 	const shippoRateIds = new Set<string>();
 	const shippoRates = new Map<string, typeof shippoRateFixture>();
+	const shippoTransactions = new Set<string>();
+	const shippoRefunds = new Map<string, ShippoRefundResource>();
 	let nextShippoShipmentOrdinal = 1;
 	let nextShippoTransactionOrdinal = 1;
+	let nextShippoRefundOrdinal = 1;
 	let shippoRateBarrierReached = 0;
 	let releaseShippoRateBarrier: (() => void) | undefined;
 	let shippoRateBarrier = new Promise<void>((resolve) => {
@@ -776,13 +890,17 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 		trustapHandshakes.clear();
 		trustapGuests.clear();
 		trustapTransactions.clear();
-		trustapTransactions.set(trustapTransactionFixture.id, trustapTransactionFixture);
+		trustapTransactions.set(String(trustapTransactionFixture.id), trustapTransactionFixture);
 		nextTrustapTransactionId = trustapTransactionFixture.id + 1;
+		nextTrustapGuestId = 101;
 		shippoShipments.clear();
 		shippoRateIds.clear();
 		shippoRates.clear();
+		shippoTransactions.clear();
+		shippoRefunds.clear();
 		nextShippoShipmentOrdinal = 1;
 		nextShippoTransactionOrdinal = 1;
+		nextShippoRefundOrdinal = 1;
 		resetShippoRateBarrier();
 		resetShippoLabelBarrier();
 	};
@@ -848,13 +966,13 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 
 				if (kind === 'trustap' && method === 'POST' && requestUrl.pathname === '/__test/transaction-status') {
 					const body = await readJsonBody(request);
-					const transactionId = isRecord(body) ? body.transaction_id : undefined;
+					const transactionId = canonicalStubTrustapId(isRecord(body) ? body.transaction_id : undefined);
 					const status = isRecord(body) ? body.status : undefined;
+					const chargePostageBuyer = isRecord(body) ? body.charge_postage_buyer : undefined;
+					const chargePostageClient = isRecord(body) ? body.charge_postage_client : undefined;
 					const description = isRecord(body) ? body.description : undefined;
-					const transaction =
-						typeof transactionId === 'number' && Number.isSafeInteger(transactionId)
-							? trustapTransactions.get(transactionId)
-							: undefined;
+					const tracking = isRecord(body) ? body.tracking : undefined;
+					const transaction = transactionId ? trustapTransactions.get(transactionId) : undefined;
 					if (!transaction || typeof status !== 'string') {
 						sendJson(response, 404, { error: 'Trustap transaction control target not found' });
 						return;
@@ -863,21 +981,55 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendJson(response, 400, { error: 'Invalid Trustap transaction description' });
 						return;
 					}
-					trustapTransactions.set(transaction.id, {
+					if (
+						(chargePostageBuyer !== undefined && !isSafeInteger(chargePostageBuyer, 0)) ||
+						(chargePostageClient !== undefined && !isSafeInteger(chargePostageClient, 0))
+					) {
+						sendJson(response, 400, { error: 'Invalid Trustap transaction postage charge' });
+						return;
+					}
+					if (
+						tracking !== undefined &&
+						(!isRecord(tracking) || !isNonemptyString(tracking.carrier) || !isNonemptyString(tracking.tracking_code))
+					) {
+						sendJson(response, 400, { error: 'Invalid Trustap transaction tracking' });
+						return;
+					}
+					trustapTransactions.set(String(transaction.id), {
 						...transaction,
 						status,
+						...(typeof chargePostageBuyer === 'number' ? { charge_postage_buyer: chargePostageBuyer } : {}),
+						...(typeof chargePostageClient === 'number' ? { charge_postage_client: chargePostageClient } : {}),
 						...(typeof description === 'string' ? { description } : {}),
+						...(isRecord(tracking)
+							? { tracking: { carrier: tracking.carrier as string, tracking_code: tracking.tracking_code as string } }
+							: {}),
 					});
 					sendJson(response, 200, { transaction_id: transactionId, status });
 					return;
 				}
 
+				if (kind === 'trustap' && method === 'POST' && requestUrl.pathname === '/__test/transaction') {
+					const body = await readJsonBody(request);
+					const transactionId = canonicalStubTrustapId(isRecord(body) ? body.transaction_id : undefined);
+					const buyerId = isRecord(body) ? body.buyer_id : undefined;
+					const sellerId = isRecord(body) ? body.seller_id : undefined;
+					if (!transactionId || !isNonemptyString(buyerId) || !isNonemptyString(sellerId)) {
+						sendJson(response, 400, { error: 'Invalid Trustap transaction control fixture' });
+						return;
+					}
+					trustapTransactions.set(transactionId, {
+						...trustapTransactionFixture,
+						id: transactionId,
+						buyer_id: buyerId,
+						seller_id: sellerId,
+					});
+					sendJson(response, 201, { transaction_id: transactionId });
+					return;
+				}
+
 				if (kind === 'trustap' && method === 'GET' && requestUrl.pathname === '/__test/guest-identities') {
-					sendJson(
-						response,
-						200,
-						[...trustapGuests.entries()].map(([client_id, guest]) => ({ client_id, ...guest })),
-					);
+					sendJson(response, 200, [...trustapGuests.values()]);
 					return;
 				}
 
@@ -902,7 +1054,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 			}
 			if (
 				kind === 'trustap' &&
-				(route.name === 'trustap-guest-user' || route.name === 'trustap-create-transaction') &&
+				(route.name === 'trustap-guest-user' ||
+					route.name === 'trustap-create-transaction' ||
+					route.name === 'trustap-track-transaction') &&
 				!hasJsonContentType(headers)
 			) {
 				sendValidationError(kind, response, 'Trustap Content-Type must be application/json');
@@ -920,7 +1074,9 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 			let trustapCharge: TrustapChargeRequest | undefined;
 			let trustapGuest: TrustapGuestRequest | undefined;
 			let trustapTransaction: TrustapTransactionRequest | undefined;
-			let shippoTransaction: { rate: string } | undefined;
+			let trustapTracking: TrustapTrackingRequest | undefined;
+			let shippoTransaction: { metadata: string; rate: string } | undefined;
+			let shippoRefund: { transaction: string } | undefined;
 
 			switch (route.name) {
 				case 'trustap-guest-user':
@@ -960,6 +1116,17 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					break;
 				}
+				case 'trustap-track-transaction':
+					trustapTracking = parseTrustapTracking(body);
+					if (
+						!trustapTracking ||
+						trustapTracking.carrier !== 'poste-italiane' ||
+						!isNonemptyString(headers['trustap-user'])
+					) {
+						sendValidationError(kind, response, 'Trustap tracking request is invalid');
+						return;
+					}
+					break;
 				case 'shippo-create-shipment':
 					if (!isValidShippoShipment(body)) {
 						sendValidationError(kind, response);
@@ -968,6 +1135,12 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					break;
 				case 'shippo-get-shipment':
 					if (!shippoShipments.has(route.shipmentId)) {
+						sendNotFound(kind, response);
+						return;
+					}
+					break;
+				case 'shippo-list-rates-in-currency':
+					if (!shippoShipments.has(route.shipmentId) || route.currencyCode !== 'EUR') {
 						sendNotFound(kind, response);
 						return;
 					}
@@ -982,6 +1155,19 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					shippoTransaction = parseShippoTransaction(body);
 					if (!shippoTransaction || !shippoRateIds.has(shippoTransaction.rate)) {
 						sendValidationError(kind, response);
+						return;
+					}
+					break;
+				case 'shippo-create-refund':
+					shippoRefund = parseShippoRefund(body);
+					if (!shippoRefund || !shippoTransactions.has(shippoRefund.transaction)) {
+						sendValidationError(kind, response);
+						return;
+					}
+					break;
+				case 'shippo-get-refund':
+					if (!shippoRefunds.has(route.refundId)) {
+						sendNotFound(kind, response);
 						return;
 					}
 					break;
@@ -1002,6 +1188,8 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					}
 					break;
 				}
+				case 'trustap-supported-carriers':
+					break;
 			}
 
 			if (scenario === 'transaction-error' && route.name === 'trustap-create-transaction') {
@@ -1026,12 +1214,13 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 				case 'trustap-guest-user':
 					if (!trustapGuest) throw new Error('Validated Trustap guest input is missing');
 					{
-						const guest = trustapGuests.get(trustapGuest.id) ?? {
+						const guest = {
 							...trustapGuestUserFixture,
 							email: trustapGuest.email,
-							id: `guest-${trustapGuest.id}`,
+							id: `guest-${nextTrustapGuestId}`,
 						};
-						trustapGuests.set(trustapGuest.id, guest);
+						nextTrustapGuestId += 1;
+						trustapGuests.set(guest.id, guest);
 						if (scenario === 'guest-disconnect-after-create') {
 							response.destroy();
 							return;
@@ -1063,6 +1252,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						...trustapChargeFixture,
 						price: trustapCharge.price,
 						charge,
+						...(trustapCharge.postageFee === 0 ? {} : { charge_postage_buyer: trustapCharge.postageFee }),
 					};
 					if (scenario === 'charge-price-mismatch') {
 						sendJson(response, 200, { ...chargeResponse, price: trustapCharge.price + 1 });
@@ -1127,9 +1317,15 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						description: trustapTransaction.description,
 						price: trustapTransaction.price,
 						charge: trustapTransaction.charge,
+						...(trustapTransaction.features?.includes('use_custom_postage_fee')
+							? {
+									charge_postage_buyer: trustapTransaction.postage_fee,
+									charge_postage_client: 0,
+								}
+							: {}),
 					};
 					nextTrustapTransactionId += 1;
-					trustapTransactions.set(transaction.id, transaction);
+					trustapTransactions.set(String(transaction.id), transaction);
 					if (scenario === 'transaction-commit-error') {
 						sendProviderError(kind, response);
 						return;
@@ -1165,6 +1361,59 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						return;
 					}
 					sendJson(response, 201, trustapTransactionResponse(transaction, scenario));
+					return;
+				}
+				case 'trustap-supported-carriers':
+					if (scenario === 'trustap-carriers-invalid-body') {
+						sendJson(response, 200, [{ code: '', name: 'Invalid carrier' }]);
+						return;
+					}
+					if (scenario === 'trustap-carriers-malformed-json') {
+						response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+						response.end('[{"code":');
+						return;
+					}
+					if (scenario === 'trustap-carriers-unsupported') {
+						sendJson(response, 200, [{ code: 'ups', name: 'UPS' }]);
+						return;
+					}
+					sendJson(response, 200, [
+						{ code: 'poste-italiane', name: 'Poste Italiane' },
+						{ code: 'ups', name: 'UPS' },
+					]);
+					return;
+				case 'trustap-track-transaction': {
+					if (!trustapTracking) throw new Error('Validated Trustap tracking input is missing');
+					if (scenario === 'trustap-track-provider-error') {
+						sendProviderError(kind, response);
+						return;
+					}
+					if (scenario === 'trustap-track-malformed-json') {
+						response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+						response.end('{"id":');
+						return;
+					}
+					if (scenario === 'trustap-track-disconnect') {
+						response.destroy();
+						return;
+					}
+					const tracked: TrustapTransactionResource = {
+						...(trustapTransactions.get(route.transactionId) ?? trustapTransactionFixture),
+						id: route.transactionId,
+						seller_id: headers['trustap-user']!,
+						status: 'tracked',
+						tracked: '2026-08-30T12:30:00.000Z',
+						tracking: trustapTracking,
+					};
+					trustapTransactions.set(route.transactionId, tracked);
+					const trackingResponse = trustapTransactionResponse(tracked, scenario);
+					sendJson(
+						response,
+						200,
+						scenario === 'trustap-track-id-mismatch'
+							? { ...trackingResponse, id: (BigInt(route.transactionId) + 1n).toString() }
+							: trackingResponse,
+					);
 					return;
 				}
 				case 'trustap-get-transaction': {
@@ -1304,10 +1553,38 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 							return;
 						}
 						if (scenario === 'shippo-create-rate-currency-mismatch') {
-							sendJson(response, 201, {
+							const mismatched = {
 								...shipment,
-								rates: [{ ...shipment.rates[0], currency: 'USD' }],
-							});
+								rates: [{ ...shipment.rates[0], amount_local: '7.50', currency: 'USD', currency_local: 'USD' }],
+							} as unknown as typeof shippoShipmentFixture;
+							shippoShipments.set(shipmentId, mismatched);
+							shippoRates.set(rateId, mismatched.rates[0]);
+							sendJson(response, 201, mismatched);
+							return;
+						}
+						if (scenario === 'shippo-create-rate-convertible-usd') {
+							const normalized = {
+								...shipment,
+								address_from: {
+									...shipment.address_from,
+									phone: String(body.address_from.phone).replace(/^\+/, '00'),
+								},
+								address_to: {
+									...shipment.address_to,
+									phone: String(body.address_to.phone).replace(/^\+/, '00'),
+								},
+								parcels: shipment.parcels.map((parcel) => ({
+									...parcel,
+									height: `${parcel.height}.0000`,
+									length: `${parcel.length}.0000`,
+									weight: `${parcel.weight}.0000`,
+									width: `${parcel.width}.0000`,
+								})),
+								rates: [{ ...shipment.rates[0], amount_local: '7.50', currency: 'USD', currency_local: 'USD' }],
+							} as unknown as typeof shippoShipmentFixture;
+							shippoShipments.set(shipmentId, normalized);
+							shippoRates.set(rateId, normalized.rates[0]);
+							sendJson(response, 201, normalized);
 							return;
 						}
 						if (scenario === 'shippo-create-rate-amount-mismatch') {
@@ -1363,6 +1640,31 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendJson(response, 200, shipment);
 					}
 					return;
+				case 'shippo-list-rates-in-currency': {
+					const shipment = shippoShipments.get(route.shipmentId);
+					if (!shipment) throw new Error('Known Shippo shipment is missing');
+					if (scenario === 'shippo-create-rate-currency-mismatch') {
+						sendJson(response, 200, { results: shipment.rates });
+						return;
+					}
+					if (scenario === 'shippo-rate-currency-mismatch') {
+						sendJson(response, 200, {
+							results: shipment.rates.map((rate) => ({
+								...rate,
+								currency: 'USD',
+								currency_local: 'USD',
+							})),
+						});
+						return;
+					}
+					const convertedRates = shipment.rates.map((rate) => ({
+						...rate,
+						amount_local: '6.95',
+						currency_local: 'EUR',
+					}));
+					sendJson(response, 200, { results: convertedRates });
+					return;
+				}
 				case 'shippo-get-rate': {
 					const rate = shippoRates.get(route.rateId);
 					if (!rate) throw new Error('Known Shippo rate is missing');
@@ -1400,7 +1702,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						return;
 					}
 					if (scenario === 'shippo-rate-currency-mismatch') {
-						sendJson(response, 200, { ...rate, currency: 'USD' });
+						sendJson(response, 200, { ...rate, currency: 'USD', currency_local: 'USD' });
 						return;
 					}
 					sendJson(response, 200, rate);
@@ -1412,9 +1714,11 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					nextShippoTransactionOrdinal += 1;
 					const transaction = {
 						...shippoTransactionFixture,
+						metadata: shippoTransaction.metadata,
 						object_id: `${shippoTransactionFixture.object_id}${suffix}`,
 						rate: shippoTransaction.rate,
 					};
+					shippoTransactions.add(transaction.object_id);
 					if (scenario === 'shippo-label-barrier') {
 						shippoLabelBarrierReached += 1;
 						await shippoLabelBarrier;
@@ -1482,6 +1786,7 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 					const cleanErrorTransaction = {
 						label_file_type: transaction.label_file_type,
 						messages: transaction.messages,
+						metadata: transaction.metadata,
 						object_created: transaction.object_created,
 						object_id: transaction.object_id,
 						object_owner: transaction.object_owner,
@@ -1522,6 +1827,10 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						sendJson(response, 201, { ...transaction, rate: 'rate-other' });
 						return;
 					}
+					if (scenario === 'shippo-label-metadata-mismatch') {
+						sendJson(response, 201, { ...transaction, metadata: 'tampered-label-metadata' });
+						return;
+					}
 					if (scenario === 'shippo-label-without-tracking') {
 						const withoutTracking: Record<string, unknown> = { ...transaction };
 						delete withoutTracking.tracking_number;
@@ -1530,6 +1839,57 @@ export async function startProviderStub(kind: ProviderStubKind): Promise<Started
 						return;
 					}
 					sendJson(response, 201, transaction);
+					return;
+				}
+				case 'shippo-create-refund': {
+					if (!shippoRefund) throw new Error('Validated Shippo refund input is missing');
+					const suffix = nextShippoRefundOrdinal === 1 ? '' : `-${nextShippoRefundOrdinal}`;
+					nextShippoRefundOrdinal += 1;
+					const refund = {
+						...shippoRefundFixture,
+						object_id: `${shippoRefundFixture.object_id}${suffix}`,
+						status: scenario === 'shippo-refund-pending' ? ('PENDING' as const) : shippoRefundFixture.status,
+						transaction: shippoRefund.transaction,
+					};
+					shippoRefunds.set(refund.object_id, refund);
+					if (scenario === 'shippo-refund-disconnect-after-create') {
+						response.destroy();
+						return;
+					}
+					if (scenario === 'shippo-refund-client-error') {
+						sendJson(response, 422, { detail: 'The label is not eligible for refund' });
+						return;
+					}
+					if (scenario === 'shippo-refund-provider-error') {
+						sendJson(response, 500, { detail: 'Shippo refund provider error' });
+						return;
+					}
+					if (scenario === 'shippo-refund-invalid-body') {
+						sendJson(response, 201, { ...refund, object_id: '' });
+						return;
+					}
+					if (scenario === 'shippo-refund-transaction-mismatch') {
+						sendJson(response, 201, { ...refund, transaction: 'label-transaction-other' });
+						return;
+					}
+					if (scenario === 'shippo-refund-status-error') {
+						sendJson(response, 201, { ...refund, status: 'ERROR' });
+						return;
+					}
+					sendJson(response, 201, refund);
+					return;
+				}
+				case 'shippo-get-refund': {
+					const refund = shippoRefunds.get(route.refundId);
+					if (!refund) throw new Error('Known Shippo refund is missing');
+					if (scenario === 'shippo-refund-get-provider-error') {
+						sendJson(response, 500, { detail: 'Shippo refund retrieval error' });
+						return;
+					}
+					const refreshed =
+						scenario === 'success' && refund.status === 'PENDING' ? { ...refund, status: 'SUCCESS' as const } : refund;
+					shippoRefunds.set(route.refundId, refreshed);
+					sendJson(response, 200, refreshed);
 					return;
 				}
 			}

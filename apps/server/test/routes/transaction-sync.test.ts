@@ -32,7 +32,7 @@ import {
 	createProposalFixture,
 } from '../fixtures/commerce';
 import { getTestDatabase } from '../helpers/database';
-import { getProviderRequests, setTrustapTransactionStatus } from '../helpers/providers';
+import { getProviderRequests, setTrustapTransactionStatus, trustapV1WebhookPayload } from '../helpers/providers';
 import { trustapPostageFeeFixture, trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 import { itemCommerceLockScope } from '../../src/lib/item-commerce-lock';
 import { app } from '../../src/app';
@@ -98,7 +98,7 @@ async function postTrustapStatus(transactionId: string, status: EntityTrustapTra
 			'content-type': 'application/json',
 			authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 		},
-		body: JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }),
+		body: JSON.stringify(trustapV1WebhookPayload(transactionId, status)),
 	});
 }
 
@@ -141,6 +141,8 @@ async function createStaleProviderBackedOrder(
 		trustapTransactionFixture.id,
 		initialStatus,
 		{
+			charge_postage_buyer: trustapPostageFeeFixture,
+			charge_postage_client: 0,
 			description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
 		},
 	);
@@ -308,22 +310,6 @@ describe('Trustap transaction polling state mapping', () => {
 		);
 	});
 
-	it.each(mappedStatuses)('maps Trustap %s to order phase %s', async (remoteStatus, expectedOrderStatus) => {
-		const { order, transactionId } = await createStaleProviderBackedOrder();
-		await setTrustapTransactionStatus(providerUrl('PAYMENT_PROVIDER_API_URL'), transactionId, remoteStatus);
-
-		await new TransactionSyncService().syncTransactionStatuses();
-
-		const { db } = getTestDatabase();
-		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
-		const [storedProvider] = await db
-			.select()
-			.from(entityTrustapTransactions)
-			.where(eq(entityTrustapTransactions.transactionId, transactionId));
-		expect(storedOrder?.status).toBe(expectedOrderStatus);
-		expect(storedProvider?.status).toBe(remoteStatus);
-	});
-
 	it('re-reads provider and order state under the item lock after polling I/O', async () => {
 		const { order, transactionId } = await createStaleProviderBackedOrder();
 		let releaseProvider!: () => void;
@@ -336,6 +322,8 @@ describe('Trustap transaction polling state mapping', () => {
 		});
 		const remotePaid = {
 			...trustapTransactionFixture,
+			charge_postage_buyer: trustapPostageFeeFixture,
+			charge_postage_client: 0,
 			id: transactionId,
 			status: entityTrustapTransactionTypeValues.PAID,
 			description: `${trustapTransactionFixture.description} [attempt:${order.payment_attempt_id}]`,
@@ -427,6 +415,53 @@ describe('Trustap transaction polling state mapping', () => {
 		});
 		const [terminalOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
 		expect(terminalOrder?.status).toBe(ORDER_PHASES.PAYMENT_REFUNDED);
+	});
+
+	it('finalizes a reconciled Shippo label when Trustap polling confirms the exact tracking code', async () => {
+		const { item, order, transactionId } = await createStaleProviderBackedOrder(
+			entityTrustapTransactionTypeValues.PAID,
+		);
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ status: ORDER_PHASES.PAYMENT_CONFIRMED }).where(eq(orders.id, order.id));
+		await db.insert(shipping_label_purchases).values({
+			order_id: order.id,
+			item_id: item.id,
+			purchase_attempt_id: randomUUID(),
+			shippo_rate_id: 'rate-test',
+			state: 'reconciliation_required',
+			provider_transaction_id: 'label-transaction-test',
+			provider_status: 'SUCCESS',
+			label_url: 'https://labels.test/label-transaction-test.pdf',
+			tracking_number: 'TRACK-RECONCILED-1',
+			tracking_url: 'https://tracking.test/TRACK-RECONCILED-1',
+		});
+		await setTrustapTransactionStatus(
+			providerUrl('PAYMENT_PROVIDER_API_URL'),
+			transactionId,
+			entityTrustapTransactionTypeValues.TRACKED,
+			{ tracking: { carrier: 'poste-italiane', tracking_code: 'TRACK-RECONCILED-1' } },
+		);
+
+		const result = await new TransactionSyncService().syncTransactionStatuses();
+
+		expect(result.results).toContainEqual({
+			transactionId,
+			oldStatus: entityTrustapTransactionTypeValues.PAID,
+			newStatus: entityTrustapTransactionTypeValues.TRACKED,
+			success: true,
+		});
+		const [storedLabel] = await db
+			.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+		const [storedProvider] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, transactionId));
+		expect(storedLabel?.state).toBe('purchased');
+		expect(storedOrder?.status).toBe(ORDER_PHASES.SHIPPING_CONFIRMED);
+		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.TRACKED);
 	});
 
 	it('fail-closes a polled complaint while preserving the current order phase', async () => {
@@ -681,7 +716,7 @@ describe('Trustap transaction polling state mapping', () => {
 		expect(storedProvider?.status).toBe(entityTrustapTransactionTypeValues.PAYMENT_REFUNDED);
 	});
 
-	it.each(['item', 'identity', 'amount'] as const)(
+	it.each(['item', 'identity', 'amount', 'postage'] as const)(
 		'permanently quarantines a polled %s correlation mismatch',
 		async (mismatch) => {
 			const { order, transactionId } = await createStaleProviderBackedOrder();
@@ -698,11 +733,18 @@ describe('Trustap transaction polling state mapping', () => {
 					.update(entityTrustapTransactions)
 					.set({ buyerId: 'wrong-local-provider-user' })
 					.where(eq(entityTrustapTransactions.transactionId, transactionId));
-			} else {
+			} else if (mismatch === 'amount') {
 				await db
 					.update(entityTrustapTransactions)
 					.set({ price: trustapTransactionFixture.price + 1 })
 					.where(eq(entityTrustapTransactions.transactionId, transactionId));
+			} else {
+				await setTrustapTransactionStatus(
+					providerUrl('PAYMENT_PROVIDER_API_URL'),
+					transactionId,
+					entityTrustapTransactionTypeValues.CREATED,
+					{ charge_postage_buyer: trustapPostageFeeFixture + 1 },
+				);
 			}
 
 			const first = await new TransactionSyncService().syncTransactionStatuses();

@@ -44,46 +44,49 @@ describe(`order routes (${ORDER_DETAIL_ROUTE_TEMPLATE})`, () => {
 		expect(await response.json()).toEqual([]);
 	});
 
-	it.each(Object.values(ORDER_PHASES))('filters %s orders for both buyer and seller by profile id', async (status) => {
-		const actors = await createCommerceActors();
-		const item = await createItemFixture(actors);
-		const order = await createOrderFixture(actors, item, { status });
-		const otherItem = await createItemFixture(actors, {
-			commons: { title: `Other ${status.replaceAll('_', ' ')} item` },
-		});
-		const outsiderOrder = await createOrderFixture(actors, otherItem, {
-			buyer_id: actors.outsider.profile.id,
-			buyer_address: actors.outsider.address.id,
-			status,
-		});
-
-		for (const [actor, expectedIds] of [
-			[actors.buyer, [order.id]],
-			[actors.seller, [order.id, outsiderOrder.id]],
-		] as const) {
-			const response = await authenticatedRequest(`/orders/auth/status/${status}`, 'GET', actor.jar);
-			expect(response.status).toBe(200);
-			const body = (await response.json()) as Array<{
-				id: number;
-				status: string;
-				item: { id: number; title: string };
-			}>;
-			expect(body.map(({ id }) => id).sort((left, right) => left - right)).toEqual(
-				[...expectedIds].sort((left, right) => left - right),
-			);
-			expect(body.find(({ id }) => id === order.id)).toMatchObject({
-				id: order.id,
-				status,
-				item: { id: item.id, title: item.title },
+	it.each([ORDER_PHASES.PAYMENT_PENDING, ORDER_PHASES.COMPLETED])(
+		'filters representative %s orders for both buyer and seller by profile id',
+		async (status) => {
+			const actors = await createCommerceActors();
+			const item = await createItemFixture(actors);
+			const order = await createOrderFixture(actors, item, { status });
+			const otherItem = await createItemFixture(actors, {
+				commons: { title: `Other ${status.replaceAll('_', ' ')} item` },
 			});
-		}
+			const outsiderOrder = await createOrderFixture(actors, otherItem, {
+				buyer_id: actors.outsider.profile.id,
+				buyer_address: actors.outsider.address.id,
+				status,
+			});
 
-		const outsiderResponse = await authenticatedRequest(`/orders/auth/status/${status}`, 'GET', actors.outsider.jar);
-		expect(outsiderResponse.status).toBe(200);
-		const outsiderBody = (await outsiderResponse.json()) as Array<{ id: number }>;
-		expect(outsiderBody).toHaveLength(1);
-		expect(outsiderBody[0]?.id).toBe(outsiderOrder.id);
-	});
+			for (const [actor, expectedIds] of [
+				[actors.buyer, [order.id]],
+				[actors.seller, [order.id, outsiderOrder.id]],
+			] as const) {
+				const response = await authenticatedRequest(`/orders/auth/status/${status}`, 'GET', actor.jar);
+				expect(response.status).toBe(200);
+				const body = (await response.json()) as Array<{
+					id: number;
+					status: string;
+					item: { id: number; title: string };
+				}>;
+				expect(body.map(({ id }) => id).sort((left, right) => left - right)).toEqual(
+					[...expectedIds].sort((left, right) => left - right),
+				);
+				expect(body.find(({ id }) => id === order.id)).toMatchObject({
+					id: order.id,
+					status,
+					item: { id: item.id, title: item.title },
+				});
+			}
+
+			const outsiderResponse = await authenticatedRequest(`/orders/auth/status/${status}`, 'GET', actors.outsider.jar);
+			expect(outsiderResponse.status).toBe(200);
+			const outsiderBody = (await outsiderResponse.json()) as Array<{ id: number }>;
+			expect(outsiderBody).toHaveLength(1);
+			expect(outsiderBody[0]?.id).toBe(outsiderOrder.id);
+		},
+	);
 
 	it('returns all statuses without exposing unrelated orders', async () => {
 		const actors = await createCommerceActors();

@@ -8,11 +8,13 @@ import {
 	GetTransactionStatusResponse,
 	CreateTransactionWithBothUsersProps,
 	CancelGuestTransactionProps,
+	TrackGuestTransactionProps,
 } from './types';
 import {
 	trustapChargeResponseSchema,
-	trustapCorrelatedTransactionResponseSchema,
 	trustapGuestUserResponseSchema,
+	trustapSupportedCarriersResponseSchema,
+	trustapTransactionResponseSchema,
 } from './provider.schemas';
 import { parseJsonWithTopLevelTrustapId, type TrustapId } from './trustap-int64';
 
@@ -22,6 +24,8 @@ export type PaymentProviderOperation =
 	| 'create_transaction'
 	| 'fetch_transaction'
 	| 'cancel_transaction'
+	| 'list_supported_carriers'
+	| 'track_transaction'
 	| 'provider_request';
 
 export type PaymentProviderErrorCategory = 'http' | 'invalid_response' | 'network' | 'ambiguous';
@@ -80,6 +84,34 @@ function providerSignal(): AbortSignal {
 
 const deterministicCreateFailureStatuses = new Set([400, 401, 403, 404]);
 
+function carrierIdentity(value: string): string {
+	return value
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/gu, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/gu, '');
+}
+
+type ExpectedTrustapParticipants = { buyer_id: string; seller_id: string };
+
+function correlatedTrustapTransaction(
+	data: unknown,
+	expected?: ExpectedTrustapParticipants,
+): CreateTransactionResponse | undefined {
+	const parsed = trustapTransactionResponseSchema.safeParse(data);
+	if (!parsed.success) return undefined;
+	const buyerId = parsed.data.buyer_id ?? expected?.buyer_id;
+	const sellerId = parsed.data.seller_id ?? expected?.seller_id;
+	if (
+		!buyerId ||
+		!sellerId ||
+		(expected !== undefined && (buyerId !== expected.buyer_id || sellerId !== expected.seller_id))
+	) {
+		return undefined;
+	}
+	return { ...parsed.data, buyer_id: buyerId, seller_id: sellerId };
+}
+
 export function buildGuestPaymentUrl(transactionId: TrustapId, orderId: number): string {
 	const base = new URL(environment.PAYMENT_PROVIDER_PAY_PAGE_URL);
 	const basePath = base.pathname.replace(/\/$/u, '');
@@ -97,11 +129,112 @@ export class PaymentProviderService {
 	private api_version = environment.PAYMENT_PROVIDER_API_VERSION;
 	private api_key = environment.PAYMENT_PROVIDER_API_KEY;
 
+	private authorization(): string {
+		return `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`;
+	}
+
+	async resolveSupportedCarrierCode(providerName: string): Promise<string> {
+		let response: Response;
+		try {
+			response = await fetch(`${this.api_url}/${this.api_version}/supported_carriers`, {
+				method: 'GET',
+				headers: { Authorization: this.authorization() },
+				signal: providerSignal(),
+			});
+		} catch {
+			throw new PaymentProviderNetworkError('list_supported_carriers');
+		}
+		if (!response.ok) {
+			throw new PaymentProviderHttpError(
+				'Payment provider supported carriers request failed',
+				response.status,
+				'list_supported_carriers',
+			);
+		}
+		let data: unknown;
+		try {
+			data = await response.json();
+		} catch {
+			throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		}
+		const parsed = trustapSupportedCarriersResponseSchema.safeParse(data);
+		if (!parsed.success) throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		const providerIdentity = carrierIdentity(providerName);
+		const carrier = parsed.data.find(
+			(candidate) =>
+				carrierIdentity(candidate.name) === providerIdentity || carrierIdentity(candidate.code) === providerIdentity,
+		);
+		if (!carrier) throw new PaymentProviderInvalidResponseError('list_supported_carriers');
+		return carrier.code;
+	}
+
+	async trackGuestTransaction({
+		transaction_id,
+		acting_provider_user_id,
+		buyer_provider_user_id,
+		carrier,
+		tracking_code,
+	}: TrackGuestTransactionProps): Promise<CreateTransactionResponse> {
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.api_url}/${this.api_version}/transactions/${transaction_id}/track_with_guest_seller`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: this.authorization(),
+						'Content-Type': 'application/json',
+						'Trustap-User': acting_provider_user_id,
+					},
+					body: JSON.stringify({ carrier, tracking_code }),
+					signal: providerSignal(),
+				},
+			);
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		if (!response.ok) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		let data: unknown;
+		try {
+			data = parseJsonWithTopLevelTrustapId(await response.text(), 'id');
+		} catch {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		const parsed = correlatedTrustapTransaction(data, {
+			buyer_id: buyer_provider_user_id,
+			seller_id: acting_provider_user_id,
+		});
+		if (
+			!parsed ||
+			parsed.id !== transaction_id ||
+			parsed.status !== 'tracked' ||
+			parsed.tracking?.carrier !== carrier ||
+			parsed.tracking.tracking_code !== tracking_code
+		) {
+			throw new PaymentProviderAmbiguousError(
+				'Payment provider tracking outcome requires reconciliation',
+				'track_transaction',
+			);
+		}
+		return parsed;
+	}
+
 	/**
 	 * Create a guest user for the payment provider
 	 */
 	async createGuestUser({ ...props }: CreateGuestUserProps): Promise<CreateUserGuestResponse> {
-		const { id, email, first_name, last_name, country_code, tos_acceptance } = props;
+		const { email, first_name, last_name, country_code, tos_acceptance } = props;
 		let response: Response;
 		try {
 			response = await fetch(`${this.api_url}/${this.api_version}/guest_users`, {
@@ -111,7 +244,6 @@ export class PaymentProviderService {
 					Authorization: `Basic ${Buffer.from(`${this.api_key}:`).toString('base64')}`,
 				},
 				body: JSON.stringify({
-					id,
 					email,
 					first_name,
 					last_name,
@@ -207,6 +339,8 @@ export class PaymentProviderService {
 			charge_calculator_version,
 			features,
 		} = props;
+		const transactionFeatures = new Set(features);
+		if (postage_fee > 0) transactionFeatures.add('use_custom_postage_fee');
 
 		let response: Response;
 		try {
@@ -227,7 +361,7 @@ export class PaymentProviderService {
 					postage_fee,
 					charge,
 					charge_calculator_version,
-					...(features === undefined ? {} : { features }),
+					...(transactionFeatures.size === 0 ? {} : { features: [...transactionFeatures] }),
 				}),
 				signal: providerSignal(),
 			});
@@ -252,27 +386,29 @@ export class PaymentProviderService {
 		} catch {
 			throw new PaymentProviderAmbiguousError();
 		}
-		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
+		const parsed = correlatedTrustapTransaction(data, { buyer_id, seller_id });
 		if (
-			!parsed.success ||
-			parsed.data.buyer_id !== buyer_id ||
-			parsed.data.seller_id !== seller_id ||
-			parsed.data.currency !== currency ||
-			parsed.data.price !== price ||
-			parsed.data.charge !== charge ||
-			parsed.data.charge_seller !== 0 ||
-			parsed.data.description !== description
+			!parsed ||
+			parsed.currency !== currency ||
+			parsed.price !== price ||
+			parsed.charge !== charge ||
+			parsed.charge_seller !== 0 ||
+			(postage_fee > 0 && (parsed.charge_postage_buyer !== postage_fee || parsed.charge_postage_client !== 0)) ||
+			parsed.description !== description
 		) {
 			throw new PaymentProviderAmbiguousError();
 		}
 
-		return parsed.data;
+		return parsed;
 	}
 
 	/**
 	 * Get transaction status
 	 */
-	async getTransactionStatus(transactionId: TrustapId): Promise<GetTransactionStatusResponse | undefined> {
+	async getTransactionStatus(
+		transactionId: TrustapId,
+		expectedParticipants?: ExpectedTrustapParticipants,
+	): Promise<GetTransactionStatusResponse | undefined> {
 		let response: Response;
 		try {
 			response = await fetch(`${this.api_url}/${this.api_version}/transactions/${transactionId}`, {
@@ -301,11 +437,11 @@ export class PaymentProviderService {
 		} catch {
 			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
-		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
-		if (!parsed.success || parsed.data.id !== transactionId) {
+		const parsed = correlatedTrustapTransaction(data, expectedParticipants);
+		if (!parsed || parsed.id !== transactionId) {
 			throw new PaymentProviderInvalidResponseError('fetch_transaction');
 		}
-		return parsed.data;
+		return parsed;
 	}
 
 	async cancelGuestTransaction({
@@ -354,24 +490,22 @@ export class PaymentProviderService {
 				'cancel_transaction',
 			);
 		}
-		const parsed = trustapCorrelatedTransactionResponseSchema.safeParse(data);
+		const parsed = correlatedTrustapTransaction(data, { buyer_id, seller_id });
 		if (
-			!parsed.success ||
-			parsed.data.id !== transaction_id ||
-			parsed.data.status !== 'cancelled' ||
-			parsed.data.buyer_id !== buyer_id ||
-			parsed.data.seller_id !== seller_id ||
-			parsed.data.currency !== currency ||
-			parsed.data.description !== description ||
-			parsed.data.price !== price ||
-			parsed.data.charge !== charge ||
-			parsed.data.charge_seller !== charge_seller
+			!parsed ||
+			parsed.id !== transaction_id ||
+			parsed.status !== 'cancelled' ||
+			parsed.currency !== currency ||
+			parsed.description !== description ||
+			parsed.price !== price ||
+			parsed.charge !== charge ||
+			parsed.charge_seller !== charge_seller
 		) {
 			throw new PaymentProviderAmbiguousError(
 				'Payment provider cancellation outcome requires reconciliation',
 				'cancel_transaction',
 			);
 		}
-		return parsed.data;
+		return parsed;
 	}
 }

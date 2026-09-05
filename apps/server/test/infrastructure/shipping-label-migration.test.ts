@@ -31,6 +31,10 @@ describe('shipping label purchase migration parity', () => {
 			'shipping_label_purchases_pkey',
 			'shipping_label_purchases_provider_evidence_check',
 			'shipping_label_purchases_purchased_graph_check',
+			'shipping_label_purchases_refund_graph_check',
+			'shipping_label_purchases_refund_provider_status_check',
+			'shipping_label_purchases_refund_requires_purchase_check',
+			'shipping_label_purchases_refund_state_check',
 			'shipping_label_purchases_state_check',
 		]);
 
@@ -44,7 +48,10 @@ describe('shipping label purchase migration parity', () => {
 			'shipping_label_purchases_attempt_id_idx',
 			'shipping_label_purchases_order_id_idx',
 			'shipping_label_purchases_pkey',
+			'shipping_label_purchases_provider_refund_id_idx',
 			'shipping_label_purchases_provider_transaction_id_idx',
+			'shipping_label_purchases_refund_attempt_id_idx',
+			'shipping_label_purchases_refund_state_idx',
 			'shipping_label_purchases_state_idx',
 		]);
 	});
@@ -111,4 +118,56 @@ describe('shipping label purchase migration parity', () => {
 			).rejects.toMatchObject({ code: '23514' });
 		},
 	);
+
+	it('enforces the durable refund state graph', async () => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const order = await createOrderFixture(actors, item);
+		const { client } = getTestDatabase();
+		await client.query(
+			`INSERT INTO shipping_label_purchases
+				(order_id, item_id, purchase_attempt_id, shippo_rate_id, state,
+				 provider_transaction_id, label_url, provider_status)
+			 VALUES ($1, $2, '00000000-0000-4000-8000-000000000010', 'rate-refund', 'purchased',
+			         'transaction-refund', 'https://labels.test/refund.pdf', 'SUCCESS')`,
+			[order.id, item.id],
+		);
+		await expect(
+			client.query("UPDATE shipping_label_purchases SET refund_state = 'requesting' WHERE order_id = $1", [order.id]),
+		).rejects.toMatchObject({ code: '23514' });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET refund_state = 'requesting',
+				     refund_attempt_id = '00000000-0000-4000-8000-000000000011',
+				     refund_requested_at = NOW()
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).resolves.toMatchObject({ rowCount: 1 });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET refund_state = 'refunded', provider_refund_id = 'refund-one', provider_refund_status = 'PENDING'
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).rejects.toMatchObject({ code: '23514' });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET refund_state = 'pending', provider_refund_id = 'refund-one', provider_refund_status = 'PENDING'
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).resolves.toMatchObject({ rowCount: 1 });
+		await expect(
+			client.query(
+				`UPDATE shipping_label_purchases
+				 SET refund_state = 'refunded', provider_refund_status = 'SUCCESS'
+				 WHERE order_id = $1`,
+				[order.id],
+			),
+		).resolves.toMatchObject({ rowCount: 1 });
+	});
 });

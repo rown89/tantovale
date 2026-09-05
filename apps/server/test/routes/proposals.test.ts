@@ -44,7 +44,12 @@ import {
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
 import { waitForEmail } from '../helpers/mailpit';
-import { getProviderRequests, setProviderScenario, setTrustapTransactionStatus } from '../helpers/providers';
+import {
+	getProviderRequests,
+	setProviderScenario,
+	setTrustapTransactionStatus,
+	trustapV1WebhookPayload,
+} from '../helpers/providers';
 import type { CookieJar } from '../helpers/request';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 
@@ -358,11 +363,14 @@ describe('proposal routes', () => {
 			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
 		).toBe(500);
 		const [afterFailure] = await db.select().from(profiles).where(eq(profiles.id, actors.buyer.profile.id));
-		expect(afterFailure?.payment_provider_id).toBe(`guest-${actors.buyer.profile.id}`);
+		expect(afterFailure?.payment_provider_id).toEqual(expect.any(String));
+		expect(afterFailure?.payment_provider_id).not.toBe(`guest-${actors.buyer.profile.id}`);
 		await setProviderScenario(providerUrl('PAYMENT_PROVIDER_API_URL'), 'success');
 		expect(
 			(await authenticatedRequest('/orders_proposals/auth/create', 'POST', actors.buyer.jar, payload)).status,
 		).toBe(200);
+		const [afterRetry] = await db.select().from(profiles).where(eq(profiles.id, actors.buyer.profile.id));
+		expect(afterRetry?.payment_provider_id).toBe(afterFailure?.payment_provider_id);
 		const guestRequests = (await getProviderRequests(providerUrl('PAYMENT_PROVIDER_API_URL'))).filter(
 			({ method, path }) => method === 'POST' && path === '/api/v1/guest_users',
 		);
@@ -2074,11 +2082,7 @@ describe('proposal routes', () => {
 					Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					event: 'transaction_updated',
-					transaction_id: transactionId,
-					status: entityTrustapTransactionTypeValues.PAID,
-				}),
+				body: JSON.stringify(trustapV1WebhookPayload(transactionId, entityTrustapTransactionTypeValues.PAID)),
 			});
 			expect(webhook.status).toBe(200);
 			releaseProviderRead();
@@ -2321,11 +2325,7 @@ describe('proposal routes', () => {
 				Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({
-				event: 'transaction_updated',
-				transaction_id: transactionId,
-				status: entityTrustapTransactionTypeValues.FUNDS_RELEASED,
-			}),
+			body: JSON.stringify(trustapV1WebhookPayload(transactionId, entityTrustapTransactionTypeValues.FUNDS_RELEASED)),
 		});
 		expect(webhook.status).toBe(200);
 		expect(await db.select().from(orders).where(eq(orders.id, reservation.id))).toEqual([
@@ -2393,7 +2393,7 @@ describe('proposal routes', () => {
 							Authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 							'Content-Type': 'application/json',
 						},
-						body: JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }),
+						body: JSON.stringify(trustapV1WebhookPayload(transactionId, status)),
 					})
 				).status,
 			).toBe(200);

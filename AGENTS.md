@@ -45,10 +45,19 @@
 - Treat later Next.js major upgrades as a dedicated, frontend-first change. The repository is on Next 16.3/React 19.2; review the official upgrade guide, generated agent rules, async request APIs, proxy conventions, and direct ESLint integration before changing versions.
 - Keep Hono and its adapter/validator/OpenAPI packages compatible and update them together in a focused change. The repository mixes `hono-openapi` with a beta `@hono/zod-openapi`; do not consolidate those libraries without a separate API-documentation design.
 
+## Test authoring guardrails
+
+- Treat LLM-generated tests as untrusted code requiring the same review as production changes. A passing test or increased coverage is not evidence that its oracle is correct.
+- Test observable behavior and durable business invariants. Do not inspect source text or AST shape, reproduce the implementation inside the assertion, or add tests whose only purpose is proving that test fixtures, mocks, or other tests work.
+- Every new test must demonstrate a distinct failure mode. Prefer one representative per equivalence class over matrices of HTTP codes, malformed values, or provider failures that all follow the same branch.
+- Keep full state-transition matrices in pure unit tests. At API, webhook, polling, and workflow layers, test only that the boundary is wired correctly plus boundary-specific persistence, authorization, and failure behavior.
+- Preserve tests for authorization, money, concurrency, idempotency, rollback, ambiguous provider outcomes, reconciliation, credentials, and external contract compatibility. These are not candidates for coverage-driven pruning.
+- Coverage is a regression floor, not a test-generation target. When an LLM adds tests, review assertion strength and verify that a plausible behavioral mutation would make the relevant test fail.
+
 <claude-mem-context>
 # Memory Context
 
-# [tantovale] recent context, 2026-08-21 9:31pm GMT+2
+# [tantovale] recent context, 2026-09-05 9:42pm GMT+2
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE

@@ -19,6 +19,10 @@
 		"check-types": {
 			"dependsOn": ["^check-types"]
 		},
+		"test:shippo:contract": {
+			"cache": false,
+			"env": ["SHIPPING_PROVIDER_API_KEY", "SHIPPO_TEST_MODE_CONFIRM"]
+		},
 		"clean": {
 			"cache": false
 		}

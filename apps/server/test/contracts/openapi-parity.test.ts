@@ -120,6 +120,7 @@ const EXPECTED_REQUEST_BODY_OPERATIONS = [
 	'PUT /profile/auth',
 	'POST /shipment_provider/auth/calculate_shipment_cost',
 	'POST /shipment_provider/auth/create_label',
+	'POST /shipment_provider/auth/refund_label',
 	'POST /signup',
 	'POST /uploads/auth/images-item',
 	'POST /webhooks/trustap/transaction-update',
@@ -215,6 +216,7 @@ requireErrors(
 		'PUT /orders_proposals/auth',
 		'PUT /profile/auth',
 		'POST /shipment_provider/auth/create_label',
+		'POST /shipment_provider/auth/refund_label',
 		'POST /uploads/auth/images-item',
 		'POST /webhooks/trustap/transaction-update',
 	],
@@ -264,9 +266,9 @@ describe('OpenAPI mounted-route parity', () => {
 		const described = concrete.filter((route) => uniqueSymbol in route.handler);
 		const runtime = concrete.filter((route) => !(uniqueSymbol in route.handler));
 
-		expect(concrete).toHaveLength(190);
-		expect(runtime).toHaveLength(127);
-		expect(described).toHaveLength(63);
+		expect(concrete).toHaveLength(193);
+		expect(runtime).toHaveLength(129);
+		expect(described).toHaveLength(64);
 
 		for (const operation of mountedOperationSet()) {
 			const markers = described.filter((route) => `${route.method} ${route.path}` === operation);
@@ -286,10 +288,10 @@ describe('OpenAPI mounted-route parity', () => {
 			.sort();
 
 		expect(response.status).toBe(200);
-		expect(documentedSet).toHaveLength(63);
+		expect(documentedSet).toHaveLength(64);
 		expect(documentedSet).toEqual(mountedOperationSet());
 		expect(documentedSet).toEqual(registrySet);
-		expect(new Set(documented.map(([, operation]) => operation.operationId)).size).toBe(63);
+		expect(new Set(documented.map(([, operation]) => operation.operationId)).size).toBe(64);
 		expect(requestBodyOperations).toEqual(EXPECTED_REQUEST_BODY_OPERATIONS);
 
 		for (const contract of routeContracts) {
@@ -329,7 +331,7 @@ describe('OpenAPI mounted-route parity', () => {
 		).toEqual({
 			public: 20,
 			'optional-access-refresh-cookie': 1,
-			'access-refresh-cookie': 36,
+			'access-refresh-cookie': 37,
 			'refresh-cookie': 2,
 			'cron-secret': 3,
 			'webhook-basic': 1,
@@ -351,6 +353,7 @@ describe('OpenAPI mounted-route parity', () => {
 			['POST /signup', [409, 422]],
 			['POST /item/auth/buy_now', [409]],
 			['POST /shipment_provider/auth/create_label', [409, 502]],
+			['POST /shipment_provider/auth/refund_label', [409, 502]],
 			['POST /uploads/auth/images-item', [413]],
 			['POST /webhooks/trustap/transaction-update', [409, 413, 503]],
 		] as const) {
@@ -392,7 +395,7 @@ describe('OpenAPI mounted-route parity', () => {
 		});
 		expect(webhook?.requestBody?.content?.['application/json']?.schema).toMatchObject({
 			properties: {
-				transaction_id: {
+				target_id: {
 					oneOf: [
 						{ type: 'string', pattern: expect.any(String) },
 						{ type: 'integer', format: 'int64', minimum: 1 },
@@ -536,6 +539,9 @@ describe('OpenAPI mounted-route parity', () => {
 		const { operations } = await generatedOperations();
 		const webhook = requestSchema(operations.get('POST /webhooks/trustap/transaction-update'));
 		const properties = webhook.properties as Record<string, JsonSchema>;
+		const preview = properties.target_preview;
+		if (preview === undefined) throw new Error('Missing Trustap target_preview schema');
+		const previewProperties = preview.properties as Record<string, JsonSchema>;
 		const timestampFields = [
 			'created',
 			'joined',
@@ -554,47 +560,59 @@ describe('OpenAPI mounted-route parity', () => {
 
 		expect(webhook.additionalProperties).toBe(true);
 		expect(Object.keys(properties).sort()).toEqual(
-			['event', 'transaction_id', 'status', ...timestampFields, 'code', 'target_id', 'target_preview'].sort(),
+			['code', 'user_id', 'target_id', 'target_preview', 'time', 'metadata'].sort(),
 		);
+		expect(Object.keys(previewProperties).sort()).toEqual(['id', 'status', 'tracking', ...timestampFields].sort());
 		for (const field of timestampFields) {
-			expect(properties[field], field).toEqual({ type: 'string', format: 'date-time' });
-			expect(schemaAccepts(properties[field], null), `${field} null`).toBe(false);
-		}
-		for (const marker of ['code', 'target_id', 'target_preview']) {
-			expect(schemaAccepts(properties[marker], 'forbidden'), marker).toBe(false);
+			expect(previewProperties[field], field).toEqual({ type: 'string', format: 'date-time' });
+			expect(schemaAccepts(previewProperties[field], null), `${field} null`).toBe(false);
 		}
 
-		const base = { event: 'transaction_updated', transaction_id: '9223372036854775807', status: 'paid' };
+		const base = {
+			code: 'basic_tx.paid',
+			target_id: '9223372036854775807',
+			target_preview: { id: '9223372036854775807', status: 'paid' },
+		};
 		const allTimestamps = Object.fromEntries(timestampFields.map((field) => [field, '2026-09-01T10:30:00.000Z']));
-		expect(schemaAccepts(webhook, { ...base, ...allTimestamps })).toBe(true);
 		expect(
 			schemaAccepts(webhook, {
 				...base,
-				webhook_delivery_id: 'delivery-v1',
-				provider_context: { retry: false },
+				target_preview: { ...base.target_preview, ...allTimestamps },
+				time: '2026-09-01T10:30:00.000Z',
 			}),
 		).toBe(true);
-		for (const [marker, value] of [
-			['code', 'tx.paid'],
-			['target_id', '9223372036854775807'],
-			['target_preview', { status: 'paid' }],
-		] as const) {
-			expect(schemaAccepts(webhook, { ...base, [marker]: value }), marker).toBe(false);
-		}
+		expect(
+			schemaAccepts(webhook, {
+				...base,
+				metadata: { retry: false },
+				provider_future_optional: 'safe-future-value',
+			}),
+		).toBe(true);
+		expect(schemaAccepts(webhook, { ...base, code: 'tx.paid' })).toBe(false);
+		expect(
+			schemaAccepts(webhook, {
+				...base,
+				code: 'basic_tx.provider_future_status',
+				target_preview: { ...base.target_preview, status: 'provider_future_status' },
+			}),
+		).toBe(true);
+		expect(schemaAccepts(webhook, { ...base, target_id: '9223372036854775808' })).toBe(false);
+		expect(schemaAccepts(webhook, { ...base, target_preview: { status: 'paid' } })).toBe(false);
+		expect(schemaAccepts(webhook, { event: 'transaction_updated', transaction_id: '1', status: 'paid' })).toBe(false);
 	});
 
 	it('documents inbound Trustap numeric tokens across the positive signed-int64 range', async () => {
 		const { operations } = await generatedOperations();
 		const webhook = requestSchema(operations.get('POST /webhooks/trustap/transaction-update'));
 		const properties = webhook.properties as Record<string, JsonSchema>;
-		const transactionId = properties.transaction_id;
-		if (transactionId === undefined) throw new Error('Missing Trustap transaction_id schema');
+		const transactionId = properties.target_id;
+		if (transactionId === undefined) throw new Error('Missing Trustap target_id schema');
 
 		for (const value of ['1', '9223372036854775807']) expect(schemaAccepts(transactionId, value), value).toBe(true);
 		for (const value of ['0', '-1', '01', '9223372036854775808']) {
 			expect(schemaAccepts(transactionId, value), value).toBe(false);
 		}
-		expect(properties.transaction_id).toEqual({
+		expect(properties.target_id).toEqual({
 			oneOf: [
 				{ type: 'string', pattern: expect.any(String) },
 				{ type: 'integer', format: 'int64', minimum: 1 },

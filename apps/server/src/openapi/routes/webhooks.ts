@@ -1,46 +1,76 @@
 import type { DescribeRouteOptions } from 'hono-openapi';
 import { inboundTrustapIdSchema, routeDescription, type ManualSchema } from '../common';
 
+const transactionStatuses = [
+	'created',
+	'joined',
+	'paid',
+	'tracked',
+	'delivered',
+	'complained',
+	'complaint_period_ended',
+	'funds_released',
+	'rejected',
+	'cancelled',
+	'cancelled_with_payment',
+	'payment_refunded',
+] as const;
+
+const timestampProperties: Record<string, ManualSchema> = Object.fromEntries(
+	[
+		'created',
+		'joined',
+		'paid',
+		'tracked',
+		'delivered',
+		'complained',
+		'funds_released',
+		'complaint_period_deadline',
+		'complaint_period_ended',
+		'rejected',
+		'cancelled',
+		'cancelled_with_payment',
+		'payment_refunded',
+	].map((property) => [property, { type: 'string', format: 'date-time' }]),
+);
+
 const request: ManualSchema = {
 	type: 'object',
 	properties: {
-		event: { type: 'string', enum: ['transaction_updated'] },
-		transaction_id: inboundTrustapIdSchema,
-		status: {
+		code: {
 			type: 'string',
-			enum: [
-				'created',
-				'joined',
-				'paid',
-				'tracked',
-				'delivered',
-				'complained',
-				'complaint_period_ended',
-				'funds_released',
-				'rejected',
-				'cancelled',
-				'cancelled_with_payment',
-				'payment_refunded',
-			],
+			pattern: '^basic_tx\\.[a-z_]+$',
+			description: 'Trustap v1 event code; its suffix must equal target_preview.status.',
 		},
-		created: { type: 'string', format: 'date-time' },
-		joined: { type: 'string', format: 'date-time' },
-		paid: { type: 'string', format: 'date-time' },
-		tracked: { type: 'string', format: 'date-time' },
-		delivered: { type: 'string', format: 'date-time' },
-		complained: { type: 'string', format: 'date-time' },
-		funds_released: { type: 'string', format: 'date-time' },
-		complaint_period_deadline: { type: 'string', format: 'date-time' },
-		complaint_period_ended: { type: 'string', format: 'date-time' },
-		rejected: { type: 'string', format: 'date-time' },
-		cancelled: { type: 'string', format: 'date-time' },
-		cancelled_with_payment: { type: 'string', format: 'date-time' },
-		payment_refunded: { type: 'string', format: 'date-time' },
-		code: { not: {} },
-		target_id: { not: {} },
-		target_preview: { not: {} },
+		user_id: { type: 'string', minLength: 1 },
+		target_id: inboundTrustapIdSchema,
+		target_preview: {
+			type: 'object',
+			properties: {
+				id: inboundTrustapIdSchema,
+				status: {
+					type: 'string',
+					pattern: '^[a-z][a-z0-9_]*$',
+					description: `Known Trustap v1 statuses: ${transactionStatuses.join(', ')}. Unknown future statuses are acknowledged and quarantined.`,
+				},
+				tracking: {
+					type: 'object',
+					properties: {
+						carrier: { type: 'string', minLength: 1 },
+						tracking_code: { type: 'string', minLength: 1 },
+					},
+					required: ['carrier', 'tracking_code'],
+					additionalProperties: true,
+				},
+				...timestampProperties,
+			},
+			required: ['id', 'status'],
+			additionalProperties: true,
+		},
+		time: { type: 'string', format: 'date-time' },
+		metadata: { type: 'object', additionalProperties: true },
 	},
-	required: ['event', 'transaction_id', 'status'],
+	required: ['code', 'target_id', 'target_preview'],
 	additionalProperties: true,
 };
 export const webhooksOpenApi = {

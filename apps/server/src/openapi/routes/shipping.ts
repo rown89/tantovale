@@ -60,6 +60,24 @@ const labelResponse: ManualSchema = {
 	},
 	required: ['label'],
 };
+const refundResponse: ManualSchema = {
+	type: 'object',
+	properties: {
+		refund: {
+			type: 'object',
+			properties: {
+				id: { type: 'string' },
+				state: { type: 'string', enum: ['pending', 'refunded', 'rejected'] },
+				provider_status: { type: 'string', enum: ['QUEUED', 'PENDING', 'SUCCESS', 'ERROR'] },
+				transaction_id: { type: 'string' },
+			},
+			required: ['id', 'state', 'provider_status', 'transaction_id'],
+			additionalProperties: false,
+		},
+	},
+	required: ['refund'],
+	additionalProperties: false,
+};
 export const shippingOpenApi = {
 	carriers: routeDescription({
 		method: 'GET',
@@ -95,5 +113,20 @@ export const shippingOpenApi = {
 		errors: [400, 401, 404, 409, 502],
 		requestSchema: labelRequest,
 		responseSchema: labelResponse,
+	}),
+	refund: routeDescription({
+		method: 'POST',
+		path: '/shipment_provider/auth/refund_label',
+		summary: 'Request or refresh a shipping label refund',
+		tag: 'Shipping',
+		security: 'access-refresh-cookie',
+		errors: [400, 401, 404, 409, 502],
+		requestSchema: {
+			type: 'object',
+			properties: { order_id: positiveIntegerSchema },
+			required: ['order_id'],
+			additionalProperties: false,
+		},
+		responseSchema: refundResponse,
 	}),
 } satisfies Record<string, DescribeRouteOptions>;

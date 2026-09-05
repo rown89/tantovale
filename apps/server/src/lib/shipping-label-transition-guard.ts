@@ -21,13 +21,41 @@ const blockingStates = [
 export async function shippingLabelPurchaseDefersOrderTransition(
 	tx: ItemTransaction,
 	orderId: number,
+	providerTracking?: { carrier: string; tracking_code: string },
 ): Promise<boolean> {
 	const [intent] = await tx
-		.select({ id: shipping_label_purchases.id })
+		.select({
+			id: shipping_label_purchases.id,
+			state: shipping_label_purchases.state,
+			providerStatus: shipping_label_purchases.provider_status,
+			providerTransactionId: shipping_label_purchases.provider_transaction_id,
+			labelUrl: shipping_label_purchases.label_url,
+			trackingNumber: shipping_label_purchases.tracking_number,
+		})
 		.from(shipping_label_purchases)
 		.where(and(eq(shipping_label_purchases.order_id, orderId), inArray(shipping_label_purchases.state, blockingStates)))
 		.for('update')
 		.limit(1);
 
-	return intent !== undefined;
+	if (!intent) return false;
+	const reconciled =
+		intent.state === SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED &&
+		intent.providerStatus === 'SUCCESS' &&
+		intent.providerTransactionId !== null &&
+		intent.labelUrl !== null &&
+		intent.trackingNumber !== null &&
+		providerTracking?.tracking_code === intent.trackingNumber;
+	if (!reconciled) return true;
+
+	const [updated] = await tx
+		.update(shipping_label_purchases)
+		.set({ state: SHIPPING_LABEL_PURCHASE_STATES.PURCHASED, updated_at: new Date() })
+		.where(
+			and(
+				eq(shipping_label_purchases.id, intent.id),
+				eq(shipping_label_purchases.state, SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED),
+			),
+		)
+		.returning({ id: shipping_label_purchases.id });
+	return updated === undefined;
 }

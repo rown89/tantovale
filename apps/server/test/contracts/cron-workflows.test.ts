@@ -31,6 +31,11 @@ const workflows = [
 		'/cron/auth/expired-proposals-check',
 		'CRON_KEY: ${{ secrets.DAILY_ORDER_PROPOSALS_CHECK_SECRET_KEY }}',
 	],
+	[
+		'daily-transactions-sync.yml',
+		'/cron/auth/sync-transactions',
+		'CRON_KEY: ${{ secrets.TRANSACTIONS_SYNC_SECRET_KEY }}',
+	],
 ] as const;
 
 async function executeWorkflow(

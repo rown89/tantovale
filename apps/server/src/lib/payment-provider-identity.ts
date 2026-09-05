@@ -140,7 +140,6 @@ export async function ensurePaymentProviderIdentity(
 	let guest: Awaited<ReturnType<PaymentProviderService['createGuestUser']>>;
 	try {
 		guest = await new PaymentProviderService().createGuestUser({
-			id: user.profile_id,
 			email: user.email,
 			first_name: preparation.firstName,
 			last_name: preparation.lastName,

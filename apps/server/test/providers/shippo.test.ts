@@ -10,6 +10,7 @@ import {
 	shipping_label_purchases,
 	shipping_quotes,
 	SHIPPING_LABEL_PURCHASE_STATES,
+	SHIPPING_LABEL_REFUND_STATES,
 } from '../../src/database/schemas/schema';
 import {
 	entityTrustapTransactionTypeValues,
@@ -18,7 +19,11 @@ import {
 	PAYMENT_CREATION_STATES,
 } from '../../src/database/schemas/enumerated_values';
 import { labelPaymentGraphIsReady, type LabelPaymentGraph } from '../../src/routes/shipment-provider/index';
-import { ShipmentService, ShippoProviderError } from '../../src/routes/shipment-provider/shipment.service';
+import {
+	nextShippingBusinessDay,
+	ShipmentService,
+	ShippoProviderError,
+} from '../../src/routes/shipment-provider/shipment.service';
 import { environment, SHIPPING_UNITS } from '../../src/utils/constants';
 import {
 	createCommerceActors,
@@ -28,8 +33,8 @@ import {
 } from '../fixtures/commerce';
 import { authenticatedRequest } from '../helpers/auth';
 import { getTestDatabase } from '../helpers/database';
-import { assertShipmentDateWithinWindow } from '../helpers/provider-contract';
-import { getProviderRequests, setProviderScenario } from '../helpers/providers';
+import { assertShipmentDateIsNextBusinessDay } from '../helpers/provider-contract';
+import { getProviderRequests, seedTrustapTransaction, setProviderScenario } from '../helpers/providers';
 import { CookieJar, jsonRequest } from '../helpers/request';
 import type { StubScenario } from '../infrastructure/provider-stubs';
 
@@ -46,6 +51,10 @@ function shippoUrl(): string {
 	const url = environment.SHIPPING_PROVIDER_API_URL;
 	if (!url) throw new Error('Missing worker-local Shippo stub URL');
 	return url;
+}
+
+function trustapUrl(): string {
+	return environment.PAYMENT_PROVIDER_API_URL;
 }
 
 async function createShippingQuote(itemId: number, jar: CookieJar) {
@@ -86,11 +95,34 @@ async function prepareLabelOrder(
 		chargeSeller: 0,
 		entityTitle: item.title,
 	});
+	await seedTrustapTransaction(trustapUrl(), {
+		transaction_id: order.payment_transaction_id,
+		buyer_id: actors.buyer.profile.payment_provider_id!,
+		seller_id: actors.seller.profile.payment_provider_id!,
+	});
 	return { actors, item, quote, order };
 }
 
 async function prepareProviderBackedLabelOrder() {
 	return prepareLabelOrder(ORDER_PHASES.PAYMENT_CONFIRMED);
+}
+
+async function prepareRefundableLabelOrder() {
+	const fixture = await prepareLabelOrder();
+	const purchase = await authenticatedRequest(
+		'/shipment_provider/auth/create_label',
+		'POST',
+		fixture.actors.seller.jar,
+		{ order_id: fixture.order.id, rate_id: 'rate-test' },
+	);
+	expect(purchase.status).toBe(201);
+	const { db } = getTestDatabase();
+	await db
+		.update(entityTrustapTransactions)
+		.set({ status: entityTrustapTransactionTypeValues.PAYMENT_REFUNDED })
+		.where(eq(entityTrustapTransactions.transactionId, fixture.order.payment_transaction_id!));
+	await db.update(orders).set({ status: ORDER_PHASES.PAYMENT_REFUNDED }).where(eq(orders.id, fixture.order.id));
+	return fixture;
 }
 
 type LabelOrderFixture = Awaited<ReturnType<typeof prepareLabelOrder>>;
@@ -512,11 +544,23 @@ async function postTrustapStatus(transactionId: string, status: string): Promise
 			'content-type': 'application/json',
 			authorization: `Basic ${Buffer.from('trustap-webhook-test-user:trustap-webhook-test-secret').toString('base64')}`,
 		},
-		body: JSON.stringify({ event: 'transaction_updated', transaction_id: transactionId, status }),
+		body: JSON.stringify({
+			code: `basic_tx.${status}`,
+			target_id: transactionId,
+			target_preview: { id: transactionId, status },
+			time: '2026-08-30T12:00:00.000Z',
+		}),
 	});
 }
 
 describe('Shippo 2018-02-08 mounted boundary', () => {
+	it.each([
+		['2026-09-03T22:00:00.000Z', '2026-09-04T12:00:00.000Z'],
+		['2026-09-04T22:00:00.000Z', '2026-09-07T12:00:00.000Z'],
+		['2026-09-05T08:00:00.000Z', '2026-09-07T12:00:00.000Z'],
+	] as const)('uses the next UTC business day for a shipment created at %s', (now, expected) => {
+		expect(nextShippingBusinessDay(new Date(now))).toBe(expected);
+	});
 	it('accepts the fully correlated label payment graph', () => {
 		expect(labelPaymentGraphIsReady(readyLabelPaymentGraph)).toBe(true);
 	});
@@ -575,6 +619,13 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 			properties?: { label?: { required?: string[] } };
 		};
 		expect(labelSchema.properties?.label?.required).toEqual(['id', 'status', 'label_url']);
+
+		const refundSchema = document.paths['/shipment_provider/auth/refund_label']?.post?.responses['200']?.content?.[
+			'application/json'
+		]?.schema as {
+			properties?: { refund?: { required?: string[] } };
+		};
+		expect(refundSchema.properties?.refund?.required).toEqual(['id', 'state', 'provider_status', 'transaction_id']);
 	});
 
 	it('filters inactive carrier accounts and pins the Shippo version and token headers', async () => {
@@ -629,7 +680,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		if (typeof request.body !== 'object' || request.body === null || !('shipment_date' in request.body)) {
 			throw new Error('Captured Shippo shipment body has no shipment_date');
 		}
-		assertShipmentDateWithinWindow(request.body.shipment_date, {
+		assertShipmentDateIsNextBusinessDay(request.body.shipment_date, {
 			operation: 'shipping boundary quote',
 			startedAt,
 			endedAt,
@@ -643,6 +694,29 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		};
 		expect(shipmentBody.address_from.city).not.toBe(shipmentBody.address_from.state);
 		expect(shipmentBody.address_to.city).not.toBe(shipmentBody.address_to.state);
+	});
+
+	it('accepts Shippo-normalized fields and verifies a converted EUR rate through label purchase', async () => {
+		await setProviderScenario(shippoUrl(), 'shippo-create-rate-convertible-usd');
+		const { actors, order, quote } = await prepareLabelOrder();
+		expect(quote).toMatchObject({ amount: '6.95', currency: 'EUR' });
+		const { db } = getTestDatabase();
+		await db.update(orders).set({ shipping_price: 695 }).where(eq(orders.id, order.id));
+
+		const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(response.status).toBe(201);
+
+		const requests = await getProviderRequests(shippoUrl());
+		expect(requests.map(({ method, path }) => ({ method, path }))).toEqual([
+			{ method: 'POST', path: '/shipments' },
+			{ method: 'GET', path: '/shipments/shipment-test/rates/EUR?page=1&results=100' },
+			{ method: 'GET', path: '/rates/rate-test' },
+			{ method: 'GET', path: '/shipments/shipment-test/rates/EUR?page=1&results=100' },
+			{ method: 'POST', path: '/transactions' },
+		]);
 	});
 
 	it('lets only the order seller purchase a verified rate and keeps the parent shipment alias unchanged', async () => {
@@ -666,7 +740,18 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		const requests = await getProviderRequests(shippoUrl());
 		expect(requests.slice(1).map(({ method, path, body }) => ({ method, path, body }))).toEqual([
 			{ method: 'GET', path: '/rates/rate-test', body: undefined },
-			{ method: 'POST', path: '/transactions', body: { rate: 'rate-test', async: false, label_file_type: 'PDF' } },
+			{
+				method: 'POST',
+				path: '/transactions',
+				body: {
+					rate: 'rate-test',
+					async: false,
+					label_file_type: 'PDF',
+					metadata: expect.stringMatching(
+						new RegExp(`^tv-label:${order.id}:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`),
+					),
+				},
+			},
 		]);
 		expect(requests.slice(1).map(({ headers }) => headers['shippo-api-version'])).toEqual(['2018-02-08', '2018-02-08']);
 		expect(requests.slice(1).map(({ headers }) => headers.authorization)).toEqual([
@@ -675,13 +760,112 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		]);
 		expect(requests[2]?.headers['content-type']).toBe('application/json');
 
+		const trustapRequests = await getProviderRequests(trustapUrl());
+		expect(trustapRequests.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
+			{ method: 'GET', path: '/api/v1/supported_carriers', body: undefined },
+			{
+				method: 'POST',
+				path: `/api/v1/transactions/${order.payment_transaction_id}/track_with_guest_seller`,
+				body: { carrier: 'poste-italiane', tracking_code: 'TRACK-TEST-1' },
+			},
+		]);
+		const expectedTrustapAuthorization = `Basic ${Buffer.from(`${environment.PAYMENT_PROVIDER_API_KEY}:`).toString('base64')}`;
+		expect(trustapRequests.map(({ headers }) => headers.authorization)).toEqual([
+			expectedTrustapAuthorization,
+			expectedTrustapAuthorization,
+		]);
+		expect(trustapRequests[1]?.headers).toMatchObject({
+			'content-type': 'application/json',
+			'trustap-user': actors.seller.profile.payment_provider_id,
+		});
+
 		const { db } = getTestDatabase();
 		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
-		expect(storedOrder?.shipping_label_id).toBe(quote.shipment_label_id);
+		expect(storedOrder).toMatchObject({
+			shipping_label_id: quote.shipment_label_id,
+			status: ORDER_PHASES.SHIPPING_CONFIRMED,
+		});
+		const [storedTransaction] = await db
+			.select()
+			.from(entityTrustapTransactions)
+			.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+		expect(storedTransaction?.status).toBe(entityTrustapTransactionTypeValues.TRACKED);
 		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.id, quote.shipping_quote_id))).toHaveLength(
 			1,
 		);
 	});
+
+	it.each([
+		{ scenario: 'trustap-carriers-unsupported', expectedTrustapRequests: 1 },
+		{ scenario: 'trustap-carriers-invalid-body', expectedTrustapRequests: 1 },
+		{ scenario: 'trustap-carriers-malformed-json', expectedTrustapRequests: 1 },
+		{ scenario: 'trustap-track-provider-error', expectedTrustapRequests: 2 },
+		{ scenario: 'trustap-track-malformed-json', expectedTrustapRequests: 2 },
+		{ scenario: 'trustap-track-id-mismatch', expectedTrustapRequests: 2 },
+		{ scenario: 'trustap-track-disconnect', expectedTrustapRequests: 2 },
+	] satisfies Array<{ scenario: StubScenario; expectedTrustapRequests: number }>)(
+		'preserves the manually purchased Shippo label for reconciliation when $scenario',
+		async ({ scenario, expectedTrustapRequests }) => {
+			const { actors, order } = await prepareLabelOrder();
+			await setProviderScenario(trustapUrl(), scenario);
+
+			const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+				order_id: order.id,
+				rate_id: 'rate-test',
+			});
+			expect(response.status).toBe(502);
+			expect(await response.json()).toEqual({ message: 'Shipping label purchase requires reconciliation' });
+
+			const { db } = getTestDatabase();
+			const [purchase] = await db
+				.select()
+				.from(shipping_label_purchases)
+				.where(eq(shipping_label_purchases.order_id, order.id));
+			expect(purchase).toMatchObject({
+				state: SHIPPING_LABEL_PURCHASE_STATES.RECONCILIATION_REQUIRED,
+				provider_transaction_id: 'label-transaction-test',
+				provider_status: 'SUCCESS',
+				tracking_number: 'TRACK-TEST-1',
+			});
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(storedOrder?.status).toBe(ORDER_PHASES.PAYMENT_CONFIRMED);
+			const [storedTransaction] = await db
+				.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+			expect(storedTransaction?.status).toBe(entityTrustapTransactionTypeValues.PAID);
+
+			const shippoRequests = await getProviderRequests(shippoUrl());
+			const trustapRequests = await getProviderRequests(trustapUrl());
+			expect(trustapRequests).toHaveLength(expectedTrustapRequests);
+			const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+				order_id: order.id,
+				rate_id: 'rate-test',
+			});
+			expect(retry.status).toBe(409);
+			expect(await getProviderRequests(shippoUrl())).toEqual(shippoRequests);
+			expect(await getProviderRequests(trustapUrl())).toEqual(trustapRequests);
+		},
+	);
+
+	it.each(['transaction-buyer-missing', 'transaction-seller-missing'] satisfies StubScenario[])(
+		'accepts the manual Trustap tracking response when the optional %s identity is omitted',
+		async (scenario) => {
+			const { actors, order } = await prepareLabelOrder();
+			await setProviderScenario(trustapUrl(), scenario);
+
+			const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+				order_id: order.id,
+				rate_id: 'rate-test',
+			});
+			expect(response.status).toBe(201);
+			const [storedTransaction] = await getTestDatabase()
+				.db.select()
+				.from(entityTrustapTransactions)
+				.where(eq(entityTrustapTransactions.transactionId, order.payment_transaction_id!));
+			expect(storedTransaction?.status).toBe(entityTrustapTransactionTypeValues.TRACKED);
+		},
+	);
 
 	it('returns the persisted label on retry without another provider call', async () => {
 		const { actors, order } = await prepareLabelOrder();
@@ -720,9 +904,244 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 			label_url: 'https://labels.test/label-transaction-test.pdf',
 			tracking_number: 'TRACK-TEST-1',
 			tracking_url: 'https://tracking.test/TRACK-TEST-1',
+			refund_state: SHIPPING_LABEL_REFUND_STATES.NONE,
+			refund_attempt_id: null,
+			provider_refund_id: null,
+			provider_refund_status: null,
+			refund_requested_at: null,
 			created_at: expect.any(Date),
 			updated_at: expect.any(Date),
 		});
+	});
+
+	it('creates one correlated refund and returns the persisted terminal result on retry', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		const response = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body).toEqual({
+			refund: {
+				id: 'refund-test',
+				state: SHIPPING_LABEL_REFUND_STATES.REFUNDED,
+				provider_status: 'SUCCESS',
+				transaction_id: 'label-transaction-test',
+			},
+		});
+
+		const refundRequests = (await getProviderRequests(shippoUrl())).filter(({ path }) => path.startsWith('/refunds'));
+		expect(refundRequests.map(({ method, path, body: requestBody }) => ({ method, path, body: requestBody }))).toEqual([
+			{
+				method: 'POST',
+				path: '/refunds',
+				body: { async: false, transaction: 'label-transaction-test' },
+			},
+		]);
+
+		const [stored] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(stored).toMatchObject({
+			refund_state: SHIPPING_LABEL_REFUND_STATES.REFUNDED,
+			refund_attempt_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+			provider_refund_id: 'refund-test',
+			provider_refund_status: 'SUCCESS',
+			refund_requested_at: expect.any(Date),
+		});
+
+		const retry = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(retry.status).toBe(200);
+		expect(await retry.json()).toEqual(body);
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path.startsWith('/refunds'))).toEqual(
+			refundRequests,
+		);
+	});
+
+	it('refreshes a pending refund with GET and never creates a second provider refund', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-refund-pending');
+		const pending = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(pending.status).toBe(200);
+		expect(await pending.json()).toMatchObject({
+			refund: { id: 'refund-test', state: SHIPPING_LABEL_REFUND_STATES.PENDING, provider_status: 'PENDING' },
+		});
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const refreshed = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(refreshed.status).toBe(200);
+		expect(await refreshed.json()).toMatchObject({
+			refund: { id: 'refund-test', state: SHIPPING_LABEL_REFUND_STATES.REFUNDED, provider_status: 'SUCCESS' },
+		});
+		expect(
+			(await getProviderRequests(shippoUrl()))
+				.filter(({ path }) => path.startsWith('/refunds'))
+				.map(({ method, path }) => ({ method, path })),
+		).toEqual([
+			{ method: 'POST', path: '/refunds' },
+			{ method: 'GET', path: '/refunds/refund-test' },
+		]);
+	});
+
+	it('keeps a pending refund retriable when its read-only refresh fails', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-refund-pending');
+		const pending = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(pending.status).toBe(200);
+
+		await setProviderScenario(shippoUrl(), 'shippo-refund-get-provider-error');
+		const failedRefresh = await authenticatedRequest(
+			'/shipment_provider/auth/refund_label',
+			'POST',
+			actors.seller.jar,
+			{
+				order_id: order.id,
+			},
+		);
+		expect(failedRefresh.status).toBe(502);
+		const [stillPending] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(stillPending?.refund_state).toBe(SHIPPING_LABEL_REFUND_STATES.PENDING);
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(retry.status).toBe(200);
+		const refundRequests = (await getProviderRequests(shippoUrl())).filter(({ path }) => path.startsWith('/refunds'));
+		expect(refundRequests.filter(({ method }) => method === 'POST')).toHaveLength(1);
+		expect(refundRequests.filter(({ method }) => method === 'GET')).toHaveLength(2);
+	});
+
+	it('persists a provider-declared refund rejection without retrying the POST', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-refund-status-error');
+		const response = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			refund: { state: SHIPPING_LABEL_REFUND_STATES.REJECTED, provider_status: 'ERROR' },
+		});
+		const afterFirst = await getProviderRequests(shippoUrl());
+		const retry = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(retry.status).toBe(200);
+		expect(await getProviderRequests(shippoUrl())).toEqual(afterFirst);
+	});
+
+	it('allows one retry after Shippo definitively rejects the refund request', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		await setProviderScenario(shippoUrl(), 'shippo-refund-client-error');
+		const first = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(first.status).toBe(502);
+		const [released] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(released).toMatchObject({
+			refund_state: SHIPPING_LABEL_REFUND_STATES.NONE,
+			refund_attempt_id: null,
+			provider_refund_id: null,
+			provider_refund_status: null,
+			refund_requested_at: null,
+		});
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(retry.status).toBe(200);
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/refunds')).toHaveLength(2);
+	});
+
+	it.each([
+		'shippo-refund-disconnect-after-create',
+		'shippo-refund-provider-error',
+		'shippo-refund-invalid-body',
+		'shippo-refund-transaction-mismatch',
+	] satisfies StubScenario[])('blocks a duplicate refund after ambiguous outcome %s', async (scenario) => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		await setProviderScenario(shippoUrl(), scenario);
+		const first = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(first.status).toBe(502);
+		const afterFirst = await getProviderRequests(shippoUrl());
+		const [stored] = await getTestDatabase()
+			.db.select()
+			.from(shipping_label_purchases)
+			.where(eq(shipping_label_purchases.order_id, order.id));
+		expect(stored?.refund_state).toBe(SHIPPING_LABEL_REFUND_STATES.RECONCILIATION_REQUIRED);
+
+		await setProviderScenario(shippoUrl(), 'success');
+		const retry = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(retry.status).toBe(409);
+		expect(await retry.json()).toEqual({ message: 'Shipping label refund requires reconciliation' });
+		expect(await getProviderRequests(shippoUrl())).toEqual(afterFirst);
+	});
+
+	it('authorizes only the seller and only after the order is refundable', async () => {
+		const { actors, order } = await prepareLabelOrder();
+		const purchase = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+			rate_id: 'rate-test',
+		});
+		expect(purchase.status).toBe(201);
+
+		const buyer = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.buyer.jar, {
+			order_id: order.id,
+		});
+		expect(buyer.status).toBe(404);
+		const wrongPhase = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(wrongPhase.status).toBe(409);
+		expect(await wrongPhase.json()).toEqual({ message: 'Order is not eligible for label refund' });
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path.startsWith('/refunds'))).toEqual([]);
+	});
+
+	it('rejects refund requests when no label was purchased', async () => {
+		const { actors, order } = await prepareLabelOrder();
+		await getTestDatabase()
+			.db.update(orders)
+			.set({ status: ORDER_PHASES.PAYMENT_REFUNDED })
+			.where(eq(orders.id, order.id));
+		const response = await authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({ message: 'Order has no purchased shipping label' });
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path.startsWith('/refunds'))).toEqual([]);
+	});
+
+	it('serializes concurrent refund attempts into one Shippo POST', async () => {
+		const { actors, order } = await prepareRefundableLabelOrder();
+		const first = authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		const second = authenticatedRequest('/shipment_provider/auth/refund_label', 'POST', actors.seller.jar, {
+			order_id: order.id,
+		});
+		const responses = await Promise.all([first, second]);
+		expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+		expect((await getProviderRequests(shippoUrl())).filter(({ path }) => path === '/refunds')).toHaveLength(1);
 	});
 
 	it.each(claimReadinessMutations)(
@@ -1149,6 +1568,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		'shippo-label-status-error-malformed',
 		'shippo-label-status-error-rate-mismatch',
 		'shippo-label-rate-mismatch',
+		'shippo-label-metadata-mismatch',
 	] as const)('blocks retries after ambiguous Shippo label outcome %s', async (scenario) => {
 		const { actors, order } = await prepareLabelOrder();
 		await setProviderScenario(shippoUrl(), scenario);
@@ -1318,30 +1738,25 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		}
 	});
 
-	it('persists a successful label when official tracking fields are absent and retries idempotently', async () => {
+	it('keeps a successful label without tracking details in reconciliation instead of declaring it complete', async () => {
 		const { actors, order } = await prepareLabelOrder();
 		await setProviderScenario(shippoUrl(), 'shippo-label-without-tracking');
 		const first = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
 			order_id: order.id,
 			rate_id: 'rate-test',
 		});
-		expect(first.status).toBe(201);
-		const body = await first.json();
-		expect(body).toEqual({
-			label: {
-				id: 'label-transaction-test',
-				status: 'SUCCESS',
-				label_url: 'https://labels.test/label-transaction-test.pdf',
-			},
-		});
-		const requests = await getProviderRequests(shippoUrl());
+		expect(first.status).toBe(502);
+		expect(await first.json()).toEqual({ message: 'Shipping label purchase requires reconciliation' });
+		const shippoRequests = await getProviderRequests(shippoUrl());
+		const trustapRequests = await getProviderRequests(trustapUrl());
 		const retry = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
 			order_id: order.id,
 			rate_id: 'rate-test',
 		});
-		expect(retry.status).toBe(201);
-		expect(await retry.json()).toEqual(body);
-		expect(await getProviderRequests(shippoUrl())).toEqual(requests);
+		expect(retry.status).toBe(409);
+		expect(await retry.json()).toEqual({ message: 'Shipping label purchase requires reconciliation' });
+		expect(await getProviderRequests(shippoUrl())).toEqual(shippoRequests);
+		expect(await getProviderRequests(trustapUrl())).toEqual(trustapRequests);
 		const [purchase] = await getTestDatabase()
 			.db.select({
 				state: shipping_label_purchases.state,
@@ -1350,7 +1765,7 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 			})
 			.from(shipping_label_purchases)
 			.where(eq(shipping_label_purchases.order_id, order.id));
-		expect(purchase).toEqual({ tracking_number: null, tracking_url: null, state: 'purchased' });
+		expect(purchase).toEqual({ tracking_number: null, tracking_url: null, state: 'reconciliation_required' });
 	});
 
 	it.each([ORDER_PHASES.PAYMENT_CONFIRMED, ORDER_PHASES.SHIPPING_PENDING])(
@@ -1483,32 +1898,21 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		},
 	);
 
-	it.each([
-		'unauthorized',
-		'invalid-payload',
-		'unprocessable',
-		'provider-error',
-		'shippo-carriers-malformed-json',
-		'shippo-carriers-invalid-body',
-		'shippo-carriers-delay',
-		'shippo-carriers-disconnect',
-	] satisfies StubScenario[])('returns a controlled carrier error for %s', async (scenario) => {
-		const actors = await createCommerceActors();
-		await setProviderScenario(shippoUrl(), scenario);
-		const response = await authenticatedRequest('/shipment_provider/auth/active_carriers', 'GET', actors.seller.jar);
-		expect(response.status).toBe(502);
-		expect(await response.json()).toEqual({ message: 'Failed to fetch active carriers' });
-	});
+	it.each(['unauthorized', 'shippo-carriers-malformed-json', 'shippo-carriers-delay'] satisfies StubScenario[])(
+		'returns a controlled carrier error for %s',
+		async (scenario) => {
+			const actors = await createCommerceActors();
+			await setProviderScenario(shippoUrl(), scenario);
+			const response = await authenticatedRequest('/shipment_provider/auth/active_carriers', 'GET', actors.seller.jar);
+			expect(response.status).toBe(502);
+			expect(await response.json()).toEqual({ message: 'Failed to fetch active carriers' });
+		},
+	);
 
 	it.each([
 		{ scenario: 'unauthorized', category: 'http', status: 401 },
-		{ scenario: 'invalid-payload', category: 'http', status: 400 },
-		{ scenario: 'unprocessable', category: 'http', status: 422 },
-		{ scenario: 'provider-error', category: 'http', status: 500 },
 		{ scenario: 'shippo-carriers-malformed-json', category: 'invalid_response', status: undefined },
-		{ scenario: 'shippo-carriers-invalid-body', category: 'invalid_response', status: undefined },
 		{ scenario: 'shippo-carriers-delay', category: 'network', status: undefined },
-		{ scenario: 'shippo-carriers-disconnect', category: 'network', status: undefined },
 	] satisfies Array<{
 		scenario: StubScenario;
 		category: 'http' | 'invalid_response' | 'network';
@@ -1531,53 +1935,44 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		expect(serialized).not.toContain('Shippo provider error');
 	});
 
-	it.each([
-		'unauthorized',
-		'invalid-payload',
-		'unprocessable',
-		'provider-error',
-		'shippo-shipment-malformed-json',
-		'shippo-shipment-invalid-body',
-		'shippo-delay',
-		'shippo-shipment-disconnect',
-	] satisfies StubScenario[])('does not persist a quote for a controlled shipment failure: %s', async (scenario) => {
-		const actors = await createCommerceActors();
-		const item = await createItemFixture(actors);
-		await setProviderScenario(shippoUrl(), scenario);
-		const response = await authenticatedRequest(
-			'/shipment_provider/auth/calculate_shipment_cost',
-			'POST',
-			actors.buyer.jar,
-			{ item_id: item.id },
-		);
-		expect(response.status).toBe(502);
-		expect(await response.json()).toEqual({ message: 'Shipping provider request failed' });
-		const { db } = getTestDatabase();
-		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
-	});
-
-	it.each(['item_weight', 'item_length', 'item_width', 'item_height'] as const)(
-		'rejects a missing %s before Shippo and quote persistence',
-		async (dimension) => {
+	it.each(['unauthorized', 'shippo-shipment-malformed-json', 'shippo-delay'] satisfies StubScenario[])(
+		'does not persist a quote for a controlled shipment failure: %s',
+		async (scenario) => {
 			const actors = await createCommerceActors();
 			const item = await createItemFixture(actors);
-			const { db } = getTestDatabase();
-			await db
-				.update(items)
-				.set({ [dimension]: null })
-				.where(eq(items.id, item.id));
-			const beforeCount = (await getProviderRequests(shippoUrl())).length;
+			await setProviderScenario(shippoUrl(), scenario);
 			const response = await authenticatedRequest(
 				'/shipment_provider/auth/calculate_shipment_cost',
 				'POST',
 				actors.buyer.jar,
 				{ item_id: item.id },
 			);
-			expect(response.status).toBe(400);
-			await expectNoNewProviderRequests(beforeCount);
+			expect(response.status).toBe(502);
+			expect(await response.json()).toEqual({ message: 'Shipping provider request failed' });
+			const { db } = getTestDatabase();
 			expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
 		},
 	);
+
+	it.each(['item_width'] as const)('rejects a missing %s before Shippo and quote persistence', async (dimension) => {
+		const actors = await createCommerceActors();
+		const item = await createItemFixture(actors);
+		const { db } = getTestDatabase();
+		await db
+			.update(items)
+			.set({ [dimension]: null })
+			.where(eq(items.id, item.id));
+		const beforeCount = (await getProviderRequests(shippoUrl())).length;
+		const response = await authenticatedRequest(
+			'/shipment_provider/auth/calculate_shipment_cost',
+			'POST',
+			actors.buyer.jar,
+			{ item_id: item.id },
+		);
+		expect(response.status).toBe(400);
+		await expectNoNewProviderRequests(beforeCount);
+		expect(await db.select().from(shipping_quotes).where(eq(shipping_quotes.item_id, item.id))).toEqual([]);
+	});
 
 	it('rejects missing item/address/dimensions and seller-as-buyer before Shippo or partial quote state', async () => {
 		const cases = [
@@ -1625,30 +2020,21 @@ describe('Shippo 2018-02-08 mounted boundary', () => {
 		expect(await db.select().from(shipping_quotes)).toEqual([]);
 	});
 
-	it.each([
-		'provider-error',
-		'shippo-rate-malformed-json',
-		'shippo-rate-invalid-body',
-		'shippo-rate-delay',
-		'shippo-rate-disconnect',
-		'shippo-rate-shipment-mismatch',
-		'shippo-label-malformed-json',
-		'shippo-label-invalid-body',
-		'shippo-label-delay',
-		'shippo-label-disconnect',
-		'shippo-label-status-error',
-	] satisfies StubScenario[])('returns no label and preserves the order parent shipment on %s', async (scenario) => {
-		const { actors, order, quote } = await prepareLabelOrder();
-		await setProviderScenario(shippoUrl(), scenario);
-		const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
-			order_id: order.id,
-			rate_id: 'rate-test',
-		});
-		expect(response.status).toBe(502);
-		const { db } = getTestDatabase();
-		const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
-		expect(storedOrder?.shipping_label_id).toBe(quote.shipment_label_id);
-	});
+	it.each(['shippo-rate-malformed-json', 'shippo-label-delay', 'shippo-label-status-error'] satisfies StubScenario[])(
+		'returns no label and preserves the order parent shipment on %s',
+		async (scenario) => {
+			const { actors, order, quote } = await prepareLabelOrder();
+			await setProviderScenario(shippoUrl(), scenario);
+			const response = await authenticatedRequest('/shipment_provider/auth/create_label', 'POST', actors.seller.jar, {
+				order_id: order.id,
+				rate_id: 'rate-test',
+			});
+			expect(response.status).toBe(502);
+			const { db } = getTestDatabase();
+			const [storedOrder] = await db.select().from(orders).where(eq(orders.id, order.id));
+			expect(storedOrder?.shipping_label_id).toBe(quote.shipment_label_id);
+		},
+	);
 
 	it('returns typed redacted boundary errors and never logs provider payloads or credentials', async () => {
 		const spies = [

@@ -18,7 +18,6 @@ import { getProviderRequests, setProviderScenario } from '../helpers/providers';
 import { trustapTransactionFixture } from '../fixtures/providers/trustap-v1';
 
 const guestInput = {
-	id: 101,
 	email: 'buyer@tantovale.test',
 	first_name: 'Buyer',
 	last_name: 'Boundary',
@@ -196,6 +195,7 @@ describe('Trustap v1 provider boundary', () => {
 			charge: 625,
 			charge_buyer_client: 0,
 			charge_calculator_version: 1,
+			charge_postage_buyer: transactionInput.postage_fee,
 			charge_seller: 0,
 			charge_seller_client: 0,
 			currency: 'eur',
@@ -212,12 +212,14 @@ describe('Trustap v1 provider boundary', () => {
 		expect(guest).toEqual({
 			created_at: '2026-08-30T12:00:00.000Z',
 			email: guestInput.email,
-			id: `guest-${guestInput.id}`,
+			id: 'guest-101',
 		});
 		expect(transaction).toEqual({
 			buyer_id: transactionInput.buyer_id,
 			charge: charge!.charge,
 			charge_buyer_client: 0,
+			charge_postage_buyer: transactionInput.postage_fee,
+			charge_postage_client: 0,
 			charge_seller: 0,
 			charge_seller_client: 0,
 			client_id: 'trustap-test-client',
@@ -249,7 +251,7 @@ describe('Trustap v1 provider boundary', () => {
 			{
 				method: 'POST',
 				path: '/api/v1/me/transactions/create_with_guest_user',
-				body: transactionInput,
+				body: { ...transactionInput, features: ['use_custom_postage_fee'] },
 			},
 			{ method: 'GET', path: '/api/v1/transactions/91002', body: undefined },
 		]);
@@ -290,7 +292,7 @@ describe('Trustap v1 provider boundary', () => {
 			{
 				method: 'POST',
 				path: '/api/v1/me/transactions/create_with_guest_user',
-				body: sellerTransaction,
+				body: { ...sellerTransaction, features: ['use_custom_postage_fee'] },
 			},
 		]);
 		assertBasicApiKey(requests[1]?.headers.authorization);
@@ -396,7 +398,7 @@ describe('Trustap v1 provider boundary', () => {
 		}
 	});
 
-	it('rejects an unsupported transaction feature instead of accepting an invented custom-postage flag', async () => {
+	it('rejects Trustap-managed Shippo at the Tantovale provider boundary', async () => {
 		const service = new PaymentProviderService();
 		const charge = await service.calculateTransactionFee({
 			price: transactionInput.price,
@@ -415,7 +417,7 @@ describe('Trustap v1 provider boundary', () => {
 				...transactionInput,
 				charge: charge!.charge,
 				charge_calculator_version: charge!.charge_calculator_version,
-				features: ['use_custom_postage_fee'],
+				features: ['use_shippo'],
 			}),
 		});
 		expect(response.status).toBe(400);
@@ -540,7 +542,7 @@ describe('Trustap v1 provider boundary', () => {
 	);
 
 	it.each(['buyer', 'seller'] as const)(
-		'treats create as ambiguous for an otherwise valid response missing the %s identity',
+		'normalizes an otherwise valid create response missing the optional %s identity from the request',
 		async (identity) => {
 			const service = new PaymentProviderService();
 			const scenario = `transaction-${identity}-missing` as StubScenario;
@@ -551,17 +553,14 @@ describe('Trustap v1 provider boundary', () => {
 				use_hr_post: false,
 			});
 			await setProviderScenario(paymentProviderUrl(), scenario);
-			const createError = await service
-				.createTransactionWithBothUsers({
-					...transactionInput,
-					charge: charge!.charge,
-					charge_calculator_version: charge!.charge_calculator_version,
-				})
-				.catch((error: unknown) => error);
-			expect(createError).toMatchObject({
-				name: 'PaymentProviderAmbiguousError',
-				operation: 'create_transaction',
-				category: 'ambiguous',
+			const transaction = await service.createTransactionWithBothUsers({
+				...transactionInput,
+				charge: charge!.charge,
+				charge_calculator_version: charge!.charge_calculator_version,
+			});
+			expect(transaction).toMatchObject({
+				buyer_id: transactionInput.buyer_id,
+				seller_id: transactionInput.seller_id,
 			});
 		},
 	);
@@ -582,16 +581,31 @@ describe('Trustap v1 provider boundary', () => {
 	);
 
 	it.each(['buyer', 'seller'] as const)(
-		'treats cancellation as ambiguous for an otherwise valid response missing the %s identity',
+		'normalizes an otherwise valid cancellation response missing the optional %s identity from the request',
 		async (identity) => {
 			const service = new PaymentProviderService();
 			const scenario = `transaction-${identity}-missing` as StubScenario;
 			await setProviderScenario(paymentProviderUrl(), scenario);
-			const cancelError = await service.cancelGuestTransaction(cancellationInput).catch((error: unknown) => error);
-			expect(cancelError).toMatchObject({
-				name: 'PaymentProviderAmbiguousError',
-				operation: 'cancel_transaction',
-				category: 'ambiguous',
+			const cancelled = await service.cancelGuestTransaction(cancellationInput);
+			expect(cancelled).toMatchObject({
+				buyer_id: cancellationInput.buyer_id,
+				seller_id: cancellationInput.seller_id,
+				status: 'cancelled',
+			});
+		},
+	);
+
+	it.each(['buyer', 'seller'] as const)(
+		'normalizes an otherwise valid fetch response missing the optional %s identity when local participants are supplied',
+		async (identity) => {
+			await setProviderScenario(paymentProviderUrl(), `transaction-${identity}-missing` as StubScenario);
+			const fetched = await new PaymentProviderService().getTransactionStatus(existingTransactionId, {
+				buyer_id: trustapTransactionFixture.buyer_id,
+				seller_id: trustapTransactionFixture.seller_id,
+			});
+			expect(fetched).toMatchObject({
+				buyer_id: trustapTransactionFixture.buyer_id,
+				seller_id: trustapTransactionFixture.seller_id,
 			});
 		},
 	);
